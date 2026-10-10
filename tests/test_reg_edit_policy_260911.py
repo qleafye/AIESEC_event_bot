@@ -21,7 +21,7 @@ import pytest
 from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA
-from services import reg_edit_policy
+from services.registration import reg_edit_policy
 from handlers.settings import admin_sections as sec
 from handlers.settings import admin_settings as st
 

@@ -133,8 +133,8 @@ def test_server_error_logs_at_error_level(tmp_path, caplog, monkeypatch):
     """5xx (`reg draft submit: finalize_data failed`) обязан уйти уровнем ERROR, не WARNING --
     менеджер, грепающий `docker logs | grep ERROR`, не должен пропустить настоящий сбой.
 
-    Патчим `miniapp.routers.form.finalize_data`, не `services.reg_finalize.finalize_data` --
-    `form.py` делает `from services.reg_finalize import finalize_data` (имя скопировано в его
+    Патчим `miniapp.routers.form.finalize_data`, не `services.registration.reg_finalize.finalize_data` --
+    `form.py` делает `from services.registration.reg_finalize import finalize_data` (имя скопировано в его
     собственное пространство имён при импорте), патч исходного модуля роутер не увидит."""
     db_path = _use_tmp_db(tmp_path, "miniapp_logging_errors_260919_500.db")
     _standard_seed()

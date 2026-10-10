@@ -234,7 +234,7 @@ from aiogram.fsm.storage.base import StorageKey  # noqa: E402
 from aiogram.fsm.storage.memory import MemoryStorage  # noqa: E402
 
 from handlers.states import Registration, SosReport  # noqa: E402
-from services.reg_stuck_reset import preview_stuck_reset, reset_stuck_registration  # noqa: E402
+from services.registration.reg_stuck_reset import preview_stuck_reset, reset_stuck_registration  # noqa: E402
 
 
 class _FakeBotWithId(_FakeBot):
@@ -268,7 +268,7 @@ async def _seed_draft(tid, *, kind="new", step="phone", event_city="msk", minute
             await conn.commit()
 
 
-# ── services/reg_stuck_reset.py — БД-слой ────────────────────────────────────────────────────
+# ── services/registration/reg_stuck_reset.py — БД-слой ────────────────────────────────────────────────────
 
 def test_preview_stuck_reset_none_without_draft(tmp_path):
     _db_ready(tmp_path)
@@ -927,7 +927,7 @@ def test_roles_addfor_capability_registered():
 # Задача 3: «📎 Заменить резюме»
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
-from services.resume_replace import (  # noqa: E402
+from services.registration.resume_replace import (  # noqa: E402
     preview_resume_replace, replace_resume, validate_resume_document,
 )
 
@@ -962,7 +962,7 @@ class _FakeStateMessage:
         self.answers.append((text, parse_mode, reply_markup))
 
 
-# ── services/resume_replace.py — валидация + БД-слой ────────────────────────────────────────
+# ── services/registration/resume_replace.py — валидация + БД-слой ────────────────────────────────────────
 
 def test_validate_resume_document_rejects_wrong_extension():
     assert validate_resume_document("resume.exe", 1000) is not None
@@ -1047,7 +1047,7 @@ def test_replace_resume_uploads_and_updates_sheet(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     _configure_nextcloud(monkeypatch)
 
-    from services import nextcloud as nextcloud_mod
+    from services.registration import nextcloud as nextcloud_mod
     from services.sheets import sheets as sheets_mod
 
     upload_calls = []
@@ -1095,7 +1095,7 @@ def test_replace_resume_upload_failure_reports_cloud_error(tmp_path, monkeypatch
     _db_ready(tmp_path)
     _configure_nextcloud(monkeypatch)
 
-    from services import nextcloud as nextcloud_mod
+    from services.registration import nextcloud as nextcloud_mod
 
     async def _fake_upload_resume_fail(bot, file_id, filename):
         return None

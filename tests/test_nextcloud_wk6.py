@@ -11,7 +11,7 @@ from urllib.parse import quote
 from config import config
 from database import db
 from handlers import registration as reg
-from services.nextcloud import _file_link, file_name_from_link, upload_resume, upload_text_resume
+from services.registration.nextcloud import _file_link, file_name_from_link, upload_resume, upload_text_resume
 from tests._dbtpl import fast_init_db
 
 

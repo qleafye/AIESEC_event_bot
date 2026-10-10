@@ -1,5 +1,5 @@
 """Phase 33 (delegate-card admin actions, задача 3): «📎 Заменить резюме» — кнопка на карточке
-`/find` (`handlers/admin.py::cmd_find_user`), сама замена — `services/resume_replace.py`.
+`/find` (`handlers/admin.py::cmd_find_user`), сама замена — `services/registration/resume_replace.py`.
 
 Не форумная функция (админ-действие модератора) — своей строки в хабе «🎪 Форум: функции» нет
 и не нужно, тот же посыл, что у соседних швов фазы.
@@ -27,7 +27,7 @@ from database.db import get_user
 from handlers.admin import router
 from handlers.forum.admin_checkin import _city_allowed
 from handlers.states import ResumeReplace
-from services.resume_replace import preview_resume_replace, replace_resume, validate_resume_document
+from services.registration.resume_replace import preview_resume_replace, replace_resume, validate_resume_document
 
 logger = logging.getLogger(__name__)
 

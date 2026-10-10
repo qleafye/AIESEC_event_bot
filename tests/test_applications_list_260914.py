@@ -210,7 +210,7 @@ def test_list_applications_page_decided_by_null_without_decision_row(tmp_path):
     _ready(tmp_path)
 
     async def go():
-        # Автоодобрение (services/reg_finalize.py::post_finalize) НЕ пишет строку в
+        # Автоодобрение (services/registration/reg_finalize.py::post_finalize) НЕ пишет строку в
         # application_decisions вовсе — этот случай и легаси-строки без журнала неотличимы,
         # оба читаются экраном как «автоматически».
         await _add(1, status="approved", approved_at="2026-09-05 12:00:00")
@@ -555,7 +555,7 @@ def test_row_auto_approved_without_decision_row_shows_automatically(tmp_path):
 
     async def go():
         # Ни одной строки в application_decisions -- короткий трек/автоодобрение
-        # (services/reg_finalize.py::post_finalize), решение принял не человек.
+        # (services/registration/reg_finalize.py::post_finalize), решение принял не человек.
         await _add(STRANGER_ID, name="Вася", status="approved",
                     approved_at="2026-09-12 10:00:00")
         text, _ = await admin_app_list.render_app_list_screen(ADMIN_ID)

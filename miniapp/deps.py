@@ -93,7 +93,7 @@ class Principal:
     caps: frozenset[str]
     city: str | None  # staff_city; None = все города
     # Phase 21 (21-10, FORM-SYNC-04): username из подписанного initData.user (cookie-ветка ->
-    # None — дашборд его не несёт). Нужен ТОЛЬКО форме анкеты (services.reg_finalize.finalize_data
+    # None — дашборд его не несёт). Нужен ТОЛЬКО форме анкеты (services.registration.reg_finalize.finalize_data
     # ждёт настоящий username для НОВОЙ регистрации целиком через Mini App, без единого касания
     # чата бота); остальные потребители Principal поле не используют.
     username: str | None = None

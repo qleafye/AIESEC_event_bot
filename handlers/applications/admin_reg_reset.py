@@ -1,5 +1,5 @@
 """Phase 33 (delegate-card admin actions, задача 1): «🧹 Сбросить зависшую анкету» — кнопка на
-карточке `/find` (`handlers/admin.py::cmd_find_user`), сам сброс — `services/reg_stuck_reset.py`.
+карточке `/find` (`handlers/admin.py::cmd_find_user`), сам сброс — `services/registration/reg_stuck_reset.py`.
 
 Не форумная функция (админ-действие модератора) — своей строки в хабе «🎪 Форум: функции» нет
 и не нужно, тот же посыл, что у соседних швов фазы (`admin_city_move.py`/
@@ -24,7 +24,7 @@ from domain.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
 from handlers.forum.admin_checkin import _city_allowed
-from services.reg_stuck_reset import preview_stuck_reset, reset_stuck_registration
+from services.registration.reg_stuck_reset import preview_stuck_reset, reset_stuck_registration
 
 logger = logging.getLogger(__name__)
 

@@ -320,7 +320,7 @@ def _install_fake_sheets(monkeypatch):
 
 
 async def _resolve_tabs(city, participant_type):
-    from services.reg_finalize import _resolve_update_tab
+    from services.registration.reg_finalize import _resolve_update_tab
     return await _resolve_update_tab(city, participant_type)
 
 
@@ -1165,7 +1165,7 @@ def test_move_same_tab_updates_row_in_place_without_duplicate(tmp_path, monkeypa
                 "fallback_exists": True, "write_tab": None}
 
     import services.cities.city_move as cm
-    import services.reg_finalize as rf
+    import services.registration.reg_finalize as rf
     monkeypatch.setattr(rf, "_resolve_update_tab", main_tab_only)
     monkeypatch.setattr(cm, "_resolve_sheet_targets", targets_main)
 

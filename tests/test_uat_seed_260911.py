@@ -410,7 +410,7 @@ def test_go_draft_records_consent_when_module_on(tmp_path):
     _consents_configured()
     uat_seed = _import_handlers()
     from domain.regform.engine import consent_entries
-    from services.consent import outstanding_consents
+    from services.registration.consent import outstanding_consents
 
     _go(uat_seed, "draft", "none")
 
@@ -424,7 +424,7 @@ def test_go_pending_records_consent_when_module_on(tmp_path):
     _consents_configured()
     uat_seed = _import_handlers()
     from domain.regform.engine import consent_entries
-    from services.consent import outstanding_consents
+    from services.registration.consent import outstanding_consents
 
     _go(uat_seed, "pending", "none")
 

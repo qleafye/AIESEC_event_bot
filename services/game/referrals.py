@@ -4,7 +4,7 @@
 не существует. Одиночное одобрение идёт через `services.applications.applications.claim_approve`, массовое —
 через `database.db.approve_all_pending` (у которого раньше было ДВА независимых вызывающих — бот
 напрямую и веб через `services.applications.applications.claim_approve_all`), а авто-одобрение на финале
-анкеты вообще пишет статус в `services/reg_finalize.py`, минуя оба. Побочный эффект, повешенный
+анкеты вообще пишет статус в `services/registration/reg_finalize.py`, минуя оба. Побочный эффект, повешенный
 только на один из этих путей, — ровно класс инцидента 06.09 (см.
 `.planning/.../auto-approve-incident-260906.md`): молчаливое массовое действие без видимого следа
 для менеджера. Поэтому начисление — ОДНА функция, врезанная во ВСЕ три пути одинаково, а не три
@@ -30,7 +30,7 @@
 
 Зависимости — ТОЛЬКО `database.db`, `services.amb.ambassador_waves`, `settings_schema` (плюс
 стандартная библиотека). Телеграм-фреймворк и `handlers.*` на уровне модуля не импортируются —
-три врезки (`services/applications/applications.py`, `services/reg_finalize.py`) тянут этот модуль ЛЕНИВЫМ
+три врезки (`services/applications/applications.py`, `services/registration/reg_finalize.py`) тянут этот модуль ЛЕНИВЫМ
 импортом внутри функции именно поэтому: не тащить новый модуль в цепочку импортов веб-процесса
 Mini App.
 """

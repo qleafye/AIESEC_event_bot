@@ -7,7 +7,7 @@ import logging
 from types import SimpleNamespace
 
 from config import config
-from services import nextcloud
+from services.registration import nextcloud
 
 
 class _FakeBot:
@@ -49,7 +49,7 @@ def test_oversized_file_is_not_downloaded_and_returns_none(monkeypatch, caplog):
 
     monkeypatch.setattr(nextcloud, "_put_bytes", fake_put)
     bot = _FakeBot(size=20 * 1024 * 1024 + 1)
-    caplog.set_level(logging.WARNING, logger="services.nextcloud")
+    caplog.set_level(logging.WARNING, logger="services.registration.nextcloud")
 
     result = asyncio.run(nextcloud.upload_resume(bot, "fid", "cv.pdf"))
 

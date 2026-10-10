@@ -1079,7 +1079,7 @@ async def pre_flow(answers: dict, meta: dict | None = None) -> list[str]:
     UAT 21-12 находка 1: `pending_consent_keys` (если передан, не None) сужает согласия до
     ключей, которых в нём НЕТ ни одного отфильтрованного — то есть до реально несогласованных;
     вызывающий (`form_spec`) считает список тем же фильтром версий, что и гейт пересогласия
-    (`services.consent.outstanding_consents`), не второй копией правила. `None` (по умолчанию,
+    (`services.registration.consent.outstanding_consents`), не второй копией правила. `None` (по умолчанию,
     бот сюда не заглядывает — pre_flow вообще не вызывается из handlers/*) — старое поведение,
     все согласия модуля."""
     meta = meta or {}
@@ -1251,7 +1251,7 @@ async def validate_track_choice(code, city_code: str | None = None) -> tuple[str
 _EXTRA_ANSWER_COLUMNS = ["resume_file_id", "resume_file_name", "resume_text"]
 
 # Quick 260910-wb6: колонки анкеты, у которых НЕТ колонки в `users` — существуют только чтобы
-# доехать до `post_finalize` (расширение файла резюме для Некстклауда, `services/reg_finalize.py`),
+# доехать до `post_finalize` (расширение файла резюме для Некстклауда, `services/registration/reg_finalize.py`),
 # ни `add_user`, ни `update_user_answers` их не пишут (тот же факт уже задокументирован
 # `tests/test_skillup_core_28.py::_NOT_IN_ADD_USER`). `diff()` ниже обязан их пропускать —
 # иначе правка анкеты с файловым резюме считает их «изменившимися» и ловит
@@ -1941,7 +1941,7 @@ OTHER_OPTION = "Другое"
 # `_OTHER_ALLOWED_STEPS` продолжает обслуживать легаси-ветку при выключенной новой анкете,
 # 30-CONTEXT.md: «Атрибуты влияют только на новую анкету»). `университет`/`city` — единственные
 # сегодняшние lookup-шаги (reg_engine.step_type_v2), второй карты имён не заводится —
-# `_LOOKUP_LIST_KEY` дословно совпадает с `services.lookup._SEASON_COLUMN`/`_STEP_TO_LOOKUP_KIND`
+# `_LOOKUP_LIST_KEY` дословно совпадает с `services.registration.lookup._SEASON_COLUMN`/`_STEP_TO_LOOKUP_KIND`
 # (miniapp/routers/form.py), но живёт здесь отдельной картой: это связка step_key -> ключ
 # СПИСКА реестра (`*_options`), а не step_key -> kind справочника.
 _LOOKUP_LIST_KEY = {"university": "university_options", "city": "city_options"}
@@ -3235,7 +3235,7 @@ def summary_fields(answers: dict) -> list:
 
 async def scoring_rules() -> dict:
     """Один поход в реестр за все семь скоринговых значений (T-28-07-03: ни одного лишнего
-    запроса на кандидата — вызывающий (`services/reg_finalize.py`) зовёт это один раз и
+    запроса на кандидата — вызывающий (`services/registration/reg_finalize.py`) зовёт это один раз и
     передаёт готовый `rules` в чистый `compute_score`). Списки — через `option_list_for` с
     ПУСТЫМ дефолтом (не путать с дефолтами вариантов вопросов): невыставленное множество
     значит «правило не срабатывает», а не «стандартный набор» (D-06)."""
@@ -3281,7 +3281,7 @@ def age_on(birth_raw: str | None, target_raw: str | None) -> int | None:
 # ── Правила автоотказа: чистый оценщик условий (Phase 31, 31-01) ───────────────────────────
 # D-07: тот же класс функции, что compute_score/decide_status выше — синхронная, без БД, без
 # aiogram. Форма правила/условия и контракт возврата зафиксированы в <interfaces> 31-01-PLAN.md
-# и одинаково потребляются чатом и Mini App через общий финал анкеты (services/reg_finalize.py).
+# и одинаково потребляются чатом и Mini App через общий финал анкеты (services/registration/reg_finalize.py).
 # Фильтрация правил по городу/треку сюда НЕ входит намеренно — её делает загрузчик
 # services/applications/reject_rules.py::active_rules (план 31-04), ровно как scoring_rules() выше собирает
 # готовый словарь для compute_score, а не читает реестр прямо из чистой функции.

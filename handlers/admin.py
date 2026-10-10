@@ -102,7 +102,7 @@ from services.scheduler import (
     cancel_broadcast_job,
 )
 from services.access.allowlist import refresh_allowlist, allowlist_size
-from services import source_links
+from services.registration import source_links
 from services.infra.background import spawn as _spawn
 from services.applications import decision_delivery
 from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
@@ -575,10 +575,10 @@ async def cmd_find_user(message: types.Message):
                     text="✏️ Открыть правку после решения", callback_data=f"editg_start:{user['telegram_id']}",
                 )])
         # Phase 33 (задача 1): «🧹 Сбросить зависшую анкету» — видна, только когда есть
-        # незавершённый черновик (services/reg_stuck_reset.py::preview_stuck_reset); для
+        # незавершённый черновик (services/registration/reg_stuck_reset.py::preview_stuck_reset); для
         # одобренной/отклонённой заявки БЕЗ открытой правки черновика нет — кнопка не
         # показывается вовсе (незачем звать экран подтверждения, который тут же откажет).
-        from services.reg_stuck_reset import preview_stuck_reset
+        from services.registration.reg_stuck_reset import preview_stuck_reset
         if await preview_stuck_reset(user["telegram_id"]) is not None:
             rows.append([InlineKeyboardButton(
                 text="🧹 Сбросить зависшую анкету", callback_data=f"regreset_start:{user['telegram_id']}",
@@ -620,7 +620,7 @@ async def cmd_find_user(message: types.Message):
             rows.append([InlineKeyboardButton(
                 text="👥 Выдать роль", callback_data=f"roles_addfor:{started['telegram_id']}",
             )])
-        from services.reg_stuck_reset import preview_stuck_reset
+        from services.registration.reg_stuck_reset import preview_stuck_reset
         if await preview_stuck_reset(started["telegram_id"]) is not None:
             rows.append([InlineKeyboardButton(
                 text="🧹 Сбросить зависшую анкету", callback_data=f"regreset_start:{started['telegram_id']}",
@@ -638,7 +638,7 @@ async def cmd_create_link(message: types.Message, bot: Bot):
     if len(args) < 2 or not args[1].strip():
         await message.answer("⚠️ Используйте формат: /create_link &lt;название&gt;\nПример: /create_link vk_poster", parse_mode="HTML")
         return
-    tag = source_links.clean_tag(args[1])  # проверка и тексты — services/source_links.py
+    tag = source_links.clean_tag(args[1])  # проверка и тексты — services/registration/source_links.py
     if not source_links.is_valid_tag(tag):
         await message.answer(source_links.bad_tag_text(args[1], "/create_link vk_poster"), parse_mode="HTML")
         return

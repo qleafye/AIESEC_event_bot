@@ -297,7 +297,7 @@ async def after_onsite_approved(bot, telegram_id: int) -> None:
         await _alert_if_journal_missing(full)
 
     try:
-        from services.reg_finalize import write_sheet_row
+        from services.registration.reg_finalize import write_sheet_row
         await write_sheet_row(telegram_id, full, "new")
     except Exception:
         logger.exception("onsite_reg: строка листа не записана (tid=%s)", telegram_id)

@@ -2,15 +2,15 @@
 (PDF/DOCX) взамен резюме делегата. Кнопка на карточке `/find`
 (`handlers/applications/admin_resume_replace.py`), сама замена — здесь.
 
-Тем же путём, что при обычной подаче анкеты (`services/reg_finalize.py`): Nextcloud-загрузка
-(`services/nextcloud.py::upload_resume`) + обновление ячейки листа «Резюме (ссылка)» той же
+Тем же путём, что при обычной подаче анкеты (`services/registration/reg_finalize.py`): Nextcloud-загрузка
+(`services/registration/nextcloud.py::upload_resume`) + обновление ячейки листа «Резюме (ссылка)» той же
 `update_row_by_id`. Переиспользуем `_apply_resume_url`/`_resume_file_stem`/
 `_resume_filename_mode` — владелец файла `reg_finalize.py`, не владеем им, только вызываем
 (тот же приём, что `admin_city_move.py`/`admin_revert_pending.py` берут `_city_allowed` из
 `admin_checkin.py`).
 
 `users.resume_file_id` обновляется узким UPDATE ДО похода в облако — то, что делегат получит
-при следующем recall (`services/reg_finalize.py` RESUME_RECALL_COLUMNS), меняется на новый
+при следующем recall (`services/registration/reg_finalize.py` RESUME_RECALL_COLUMNS), меняется на новый
 файл сразу, даже если сама выгрузка в Nextcloud временно недоступна. Сбой облака НЕ рвёт саму
 замену `file_id` (fail-soft, тот же приём, что `post_finalize`/`handle_resume_upload`) —
 `report["cloud_error"]` несёт причину, экран подтверждения печатает её как «ссылка в таблице
@@ -23,7 +23,7 @@ import os
 
 from database.db import get_user, record_answer_history, update_user_answers
 from domain.regform.engine import RESUME_MAX_BYTES, is_allowed_resume, resume_too_large
-from services.reg_finalize import _apply_resume_url, _resume_file_stem, _resume_filename_mode
+from services.registration.reg_finalize import _apply_resume_url, _resume_file_stem, _resume_filename_mode
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,7 @@ async def replace_resume(
     }
 
     try:
-        from services.nextcloud import is_configured, upload_resume
+        from services.registration.nextcloud import is_configured, upload_resume
 
         if not is_configured():
             report["cloud_error"] = "модуль Nextcloud не настроен"

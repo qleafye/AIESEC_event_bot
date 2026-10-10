@@ -750,7 +750,7 @@ def test_consume_override_closes_active_row(tmp_path):
 
 def test_consume_override_without_active_is_harmless_noop(tmp_path):
     """Обычный делегат без исключения — consume_override гасить нечего, вызывающий код
-    (services/reg_finalize.py) зовёт эту функцию БЕЗУСЛОВНО на каждой подаче/правке."""
+    (services/registration/reg_finalize.py) зовёт эту функцию БЕЗУСЛОВНО на каждой подаче/правке."""
     _db_ready(tmp_path)
 
     async def scenario():
@@ -780,11 +780,11 @@ def test_regrant_after_revoke_creates_new_row_history_keeps_both(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part E: services/reg_edit_policy.py — гейт resubmit_gate уважает персональное исключение
+# Part E: services/registration/reg_edit_policy.py — гейт resubmit_gate уважает персональное исключение
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_resubmit_gate_denied_globally_but_allowed_via_override(tmp_path):
-    from services import reg_edit_policy
+    from services.registration import reg_edit_policy
 
     _db_ready(tmp_path)
 
@@ -804,8 +804,8 @@ def test_resubmit_gate_denied_globally_but_allowed_via_override(tmp_path):
 def test_resubmit_gate_peek_does_not_consume_override(tmp_path):
     """Гейт — peek, не consume: несколько проверок за один поход делегата не гасят
     исключение раньше времени (гашение — только в точке фактического использования,
-    services/reg_finalize.py)."""
-    from services import reg_edit_policy
+    services/registration/reg_finalize.py)."""
+    from services.registration import reg_edit_policy
 
     _db_ready(tmp_path)
 
@@ -822,11 +822,11 @@ def test_resubmit_gate_peek_does_not_consume_override(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part F: services/reg_finalize.py — фактический резабмит гасит исключение
+# Part F: services/registration/reg_finalize.py — фактический резабмит гасит исключение
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_finalize_resubmit_consumes_override(tmp_path):
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
 
     _db_ready(tmp_path)
 
@@ -850,7 +850,7 @@ def test_finalize_resubmit_consumes_override(tmp_path):
 def test_finalize_normal_edit_without_override_is_harmless(tmp_path):
     """Обычная правка без активного исключения — consume_override вызывается безусловно и
     не мешает обычному флоу (no-op)."""
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
 
     _db_ready(tmp_path)
 
@@ -1128,11 +1128,11 @@ def test_card_shows_resubmit_override_line_and_revoke_button(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part H: services/reg_edit_policy.py — гейт edit_gate уважает персональное исключение (Task 3)
+# Part H: services/registration/reg_edit_policy.py — гейт edit_gate уважает персональное исключение (Task 3)
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_edit_gate_denied_globally_but_allowed_via_override(tmp_path):
-    from services import reg_edit_policy
+    from services.registration import reg_edit_policy
 
     _db_ready(tmp_path)
 
@@ -1153,7 +1153,7 @@ def test_edit_gate_denied_globally_but_allowed_via_override(tmp_path):
 
 
 def test_edit_gate_peek_does_not_consume_override(tmp_path):
-    from services import reg_edit_policy
+    from services.registration import reg_edit_policy
 
     _db_ready(tmp_path)
 
@@ -1177,7 +1177,7 @@ def test_edit_gate_override_does_not_bypass_denial_for_non_approved_status(tmp_p
     защита в глубину гейта: применимо только при status == "approved" (та же граница, что у
     кнопки на карточке). policy=never отказывает ЛЮБОМУ поданному статусу, в т.ч. pending —
     override, выданный (ошибочно/в гонке) для НЕ approved делегата, отказ не снимает."""
-    from services import reg_edit_policy
+    from services.registration import reg_edit_policy
 
     _db_ready(tmp_path)
 
@@ -1202,7 +1202,7 @@ def test_resubmit_gate_denial_condition_matches_override_eligibility(tmp_path):
     (current_season=False) ДО того, как гейт дошёл бы до чтения override — случайно выданное
     (или ещё не погашенное) исключение здесь ни при чём, оно не подменяет никакого отказа,
     потому что отказа для этого случая нет вовсе."""
-    from services import reg_edit_policy
+    from services.registration import reg_edit_policy
 
     _db_ready(tmp_path)
 
@@ -1223,13 +1223,13 @@ def test_resubmit_gate_denial_condition_matches_override_eligibility(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part I: services/reg_finalize.py — фактическая правка гасит исключение (Task 3)
+# Part I: services/registration/reg_finalize.py — фактическая правка гасит исключение (Task 3)
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_finalize_edit_consumes_edit_override_status_stays_approved(tmp_path):
     """toggle_reg_edit_remoderation=off (дефолт продакшена) — статус остаётся «Одобрена»,
     исключение всё равно гасится (оно управляет ДОСТУПОМ к правке, не судьбой статуса)."""
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
 
     _db_ready(tmp_path)
 
@@ -1253,7 +1253,7 @@ def test_finalize_edit_consumes_edit_override_status_stays_approved(tmp_path):
 
 
 def test_finalize_edit_with_remoderation_on_moves_to_pending_and_consumes(tmp_path):
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
 
     _db_ready(tmp_path)
 

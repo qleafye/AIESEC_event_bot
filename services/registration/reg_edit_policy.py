@@ -103,7 +103,7 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     которого кнопка «✏️ Открыть правку после решения» вообще показывается на карточке
     (`handlers/admin.py`); гейт не доверяет одной только видимости кнопки в хендлере. Только
     peek (не гасит исключение) — гашение происходит в точке фактического использования,
-    `services/reg_finalize.py` (любая реально применённая правка гасит его безусловно —
+    `services/registration/reg_finalize.py` (любая реально применённая правка гасит его безусловно —
     активного исключения обычно и так нет, это no-op для делегата без него)."""
     try:
         city = (user_row or {}).get("event_city")
@@ -171,7 +171,7 @@ async def resubmit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     сезона — те же условия, при которых кнопка «🔁 Разрешить повторную подачу» вообще
     показывается на карточке (`handlers/admin.py`); гейт не доверяет одной только видимости
     кнопки в хендлере. Только peek (не гасит исключение) — гашение происходит в точке
-    фактического использования, `services/reg_finalize.py`."""
+    фактического использования, `services/registration/reg_finalize.py`."""
     try:
         city = (user_row or {}).get("event_city")
         policy = await get_setting_typed_for_city("reg_resubmit_after_reject", city)

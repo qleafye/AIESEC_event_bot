@@ -32,7 +32,7 @@ def _run(coro):
 
 async def _insert_entry(kind, canonical, alias, *, pinned=0):
     async with bot_db._connect() as conn:
-        from services.lookup import normalize_alias
+        from services.registration.lookup import normalize_alias
 
         await conn.execute(
             "INSERT OR IGNORE INTO lookup_entries "

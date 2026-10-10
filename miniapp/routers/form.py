@@ -2,7 +2,7 @@
 спекой шагов (`reg_engine.form_spec`), записать ответы пофилевым слиянием (`version` +
 `conflicts`), подписать согласия, отправить анкету. Один движок для чата бота и приложения
 (T-21-05) — этот роутер не содержит НИ ОДНОЙ собственной проверки формата ввода: судья —
-`reg_engine.validate_answer`, финал — `services.reg_finalize.finalize_data`/`post_finalize`
+`reg_engine.validate_answer`, финал — `services.registration.reg_finalize.finalize_data`/`post_finalize`
 (план 21-08), те же функции, что зовёт бот.
 
 Права (RESEARCH § «Права / безопасность формы», T-21-01/T-21-19): `telegram_id` — только из
@@ -59,11 +59,11 @@ from database.db import (
 )
 from domain.settings.schema import get_setting_typed
 from services.i18n import i18n
-from services import reg_edit_policy
-from services.consent import outstanding_consents
-from services.lookup import search_lookup, top_chips
-from services.reg_finalize import finalize_data, resolve_delegate_text
-from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
+from services.registration import reg_edit_policy
+from services.registration.consent import outstanding_consents
+from services.registration.lookup import search_lookup, top_chips
+from services.registration.reg_finalize import finalize_data, resolve_delegate_text
+from services.registration.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
 
 from miniapp import telegram_api
 from miniapp.deps import Principal, form_gate, require_section
@@ -288,7 +288,7 @@ async def _registration_closed(event_city: str | None) -> bool:
 
 async def _edit_gate(ctx: dict) -> tuple[bool, str | None]:
     """Квик 260911-w2m + 260922-wrg (задача 2): можно ли делегату сейчас записать/отправить
-    правку УЖЕ ПОДАННОЙ анкеты — тонкая обёртка над `services.reg_edit_policy.open_gate`
+    правку УЖЕ ПОДАННОЙ анкеты — тонкая обёртка над `services.registration.reg_edit_policy.open_gate`
     (edit_gate + resubmit_gate: правка одобренной/pending И повторная подача после отказа —
     одна точка входа на все три поверхности формы, T-wrg-02).
 
@@ -337,7 +337,7 @@ async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_userna
     edit_can_edit, edit_closed_text = await _edit_gate(ctx)
     # UAT 21-12 находка 1: мастер переспрашивал согласие на КАЖДОЕ открытие, даже секунды
     # после подписи в чате той же сессией. `outstanding_consents` — тот же фильтр версий, что
-    # уже использует гейт пересогласия (services/consent.py) — подпись старой редакции ИЛИ
+    # уже использует гейт пересогласия (services/registration/consent.py) — подпись старой редакции ИЛИ
     # без подписи вовсе остаётся «pending» (экран нужен), подпись текущей редакции гасит
     # экран. Submit-гейт (D-23, ниже по файлу) не меняется — сверяет ЛЮБУЮ версию, это
     # отдельный жёсткий чек, не UI-удобство.
@@ -833,7 +833,7 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
     if "resume" in body.clear:
         user_row = ctx.get("user_row")
         if user_row and user_row.get("resume_url"):
-            from services.reg_finalize import _apply_resume_url
+            from services.registration.reg_finalize import _apply_resume_url
             try:
                 await _apply_resume_url(p.telegram_id, user_row, None)
             except Exception as e:
@@ -1231,7 +1231,7 @@ async def draft_ambassador(
 
 # ── Поиск по справочнику ВУЗ/город (A2-03) ──────────────────────────────────────────────────
 
-# Phase 30 (30-02, A2-03): шаг -> вид справочника `services.lookup` (закрытый словарь
+# Phase 30 (30-02, A2-03): шаг -> вид справочника `services.registration.lookup` (закрытый словарь
 # "university"/"city"). Кроме этих двух шагов у `step_type_v2` в этой фазе типа `lookup`
 # нет (30-01-SUMMARY.md) — карта заведомо покрывает всё множество lookup-шагов сегодня, расти
 # ей вместе с `_STEP_TYPE_V2_OVERRIDES` в `domain/regform/engine.py`, если появится третий.
@@ -1252,12 +1252,12 @@ async def reg_suggest(
     _: Principal = Depends(require_section("form")),
 ) -> dict:
     """Поиск по справочнику ВУЗ/город для типа шага `lookup` (A2-03, задача 4 плана 30-02) —
-    рендер экрана делает план 30-03, здесь только данные. Судья формата — `services.lookup`
+    рендер экрана делает план 30-03, здесь только данные. Судья формата — `services.registration.lookup`
     (нормализация/ранжирование/чипы), этот роутер не содержит собственных правил сравнения
     строк — та же дисциплина, что у `validate_answer` выше (T-21-05).
 
     `step` — ключ шага анкеты (не `kind` напрямую: фронт знает шаг, `kind` — закрытый словарь
-    `services.lookup`). Шаг ОБЯЗАН быть `reg_engine.step_type_v2(step) == "lookup"` — иначе
+    `services.registration.lookup`). Шаг ОБЯЗАН быть `reg_engine.step_type_v2(step) == "lookup"` — иначе
     (неизвестный шаг, шаг другого типа, делегат на устаревшей версии клиента после того, как
     менеджер выключил тумблер) отдаётся пустой ответ, НЕ 500 (T-30-04, тот же fail-soft
     принцип, что у `_STEP_TO_LOOKUP_KIND.get`).
@@ -1276,7 +1276,7 @@ async def reg_suggest(
     query_text = (q or "")[: reg_engine.MAX_LEN_DEFAULT]
     other_allowed = await reg_engine.lookup_other_allowed(step_key)
 
-    # `event_city` зарезервирован контрактом `top_chips` (`services/lookup.py`) на будущую
+    # `event_city` зарезервирован контрактом `top_chips` (`services/registration/lookup.py`) на будущую
     # city-scoped политику чипов — сегодня не читается функцией, поэтому здесь не тратим
     # лишний поход в БД за городом делегата ради параметра, который пока ни на что не влияет.
     chips = await top_chips(kind, None, limit=_SUGGEST_CHIPS_LIMIT)
