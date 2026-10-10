@@ -4,7 +4,7 @@
 Покрывает четыре слоя, по образцу соседних квиков (`tests/test_sheet_tab_rename_260919.py` —
 fake gspread; `tests/test_admin_program_260924.py` — fake callback/message + city-bound staff):
 
-- `services/sheets.py` (find_rows_by_id/delete_row_by_id) — вкладка НЕ создаётся на промахе
+- `services/sheets/sheets.py` (find_rows_by_id/delete_row_by_id) — вкладка НЕ создаётся на промахе
   (памятка standalone-script-sheet-traps), дубли отказывают, а не гадают.
 - `services/city_move.move_user_city` — БД (users + трек + reg_drafts/reg_started/
   неотправленные очереди дайджеста), dry_run ничего не пишет, лист (add-new-then-delete-old,
@@ -30,7 +30,7 @@ from config import config
 from database import db
 from handlers.cities import admin_city_move
 from handlers.access.admin_caps import role_caps_key
-import services.sheets as sheets_mod
+import services.sheets.sheets as sheets_mod
 from services.checkin import record_arrival
 from services.city_move import (
     STATUS_MODE_KEEP,
@@ -76,7 +76,7 @@ async def _enable_cities_module():
 async def _disable_sheet_logs_autosync():
     """Только для тестов, что патчат `gspread.service_account` напрямую (Part B2 ниже):
     `record_answer_history` (перевод города пишет её при смене event_city) сама планирует
-    фоновую синхронизацию листа «История правок» (`services/sheet_logs.py::
+    фоновую синхронизацию листа «История правок» (`services/sheets/sheet_logs.py::
     schedule_sheet_logs_sync`, дефолт настройки `sheet_logs_autosync` — "on") — фоновая
     корутина летит на ТОМ ЖЕ event loop и гоняется за нашим же fake-gspread клиентом,
     добавляя гонку и add_worksheet_calls, не имеющие отношения к переводу города. У тестов
@@ -111,7 +111,7 @@ async def _setup_bound_staff():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part A: services/sheets.py — find_rows_by_id / delete_row_by_id, fake gspread
+# Part A: services/sheets/sheets.py — find_rows_by_id / delete_row_by_id, fake gspread
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 class _FakeWorksheet:
@@ -247,7 +247,7 @@ def test_delete_row_by_id_no_matching_row_on_existing_tab(monkeypatch):
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 class _FakeSheetStore:
-    """Monkeypatched onto `services.sheets` — city_move.py calls these through its own
+    """Monkeypatched onto `services.sheets.sheets` — city_move.py calls these through its own
     `sheets_service` alias, which is the SAME module object, so patching the module's
     attributes here is visible there too."""
 

@@ -553,7 +553,7 @@ def test_sheet_rows_non_anonymous_and_anonymous(tmp_path):
         rows = await polls_svc.build_polls_sheet_rows()
         assert len(rows) == 3
         # Квик 260919 (08-sheets-dashboard): build_polls_sheet_rows больше не нейтрализует
-        # ведущие =/@ — services/sheets.py пишет явным RAW, Google Sheets формулу не считает.
+        # ведущие =/@ — services/sheets/sheets.py пишет явным RAW, Google Sheets формулу не считает.
         assert rows[0][1] == "Когда?" and rows[0][2] == 1 and rows[0][3] == "=Аня"
         assert rows[0][4] == "@anya" and rows[0][6] == "Утро; Вечер"
         assert rows[1][1] == "Анон?" and rows[1][6] == "Да: 0" and rows[2][6] == "Нет: 1"
@@ -564,7 +564,7 @@ def test_sheet_rows_non_anonymous_and_anonymous(tmp_path):
 
 def test_export_uses_tab_setting_and_fails_soft(tmp_path, monkeypatch):
     _ready(tmp_path)
-    import services.sheets as sheets
+    import services.sheets.sheets as sheets
     calls = []
 
     async def fake_sync(title, headers, rows):

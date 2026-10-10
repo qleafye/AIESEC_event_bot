@@ -1,6 +1,6 @@
 """Координатор 25.09 — учёт доставки решения по заявке: разбор `users.decision_delivery_*`
 (колонки завёл `database.db`, пишет `services.application_effects`) на категории для «🔍 Сверить
-с БД» и «📨 Переотправить решения» (оба — `services/sheet_reconcile.py`/
+с БД» и «📨 Переотправить решения» (оба — `services/sheets/sheet_reconcile.py`/
 `handlers/sheets/admin_sheet_reconcile.py`, Phase 33).
 
 Память auto-approve-incident-260906: 38 заявок были одобрены молча без письма делегату, и
@@ -10,7 +10,7 @@
 `summarize_deliveries` — ЧИСТАЯ функция над уже прочитанным списком `users` (второй SQL-запрос
 не заводим, `sheet_reconcile.build_report` и так читает current-season пользователей ради
 раскладки по вкладкам) — модуль остаётся БЕЗ импорта aiogram на верхнем уровне, тот же разрез,
-что у `services/sheet_reconcile.py` (его собственный докстринг: «aiogram-free, вызывающий
+что у `services/sheets/sheet_reconcile.py` (его собственный докстринг: «aiogram-free, вызывающий
 хендлер строит текст/клавиатуры сам»). `resend_undelivered_decisions` физически требует `bot` —
 её собственный импорт `services.application_effects`/`services.applications` ЛЕНИВЫЙ (внутри
 функции), чтобы модуль, импортированный ТОЛЬКО ради `summarize_deliveries` (как это делает
@@ -33,7 +33,7 @@ ERROR_CHAT_NOT_FOUND = "чат не найден"
 DECIDED_STATUSES = ("approved", "rejected")
 
 # Пауза между одиночными отправками переотправки — тот же порядок, что у
-# `services/sheet_reconcile.py::_STATUS_PAUSE_S` (переотправка тоже трогает по одному делегату
+# `services/sheets/sheet_reconcile.py::_STATUS_PAUSE_S` (переотправка тоже трогает по одному делегату
 # за раз, каждый — отдельный сетевой вызов Telegram).
 _RESEND_PAUSE_S = 0.3
 
@@ -124,7 +124,7 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
         from database.db import get_user
         from services.application_effects import apply_decision_effects
         from services.applications import last_rejection_reason
-        from services.sheet_reconcile import _current_season_users  # ленивый импорт против цикла
+        from services.sheets.sheet_reconcile import _current_season_users  # ленивый импорт против цикла
 
         users = await _current_season_users(city_scope=city_scope)
         summary = summarize_deliveries(users)

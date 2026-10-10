@@ -15,7 +15,7 @@ import asyncio
 import logging
 
 from config import config
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from handlers.settings import admin_sections
 from handlers.sheets import admin_sheets  # module-size split: sync_sheet moved out of admin_sheets.py
 from tests.test_rebuild_confirm_260813_sdl import _FakeCallback, ADMIN_ID

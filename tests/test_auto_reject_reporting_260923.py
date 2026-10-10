@@ -131,7 +131,7 @@ def test_sync_auto_reject_sheet_job_noop_when_tab_empty(tmp_path, monkeypatch):
     async def fake_sync(title, headers, rows):
         calls.append((title, headers, rows))
         return len(rows)
-    from services import sheets
+    from services.sheets import sheets
     monkeypatch.setattr(sheets, "sync_named_worksheet", fake_sync)
 
     result = _run(sched.sync_auto_reject_sheet_job())
@@ -151,7 +151,7 @@ def test_sync_auto_reject_sheet_job_calls_sync_named_worksheet_when_tab_set(tmp_
     async def fake_sync(title, headers, rows):
         calls.append((title, headers, rows))
         return len(rows)
-    from services import sheets
+    from services.sheets import sheets
     monkeypatch.setattr(sheets, "sync_named_worksheet", fake_sync)
 
     result = _run(sched.sync_auto_reject_sheet_job())
@@ -171,7 +171,7 @@ def test_sync_auto_reject_sheet_job_blank_whitespace_tab_is_treated_as_empty(tmp
     async def fake_sync(title, headers, rows):
         calls.append(title)
         return 0
-    from services import sheets
+    from services.sheets import sheets
     monkeypatch.setattr(sheets, "sync_named_worksheet", fake_sync)
 
     assert _run(sched.sync_auto_reject_sheet_job()) == 0
@@ -199,7 +199,7 @@ def test_return_to_moderation_updates_sheet_status_and_resyncs_tab(tmp_path, mon
         resync_calls.append(True)
         return 0
 
-    from services import sheets
+    from services.sheets import sheets
     monkeypatch.setattr(sheets, "update_status_in_sheet", fake_update_status)
     monkeypatch.setattr(sched, "sync_auto_reject_sheet_job", fake_resync)
 
@@ -219,7 +219,7 @@ def test_return_to_moderation_sheet_failure_does_not_revert_db_change(tmp_path, 
 
     async def boom(*a, **kw):
         raise RuntimeError("таблица недоступна")
-    from services import sheets
+    from services.sheets import sheets
     monkeypatch.setattr(sheets, "update_status_in_sheet", boom)
 
     entry, error = _run(rj.return_to_moderation(ADMIN_ID, entry_id))

@@ -14,7 +14,7 @@ from database import db
 from handlers.forum import admin_forum_functions as aff
 from handlers.forum import admin_forum_ready as afr
 from handlers.access.admin_caps import role_caps_key
-from services import sheets
+from services.sheets import sheets
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 924200
@@ -290,7 +290,7 @@ def test_waiting_for_sheet_row_is_not_a_write_jam(tmp_path, monkeypatch):
     """Делегата ещё нет в листе — событие ждёт строку до 7 дней. Это не «таблица не принимает
     запись»: строка «Таблица» остаётся зелёной, ждущие — отдельной строкой."""
     from datetime import datetime
-    from services.sheet_arrival_sync import MISSING_ERROR
+    from services.sheets.sheet_arrival_sync import MISSING_ERROR
     _ready(tmp_path)
     _patch_sched(monkeypatch, _FakeSched())
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet")

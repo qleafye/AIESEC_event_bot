@@ -883,7 +883,7 @@ async def write_sheet_row(telegram_id: int, full: dict, mode: str) -> None:
         _sheet_dispatch, _sheet_headers_fn, append_to_named_sheet, city_row_tab,
     )
     from handlers.reg.reg_schema import sheet_city_code
-    from services.sheets import update_row_by_id
+    from services.sheets.sheets import update_row_by_id
 
     try:
         row_fn, append_fn = _sheet_dispatch(full.get("participant_type"))
@@ -1158,7 +1158,7 @@ async def _apply_resume_url(telegram_id: int, full: dict, url: str | None) -> No
     «Синхронизацией» (та же дисциплина, что и раньше в `handle_resume_upload`)."""
     from handlers.registration import _sheet_dispatch
     from handlers.reg.reg_schema import sheet_city_code
-    from services.sheets import update_row_by_id
+    from services.sheets.sheets import update_row_by_id
 
     await update_user_answers(telegram_id, {"resume_url": url}, allowed_columns=["resume_url"])
     try:

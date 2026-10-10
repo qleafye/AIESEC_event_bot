@@ -228,7 +228,7 @@ async def log_denial(reason: str, *, staff_id: int | None, staff_name: str | Non
 async def _clear_arrived_in_sheet(telegram_id: int) -> None:
     """Снят вход -> «Пришёл» пересчитывается: время первого из ОСТАВШИХСЯ входов (вход каждый
     день — снятие входа одного дня не стирает другой), нет входов — пустая ячейка. Сам лист
-    пишет джоба бота по очереди `sheet_arrival_queue` (`services/sheet_arrival_sync.py`) —
+    пишет джоба бота по очереди `sheet_arrival_queue` (`services/sheets/sheet_arrival_sync.py`) —
     снятие бывает и из Mini App, где Google-кредов нет."""
     from database.db import SHEET_ARRIVAL_RECOMPUTE, enqueue_sheet_arrival
     await enqueue_sheet_arrival(telegram_id, SHEET_ARRIVAL_RECOMPUTE)

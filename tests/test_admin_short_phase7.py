@@ -253,7 +253,7 @@ def test_toggle_short_question_no_tab_when_mode_full(tmp_path, monkeypatch):
     async def fake_ensure(tab, headers):
         calls.append((tab, headers))
 
-    import services.sheets as sheets_mod
+    import services.sheets.sheets as sheets_mod
     monkeypatch.setattr(sheets_mod, "ensure_named_sheet_header", fake_ensure)
 
     async def go():
@@ -274,7 +274,7 @@ def test_toggle_short_question_materializes_tab_when_mode_short(tmp_path, monkey
     async def fake_ensure(tab, headers):
         calls.append((tab, headers))
 
-    import services.sheets as sheets_mod
+    import services.sheets.sheets as sheets_mod
     monkeypatch.setattr(sheets_mod, "ensure_named_sheet_header", fake_ensure)
 
     async def go():

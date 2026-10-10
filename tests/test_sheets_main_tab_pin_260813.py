@@ -31,7 +31,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers.sheets import admin_sheets  # module-size split: rebuild moved out of admin_sheets.py
 from handlers.cities import admin_cities  # Phase 13 (13-05): cities/season screens moved here
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from tests._dbtpl import fast_init_db
 
 
@@ -46,7 +46,7 @@ def _own_empty_db(tmp_path, monkeypatch):
     `config.DB_PATH` предыдущий тест того же воркера xdist: там вкладка уже задана, и отказ
     «вкладка не задана» (-2) превращался в попытку пересборки (-1) — порядок тестов решал
     исход. monkeypatch возвращает путь и после `_use_tmp_db`, который пишет его напрямую."""
-    from services import sheet_target
+    from services.sheets import sheet_target
 
     monkeypatch.setattr(config, "DB_PATH", str(tmp_path / "isolated_forum.db"))
     fast_init_db()

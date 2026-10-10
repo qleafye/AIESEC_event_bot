@@ -392,7 +392,7 @@ def test_convert_when_city_closed(tmp_path):
 
 def test_existing_pending_keeps_answers(tmp_path, monkeypatch):
     bot, _ = _env(tmp_path)
-    import services.sheets as sheets
+    import services.sheets.sheets as sheets
     calls = []
 
     async def fake_update(tid, label):

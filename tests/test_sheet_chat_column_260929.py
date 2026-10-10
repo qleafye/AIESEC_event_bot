@@ -19,7 +19,7 @@ from database import db
 from handlers.reg import reg_schema
 from handlers import registration as reg
 from services import chat_tracking
-from services.sheets import ARRIVED_HEADER, CHAT_HEADER
+from services.sheets.sheets import ARRIVED_HEADER, CHAT_HEADER
 from tests._dbtpl import fast_init_db
 
 MSK_CHAT = -100111

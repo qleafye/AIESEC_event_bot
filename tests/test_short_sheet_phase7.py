@@ -61,7 +61,7 @@ def test_short_sheet_headers_zero_keys_is_system_only(tmp_path):
 # ── Group 3: Sheets rows stay RAW, no formula-injection prefix (квик 260919) ────────────────
 
 def test_short_sheet_row_keeps_formula_look_alike_raw(tmp_path):
-    """services/sheets.py always writes with explicit value_input_option=RAW, which Google
+    """services/sheets/sheets.py always writes with explicit value_input_option=RAW, which Google
     Sheets never parses as a formula — short_sheet_row no longer runs _csv_safe (T-07-04),
     see database.db._sheet_safe's docstring."""
     _use_tmp_db(tmp_path)

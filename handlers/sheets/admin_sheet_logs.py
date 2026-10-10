@@ -5,7 +5,7 @@
 ровно на потолке размера, `tests/test_module_size_convention_260816.py`).
 
 Два новых листа в ТОЙ ЖЕ Google-таблице заявок — «История правок» и «Вопросы» — пересобираются
-целиком из БД (`services/sheet_logs.py`), не append по событию. Названия листов правятся общим
+целиком из БД (`services/sheets/sheet_logs.py`), не append по событию. Названия листов правятся общим
 `settings_edit:{key}` (у `SETTINGS_SCHEMA["history_sheet_tab"|"questions_sheet_tab"]` есть
 `prompt`, в `handlers.settings.admin_settings.SETTINGS_FIELDS`/`_SHEETS_FIELD_ORDER` ключу быть не
 обязано — тот список тоже живёт в файле на потолке и пополнить его нельзя). Известный нюанс
@@ -18,7 +18,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
-from services.sheet_logs import sync_sheet_logs
+from services.sheets.sheet_logs import sync_sheet_logs
 from handlers.admin import router
 
 

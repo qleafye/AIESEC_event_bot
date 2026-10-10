@@ -1,13 +1,13 @@
 """Форум-ночь B2 (идея №17): время прихода в Google-таблицу — точечное обновление колонки
-«Пришёл», тот же путь, что «Статус» (services.sheets.update_status_in_sheet). Покрывает:
+«Пришёл», тот же путь, что «Статус» (services.sheets.sheets.update_status_in_sheet). Покрывает:
 
-- `services.sheets._arrived_col_index`/`update_arrived_in_sheet` — колонка находится по имени
+- `services.sheets.sheets._arrived_col_index`/`update_arrived_in_sheet` — колонка находится по имени
   шапки (не по фиксированному индексу), пишется РОВНО одна ячейка, лист без этой колонки
   (собран до того, как её завели) — fail-soft False, без исключения.
 - Named-tab-first, fallback на main — тот же приём, что `tests/test_sheet_status_city_tab_
   260819.py` для «Статус» (FakeWorksheet/_patch_fake_sheets переиспользованы оттуда).
 - `services.checkin.mark_arrived_in_sheet` — ставит событие в очередь ТОЛЬКО на `status == "new"`;
-  `"duplicate"` не ставит ничего. Сам лист пишет джоба очереди (services/sheet_arrival_sync.py,
+  `"duplicate"` не ставит ничего. Сам лист пишет джоба очереди (services/sheets/sheet_arrival_sync.py,
   подробно — tests/test_sheet_arrival_queue_260925.py), отметка лист не трогает."""
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ import asyncio
 import gspread
 
 from config import config
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from database import db
-from services import sheet_arrival_sync
+from services.sheets import sheet_arrival_sync
 from services.checkin import mark_arrived_in_sheet
 from tests.test_sheet_status_city_tab_260819 import _patch_fake_sheets, _setup_city_user, _use_tmp_db
 

@@ -29,7 +29,7 @@ from handlers.delegations.admin_delegations import (
     _btn, _current_form, _cut, _e, _kb, _show, _tail_int, _to_screen, render_screen,
 )
 from services.delegations import delegations_mirror
-from services import sheets
+from services.sheets import sheets
 
 logger = logging.getLogger(__name__)
 

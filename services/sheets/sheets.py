@@ -6,7 +6,7 @@ from shared.secret_redact import redact_secrets
 
 import gspread
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 
 logger = logging.getLogger(__name__)
 
@@ -553,7 +553,7 @@ ARRIVED_HEADER = "Пришёл"
 # 29.09: «В чате» — состоит ли одобренный делегат в чате своего города. Тоже хвост схемы, ПОСЛЕ
 # «Пришёл», по тому же правилу: новая колонка только в конец (ловушка прода 19.09 — колонка
 # посреди шапки сдвигает уже записанные строки). Пишет очередь `sheet_chat_queue`
-# (`services/sheet_chat_sync.py`), значение — `services.chat_tracking.chat_cell_values`.
+# (`services/sheets/sheet_chat_sync.py`), значение — `services.chat_tracking.chat_cell_values`.
 CHAT_HEADER = "В чате"
 
 
@@ -638,7 +638,7 @@ def _apply_status_formatting_sync(sheet, num_rows: int):
 def _status_sheet_kind(participant_type: str | None) -> str:
     """Pure classification mirroring handlers/registration.py::_sheet_kind byte-for-byte
     (party -> short -> main, same order, load-bearing there too). Duplicated here rather than
-    imported: handlers.registration imports services.sheets at module top level (append_to_sheet
+    imported: handlers.registration imports services.sheets.sheets at module top level (append_to_sheet
     / append_to_named_sheet), so importing it back — even lazily inside a function — would pull
     the entire registration FSM/router module into a lower-layer service module just to reuse a
     three-line predicate. If handlers/registration.py::_sheet_kind's track vocabulary ever
@@ -778,7 +778,7 @@ async def update_arrived_in_sheet(telegram_id: int, stamp: str) -> bool:
     row lives on, which is not specific to the «Статус» column)."""
     if not _sheet_target.sheets_enabled():
         return False
-    from services.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user  # вид ячейки как у очереди
+    from services.sheets.sheet_arrival_sync import arrival_cell_value, city_offsets_by_user  # вид ячейки как у очереди
     stamp = arrival_cell_value(stamp, (await city_offsets_by_user([telegram_id])).get(telegram_id, 0))
     try:
         tab_name = await _resolve_status_tab(telegram_id)
@@ -864,7 +864,7 @@ def _write_arrivals_sync(id_to_value: dict[str, str], tab_by_id: dict[str, str |
 
 
 async def write_column_batch(header_name: str, id_to_value: dict[int, str]) -> dict:
-    """Пачка очереди колонки (`services/sheet_arrival_sync.py`, `services/sheet_chat_sync.py`):
+    """Пачка очереди колонки (`services/sheets/sheet_arrival_sync.py`, `services/sheets/sheet_chat_sync.py`):
     `{telegram_id: значение}` -> {"written": set[int], "missing": set[int], "failed": {int: str}}.
     Вкладка каждого делегата — `_resolve_status_tab`, то же правило, что у точечной записи.
     Бросает, только если сломалось всё до похода в лист (разбор вызывающий считает сбоем всей

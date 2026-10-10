@@ -6,7 +6,7 @@
 сюда не влезает.
 
 Проблема (память проекта sheet-tab-rename-trap): смена ключа-имени вкладки в настройках
-СЕГОДНЯ не переименовывает реальный лист — `services/sheets.py` на `WorksheetNotFound`
+СЕГОДНЯ не переименовывает реальный лист — `services/sheets/sheets.py` на `WorksheetNotFound`
 заводит НОВУЮ пустую вкладку, а старая с данными остаётся сиротой. Существующий гейт (квик
 260815-3hw, `sheets_tab_confirm`/`sheets_tab_cancel` в `admin_settings.py`) предупреждает
 только о ДРУГОЙ беде — «вкладка с НОВЫМ именем уже есть, её перезапишут» — и ничего не
@@ -48,20 +48,20 @@ from domain.settings.ops import (
     SHEET_TAB_WRITE_MODE, after_tab_setting_saved, bot_tab_prefix, current_tab_titles,
     plan_prefix_renames,
 )
-from services.sheets import list_worksheet_titles, rename_worksheet, tab_row_count
+from services.sheets.sheets import list_worksheet_titles, rename_worksheet, tab_row_count
 
 logger = logging.getLogger(__name__)
 
-# Тот же ключ, что services/sheets.py::_PINNED_MAIN_TAB_SETTING_KEY — легаси-пин основной
+# Тот же ключ, что services/sheets/sheets.py::_PINNED_MAIN_TAB_SETTING_KEY — легаси-пин основной
 # вкладки, третья ступень резолва main_sheet_tab. Не импортируем константу оттуда (модуль
-# services.sheets — sync-ядро с приватными sqlite3-хелперами, а не async-API уровня этого
+# services.sheets.sheets — sync-ядро с приватными sqlite3-хелперами, а не async-API уровня этого
 # шва); литерал дублируется так же, как в settings_ops.current_tab_titles.
 _PINNED_MAIN_TAB_SETTING_KEY = "sheets_main_tab_pinned_title"
 
 
 async def current_key_tab_name(key: str) -> str:
     """Что этот ключ называет СЕЙЧАС, до текущей правки. Для `main_sheet_tab` — та же
-    4-ступенчатая цепочка резолва, что `services.sheets._get_sheet`/
+    4-ступенчатая цепочка резолва, что `services.sheets.sheets._get_sheet`/
     `settings_ops.current_tab_titles` (bot_settings -> .env -> легаси-пин): без неё
     переименование основной вкладки, чьё имя пришло со ступени 2/3, решило бы, что старой
     вкладки «нет», и не предложило бы её переименовать. Для остальных ключей — просто
