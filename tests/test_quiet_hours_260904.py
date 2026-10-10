@@ -414,7 +414,7 @@ def test_queued_count_matches_pending(tmp_path):
 
 import tests.test_gamification_review_phase9 as gr_mod
 from handlers import admin as admin_mod
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 
 
 async def _set_quiet_hours_on_all_day():

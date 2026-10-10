@@ -273,7 +273,7 @@ def test_approve_late_submission_is_penalized_like_bot(client, bot_api):
 
 def test_approve_custom_amount_late_submission_is_also_penalized(client, bot_api):
     """CR-02: «Своя сумма» из Mini App не обходит штраф — тот же путь, что
-    `grev_approve_amount_step` у бота (`handlers/admin_gamification.py`)."""
+    `grev_approve_amount_step` у бота (`handlers/game/admin_gamification.py`)."""
     past = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     _set("game_late_penalty_percent", "30")
     t = _task(coins=100, deadline=past)

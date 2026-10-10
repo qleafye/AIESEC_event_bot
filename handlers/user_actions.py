@@ -65,7 +65,7 @@ from services.ambassador_waves import (  # Phase 32 (32-06): участие в �
     current_wave_for, wave_rating_view, wave_eligible, wave_visibility_ids,
     latest_closing_wave_for,  # IN-09б (32-REVIEW.md): рейтинг closing-волны после ends_at
 )
-from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
+from handlers.game.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
 )
 from domain.cities import (
@@ -90,7 +90,7 @@ from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from services import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
 from services import amb_status  # правила входа/выхода амбассадора — одна точка
-from handlers.referral_screen import referral_screen as _referral_screen, amb_tr as _amb_tr  # «Моя ссылка»
+from handlers.game.referral_screen import referral_screen as _referral_screen, amb_tr as _amb_tr  # «Моя ссылка»
 from config import config
 from domain.regform.engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
 

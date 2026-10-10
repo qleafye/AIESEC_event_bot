@@ -22,7 +22,7 @@ import gspread
 from config import config
 from database import db
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 from handlers.admin_sections import section_of
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting

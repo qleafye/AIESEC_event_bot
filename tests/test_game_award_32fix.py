@@ -1,5 +1,5 @@
 """Фикс фазы 32 (CR-02): `services/game_award.py::award_for` — вынесенная копия
-`handlers/admin_gamification.py::_award_for`, aiogram-free, чтобы её мог позвать и бот, и
+`handlers/game/admin_gamification.py::_award_for`, aiogram-free, чтобы её мог позвать и бот, и
 Mini App. Числа здесь обязаны совпадать с `tests/test_game_late_penalty_32.py` (тот же
 процент, тот же результат) — иначе формула фактически разъехалась бы при переносе.
 """

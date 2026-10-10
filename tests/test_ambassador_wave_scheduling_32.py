@@ -130,7 +130,7 @@ def test_cancel_wave_jobs_removes_start_and_end_fail_soft(tmp_path, monkeypatch)
 
 
 def test_cancel_wave_jobs_also_removes_results_broadcast(tmp_path, monkeypatch):
-    """32-FIX-common-2 (хвост IN-07): удаление волны (`handlers/admin_game_waves.py::
+    """32-FIX-common-2 (хвост IN-07): удаление волны (`handlers/game/admin_game_waves.py::
     wave_delete_go`) зовёт `cancel_wave_jobs` — если менеджер успел объявить итоги и сразу
     удалить волну, джоба рассылки итогов раньше переживала удаление: `wave_results_broadcast_
     {id}` не входил в список снимаемых id."""

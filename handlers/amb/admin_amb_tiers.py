@@ -13,7 +13,7 @@
 `services/amb_tiers.py` (одна точка), этот модуль их не дублирует.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router` и подключается хвостовым
-импортом `handlers/admin_game_wave_wizard.py` — последнего файла игровой цепочки
+импортом `handlers/game/admin_game_wave_wizard.py` — последнего файла игровой цепочки
 (admin_gamification → admin_game_tasks → admin_game_waves → admin_game_wave_wizard), чтобы не
 растить эти модули и не трогать main.py (docs/CONVENTIONS.md, приём швов).
 

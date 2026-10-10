@@ -123,7 +123,7 @@ def test_toggle_callback_registered_under_settings_capability():
 
 def test_toggle_handler_flips_mode_and_answers_with_label(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin_gamification
+    from handlers.game import admin_gamification
 
     class _Msg:
         async def edit_text(self, text, parse_mode=None, reply_markup=None):

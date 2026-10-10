@@ -14,7 +14,7 @@ shared tab). The manager can give such a city its own tabs by naming its tab bas
 
 Import discipline: this module imports `cities` (which imports `database.db` +
 `settings_schema` only) and nothing from `handlers.*` — the tab builders themselves live in
-`handlers/admin_gamification.py` and are handed the filtered rows this module produces.
+`handlers/game/admin_gamification.py` and are handed the filtered rows this module produces.
 """
 
 import html
