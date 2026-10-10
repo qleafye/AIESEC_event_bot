@@ -498,6 +498,13 @@ function fileControl(h, spec, value, onChange) {
     status.textContent = local ? v.name : (stored ? (spec.display || "") : "");
     const src = local ? localPreviewUrl(v) : (stored ? spec.preview_url : null);
     if (src) {
+      // Локальный object URL нужен картинке только до декодирования — дальше он держал бы
+      // копию файла в памяти до закрытия приложения.
+      if (local) {
+        const release = () => URL.revokeObjectURL(src);
+        preview.addEventListener("load", release, { once: true });
+        preview.addEventListener("error", release, { once: true });
+      }
       preview.src = src;
       preview.classList.remove("hidden");
     } else {
