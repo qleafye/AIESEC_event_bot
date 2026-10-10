@@ -50,7 +50,7 @@ LOGO_FILE_ID = "BgACAgIAAxkBAAI" + "l" * 15
 
 # ── Сюжет (A): раздача дашбордом ──────────────────────────────────────────────────────────
 
-def _use_tmp_db(tmp_path, name: str = "shared.favicon.db") -> str:
+def _use_tmp_db(tmp_path, name: str = "dashboard_favicon.db") -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
     fast_init_db()
