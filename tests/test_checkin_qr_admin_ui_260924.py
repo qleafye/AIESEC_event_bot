@@ -473,11 +473,11 @@ def test_bound_manager_allowed_config_for_own_city(tmp_path):
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # «Джоба переставляется при смене даты форума» — правка forum_date НЕМЕДЛЕННО (не после
-# рестарта); handlers/admin_settings.py::_reschedule_checkin_qr_if_forum_date
+# рестарта); settings_reschedule.reschedule_for_setting
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_reschedule_hook_composite_key_touches_only_that_city(tmp_path, monkeypatch):
-    from handlers.admin_settings import _reschedule_checkin_qr_if_forum_date
+    from settings_reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
 
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
@@ -496,7 +496,7 @@ def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
     """Голый `forum_date` пересчитывает все города одним вызовом, но при включённом модуле
     городов общий ключ больше НЕ даёт дату городу без своей: иначе Москва получала QR за чужой
     региональный форум. spb (своя дата) стоит, tyumen/msk (только общая) — нет."""
-    from handlers.admin_settings import _reschedule_checkin_qr_if_forum_date
+    from settings_reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
 
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
@@ -514,7 +514,7 @@ def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
 
 
 def test_reschedule_hook_ignores_unrelated_key(tmp_path, monkeypatch):
-    from handlers.admin_settings import _reschedule_checkin_qr_if_forum_date
+    from settings_reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
 
     _db_ready(tmp_path)
 
@@ -523,6 +523,44 @@ def test_reschedule_hook_ignores_unrelated_key(tmp_path, monkeypatch):
         assert s.get_jobs() == []  # ничего не поставлено
 
     _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_forum_date_from_app_outbox_reschedules_jobs(tmp_path, monkeypatch):
+    """Дата форума, сохранённая из приложения, доходит до бота только событием
+    `settings_changed`; разборщик очереди обязан переставить QR-джобу сразу, не после рестарта."""
+    from services import miniapp_outbox
+
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
+    asyncio.run(db.set_setting("forum_date__city__spb", "03.10.2037"))
+
+    async def body(s):
+        assert s.get_job("checkin_qr_evening:spb") is None
+        await miniapp_outbox._handle_row(
+            None, "settings_changed", {"keys": ["forum_date__city__spb"], "by": 1},
+        )
+        assert s.get_job("checkin_qr_evening:spb") is not None
+
+    _run_scheduled(tmp_path, monkeypatch, body)
+
+
+def test_bot_save_reschedules_exactly_once(tmp_path, monkeypatch):
+    """Запись из бота идёт через ту же воронку: переплан ровно один раз, не дважды."""
+    import settings_reschedule
+    from settings_audit import set_setting_by_admin
+
+    _db_ready(tmp_path)
+    calls = []
+    real = settings_reschedule.reschedule_for_setting
+
+    async def spy(key):
+        calls.append(key)
+        await real(key)
+
+    monkeypatch.setattr(settings_reschedule, "reschedule_for_setting", spy)
+    asyncio.run(set_setting_by_admin(ADMIN_ID, "forum_date", "03.10.2037"))
+    assert calls == ["forum_date"]
 
 
 def test_master_toggle_schedules_and_cancels_qr_and_volunteer_jobs(tmp_path, monkeypatch):
