@@ -1688,6 +1688,9 @@ admin|callback_query|sheet_target_set|sheet_target_set
 admin|callback_query|sheet_target_apply|sheet_target_apply
 admin|callback_query|sheet_target_env|sheet_target_env
 admin|callback_query|sheet_target_env_go|sheet_target_env_go
+admin|callback_query|setup_wizard_overview|admin_setup_wizard
+admin|callback_query|setup_wizard_step|setupw_s:*
+admin|callback_query|setup_wizard_field|setupw_f:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2473,7 +2476,10 @@ def test_snapshot_total_handler_count_is_292():
     # 10.10 (общая настройка при городе в шапке, handlers/admin_settings_global.py — хвост
     # admin_settings.py после admin_settings_placeholders): +1 admin.callback_query settings_edit_all
     # сразу после phchk_retry, чистая вставка (1240 -> 1241).
-    assert len(GOLDEN_SNAPSHOT) == 1241
+    # 10.10 («🚀 Первая настройка» в боте, handlers/admin_setup_wizard.py): +3 admin.callback_query
+    # в хвосте admin.router; чистая вставка, сверено SequenceMatcher (1240 -> 1243).
+    # Слияние обеих вставок: 1241 + 3 = 1244.
+    assert len(GOLDEN_SNAPSHOT) == 1244
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

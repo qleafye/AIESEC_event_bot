@@ -249,6 +249,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # «🔎 Найти настройку» — первой строкой: в сотнях настроек нужную ищут словом
         # (handlers/admin_settings_search.py), кнопка ведёт на тот же экран правки.
         ("screen", "settings_search", "🔎 Найти настройку"),
+        # Мастер первой настройки в боте (handlers/admin_setup_wizard.py) — тот же список шагов,
+        # что в приложении; только суперадмину.
+        ("screen_admin", "admin_setup_wizard", "🚀 Первая настройка"),
         ("op", "admin_cities"),
         ("op", "admin_settings_guide"),
         ("screen", "admin_roles", "👥 Роли и доступы"),
@@ -478,6 +481,14 @@ async def settings_return_screen(
         render_settings_group_text, build_settings_group_keyboard,
     )
     from handlers.admin_core import admin_keyboard_for
+    from handlers.admin_setup_wizard import pop_return, step_screen
+
+    # Правку открыли из «🚀 Первая настройка» — вернуть в тот же шаг мастера.
+    wizard_step = pop_return(admin_id)
+    if wizard_step:
+        screen = await step_screen(wizard_step)
+        if screen is not None:
+            return screen
 
     if return_to:
         cb, label = return_to

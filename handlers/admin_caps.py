@@ -853,6 +853,8 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:EditSetting:*": "settings",
     "state:SettingsSearch:*": "settings",  # «🔎 Найти настройку» — то же право, что у правки
     "settings_search": "settings",
+    # «🚀 Первая настройка» в боте: настоящий гейт ADMIN_IDS — в handlers/admin_setup_wizard.py.
+    "admin_setup_wizard": "settings", "setupw_*": "settings",
     "settings_search_cancel": "settings",
     "state:StaffAdd:*": "settings",
     "toggle_checkin_qr_enabled": "settings",  # Квик 260923 (форум-чекин)
