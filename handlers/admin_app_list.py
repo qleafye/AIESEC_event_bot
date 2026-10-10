@@ -6,7 +6,7 @@
 `handlers.admin.router`; модуль подключается ХВОСТОМ `handlers/admin_sections.py` (см. импорт
 СРАЗУ ПОСЛЕ `admin_lookup` там же). `admin_core` на уровне модуля безопасен, `admin_sections`
 даёт цикл и потому лениво внутри функции — тот же приём, что у каждого другого шва этого
-раздела (`handlers/admin_questions.py`, копия формы которого этот модуль почти дословно
+раздела (`handlers/comms/admin_questions.py`, копия формы которого этот модуль почти дословно
 повторяет)."""
 import html as html_module
 from datetime import datetime

@@ -2,12 +2,12 @@
 выбор КОНКРЕТНОЙ сессии программы кнопками (город → день → сессия) для фильтра рассылки
 `checkin_session` (`database/db.py`).
 
-Не входит в generic-пикер `handlers/admin_broadcasts.py::_show_value_picker` — там значение
+Не входит в generic-пикер `handlers/comms/admin_broadcasts.py::_show_value_picker` — там значение
 всегда одно из ДВУХ сентинелов (has/none, in/out, …), здесь значение — конкретная сессия
 программы, у которой есть собственный трёхшаговый выбор. Форма шва — эталон
 `handlers/admin_program.py`: своего `Router()` нет, `from handlers.admin import router`,
 каждый декоратор — в одну строку (инвариант cap-теста `tests/test_roles_phase8.py`). Импорт —
-хвостом `handlers/admin_broadcasts.py` (тот же приём, что `admin_program_halls` в хвосте
+хвостом `handlers/comms/admin_broadcasts.py` (тот же приём, что `admin_program_halls` в хвосте
 `admin_program.py`).
 
 Состояние мастера живёт в FSM (`Broadcast.filter_field`, тот же state, что весь остальной
@@ -149,7 +149,7 @@ async def cksf_session_pick(callback: types.CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-    from handlers.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг модуля
+    from handlers.comms.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг модуля
 
     await _render_filter_menu(callback.message, filters, edit=True)
 
@@ -160,6 +160,6 @@ async def cksf_cancel(callback: types.CallbackQuery, state: FSMContext):
     await state.update_data(cksf_mode=None, cksf_city=None)
     await callback.answer()
 
-    from handlers.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг модуля
+    from handlers.comms.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг модуля
 
     await _render_filter_menu(callback.message, data.get("filters", []), edit=True)

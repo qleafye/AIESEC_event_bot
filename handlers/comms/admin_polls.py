@@ -1,7 +1,7 @@
 """Админка «📊 Опросы»: список, карточка с итогами, закрыть / в таблицу / удалить.
 
 Шов на общий `admin.router` (техника Phase 13). Мастер создания — в соседнем
-handlers/admin_poll_wizard.py (импортируется в хвосте этого файла, чтобы порядок регистрации
+handlers/comms/admin_poll_wizard.py (импортируется в хвосте этого файла, чтобы порядок регистрации
 не зависел от порядка импорта — прецедент admin_gamification → admin_game_tasks).
 
 Право — `broadcast` (handlers/admin_caps.py): опрос уходит той же аудитории тем же каналом,
@@ -254,4 +254,4 @@ async def poll_delete_go(callback: types.CallbackQuery, state: FSMContext):
 
 # Мастер создания регистрируется ПОСЛЕ экранов списка/карточки — независимо от того, какой
 # модуль импортирован первым (см. docstring и прецедент admin_gamification → admin_game_tasks).
-from handlers import admin_poll_wizard  # noqa: E402, F401
+from handlers.comms import admin_poll_wizard  # noqa: E402, F401

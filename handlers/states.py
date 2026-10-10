@@ -73,7 +73,7 @@ class Approval(StatesGroup):
 
 class QuestionAnswer(StatesGroup):
     # Quick 260904-2cj: ответ на вопрос делегата прямо из экрана «❓ Вопросы делегатов»
-    # (handlers/admin_questions.py), право `moderate_reg` ("state:QuestionAnswer:*" в
+    # (handlers/comms/admin_questions.py), право `moderate_reg` ("state:QuestionAnswer:*" в
     # handlers/admin_caps.py). Qid/user_id — в state.get_data() (aq_qid/aq_user_id), тот же
     # приём, что GameTaskEdit несёт task id.
     text = State()
@@ -230,7 +230,7 @@ class SeasonImport(StatesGroup):
 
 
 class PollCreate(StatesGroup):
-    # «📊 Опросы» → «➕ Новый опрос» (handlers/admin_poll_wizard.py), право `broadcast`
+    # «📊 Опросы» → «➕ Новый опрос» (handlers/comms/admin_poll_wizard.py), право `broadcast`
     # ("state:PollCreate:*" в handlers/admin_caps.py). Тумблеры/аудитория/подтверждение —
     # кнопки, но стейт между шагами стоит: тот же guard «Отмена посреди мастера».
     question = State()       # текст вопроса (≤300 символов)

@@ -13,7 +13,7 @@ import json
 
 from config import config
 from database import db
-from handlers import admin_broadcasts
+from handlers.comms import admin_broadcasts
 from services import chat_tracking
 from tests.test_roles_phase8 import FakeCallback, FakeMessage, _fresh_state
 from tests._dbtpl import fast_init_db

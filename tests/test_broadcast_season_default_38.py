@@ -7,8 +7,8 @@ from datetime import datetime
 
 from database import db
 from database.db import SEASON_CURRENT
-from handlers import admin_broadcast_season as bs
-from handlers import admin_broadcasts as ab
+from handlers.comms import admin_broadcast_season as bs
+from handlers.comms import admin_broadcasts as ab
 from handlers.states import Broadcast
 from tests._enroll38 import ADMIN_ID, add_user, ready, run, seed_delegates
 from tests.test_roles_phase8 import FakeCallback, FakeMessage, _fresh_state

@@ -4,9 +4,9 @@
 «Отмена» чистила только FSM, а `for chat_id in users_ids` крутился внутри хендлера и никого не
 слушал. Ни лога, ни message_id — отозвать было нечего.
 
-Чистый прогон БЕЗ единого импорта хендлеров (`handlers/admin_broadcasts.py` импортирует этот
+Чистый прогон БЕЗ единого импорта хендлеров (`handlers/comms/admin_broadcasts.py` импортирует этот
 модуль — обратный импорт создал бы цикл). `_retry_delay` продублирован однострочно вместо
-импорта из handlers (см. D-07 в handlers/admin_broadcasts.py) — по той же причине.
+импорта из handlers (см. D-07 в handlers/comms/admin_broadcasts.py) — по той же причине.
 """
 import asyncio
 import logging
@@ -72,7 +72,7 @@ def can_revoke(started_at: str | None) -> bool:
 
 
 def _retry_delay(retry_after: int) -> int:
-    """Продублировано из handlers/admin_broadcasts.py::_retry_delay (D-07) — этот модуль не
+    """Продублировано из handlers/comms/admin_broadcasts.py::_retry_delay (D-07) — этот модуль не
     импортирует хендлеры (иначе handlers -> services -> handlers)."""
     return retry_after + 1
 
@@ -120,7 +120,7 @@ async def run_broadcast(
     ближайшем шаге, адресно по broadcast_id.
 
     `mute_skipped` (форум-ночь п.7, дефолт 0): сколько получателей УЖЕ отфильтровано вызывающим
-    (`handlers/admin_broadcasts.py::bc_go`) до этого вызова, потому что нажали «🔕 Не присылать
+    (`handlers/comms/admin_broadcasts.py::bc_go`) до этого вызова, потому что нажали «🔕 Не присылать
     сегодня» — только прокидывается в `finish_broadcast` для отчёта, `chat_ids`/`total` сюда их
     не включают."""
     total = len(chat_ids)

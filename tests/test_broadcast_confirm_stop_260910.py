@@ -3,7 +3,7 @@
 
 09.09 сообщение в состоянии рассылки уходило получателям СРАЗУ, без единого подтверждения —
 менеджер, отправивший «Привет» на 951 человека, не мог остановить цикл, крутившийся прямо в
-хендлере. Эти тесты покрывают новый путь `handlers/admin_broadcasts.py`: превью не шлёт
+хендлере. Эти тесты покрывают новый путь `handlers/comms/admin_broadcasts.py`: превью не шлёт
 получателям, подтверждение стартует фоновый прогон (services/broadcast_run.run_broadcast), и
 кнопка «⛔ Остановить» реально прерывает его — адресно, по своей рассылке.
 
@@ -17,7 +17,7 @@ from types import SimpleNamespace
 
 from config import config
 from database import db
-from handlers import admin_broadcasts
+from handlers.comms import admin_broadcasts
 from handlers.states import Broadcast
 from services import broadcast_run as br
 from tests._dbtpl import fast_init_db

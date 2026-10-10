@@ -10,7 +10,7 @@
 закрыты тем, что отдельного маркера больше не существует.
 
 Тумблер «❗ Отметить как важное» на экране подтверждения (по умолчанию выключен) — и для
-мгновенной рассылки (`handlers/admin_broadcasts.py::bc_important_toggle`/`bc_go`), и для
+мгновенной рассылки (`handlers/comms/admin_broadcasts.py::bc_important_toggle`/`bc_go`), и для
 отложенной (`sched_important_toggle`/`sched_go`, отдельный экран `Broadcast.schedule_confirm`).
 
 Стиль и фейки — `tests/test_broadcast_confirm_stop_260910.py` (FakeBot/FakeState/FakeMessage/
@@ -24,7 +24,7 @@ from aiogram.exceptions import TelegramRetryAfter
 
 from config import config
 from database import db
-from handlers import admin_broadcasts
+from handlers.comms import admin_broadcasts
 from handlers.states import Broadcast
 from services import scheduler as sched
 from tests._dbtpl import fast_init_db

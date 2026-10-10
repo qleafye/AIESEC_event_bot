@@ -166,7 +166,7 @@ def test_moscow_literal_under_miniapp_declared_exactly_once():
 def test_broadcast_schedule_rejects_time_inside_utc_msk_window(tmp_path):
     _db_ready(tmp_path)
     from handlers import admin as admin_mod
-    from handlers import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
+    from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
     from handlers.states import Broadcast
 
     state = _new_state()

@@ -77,7 +77,7 @@ def test_reg_schema_reexports_same_objects():
 
 def test_admin_broadcasts_payment_labels_same_object():
     import domain.regform.labels as reg_labels
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
 
     assert admin_broadcasts._PAYMENT_STATUS_LABELS is reg_labels.PAYMENT_STATUS_LABELS
 

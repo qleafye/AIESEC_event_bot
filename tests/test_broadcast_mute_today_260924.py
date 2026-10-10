@@ -22,7 +22,8 @@ from types import SimpleNamespace
 
 from config import config
 from database import db
-from handlers import admin_broadcasts, user_actions as ua
+from handlers.comms import admin_broadcasts
+from handlers import user_actions as ua
 from handlers.states import Broadcast
 from services import scheduler as sched
 from tests._dbtpl import fast_init_db

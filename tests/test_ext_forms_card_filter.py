@@ -73,7 +73,7 @@ def test_filter_deleted_form_matches_nobody_for_filled(tmp_path):
 
 def test_menu_button_only_with_forms(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_broadcasts import _filter_menu_kb, _FILTER_FIELD_LABELS, _PICKER_FIELDS
+    from handlers.comms.admin_broadcasts import _filter_menu_kb, _FILTER_FIELD_LABELS, _PICKER_FIELDS
 
     def cbs(kb):
         return [b.callback_data for row in kb.inline_keyboard for b in row]
@@ -86,7 +86,7 @@ def test_menu_button_only_with_forms(tmp_path):
 
 def test_seam_pick_and_cancel(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_broadcast_ext_form_filter as ff
+    from handlers.comms import admin_broadcast_ext_form_filter as ff
 
     f1, _ = _run(_seed())
     state = _fresh_state(ADMIN_ID)
@@ -107,7 +107,7 @@ def test_seam_pick_and_cancel(tmp_path):
 
 def test_form_title_escaped_in_html_prompt(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_broadcast_ext_form_filter as ff
+    from handlers.comms import admin_broadcast_ext_form_filter as ff
 
     fid = _run(efd.create_form(platform="yandex", external_id="h", title="R&D <b>Анкета"))
     state = _fresh_state(ADMIN_ID)
