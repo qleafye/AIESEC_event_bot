@@ -469,7 +469,7 @@ def _msg(text):
 
 
 def test_season_screen_states_amb_reset_count(tmp_path):
-    from handlers import admin_cities
+    from handlers.cities import admin_cities
     state = _season_wizard(tmp_path)
     msg = _msg("RT27")
     _run(admin_cities.season_reset_name_step(msg, state))
@@ -479,7 +479,7 @@ def test_season_screen_states_amb_reset_count(tmp_path):
 
 
 def test_season_screen_without_ambassadors_has_no_line(tmp_path):
-    from handlers import admin_cities
+    from handlers.cities import admin_cities
     state = _season_wizard(tmp_path, n_amb=0)
     msg = _msg("RT27")
     _run(admin_cities.season_reset_name_step(msg, state))
@@ -487,7 +487,7 @@ def test_season_screen_without_ambassadors_has_no_line(tmp_path):
 
 
 def test_season_reset_archives_and_clears(tmp_path):
-    from handlers import admin_cities
+    from handlers.cities import admin_cities
     from handlers.amb import admin_amb_bulk as b
     from handlers.states import SeasonReset
     state = _season_wizard(tmp_path)
@@ -519,7 +519,7 @@ def test_season_reset_archives_and_clears(tmp_path):
 
 def test_season_reset_survives_amb_failure(tmp_path, monkeypatch):
     from database import amb_status_db
-    from handlers import admin_cities
+    from handlers.cities import admin_cities
     from handlers.states import SeasonReset
     state = _season_wizard(tmp_path, n_amb=2)
 

@@ -198,7 +198,7 @@ def test_commands_are_not_swallowed_by_not_photo_handler():
 
 def test_admin_command_and_panel_drop_avatar_wait(tmp_path):
     from handlers.admin import cmd_admin_help
-    from handlers.admin_cities import admin_menu_root
+    from handlers.cities.admin_cities import admin_menu_root
 
     config.DB_PATH = str(tmp_path / "ava.db")
     fast_init_db()

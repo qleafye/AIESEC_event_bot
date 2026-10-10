@@ -10,7 +10,7 @@ router`, каждый декоратор — в одну строку со ст�
 
 Право `ADMIN_CAPS["cmd:delete_user"] = "settings"` необходимо, но НЕ достаточно — настоящий
 гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из трёх хендлеров ниже (тот же
-приём, что `admin_season_reset`/`season_reset_go` в `handlers/admin_cities.py`): менеджер с
+приём, что `admin_season_reset`/`season_reset_go` в `handlers/cities/admin_cities.py`): менеджер с
 правом `settings`, но не суперадмин, до удаления не доходит, а посторонний вообще не получает
 ответа (deny-by-default мидлвари `admin_caps`, отдельная проверка ей не заменяется)."""
 import html

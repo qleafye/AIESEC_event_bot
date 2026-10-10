@@ -9,7 +9,7 @@ fake gspread; `tests/test_admin_program_260924.py` — fake callback/message + c
 - `services/city_move.move_user_city` — БД (users + трек + reg_drafts/reg_started/
   неотправленные очереди дайджеста), dry_run ничего не пишет, лист (add-new-then-delete-old,
   сбой листа не рвёт БД).
-- `handlers/admin_city_move.py` — картинка UI (выбор города/подтверждение/применение/отмена),
+- `handlers/cities/admin_city_move.py` — картинка UI (выбор города/подтверждение/применение/отмена),
   права на ОБА города, подделанные callback_data.
 - `services/checkin.record_arrival` — «чужой город» сканера читает `users.event_city` вживую,
   переезжает само (координатор, D-checkin): после перевода СПб→Москва сессия в Москве
@@ -28,7 +28,7 @@ import pytest
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_city_move
+from handlers.cities import admin_city_move
 from handlers.admin_caps import role_caps_key
 import services.sheets as sheets_mod
 from services.checkin import record_arrival
@@ -804,7 +804,7 @@ def test_move_writes_nowhere_when_no_city_tab_exists_report_is_honest(tmp_path, 
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part C: handlers/admin_city_move.py — UI flow, права, подделанные callback_data
+# Part C: handlers/cities/admin_city_move.py — UI flow, права, подделанные callback_data
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 class _FakeUser:

@@ -4,7 +4,7 @@
 отдельные задачи Phase 12, не эта (выдача QR уже сделана Квиком 260923 —
 `services/checkin.py::build_checkin_qr`/`handlers/user_actions.py::show_my_checkin_qr`).
 
-Форма шва — эталон `handlers/admin_purge.py`/`handlers/admin_cities.py`: своего `Router()`
+Форма шва — эталон `handlers/admin_purge.py`/`handlers/cities/admin_cities.py`: своего `Router()`
 нет, `from handlers.admin import router`, каждый декоратор — в одну строку со строковым
 литералом (инвариант cap-теста `tests/test_roles_phase8.py`). Право — `checkin`
 (`handlers/admin_caps.py` ADMIN_CAPS/`_ADMIN_MENU_ROWS`, `handlers/admin_sections.py`
