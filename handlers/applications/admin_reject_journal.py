@@ -55,7 +55,7 @@ _NO_ACCESS = "Недостаточно прав"
 
 # Дефолт текста делегату при возврате — тот же приём, что `reject_text`/`services.applications.applications.
 # reject_message_text` (план 31-03/31-11): пустой ключ реестра не значит «ничего не отправлять».
-DEFAULT_RETURN_TEXT = "Ваша заявка возвращена на обычную модерацию — её пересмотрит менеджер."
+DEFAULT_RETURN_TEXT = "Твою заявку вернули на обычную модерацию — её посмотрит менеджер."
 
 
 def _parse_page_data(data: str) -> tuple[bool, int]:

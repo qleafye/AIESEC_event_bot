@@ -725,9 +725,10 @@ _REGISTRY_TEXTS_EN = {
     # /find менеджера (группа "apps" — вне DELEGATE_GROUPS, сторож i18n_form_manual_coverage_
     # 260917 их не требует, добавлены сверх минимума — тексты, которые реально уходят
     # делегату, того же класса, что coins_manual_notify_text).
-    "Ваша заявка снова на рассмотрении — менеджер посмотрит её ещё раз.": "Your application is under review again — a manager will take another look.",
-    "Вы можете подать заявку заново — отправьте /start.": "You can submit your application again — send /start.",
-    "Менеджер разрешил вам ещё раз изменить анкету — нажмите «✏️ Изменить анкету» под этим сообщением.": "A manager has allowed you to edit your application once more — tap «✏️ Edit application» below this message.",
+    "Твоя заявка снова на рассмотрении — менеджер посмотрит её ещё раз.": "Your application is under review again — a manager will take another look.",
+    "Твою заявку вернули на обычную модерацию — её посмотрит менеджер.": "Your application has been returned to regular review — a manager will look at it.",
+    "Можешь подать заявку заново — отправь /start.": "You can submit your application again — send /start.",
+    "Менеджер разрешил тебе ещё раз изменить анкету — нажми «✏️ Изменить анкету» под этим сообщением.": "A manager has allowed you to edit your application once more — tap «✏️ Edit application» below this message.",
     # Phase 33 (задача 1): «🧹 Сбросить зависшую анкету» — та же группа "apps"/тот же
     # приём "сверх минимума", что у трёх строк выше.
     "Анкета сброшена — начни заново: /start": "Your application has been reset — start again: /start",
@@ -748,7 +749,7 @@ _REGISTRY_TEXTS_EN = {
     "Собрали ответы на частые вопросы — может, твой уже здесь:": "We've gathered answers to common questions — yours might already be here:",
     "🏆 <b>Рейтинг по монетам</b>": "🏆 <b>Coin leaderboard</b>",
     "Твоё место: <b>{rank}</b> · баланс: <b>{balance}</b>": "Your place: <b>{rank}</b> · balance: <b>{balance}</b>",
-    "👋 Вы начали регистрацию, но не завершили её. Отправьте /start, чтобы продолжить — это займёт пару минут.": "👋 You started your registration but didn't finish it. Send /start to continue — it takes a couple of minutes.",
+    "👋 Ты начал(а) регистрацию, но не закончил(а). Нажми кнопку ниже или отправь /start — это займёт пару минут.": "👋 You started your registration but didn't finish it. Tap the button below or send /start — it takes a couple of minutes.",
     "🔄 Бот перезапускался, но твоя анкета сохранена — продолжим?": "🔄 The bot restarted, but your application is saved — shall we continue?",
     "Регистрация на вечеринку сейчас закрыта.": "Party registration is currently closed.",
     "💰 <b>Оплата участия</b>\n\nВариант: {option}\nСумма: {amount} ₽\n\n{requisites}{deadline}{penalties}📎 Загрузи чек оплаты (PDF-документ или скриншот).": "💰 <b>Payment for participation</b>\n\nOption: {option}\nAmount: {amount} ₽\n\n{requisites}{deadline}{penalties}📎 Upload your payment receipt (a PDF document or screenshot).",
