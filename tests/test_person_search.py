@@ -1,4 +1,4 @@
-"""Общий сервис поиска человека (services/person_search.py) + починка roles_add_person
+"""Общий сервис поиска человека (services/access/person_search.py) + починка roles_add_person
 для тех, кто нажал /start, но анкету не подал (users_row_only_on_submit, reg_started).
 
 pytest-asyncio недоступен в этом окружении (см. tests/test_db_phase5.py) — каждый async
@@ -11,7 +11,7 @@ from aiogram.dispatcher.event.bases import UNHANDLED
 
 from config import config
 from database import db
-from services import person_search
+from services.access import person_search
 
 
 def _db_ready(tmp_path):

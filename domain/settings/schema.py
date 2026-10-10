@@ -5475,7 +5475,7 @@ SETTINGS_SCHEMA = {
     # Дефолт miniapp_enabled — "off": новая поверхность включается менеджером осознанно.
     # Все miniapp_section_* по умолчанию "on". Тексты экранов бота (game_*/menu_*) здесь НЕ
     # дублируются — экраны читают существующие ключи (правило Phase 17.1: 0 хардкода).
-    # Выключено — закрыто только делегатам: персонал входит всегда (services/miniapp_access.py).
+    # Выключено — закрыто только делегатам: персонал входит всегда (services/access/miniapp_access.py).
     "miniapp_enabled": {
         "type": "enum", "group": "miniapp", "label": "📱 Mini App включён",
         "options": ["on", "off"], "prompt": None, "default": "off",

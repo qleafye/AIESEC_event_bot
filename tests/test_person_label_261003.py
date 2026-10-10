@@ -4,7 +4,7 @@ from datetime import datetime
 
 from config import config
 from database import db
-from services.person_label import person_label
+from services.access.person_label import person_label
 from tests._dbtpl import fast_init_db
 
 

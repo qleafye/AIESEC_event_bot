@@ -1585,7 +1585,7 @@ async def allowlist_refresh_job():
     """Interval-job target: reload the RAM allowlist; if it lands empty WHILE gating is
     ON, fire a loud admin alert (fail-open posture, owner-confirmed Open Q2)."""
     try:
-        from services.allowlist import refresh_allowlist, allowlist_size
+        from services.access.allowlist import refresh_allowlist, allowlist_size
         # With gating OFF the cached set is never read, so refreshing it buys nothing and
         # costs a Sheets API call every hour — one that logs a WARNING forever when the
         # allowlist tab does not exist (the production default: no «Отобранные» tab).

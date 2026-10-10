@@ -488,7 +488,7 @@ def test_city_row_tab_uses_tab_suffix_helper(tmp_path):
 
 
 def test_refresh_allowlist_reads_preselect_tab_via_registry(tmp_path, monkeypatch):
-    from services import allowlist
+    from services.access import allowlist
 
     _use_tmp_db(tmp_path)
 

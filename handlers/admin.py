@@ -101,7 +101,7 @@ from services.scheduler import (
     schedule_broadcast_job,
     cancel_broadcast_job,
 )
-from services.allowlist import refresh_allowlist, allowlist_size
+from services.access.allowlist import refresh_allowlist, allowlist_size
 from services import source_links
 from services.infra.background import spawn as _spawn
 from services import decision_delivery
@@ -594,7 +594,7 @@ async def cmd_find_user(message: types.Message):
 
     # Phase 33 (задача 2): фоллбэк на reg_started — человек нажал /start, но анкету не подал
     # (users_row_only_on_submit, память проекта), поэтому его не было в users, но он всё
-    # равно существует в базе бота. `services/person_search.py` это уже умеет для мастера
+    # равно существует в базе бота. `services/access/person_search.py` это уже умеет для мастера
     # выдачи ролей (`handlers/access/admin_roles.py::roles_add_person`) — здесь та же фактическая
     # проверка, только напрямую по username (без части ФИО — /find сам всегда искал только
     # @username).

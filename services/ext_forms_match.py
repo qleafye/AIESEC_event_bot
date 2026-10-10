@@ -10,7 +10,7 @@ import re
 
 from database import db as _db
 from database import ext_forms_db as ef
-from services.person_search import parse_query
+from services.access.person_search import parse_query
 
 logger = logging.getLogger(__name__)
 

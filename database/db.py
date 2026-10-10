@@ -727,7 +727,7 @@ async def init_db():
         await _ensure_column(db, "staff", "city", "TEXT")
 
         # Идея №6 бэклога чек-ина (общая механика, не только форум): «до какой даты действует
-        # эта роль». ISO «YYYY-MM-DD» (сравнимо строкой с `services.staff_expiry.today_iso()`),
+        # эта роль». ISO «YYYY-MM-DD» (сравнимо строкой с `services.access.staff_expiry.today_iso()`),
         # NULL у ВСЕХ существующих строк -- «бессрочно», байт-в-байт прежнее поведение для
         # каждой роли, выданной до этого квика. Действует ПО этот день включительно -- истекает
         # с НАЧАЛА следующего. Колонка per-role (композитный PRIMARY KEY staff уже per-role, в
@@ -740,7 +740,7 @@ async def init_db():
         # `config.ADMIN_IDS` в `staff` не лежат, а сама `staff` — строка на роль, не на человека.
         # `since` — первая неудача (не сдвигается повторами), `last_failed_at` — последняя.
         # Строку снимает удачная доставка или любое сообщение человека боту
-        # (`services/staff_reach.py`). Время — московское (`msk_now`).
+        # (`services/access/staff_reach.py`). Время — московское (`msk_now`).
         await db.execute('''
             CREATE TABLE IF NOT EXISTS staff_unreachable (
                 telegram_id INTEGER PRIMARY KEY,

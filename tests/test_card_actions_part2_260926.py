@@ -724,7 +724,7 @@ def test_find_card_hides_reset_button_without_draft(tmp_path):
 
 def test_find_falls_back_to_reg_started_when_not_in_users(tmp_path):
     """/find сам ищет только @username (память проекта) — фоллбэк на reg_started тем же
-    приёмом, что services/person_search.py уже даёт мастеру выдачи ролей."""
+    приёмом, что services/access/person_search.py уже даёт мастеру выдачи ролей."""
     from handlers import admin
 
     _db_ready(tmp_path)
