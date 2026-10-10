@@ -878,6 +878,25 @@ def test_cfg_screen_toggle_flips_global_setting(tmp_path):
     assert _run(db.get_setting("regional_noshow_offer_enabled")) == "off"
 
 
+def test_cfg_screen_toggle_reschedules_exactly_once(tmp_path, monkeypatch):
+    """Перепланировку делает хук воронки записи; явный вызов хендлера рядом — второй проход."""
+    from handlers import admin_forum_functions as aff
+
+    _ready(tmp_path)
+    calls = []
+    real = sched.get_scheduler
+
+    def spy():
+        calls.append(1)
+        return real()
+
+    monkeypatch.setattr(sched, "get_scheduler", spy)
+    _run(aff.rgnm_toggle_go(FakeCallback("rgnm_toggle:_all", ADMIN_ID)))
+    # reconcile() обращается к планировщику дважды (джоба города + джоба уведомления); явный
+    # вызов хендлера рядом дал бы третье обращение.
+    assert len(calls) == 2
+
+
 def test_cfg_screen_shows_summary_line(tmp_path):
     from handlers import admin_forum_functions as aff
 
