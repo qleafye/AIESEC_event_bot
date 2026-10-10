@@ -5,7 +5,7 @@ import asyncio
 
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_app_list
+from handlers.applications import admin_app_list
 from tests.test_applications_list_260914 import _add
 from tests.test_admin_sections_ia20 import FakeCallback
 from tests.test_roles_phase8 import ADMIN_ID, _roles_ready

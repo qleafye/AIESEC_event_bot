@@ -8,7 +8,7 @@ pytest-asyncio недоступен — async через asyncio.run(), фикс
 что `tests/test_reg_resume_ttl_260820.py::_ready(tmp_path)`.
 
 Phase 21 Plan 07 (FORM-SYNC-04, D-12, D-14, D-15): раздел «карточка» ниже проверяет
-`handlers/admin_moderation.py` — пометки «✏️ Изменена»/«🔁 Повторная подача», кнопку/экран
+`handlers/applications/admin_moderation.py` — пометки «✏️ Изменена»/«🔁 Повторная подача», кнопку/экран
 «🕓 История» — и тумблер «toggle_reg_edit_remoderation» в разделе «📋 Заявки».
 """
 import asyncio
@@ -201,8 +201,8 @@ def test_new_tables_and_columns_do_not_wipe_existing_data(tmp_path):
 
 # ── Task 1 (21-07): карточка заявки — «✏️ Изменена» / «🔁 Повторная подача» / «🕓 История» ──
 
-from handlers import admin_moderation  # noqa: E402
-from handlers.admin_moderation import (  # noqa: E402
+from handlers.applications import admin_moderation  # noqa: E402
+from handlers.applications.admin_moderation import (  # noqa: E402
     _render_application_card,
     _appr_card_kb,
     _edit_badges_for,

@@ -1,12 +1,12 @@
 """Phase 28 (28-08, SU-08) — шов admin_moderation: экран «🧮 Правила балла».
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_moderation.py`, сразу после `handlers.admin_modcard`
+импортируется из ХВОСТА `handlers/applications/admin_moderation.py`, сразу после `handlers.applications.admin_modcard`
 (та же позиция в снапшоте — quick 260902-tzh), той же формой: `render_*_text()` +
 `build_*_keyboard()` + toggle/limit-хендлеры + noop.
 
 Что здесь: чекбокс-пикеры четырёх скоринговых множеств (`reg_engine.scoring_rules()`,
-план 28-07) — те же «кнопки вместо кодов», что у `handlers/admin_modcard.py`, но с ОДНИМ
+план 28-07) — те же «кнопки вместо кодов», что у `handlers/applications/admin_modcard.py`, но с ОДНИМ
 принципиальным отличием: `admin_modcard.py` рисует ЗАКРЫТЫЙ список (`moderation_card.
 CARD_STEPS` — модульная константа), а варианты здесь ДИНАМИЧЕСКИЕ — текущий список ответов
 вопроса анкеты (`reg_engine.options(step_key)`), который менеджер правит сам через

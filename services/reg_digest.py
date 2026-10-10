@@ -45,7 +45,7 @@ JOB_PREFIX = "reg_digest:"
 
 # Ревью 25.09: единственная сейчас непустая причина постановки в очередь дайджеста, помимо
 # «обычная новая заявка» (reason=None) и «автоотказ» (auto_rejected=1) — «↩️ Вернуть в
-# ожидание» (handlers/admin_revert_pending.py). Строковая константа, не bool: reason — та же
+# ожидание» (handlers/applications/admin_revert_pending.py). Строковая константа, не bool: reason — та же
 # расширяемая форма, что и остальные причины, которые могут появиться позже.
 REASON_REVERT = "revert"
 
@@ -227,7 +227,7 @@ async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw
 
     `reason` (ревью 25.09) — тот же приём, ещё один хвостовой kwarg с дефолтом `None`:
     существующие вызовы (обычная новая заявка) остаются байт-в-байт прежними. Единственное
-    сейчас значение — `REASON_REVERT` (`handlers/admin_revert_pending.py`): в режиме `each`
+    сейчас значение — `REASON_REVERT` (`handlers/applications/admin_revert_pending.py`): в режиме `each`
     ничего не меняет (звонящий сам кладёт пометку «↩️ Возвращена на модерацию» в
     `admin_text`), а в режиме `digest` штампуется в очередь, чтобы `send_reg_digest` показал
     эти заявки ОТДЕЛЬНЫМ блоком «↩️ Возвращены на модерацию», не смешивая со счётчиком

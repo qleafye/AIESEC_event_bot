@@ -1,7 +1,7 @@
 """Ссылка с меткой (`https://t.me/<бот>?start=src_<метка>`): проверка метки и тексты ответа.
 
 Одна логика на два входа — команду `/create_link <метка>` (handlers/admin.py) и кнопку
-«➕ Новая ссылка» на экране «🔗 Ссылки с метками» (handlers/admin_source_links.py). Модуль
+«➕ Новая ссылка» на экране «🔗 Ссылки с метками» (handlers/applications/admin_source_links.py). Модуль
 без aiogram: только строки, тестируется без бота.
 """
 import html

@@ -8,7 +8,7 @@
 функций (цикл на уровне модуля: `admin_sections` импортирует этот шов хвостом).
 
 Конструктор условий и счётчик dry-run — ОТДЕЛЬНЫЙ шов (потолок размера модуля, не архитектурная
-граница): кнопки карточки ведут в `handlers/admin_reject_cond.py` (импорт хвостом, конец файла).
+граница): кнопки карточки ведут в `handlers/applications/admin_reject_cond.py` (импорт хвостом, конец файла).
 
 Запись правила — ТОЛЬКО через `services.reject_rules.save_rule`/`delete_rule` (план 31-04),
 второй двери в `reject_rules` здесь нет. Право по городу (`can_edit_city`, D-16) перепроверяется
@@ -228,11 +228,11 @@ async def render_rules_screen(admin_id: int, offset: int = 0) -> tuple[str, Inli
         master_label = "🚫 Выключить все правила" if kill_switch_on else "✅ Включить все правила"
         buttons.append([InlineKeyboardButton(text=master_label, callback_data="arr_master")])
         buttons.append([InlineKeyboardButton(text="🕘 Применить к уже поданным", callback_data="rjretro")])
-    # План 31-11: журнал живёт отдельным швом (handlers/admin_reject_journal.py) — вход отсюда,
+    # План 31-11: журнал живёт отдельным швом (handlers/applications/admin_reject_journal.py) — вход отсюда,
     # где менеджер только что настраивал правила.
     buttons.append([InlineKeyboardButton(text="🤖 Автоотказы", callback_data="admin_reject_journal")])
     # Квик 260923 (AUTOREJ-REPORT, D-I): «📊 Отчётность» — вкладка таблицы и потолок пачки,
-    # тем же входом, рядом с журналом (handlers/admin_reject_reports.py).
+    # тем же входом, рядом с журналом (handlers/applications/admin_reject_reports.py).
     buttons.append([InlineKeyboardButton(text="📊 Отчётность", callback_data="admin_reject_reports")])
 
     from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
@@ -439,7 +439,7 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
 
     buttons: list[list[InlineKeyboardButton]] = []
     groups = rule.get("conditions") or []
-    from handlers.admin_reject_cond import _conditions_fp
+    from handlers.applications.admin_reject_cond import _conditions_fp
     fp = _conditions_fp(groups)
     if not groups:
         buttons.append([InlineKeyboardButton(text="➕ условие в группу 1", callback_data=f"arc_add:{rule_id}:-1:{fp}")])
@@ -867,4 +867,4 @@ async def arr_delete_go(callback: types.CallbackQuery):
     await callback.answer("Правило удалено навсегда.")
 
 
-from handlers import admin_reject_cond  # noqa: E402,F401 — конструктор условий (arc_*), хвостом
+from handlers.applications import admin_reject_cond  # noqa: E402,F401 — конструктор условий (arc_*), хвостом

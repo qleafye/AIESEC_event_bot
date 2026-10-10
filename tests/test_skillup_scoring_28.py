@@ -5,7 +5,7 @@
   §3.6 без БД (таблица кейсов по образцу FINALIZE_GOLDEN).
 - Задача 2: запись балла на финале (`services/reg_finalize.py`) и столбцы листа
   (`handlers/reg_schema.py`).
-- Задача 3: балл в карточке модерации — бот (`handlers/admin_moderation.py`) и приложение
+- Задача 3: балл в карточке модерации — бот (`handlers/applications/admin_moderation.py`) и приложение
   (`services/applications.py`) одинаково; делегатские поверхности его не видят никогда.
 
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, фикстура временной
@@ -20,7 +20,7 @@ from database import db
 import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
 import services.applications as applications
-from handlers import admin_moderation as am
+from handlers.applications import admin_moderation as am
 from handlers import reg_schema as rs
 from tests._dbtpl import fast_init_db
 

@@ -1,5 +1,5 @@
 """Правила амбассадорской волны — БЕЗ aiogram, тот же разрез, что `services/applications.py`
-против `handlers/admin_moderation.py` (Phase 23, D-06/D-08): экраны (бот сейчас, Mini App
+против `handlers/applications/admin_moderation.py` (Phase 23, D-06/D-08): экраны (бот сейчас, Mini App
 следующей фазой, D-36) не имеют права нести бизнес-правило дважды.
 
 Рейтинг волны считается НА ЧТЕНИИ, а не хранится меткой на строке `coins` — D-14 прямо требует,

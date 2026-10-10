@@ -1,6 +1,6 @@
 """Phase 33 (delegate-card admin actions, задача 3): «📎 Заменить резюме» — менеджер шлёт файл
 (PDF/DOCX) взамен резюме делегата. Кнопка на карточке `/find`
-(`handlers/admin_resume_replace.py`), сама замена — здесь.
+(`handlers/applications/admin_resume_replace.py`), сама замена — здесь.
 
 Тем же путём, что при обычной подаче анкеты (`services/reg_finalize.py`): Nextcloud-загрузка
 (`services/nextcloud.py::upload_resume`) + обновление ячейки листа «Резюме (ссылка)» той же

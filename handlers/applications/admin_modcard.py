@@ -1,7 +1,7 @@
 """Quick 260902-tzh — шов admin_moderation: экран «🧾 Поля карточки заявки».
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_moderation.py` (не `admin_settings.py` — тот стоит
+импортируется из ХВОСТА `handlers/applications/admin_moderation.py` (не `admin_settings.py` — тот стоит
 ровно на потолке размера, `tests/test_module_size_convention_260816.py`), как и остальные
 швы Phase 13.
 
