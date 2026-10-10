@@ -232,7 +232,9 @@ export function shrinkPhoto(file, { maxSide = MAX_SIDE, quality = JPEG_QUALITY, 
 // file_id, только что загруженный с этого телефона -> object URL того же файла. Экран
 // показывает превью сразу, без GET /api/file (getFile + скачивание через прокси и туннель).
 // Живёт между экранами (мастер создания -> карточка задания), старые URL освобождаются.
-const LOCAL_LIMIT = 6;
+// Вытесняется самый давно ПОКАЗАННЫЙ, а не самый давно загруженный: обложка черновика
+// перерисовывается на каждом шаге и поэтому не пропадает, сколько бы фото ни ушло в сдачи.
+const LOCAL_LIMIT = 12;
 const localUrls = new Map();
 
 export function forgetLocalPhoto(fileId) {
@@ -252,5 +254,10 @@ export function rememberLocalPhoto(fileId, file) {
 }
 
 export function localPhotoUrl(fileId) {
-  return (fileId && localUrls.get(fileId)) || null;
+  const url = (fileId && localUrls.get(fileId)) || null;
+  if (url) {
+    localUrls.delete(fileId);
+    localUrls.set(fileId, url);
+  }
+  return url;
 }
