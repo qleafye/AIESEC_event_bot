@@ -1,6 +1,6 @@
 """Phase 09.1 (D, GAME-07): debounced background resync of the gamification sheet tabs
 («Гейма» matrix + «История сдач», plus the per-city pairs when the cities module is on —
-services/game_sheets.py).
+services/game/game_sheets.py).
 
 CONTEXT.md D (locked): a manager should not have to remember the "🔄 Таблица геймы" button
 for the tabs to stay fresh. Every significant event (task created, moderator decision,

@@ -156,7 +156,7 @@ async def _known_non_delegate_tab_titles() -> set[str]:
       id там из `reg_started`, не из `users`; сверка их не разбирает вовсе (проще, чем городить
       второе сравнение — координатор явно разрешил «просто пропускать»).
     - служебные журналы (опросы/предотбор/история правок/вопросы делегатов/автоотказы) и
-      гейма (матрица+история, default + по городу, `services.game_sheets.game_tab_plan`) —
+      гейма (матрица+история, default + по городу, `services.game.game_sheets.game_tab_plan`) —
       читаются и пишутся СВОИМ экраном/джобой, сверке в них смотреть незачем.
 
     Пустое значение настройки (например, выключенный `auto_reject_sheet_tab`) не добавляет
@@ -164,7 +164,7 @@ async def _known_non_delegate_tab_titles() -> set[str]:
     вкладка со случайно совпавшим именем (не наш случай)."""
     from domain.cities import cities_module_on, enabled_cities
     from handlers.registration import city_incomplete_tab
-    from services.game_sheets import game_tab_plan
+    from services.game.game_sheets import game_tab_plan
 
     titles: set[str] = {await city_incomplete_tab(None)}
     if await cities_module_on():

@@ -12,7 +12,9 @@ from config import config
 from database import chat_coins_db, db
 from handlers.chat import group_chat
 from handlers.access.admin_caps import required_capability
-from services import chat_coins, chat_tracking, coins_transfer, quiet_hours
+from services import chat_coins, chat_tracking
+from services.game import coins_transfer
+from services import quiet_hours
 from tests._dbtpl import fast_init_db
 
 MANAGER = 900100901
@@ -73,7 +75,7 @@ def env(tmp_path, monkeypatch):
         return True
 
     monkeypatch.setattr(quiet_hours, "send_or_queue_text", _send_now)
-    monkeypatch.setattr("services.game_sync.request_resync", lambda *a, **k: None)
+    monkeypatch.setattr("services.game.game_sync.request_resync", lambda *a, **k: None)
 
 
 def _coins():

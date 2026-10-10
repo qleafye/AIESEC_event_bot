@@ -41,7 +41,7 @@ QR чек-ина «перестаёт пускать» БЕЗ отдельног
 делегатом, тревожить лишний раз не нужно, но иногда нужно.
 
 aiogram-free по импортам; `bot` приходит параметром (as-is, тот же приём, что
-`services/coins_notify.py`/`services/application_effects.py`) — нужен и для
+`services/game/coins_notify.py`/`services/application_effects.py`) — нужен и для
 `notify_application` (маршрутизация менеджерам), и для отправки текста делегату."""
 from __future__ import annotations
 

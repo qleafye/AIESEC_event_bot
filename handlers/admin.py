@@ -105,7 +105,7 @@ from services.access.allowlist import refresh_allowlist, allowlist_size
 from services import source_links
 from services.infra.background import spawn as _spawn
 from services import decision_delivery
-from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
+from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport, clear_admin_flow_state
 from handlers.access.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
 from keyboards.builders import get_cancel_kb, MENU_BUTTONS, get_main_menu_kb
@@ -417,11 +417,11 @@ async def cmd_admin_help(message: types.Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML", reply_markup=await admin_keyboard_for(message.from_user.id))
 
 
-# Phase 14 (GAME-09) -> 16.09: сама функция переехала в `services/coins_notify.py` — ту же
+# Phase 14 (GAME-09) -> 16.09: сама функция переехала в `services/game/coins_notify.py` — ту же
 # формулировку теперь зовёт и разборщик outbox'а Mini App (ручные монеты из приложения
 # делегату не приходили вовсе). Здесь — реэкспорт под прежним приватным именем: `/coins`
 # ниже, `coinsman_confirm` в admin_gamification.py и тесты импортируют его отсюда как раньше.
-from services.coins_notify import notify_manual_coins as _notify_manual_coins  # noqa: E402
+from services.game.coins_notify import notify_manual_coins as _notify_manual_coins  # noqa: E402
 
 
 @router.message(Command("coins"))
