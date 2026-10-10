@@ -41,7 +41,8 @@ def _patch_audience(monkeypatch, ids):
     from handlers.comms import admin_broadcast_status
 
     async def all_approved(got):
-        return {"approved": list(got), "pending": [], "rejected": [], "not_submitted": []}
+        return {"approved": [i for i in got if i in ids], "pending": [], "rejected": [],
+                "not_submitted": [i for i in got if i not in ids]}
     monkeypatch.setattr(admin_broadcast_status, "split_ids_by_app_status", all_approved)
 
 
@@ -449,7 +450,7 @@ def test_confirm_prompt_no_warning_when_k_is_zero(tmp_path, monkeypatch):
         await admin_broadcasts.process_broadcast(msg, state, bot)
 
         prompt = bot.sent_messages[0]
-        assert prompt.text == "Отправить это 5 пользователям?"
+        assert prompt.text == "Получатели: Одобрены 5\n\nОтправить это 5 пользователям?"
         assert "⚠️" not in prompt.text
 
     asyncio.run(go())

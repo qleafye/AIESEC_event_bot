@@ -28,28 +28,47 @@ def _has_status(filters: list[dict] | None) -> bool:
     return any(f.get("field") == "status" for f in filters or [])
 
 
-async def status_block(ids: list[int], filters: list[dict] | None, callback_data: str) -> tuple[str, list]:
-    """(текст, ряды кнопок): разбивка по статусу и, если нужно, предупреждение с кнопкой.
-    Все получатели одобрены — пусто."""
+async def _status_parts(ids: list[int], filters: list[dict] | None, callback_data: str) -> tuple[str, str, list]:
+    """(строка «Получатели: …», предупреждение, ряды кнопок). Строка есть всегда, когда есть
+    получатели: после «Только одобренные» менеджер видит, что условие сработало."""
     if not ids:
-        return "", []
+        return "", "", []
     groups = await split_ids_by_app_status(ids)
     counts = {key: len(groups[key]) for key, _ in _PARTS}
-    if counts[APPROVED] == len(ids):
-        return "", []  # все одобрены — экран прежний, без шума
-    text = "Получатели: " + " · ".join(f"{label} {counts[key]}" for key, label in _PARTS if counts[key]) + "\n"
+    line = "Получатели: " + " · ".join(f"{label} {counts[key]}" for key, label in _PARTS if counts[key]) + "\n"
     not_approved = counts[PENDING] + counts[NOT_SUBMITTED]
     if _has_status(filters) or not (counts[REJECTED] or not_approved):
-        return text + "\n", []
+        return line, "", []
     found = []
     if counts[REJECTED]:
         found.append(f"отклонённые ({counts[REJECTED]})")
     if not_approved:
         found.append(f"не одобренные ({not_approved})")
-    text += f"⚠️ В рассылке есть {' и '.join(found)}. Обычно пишут только одобренным.\n\n"
+    warning = f"⚠️ В рассылке есть {' и '.join(found)}. Обычно пишут только одобренным.\n"
     if not counts[APPROVED]:
-        return text, []
-    return text, [[InlineKeyboardButton(text=f"{_ONLY_APPROVED} ({counts[APPROVED]})", callback_data=callback_data)]]
+        return line, warning, []
+    return line, warning, [[InlineKeyboardButton(text=f"{_ONLY_APPROVED} ({counts[APPROVED]})", callback_data=callback_data)]]
+
+
+async def status_block(ids: list[int], filters: list[dict] | None, callback_data: str) -> tuple[str, list]:
+    """(текст, ряды кнопок) для экрана «Под фильтр попадает N»."""
+    line, warning, rows = await _status_parts(ids, filters, callback_data)
+    return (line + warning + "\n" if line else ""), rows
+
+
+async def staff_missing_note(missing: set[int]) -> str:
+    """Кто из команды (админы и менеджеры) не получит рассылку «Всем» и почему: без анкеты
+    делегата, анкета не одобрена или отсеян другим условием (например, сезоном)."""
+    groups = await split_ids_by_app_status(sorted(missing))
+    no_form = len(groups[NOT_SUBMITTED])
+    if no_form == len(missing):
+        return (f"⚠️ {no_form} из команды (админы и менеджеры) не зарегистрированы как делегаты — "
+                "рассылку они не получат.\n\n")
+    parts = [(no_form, "без анкеты делегата"),
+             (len(groups[PENDING]) + len(groups[REJECTED]), "анкета не одобрена"),
+             (len(groups[APPROVED]), "не прошли условия рассылки")]
+    reasons = "; ".join(f"{label} — {n}" for n, label in parts if n)
+    return f"⚠️ {len(missing)} из команды (админы и менеджеры) рассылку не получат: {reasons}.\n\n"
 
 
 async def confirm_extra(state: FSMContext, users_ids: list[int] | None) -> tuple[str, list]:
@@ -63,8 +82,10 @@ async def confirm_extra(state: FSMContext, users_ids: list[int] | None) -> tuple
     filters = data.get("filters")
     if not users_ids or (data.get("target_type", "all") != "all" and filters is None):
         return season_text, season_rows
-    status_text, status_rows = await status_block(users_ids, filters, "bcstatus_only")
-    return season_text + status_text, status_rows + season_rows
+    line, warning, status_rows = await _status_parts(users_ids, filters, "bcstatus_only")
+    # сезон — строкой сразу под «Получатели: …», чтобы число не читалось как чужое
+    text = line + season_text.strip() + ("\n" if season_text else "") + warning
+    return (text + "\n" if text else ""), status_rows + season_rows
 
 
 @router.callback_query(F.data == "bcstatus_only", Broadcast.confirm)
