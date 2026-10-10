@@ -34,6 +34,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from config import config
 from database.db import get_reject_rule, get_staff_city
 from handlers.admin import router
+from handlers.applications import admin_reject_master as master
 from handlers.applications.admin_reject_rules import render_rule_card
 from handlers.states import RejectCond
 from keyboards.builders import get_cancel_kb
@@ -878,7 +879,7 @@ async def arc_gate(callback: types.CallbackQuery):
         )
         return
     matched, total = await dry_run_count(rule)
-    lines = ["✅ <b>Включить правило?</b>", "", _dry_run_text(matched, total)]
+    lines = ["✅ <b>Включить правило?</b>", "", _dry_run_text(matched, total), *await master.gate_warning(callback.from_user.id)]
     buttons = [
         [InlineKeyboardButton(text="✅ Всё равно включить", callback_data=f"arc_dry_go:{rule_id}")],
         [InlineKeyboardButton(text="← Назад", callback_data=f"arr_v:{rule_id}")],
@@ -904,6 +905,6 @@ async def arc_dry_go(callback: types.CallbackQuery):
     screen = await render_rule_card(callback.from_user.id, rule_id)
     text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    await callback.answer("✅ Правило включено и теперь действует на подходящие заявки.", show_alert=True)
+    await callback.answer(await master.enabled_alert(callback.from_user.id), show_alert=True)
 
 from handlers.applications import admin_reject_journal  # noqa: E402,F401 — журнал автоотказов (arj_*), хвостом
