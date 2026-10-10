@@ -637,3 +637,35 @@ def test_send_scheduled_poll_job_delivers_via_module_bot(tmp_path, monkeypatch):
     asyncio.run(sched.send_scheduled_poll(pid))
     assert [p["chat_id"] for p in bot.sent_polls] == [1]
     assert asyncio.run(db.get_poll(pid))["status"] == "open"
+
+
+def test_wizard_every_screen_numbered_out_of_five(tmp_path):
+    """Пять экранов мастера — «Шаг 1…5 из 5» по порядку; настройки (раньше без номера) — шаг 3."""
+    _ready(tmp_path)
+    asyncio.run(_add_user(1))
+    state, bot = _state(ADMIN_ID), FakeBot()
+    texts = []
+    _, ev = _cb("poll_new", state, bot)
+    texts.append(ev.message.answers[-1][0])
+    _, ev = _msg("Q?", state, bot)
+    texts.append(ev.answers[-1][0])
+    _msg("A; B", state, bot)
+    _, ev = _cb("poll_opts_done", state, bot)
+    texts.append(ev.message.text)
+    _, ev = _cb("poll_settings_next", state, bot)
+    texts.append(ev.message.text)
+    _, ev = _cb("poll_aud:all", state, bot)
+    texts.append(ev.message.answers[-1][0])
+    for n, text in enumerate(texts, 1):
+        assert f"Шаг {n} из 5." in text, (n, text)
+    assert wiz._settings_text(True).startswith("Шаг 3 из 5.")
+
+
+def test_wizard_step_numbers_only_via_one_constant():
+    """Сторож: номер шага пишется только через _step — литерал «из N» в коде мастера разъедется
+    со знаменателем, когда экран добавят."""
+    import inspect
+    import re
+    src = inspect.getsource(wiz)
+    assert re.findall(r"Шаг \d", src) == []
+    assert wiz.POLL_WIZARD_STEPS == 5
