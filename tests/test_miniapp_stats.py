@@ -91,6 +91,8 @@ def test_numbers_match_get_game_stats(tmp_path):
         assert counts[code] == direct["by_category"].get(code, 0)
     assert counts == {"Light": 2, "Medium": 0, "Hard": 1, "Referral": 0, "Special": 0}
     assert [row["code"] for row in body["by_category"]] == bot_db.GAME_CATEGORIES  # порядок как в боте
+    # Сумма баллов: три одобренные по 5, отклонённая (тоже с coins_awarded=5) не считается.
+    assert body["coins_awarded"] == direct["coins_awarded"] == 15
 
 
 def test_category_labels_come_from_registry(tmp_path):
@@ -108,6 +110,7 @@ def test_empty_database_is_zeroes_not_error(tmp_path):
     body = _client(_cfg(db_path)).get("/app/api/stats/game", headers=_hdr(GAME_MANAGER_ID)).json()
     assert body["participants"] == 0
     assert body["submissions"] == {"pending": 0, "approved": 0, "rejected": 0}
+    assert body["coins_awarded"] == 0
     assert all(row["count"] == 0 for row in body["by_category"])
 
 
