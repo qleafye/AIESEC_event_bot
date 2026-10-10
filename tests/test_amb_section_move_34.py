@@ -162,7 +162,7 @@ def test_points_screen_text_and_buttons(tmp_path):
     assert "Скрывать имена приглашённых: <b>нет</b>" in text
     assert "Имена в рейтинге волны: <b>да</b>" in text
     assert _callbacks(kb) == ["ambpt_coins", "ambpt_toggle:hide", "ambpt_toggle:wavenames",
-                              "admin_sec:amb"]
+                              "ambpt_fill", "admin_sec:amb"]
 
 
 def test_points_input_validation_and_save(tmp_path, caplog):

@@ -833,7 +833,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1586,
+        1588,
+        "10.10 (догон баллов за приглашённых): +2 строки — права ambpt_fill/ambpt_fill_go (moderate_game); 1586 -> 1588. "
         "10.10 (ретро-применение автоотказа): +3 строки — права rjretro/rjretro_p:*/rjretro_go:* (settings); 1583 -> 1586. "
         "09.10 (таблица события в боте): +2 строки — права admin_sheet_target/sheet_target_*/state:SheetTarget:*; 1581 -> 1583. "
         "09.10 («🔎 Найти настройку»): +3 строки — капы settings_search/settings_search_cancel и состояния SettingsSearch; 1578 -> 1581. "
