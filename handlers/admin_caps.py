@@ -1105,7 +1105,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambpt_coins_cancel": "moderate_game",
     "ambpt_toggle:*": "moderate_game",
     "ambpt_fill": "moderate_game",
-    "ambpt_fill_go": "moderate_game",
+    "ambpt_fill_go:*": "moderate_game",
     "state:AmbPointsEdit:*": "moderate_game",
 
     # Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» — счётчик + загрузка
