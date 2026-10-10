@@ -20,7 +20,7 @@ from config import config
 from database import db
 from handlers.game import admin_gamification
 from handlers import user_actions as ua_mod
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import GameTaskCreate, GameTaskEdit
 from tests._dbtpl import fast_init_db
 

@@ -63,8 +63,8 @@ from domain.cities import (
     enabled_cities,
     normalize_city,
 )
-from handlers import admin_caps
-from handlers.admin_purge import _footprint_lines
+from handlers.access import admin_caps
+from handlers.access.admin_purge import _footprint_lines
 from domain.regform.engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
 from services.checkin import ENTRY_POINT
 from services.scheduler import cancel_payment_reminders

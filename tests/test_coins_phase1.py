@@ -5,7 +5,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.admin import _parse_coins_amount
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.user_actions import render_leaderboard
 from tests._dbtpl import fast_init_db
 

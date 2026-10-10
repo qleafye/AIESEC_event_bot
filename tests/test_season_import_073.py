@@ -21,7 +21,7 @@ from database import db
 from database.db import bulk_insert_users_if_absent
 from handlers import admin as admin_mod
 from handlers.cities import admin_cities  # Phase 13 (13-05): cities/season screens moved here
-from handlers.admin_caps import ADMIN_CAPS
+from handlers.access.admin_caps import ADMIN_CAPS
 from handlers.states import SeasonImport
 
 ADMIN_ID = 900401

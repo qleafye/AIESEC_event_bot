@@ -13,7 +13,7 @@ from aiogram.types import User
 from config import config
 from database import db
 from handlers import admin_sections, admin_settings, admin_setup_wizard as wiz
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from miniapp.setup_wizard import STEPS
 from tests._dbtpl import fast_init_db
 

@@ -20,7 +20,7 @@ from aiogram import F, types
 from aiogram.types import BufferedInputFile, InputMediaPhoto
 
 from handlers.admin import router
-from handlers.admin_caps import resolve_capabilities
+from handlers.access.admin_caps import resolve_capabilities
 from services import checkin_training, i18n
 
 logger = logging.getLogger(__name__)

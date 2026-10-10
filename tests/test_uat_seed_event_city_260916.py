@@ -43,7 +43,7 @@ def _open_gate(testers="900930"):
 
 
 def _import_handlers():
-    from handlers import uat_seed
+    from handlers.access import uat_seed
     return uat_seed
 
 

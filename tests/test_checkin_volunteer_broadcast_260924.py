@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 from config import config
 from database import db
-from handlers.admin_caps import role_caps_key, role_enabled_key
+from handlers.access.admin_caps import role_caps_key, role_enabled_key
 import services.scheduler as sched
 import services.checkin_volunteer_broadcast as vb
 from tests._dbtpl import fast_init_db

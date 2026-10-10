@@ -33,7 +33,7 @@ from domain.cities import city_label_or_none
 from database import amb_status_db, amb_tiers_db
 from database import db as _db
 from handlers.admin import router
-from handlers.admin_caps import has_capability
+from handlers.access.admin_caps import has_capability
 from services import amb_status, amb_tiers
 from services.timeutil import msk_now
 from domain.settings.schema import get_setting_typed

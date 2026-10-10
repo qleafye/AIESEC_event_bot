@@ -292,7 +292,7 @@ def test_texts_menu_for_settings_holder(tmp_path):
 
 def test_texts_menu_without_settings_right(tmp_path):
     from handlers.amb import admin_amb_section as h
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
     _ready(tmp_path)
     _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     _run(db.set_setting(role_caps_key("reg_manager"), "moderate_game"))
@@ -325,7 +325,7 @@ def test_section_visible_to_moderate_game_only():
 
 
 def test_every_callback_and_state_resolves_to_moderate_game():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     for data in ("admin_amb_entry", "ambs_mode", "ambs_mode_go:selection", "ambs_mode_go:instant",
                  "ambs_limit", "ambs_limit_cancel", "ambs_texts"):
         assert required_capability(callback_data=data) == "moderate_game", data

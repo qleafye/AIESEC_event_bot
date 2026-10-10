@@ -18,7 +18,7 @@ from aiogram import Bot, F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.admin import router
-from handlers.admin_caps import notify_by_capability
+from handlers.access.admin_caps import notify_by_capability
 from services.settings.audit import set_setting_by_admin
 
 # Одна человеческая формулировка на три места (экран подтверждения, тост, алерт держателям

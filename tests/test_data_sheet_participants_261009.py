@@ -8,7 +8,7 @@ from config import config
 from database import db
 from handlers import admin_sections as sec
 from handlers.applications import admin_participants as ap
-from handlers.admin_caps import required_capability, resolve_capabilities
+from handlers.access.admin_caps import required_capability, resolve_capabilities
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 940101

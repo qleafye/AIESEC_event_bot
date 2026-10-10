@@ -12,7 +12,7 @@
     (B)   тексты регистрации — приветствие новичку/вернувшемуся, «заявка принята», текст
           одобрения, режим формы (`handlers/registration.py`);
     (D)   маршрутизация вопроса делегата и уведомления о новой заявке по городу
-          (`handlers/admin_caps.py::capability_holders`/`notify_by_capability`,
+          (`handlers/access/admin_caps.py::capability_holders`/`notify_by_capability`,
           `handlers/user_actions.py::process_question`, `handlers/registration.py::
           finalize_registration`);
     (C)   админ-экраны — «🏙 Для города…» на редакторе настройки, «🏙 Кнопки по городу» на
@@ -44,7 +44,7 @@ from domain.settings.schema import SETTINGS_SCHEMA
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.regform import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
-from handlers import admin_caps
+from handlers.access import admin_caps
 from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS

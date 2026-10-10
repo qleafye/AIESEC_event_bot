@@ -1,7 +1,7 @@
 """Phase 12 (FORUM-CHECKIN.md, D-08/D-12/D-13, идея №9): сканер отметки на форуме в Mini App.
 
 Основной способ отметки на входе (D-08 — `Telegram.WebApp.showScanQrPopup`, непрерывный режим,
-скан сразу ставит отметку). Право — `checkin` (капа заведена в `handlers/admin_caps.py`,
+скан сразу ставит отметку). Право — `checkin` (капа заведена в `handlers/access/admin_caps.py`,
 уже отражена в `dashboard/access.py::ALL_CAPABILITIES`, сторож `tests/test_dashboard_auth.py`
 сравнивает оба списка), раздел-чекбокс `miniapp_section_checkin` (`SECTIONS` в
 `miniapp/deps.py`) — обе проверки на КАЖДОЙ ручке, тот же приём, что у `admin_tasks.py`.

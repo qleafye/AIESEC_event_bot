@@ -5,8 +5,8 @@
 
 Форма шва — та же, что `handlers/applications/admin_app_list.py`/`handlers/admin_faq.py`: своего `Router()`
 нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; каждый декоратор — в одну строку
-(инвариант cap-теста). `handlers.admin`/`handlers.admin_core`/`handlers.admin_caps` — на уровне
-модуля (безопасно, цикла не создают — `handlers/admin_caps.py` явно не импортирует `handlers.
+(инвариант cap-теста). `handlers.admin`/`handlers.admin_core`/`handlers.access.admin_caps` — на уровне
+модуля (безопасно, цикла не создают — `handlers/access/admin_caps.py` явно не импортирует `handlers.
 admin`/`handlers.admin_core`); `handlers.admin_sections` (`back_button`) — лениво внутри функции,
 тот же приём, что у каждого соседнего шва этого раздела.
 
@@ -35,7 +35,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 
 from database.db import get_setting
 from handlers.admin import router
-from handlers.admin_caps import has_capability
+from handlers.access.admin_caps import has_capability
 from handlers.admin_core import _admin_city_view
 from services import quiet_hours
 from services.reject_journal import (

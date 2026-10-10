@@ -1,6 +1,6 @@
 """Приёмка 09.10: `/admin` от человека без прав — молчание. Deny-by-default
 `CapabilityMiddleware` пропускает апдейт дальше (UNHANDLED), и его не ловил никто — человек
-думал, что бот завис. Роутер `handlers/admin_no_access.py` стоит сразу после `admin.router` и
+думал, что бот завис. Роутер `handlers/access/admin_no_access.py` стоит сразу после `admin.router` и
 отвечает понятным текстом. Остальные админ-команды по-прежнему молчат — поверхность админки
 не раскрываем."""
 from tests._paths import REPO_ROOT
@@ -8,7 +8,7 @@ import asyncio
 from pathlib import Path
 
 from config import config
-from handlers import admin_no_access
+from handlers.access import admin_no_access
 from services import i18n_sources
 from tests._dbtpl import fast_init_db
 

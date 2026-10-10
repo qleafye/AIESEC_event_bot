@@ -345,6 +345,6 @@ def test_reports_button_present_on_rules_screen(tmp_path):
 
 
 def test_reports_screen_registered_under_settings_capability():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
     assert ADMIN_CAPS["admin_reject_reports"] == "settings"
     assert ADMIN_CAPS["arp_*"] == "settings"

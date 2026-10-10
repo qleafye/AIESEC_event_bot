@@ -662,7 +662,7 @@ def test_send_wave_end_ping_close_wave_false_no_send(tmp_path, monkeypatch):
 
     async def fake_holders(cap, *, city=None):
         return [42]
-    monkeypatch.setattr("handlers.admin_caps.capability_holders", fake_holders)
+    monkeypatch.setattr("handlers.access.admin_caps.capability_holders", fake_holders)
 
     _run(sched.send_wave_end_ping(wave_id))
     assert bot.sent == []
@@ -694,7 +694,7 @@ def test_send_wave_end_ping_only_city_managers_and_has_numbers(tmp_path, monkeyp
     async def fake_holders(cap, *, city=None):
         seen_city["city"] = city
         return [42]
-    monkeypatch.setattr("handlers.admin_caps.capability_holders", fake_holders)
+    monkeypatch.setattr("handlers.access.admin_caps.capability_holders", fake_holders)
 
     _run(sched.send_wave_end_ping(wave_id))
     assert seen_city["city"] == "msk"
@@ -717,7 +717,7 @@ def test_send_wave_end_ping_double_fire_exactly_one_send(tmp_path, monkeypatch):
 
     async def fake_holders(cap, *, city=None):
         return [42]
-    monkeypatch.setattr("handlers.admin_caps.capability_holders", fake_holders)
+    monkeypatch.setattr("handlers.access.admin_caps.capability_holders", fake_holders)
 
     _run(sched.send_wave_end_ping(wave_id))  # первое срабатывание — active -> closing
     _run(sched.send_wave_end_ping(wave_id))  # второе (повторный тик/переармирование) — no-op
@@ -737,7 +737,7 @@ def test_send_wave_end_ping_quiet_hours_queues_but_still_closes_wave(tmp_path, m
 
     async def fake_holders(cap, *, city=None):
         return [42]
-    monkeypatch.setattr("handlers.admin_caps.capability_holders", fake_holders)
+    monkeypatch.setattr("handlers.access.admin_caps.capability_holders", fake_holders)
     monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 8, 23, 0, 0))
 
     _run(sched.send_wave_end_ping(wave_id))
@@ -770,7 +770,7 @@ def test_send_wave_end_ping_escapes_name(tmp_path, monkeypatch):
 
     async def fake_holders(cap, *, city=None):
         return [42]
-    monkeypatch.setattr("handlers.admin_caps.capability_holders", fake_holders)
+    monkeypatch.setattr("handlers.access.admin_caps.capability_holders", fake_holders)
 
     _run(sched.send_wave_end_ping(wave_id))
     text = bot.sent[0][1]

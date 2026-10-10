@@ -1,5 +1,5 @@
 """Форум-ночь B3 (идея №22): шпаргалка волонтёра чек-ина — личное сообщение человеку, который
-только что получил роль/право с capability `checkin` (`handlers/admin_roles.py::roles_assign`).
+только что получил роль/право с capability `checkin` (`handlers/access/admin_roles.py::roles_assign`).
 
 Покрывает:
 - роль несёт `checkin` (role_caps_<role> настроен менеджером) -> новое назначение шлёт текст
@@ -19,8 +19,8 @@ import asyncio
 from config import config
 from database import db
 from database.db import set_setting
-from handlers import admin_roles
-from handlers.admin_caps import role_caps_key
+from handlers.access import admin_roles
+from handlers.access.admin_caps import role_caps_key
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 910301

@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery, Chat, Message, User
 
 from config import config
 from handlers import admin_settings, admin_settings_enum
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import EditSetting
 from tests._dbtpl import fast_init_db
 

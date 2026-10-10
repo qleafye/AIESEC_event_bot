@@ -27,7 +27,7 @@
   - менеджеру города НАЗНАЧЕНИЯ уходит АГРЕГИРОВАННАЯ сводка, не сообщение на каждого
     переехавшего — интервальная джоба `_notify_managers_job` (раз в `_NOTIFY_INTERVAL_MINUTES`
     минут) сканирует ещё не отправленные строки `response=RNM_MOVED`, группирует по городу
-    назначения и шлёт одно сообщение держателям `moderate_reg` (`handlers.admin_caps.
+    назначения и шлёт одно сообщение держателям `moderate_reg` (`handlers.access.admin_caps.
     notify_by_capability`, city-scoped)."""
 from __future__ import annotations
 
@@ -574,7 +574,7 @@ async def _notify_managers_job() -> None:
     Потеря одной сводки менеджеру безопаснее дубля — менеджер сверяет переезды по счётчику
     экрана `_regional_noshow_cfg_text_kb` (`summary_text`), не только по уведомлениям."""
     from database.db import regional_noshow_move_mark_notified, regional_noshow_move_unnotified_moved
-    from handlers.admin_caps import notify_by_capability
+    from handlers.access.admin_caps import notify_by_capability
     import domain.cities as _cities
 
     bot = _bot()

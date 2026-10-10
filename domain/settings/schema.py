@@ -3815,7 +3815,7 @@ SETTINGS_SCHEMA = {
     # payment_enabled/consent_enabled/party_enabled, so it plugs into the existing generic
     # `_toggle_module_setting` helper (reads get_setting_typed(key) == "on") with zero
     # conversion at the call site (see 08-01-PLAN.md Task 2 discretion note).
-    # Quick 260813: экран «✏️ Права роли» — чекбоксы (handlers/admin_roles.py::show_role_caps),
+    # Quick 260813: экран «✏️ Права роли» — чекбоксы (handlers/access/admin_roles.py::show_role_caps),
     # не набор кода текстом. Этот prompt здесь не показывается ни в одном живом экране (ключ
     # исключён из редактируемых в Mini App и в общем settings_edit — своя поверхность правки),
     # оставлен человекочитаемым на случай ручного просмотра реестра.
@@ -3882,7 +3882,7 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "roles", "label": "🎗 Роль «Волонтёр регистрации»",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
-    # Роль маркетолога: только ссылки с метками и счётчики заявок по ним (handlers/admin_caps.py).
+    # Роль маркетолога: только ссылки с метками и счётчики заявок по ним (handlers/access/admin_caps.py).
     "role_caps_marketing_manager": {
         "type": "list", "group": "roles", "label": "📣 Права роли: Маркетинг (метки)",
         "prompt": (
@@ -7717,7 +7717,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     # Форум-ночь B3 (идея №22): шпаргалка волонтёра — уходит ЛИЧНЫМ сообщением человеку, кому
-    # только что выдали право `checkin` (handlers/admin_roles.py::roles_assign). group "apps" —
+    # только что выдали право `checkin` (handlers/access/admin_roles.py::roles_assign). group "apps" —
     # менеджер её только редактирует, делегату (i18n-корпус) она никогда не показывается, тот же
     # довод, что у checkin_event_tag выше. per_city не нужен — инструкция для волонтёра
     # одинакова в любом городе.

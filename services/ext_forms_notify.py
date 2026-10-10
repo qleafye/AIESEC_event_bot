@@ -9,7 +9,7 @@ import html
 import logging
 
 from database import ext_forms_db as ef
-from handlers.admin_caps import notify_by_capability
+from handlers.access.admin_caps import notify_by_capability
 from services.quiet_hours import is_quiet, window_for_city
 from services.timeutil import msk_now
 

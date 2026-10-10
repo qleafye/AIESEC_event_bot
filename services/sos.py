@@ -731,7 +731,7 @@ async def relay_delegate_message(message, report_id: int) -> None:
             )
     from config import config
     from database.db import list_sos_card_copies
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
 
     recipients = await capability_holders("moderate_reg", city=report.get("city"))
     if not recipients:
@@ -801,7 +801,7 @@ async def delivery_retry_job(report_id: int) -> None:
 
 
 # ── Здоровье привязанного чата (пункт 2 плана, находка 2) — процессный (не в БД) словарь,
-# та же форма, что `handlers/admin_caps.py::_blocked_notified_at` (троттлинг «раз в час», после
+# та же форма, что `handlers/access/admin_caps.py::_blocked_notified_at` (троттлинг «раз в час», после
 # рестарта алерт может повториться — это приемлемо, не критичный журнал). Красная строка на
 # экране менеджера (`handlers/admin_sos.py::render_sos_screen`) читает `chat_is_unhealthy`
 # напрямую — тот же процесс шлёт алерт и рендерит экран.
@@ -831,7 +831,7 @@ async def _mark_chat_unhealthy(chat_id: int, city: str | None) -> None:
     _chat_alert_sent_at[chat_id] = now
     try:
         import services.scheduler as scheduler_module
-        from handlers.admin_caps import notify_by_capability
+        from handlers.access.admin_caps import notify_by_capability
 
         bot = scheduler_module.get_bot()
         await notify_by_capability(
@@ -846,7 +846,7 @@ async def _mark_chat_unhealthy(chat_id: int, city: str | None) -> None:
 async def _fallback_fanout(bot, report: dict, text: str, kb) -> int:
     from config import config
     from database.db import add_sos_card_copy
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
 
     recipients = await capability_holders("moderate_reg", city=report.get("city"))
     if not recipients:
@@ -938,7 +938,7 @@ async def _send_escalation(bot, report: dict, group_text: str, *, alert_head: st
     роняет эскалацию молча (перепривязка + один повтор в новый chat_id), а провал отправки
     метит чат нездоровым (алерт держателям settings, троттлинг раз в час)."""
     from database.db import get_user
-    from handlers.admin_caps import notify_by_capability
+    from handlers.access.admin_caps import notify_by_capability
 
     chat = await sos_chat_for_city(report.get("city"))
     if chat is not None:

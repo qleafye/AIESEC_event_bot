@@ -16,7 +16,7 @@ import pytest
 import domain.cities as cities
 from config import config
 from database import db
-from handlers.admin_caps import role_caps_key
+from handlers.access.admin_caps import role_caps_key
 from services.checkin import checkin_denial
 from services.revert_pending import preview_revert_pending, revert_to_pending
 from tests._dbtpl import fast_init_db
@@ -617,7 +617,7 @@ def test_revertp_cancel_changes_nothing(tmp_path):
 def test_revertp_capability_registered_for_every_callback():
     """T-08-12 (deny-by-default): каждый callback-префикс хендлера обязан быть в ADMIN_CAPS,
     иначе CapabilityMiddleware молча блокирует кнопку всем, включая суперадмина."""
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     for prefix in ("revertp_start:*", "revertp_toggle:*", "revertp_apply:*", "revertp_cancel:*"):
         assert ADMIN_CAPS.get(prefix) == "moderate_reg", prefix
@@ -1060,7 +1060,7 @@ def test_resubg_cancel_changes_nothing(tmp_path):
 
 
 def test_resubg_capability_registered_for_every_callback():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     for prefix in (
         "resubg_start:*", "resubg_toggle:*", "resubg_apply:*", "resubg_cancel:*", "resubg_revoke:*",
@@ -1466,7 +1466,7 @@ def test_editg_cancel_changes_nothing(tmp_path):
 
 
 def test_editg_capability_registered_for_every_callback():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     for prefix in (
         "editg_start:*", "editg_toggle:*", "editg_apply:*", "editg_cancel:*", "editg_revoke:*",

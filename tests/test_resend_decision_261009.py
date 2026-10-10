@@ -13,7 +13,7 @@ from aiogram.exceptions import TelegramForbiddenError
 import domain.cities as cities
 from config import config
 from database import db
-from handlers.admin_caps import ADMIN_CAPS, required_capability, role_caps_key
+from handlers.access.admin_caps import ADMIN_CAPS, required_capability, role_caps_key
 from services import decision_delivery
 from tests._dbtpl import fast_init_db
 

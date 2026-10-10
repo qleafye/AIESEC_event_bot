@@ -292,7 +292,7 @@ from domain.settings.synonyms import SETTINGS_SYNONYMS
 from handlers import admin_sections as sec
 from handlers import admin_settings
 from handlers.applications import admin_modcard
-from handlers.admin_caps import ADMIN_CAPS
+from handlers.access.admin_caps import ADMIN_CAPS
 from tests._dbtpl import fast_init_db
 
 

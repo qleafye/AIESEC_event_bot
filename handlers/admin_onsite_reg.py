@@ -7,7 +7,7 @@
 
 Своего `Router()` нет — декорирует `handlers.admin.router`, тот же приём, что
 handlers/admin_lost_found.py; импортирован в ХВОСТЕ handlers/admin.py (golden snapshot — чистое
-добавление). Капа — «moderate_reg», как у соседних тумблеров хаба (handlers/admin_caps.py);
+добавление). Капа — «moderate_reg», как у соседних тумблеров хаба (handlers/access/admin_caps.py);
 городская привязка менеджера (D-26) — `_city_allowed`, как у бюро находок."""
 import html
 import logging

@@ -16,7 +16,7 @@ from config import config
 from database import db
 from handlers.applications import admin_reject_journal as j
 from handlers.applications import admin_reject_rules
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from services.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 

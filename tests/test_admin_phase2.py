@@ -12,7 +12,7 @@ from handlers.applications.admin_moderation import (  # Phase 13 (13-06): modera
     _parse_appr,
     _render_application_card,
 )
-from handlers.admin_roles import (  # Phase 13 (13-04): settings-guide moved here
+from handlers.access.admin_roles import (  # Phase 13 (13-04): settings-guide moved here
     _render_settings_guide,
     SETTINGS_GUIDE_SECTIONS,
     SETTINGS_GUIDE_KEYS,

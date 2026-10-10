@@ -14,7 +14,7 @@ import json
 
 from config import config
 from database import db
-from handlers import admin_caps
+from handlers.access import admin_caps
 from handlers import registration as reg_mod
 import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
@@ -96,9 +96,9 @@ def _patch_notify(monkeypatch):
 
     # Квик 260916: post_finalize больше не зовёт notify_by_capability напрямую — оно ушло за
     # services.reg_digest.notify_application, которая резолвит его ЛЕНИВЫМ импортом `from
-    # handlers.admin_caps import notify_by_capability` внутри функции при каждом вызове.
+    # handlers.access.admin_caps import notify_by_capability` внутри функции при каждом вызове.
     # Патч на reg_mod.notify_by_capability (прежняя ссылка в handlers.registration) этот
-    # вызов больше не перехватывает — источник импорта теперь handlers.admin_caps, патчим его.
+    # вызов больше не перехватывает — источник импорта теперь handlers.access.admin_caps, патчим его.
     monkeypatch.setattr(admin_caps, "notify_by_capability", fake_notify)
     monkeypatch.setattr(reg_mod, "notify_by_capability", fake_notify)
     return calls

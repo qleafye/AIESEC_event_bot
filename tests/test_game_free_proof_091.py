@@ -536,5 +536,5 @@ def test_t3_moderation_card_survives_broken_file_id_logs_and_continues(tmp_path)
 
 
 def test_t3_gtproof_done_registered_under_moderate_game():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     assert required_capability(callback_data="gtproof_done") == "moderate_game"

@@ -292,7 +292,7 @@ def test_days_editor_shows_default_number(tmp_path):
 # ── «👥 Роли и доступы»: имена вместо id, МСК вместо UTC ISO, без служебных слов ─────────────
 
 def test_roles_screen_human_names_and_msk_time(tmp_path):
-    from handlers import admin_roles
+    from handlers.access import admin_roles
     _seed_spb(tmp_path)
 
     async def _setup():

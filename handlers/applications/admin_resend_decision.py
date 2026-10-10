@@ -5,7 +5,7 @@ decision_delivery.py::resend_one_decision` (тот же путь и те же т
 
 Шов той же формы, что `admin_revert_pending.py`: своего `Router()` нет, хендлеры декорируют
 ОБЩИЙ `admin.router`, модуль импортируется хвостом `handlers/admin.py`. Право — `moderate_reg`
-(`decresend_*` в `handlers/admin_caps.py`) плюс проверка города менеджера."""
+(`decresend_*` в `handlers/access/admin_caps.py`) плюс проверка города менеджера."""
 import html as html_module
 import logging
 

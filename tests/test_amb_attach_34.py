@@ -106,7 +106,7 @@ def _flow_ready(tmp_path):
 
 
 def test_caps_resolve_for_every_attach_callback():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     for data in ("admin_amb_attach", "ambj_pick:i:5", "ambj_go", "ambj_cancel"):
         assert required_capability(callback_data=data) == "moderate_game", data
     assert required_capability(raw_state="AmbAttach:waiting_note") == "moderate_game"

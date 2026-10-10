@@ -19,7 +19,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_reg_draft, get_reg_started_by_id, get_user
-from handlers.admin_caps import resolve_capabilities
+from handlers.access.admin_caps import resolve_capabilities
 from handlers.registration import _city_fork_then_continue, router
 
 logger = logging.getLogger(__name__)

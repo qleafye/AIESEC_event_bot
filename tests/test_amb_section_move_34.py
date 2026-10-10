@@ -146,7 +146,7 @@ def _state():
 
 
 def test_points_caps_resolve():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     for data in ("admin_amb_points", "ambpt_coins", "ambpt_coins_cancel", "ambpt_toggle:hide",
                  "ambpt_toggle:wavenames", "state:AmbPointsEdit:waiting_for_value"):
         assert required_capability(callback_data=data) == "moderate_game", data

@@ -6,7 +6,7 @@
 Форма шва — своего `Router()` нет, но, В ОТЛИЧИЕ от соседних одно-адресных швов (program.py —
 только делегат, admin_program.py — только менеджер), этот модуль декорирует ОБА общих роутера:
 `handlers.admin.router` (статистика/комментарии менеджеру, callback-пространство `prog_fb*` —
-переиспользует УЖЕ существующую capability-запись `"prog_*": "settings"`, handlers/admin_caps.py,
+переиспользует УЖЕ существующую capability-запись `"prog_*": "settings"`, handlers/access/admin_caps.py,
 второй записи не заводится) И `handlers.user_actions.router` (делегатская оценка). Импортирован
 как голое имя `router` (не `admin_router`) — `tests/test_roles_phase8.py::_decorator_lines`
 ищет декораторы ПО ТЕКСТУ `"@router."`, псевдоним сделал бы менеджерские хендлеры невидимыми
