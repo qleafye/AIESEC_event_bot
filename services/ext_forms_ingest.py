@@ -26,7 +26,7 @@ async def ingest_answer(
         # Делегации вузов: отдельный try — сбой делегаций не должен ронять приём ответа
         # (ретрай очереди второй раз сюда не придёт: insert_answer вернёт False).
         try:
-            from services.delegations import on_answer_available
+            from services.delegations.delegations import on_answer_available
             await on_answer_available(form["id"], str(answer_id))
         except Exception as e:  # noqa: BLE001
             logger.warning("delegations: хук ответа %s формы %s: %s",
