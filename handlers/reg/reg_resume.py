@@ -111,7 +111,7 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
             return
     if not draft.get("event_city"):
         # Квик 27.09: черновик без города (след старого обхода) продолжается только с городом —
-        # известным (`services.known_city`) или спрошенным; `city_pick` по маркеру
+        # известным (`services.cities.known_city`) или спрошенным; `city_pick` по маркеру
         # `_resume_after_city` вернётся сюда с тем же черновиком, ответы не теряются.
         from handlers.reg.reg_city_gate import form_city_or_ask
         go, city = await form_city_or_ask(tap_message, state, resume=True)

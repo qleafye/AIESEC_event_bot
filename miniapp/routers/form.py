@@ -1076,7 +1076,7 @@ async def draft_submit(
     # NULL. Город берём из уже известного (та же цепочка, что у бота), один открытый —
     # подставляем, иначе возвращаем делегата к выбору города. Тоже ДО claim.
     if ctx["kind"] == "new" and ctx["draft"] and not ctx["event_city"] and await cities_module_on():
-        from services.known_city import known_city
+        from services.cities.known_city import known_city
         city_kind, city_code = await reg_engine.city_gate(await known_city(p.telegram_id))
         if city_kind == "go" and city_code:
             await upsert_reg_draft(p.telegram_id, kind="new", event_city=city_code, source="miniapp")

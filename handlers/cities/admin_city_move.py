@@ -1,5 +1,5 @@
 """Phase 33 (delegate-card admin actions): «🏙 Перевести в город» — кнопка на карточке `/find`
-(`handlers/admin.py::cmd_find_user`), сам перевод — `services/city_move.py`.
+(`handlers/admin.py::cmd_find_user`), сам перевод — `services/cities/city_move.py`.
 
 Не форумная функция (админ-действие модератора, не тумблер делегатского флоу) — своей строки
 в хабе «🎪 Форум: функции» нет и не нужно (см. рабочее задание фазы).
@@ -20,7 +20,7 @@ from handlers.i18n import reg_i18n
 from handlers.admin import router
 from handlers.forum.admin_checkin import _city_allowed
 from services.i18n import i18n as i18n_service
-from services.city_move import (
+from services.cities.city_move import (
     STATUS_MODE_KEEP,
     STATUS_MODE_TO_MODERATION,
     move_user_city,

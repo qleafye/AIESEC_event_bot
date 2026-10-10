@@ -20,7 +20,7 @@
     делегата на момент отправки;
   - ответ делегата не одна кнопка, а мини-флоу «предложение -> подтверждение -> перенос»
     (`handlers/user_actions.py::rnm_accept/rnm_confirm/rnm_decline`) — сам перенос делает
-    `services/city_move.py::move_user_city` (Phase 33), эта строка только фиксирует факт
+    `services/cities/city_move.py::move_user_city` (Phase 33), эта строка только фиксирует факт
     (`response`/`target_city`) в своей таблице; `rnm_confirm` ПЕРЕД самим переносом
     перепроверяет ВСЁ заново из БД (`revalidate_confirm`, ревью 🔴1) — состояние могло
     измениться между показом предложения и тапом «Да, перенести»;
@@ -510,7 +510,7 @@ async def revalidate_confirm(telegram_id: int) -> dict:
 
 
 async def apply_move(telegram_id: int, *, source_city: str | None) -> dict:
-    """Выполняет сам перенос (`services.city_move.move_user_city`) и фиксирует ответ строкой
+    """Выполняет сам перенос (`services.cities.city_move.move_user_city`) и фиксирует ответ строкой
     `response=RNM_MOVED`. Порядок НАРОЧНО такой (ревью 🟡4): СНАЧАЛА атомарный захват строки
     (`database.db.regional_noshow_move_claim`, `UPDATE ... WHERE response IS NULL`), ПОТОМ сам
     перенос — не наоборот. Если бы строка писалась ПОСЛЕ `move_user_city`, два одновременных
@@ -528,7 +528,7 @@ async def apply_move(telegram_id: int, *, source_city: str | None) -> dict:
     `reg_answer_history` от ручного перевода менеджером карточкой (дефолт `move_user_city`,
     `source="admin"`)."""
     from database.db import regional_noshow_move_claim, regional_noshow_move_release_claim
-    from services.city_move import move_user_city
+    from services.cities.city_move import move_user_city
 
     target_city = await target_city_for(source_city)
     status_mode = await move_status_for(source_city)

@@ -68,7 +68,7 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     ни параметром, ни из FSM. Возвращает `(go, city)`:
 
     - модуль городов выключен -> `(True, None)`: стек без городов живёт как раньше;
-    - город известен (`services.known_city`) или открыт ровно один -> `(True, код)`;
+    - город известен (`services.cities.known_city`) или открыт ровно один -> `(True, код)`;
     - иначе показан экран (выбор города или «город закрыт») -> `(False, None)`, вызывающий
       обязан выйти и ждать тапа `city_pick`.
 
@@ -79,7 +79,7 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     тот же приём, что `_persist_fork_attribution`."""
     import domain.regform.engine as reg_engine
     from domain.cities import cities_module_on
-    from services.known_city import known_city
+    from services.cities.known_city import known_city
 
     uid = message.from_user.id
     try:

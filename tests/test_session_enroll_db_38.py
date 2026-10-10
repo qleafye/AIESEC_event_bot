@@ -281,7 +281,7 @@ def test_counts_and_lists(tmp_path):
 
 def test_city_move_deletes_enrollments(tmp_path, monkeypatch):
     import domain.cities as cities
-    from services.city_move import STATUS_MODE_KEEP, move_user_city
+    from services.cities.city_move import STATUS_MODE_KEEP, move_user_city
     from tests import test_city_move_260925 as cm
 
     ready(tmp_path)
@@ -301,7 +301,7 @@ def test_city_move_deletes_enrollments(tmp_path, monkeypatch):
                                        by_admin=1, dry_run=True)
             assert dry["enrollments"] == 1
             assert await se.count_enrollments_for_user(cm.DELEGATE_ID) == 1
-            from services.city_move import preview_city_move
+            from services.cities.city_move import preview_city_move
             assert (await preview_city_move("short", "spb", cm.DELEGATE_ID))["enrollments"] == 1
             rep = await move_user_city(cm.DELEGATE_ID, "spb", status_mode=STATUS_MODE_KEEP,
                                        by_admin=1)
