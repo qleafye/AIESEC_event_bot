@@ -153,7 +153,7 @@ def test_points_caps_resolve():
 
 
 def test_points_screen_text_and_buttons(tmp_path):
-    from handlers import admin_amb_points as h
+    from handlers.amb import admin_amb_points as h
     _ready(tmp_path, selection=True)
     _run(db.set_setting("ambassador_referral_coins", "10"))
     text, kb = _run(h.render_points_screen())
@@ -167,7 +167,7 @@ def test_points_screen_text_and_buttons(tmp_path):
 
 def test_points_input_validation_and_save(tmp_path, caplog):
     import logging
-    from handlers import admin_amb_points as h
+    from handlers.amb import admin_amb_points as h
     from handlers.states import AmbPointsEdit
     _ready(tmp_path, selection=True)
     state = _state()
@@ -193,7 +193,7 @@ def test_points_input_validation_and_save(tmp_path, caplog):
 
 
 def test_points_toggles_flip_shared_settings(tmp_path):
-    from handlers import admin_amb_points as h
+    from handlers.amb import admin_amb_points as h
     _ready(tmp_path, selection=True)
     cb = _Cb("ambpt_toggle:hide")
     _run(h.amb_points_toggle(cb))
@@ -209,7 +209,7 @@ def test_points_toggles_flip_shared_settings(tmp_path):
 
 
 def test_points_stale_button_when_module_off(tmp_path):
-    from handlers import admin_amb_section as sect
+    from handlers.amb import admin_amb_section as sect
     _ready(tmp_path, selection=False)
     assert sect.is_section_callback("admin_amb_points")
     assert sect.is_section_callback("ambpt_toggle:hide")

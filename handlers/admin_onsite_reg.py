@@ -143,4 +143,4 @@ async def onsitereg_qr_send(callback: types.CallbackQuery, bot: Bot):
 
 # Раздел «🤝 Амбассадоры» (admin_amb_entry, ambs_*): вход в команду и лимит мест. Хвост
 # admin.router — после всех хендлеров этого файла, чтобы порядок остальных не сдвинулся.
-from handlers import admin_amb_section  # noqa: E402,F401
+from handlers.amb import admin_amb_section  # noqa: E402,F401

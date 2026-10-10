@@ -127,7 +127,7 @@ class FakeCallback:
 
 
 def _csv_rows():
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     cb = FakeCallback("ambt_csv")
     _run(h.amb_tiers_csv(cb))
     assert len(cb.message.documents) == 1
@@ -213,7 +213,7 @@ def test_csv_formula_injection_escaped(tmp_path):
 # ── тумблеры ────────────────────────────────────────────────────────────────────────────
 
 def test_program_toggle_off_on_off(tmp_path):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _ready(tmp_path)
     assert not _run(amb_tiers.program_on())
     cb = FakeCallback("ambt_toggle:program")
@@ -230,7 +230,7 @@ def test_program_toggle_off_on_off(tmp_path):
 
 
 def test_hide_names_toggle(tmp_path):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _ready(tmp_path)
     cb = FakeCallback("ambt_toggle:hide")
     _run(h.amb_tiers_toggle(cb))
@@ -239,7 +239,7 @@ def test_hide_names_toggle(tmp_path):
 
 
 def test_screen_off_says_disabled_and_has_buttons(tmp_path):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _ready(tmp_path)
     cb = FakeCallback("admin_amb_tiers")
     _run(h.show_amb_tiers(cb, _new_state()))
@@ -257,7 +257,7 @@ def test_screen_off_says_disabled_and_has_buttons(tmp_path):
 # ── исключение и возврат ─────────────────────────────────────────────────────────────────
 
 def _exclude_flow(invitee_input: str, reason="накрутка — аккаунт создан в день регистрации"):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     state = _new_state()
     _run(h.amb_exclude_start(FakeCallback("ambt_excl"), state))
     msg = FakeMessage(invitee_input)
@@ -292,7 +292,7 @@ def test_exclude_invitee_removes_from_counts_keeps_tiers(tmp_path):
 
 
 def test_person_without_referrer_keeps_waiting(tmp_path):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _ready(tmp_path)
     _seed_user(201)
     state = _new_state()
@@ -312,7 +312,7 @@ def test_person_without_referrer_keeps_waiting(tmp_path):
 
 
 def test_unexclude_rechecks_tiers_upwards(tmp_path):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _ready(tmp_path)
     _make_ambassador(100)
     for tid in (201, 202, 203):
@@ -347,14 +347,14 @@ def test_exclude_with_program_off_creates_no_tiers(tmp_path):
     for tid in (201, 202, 203, 204):
         _seed_user(tid, referrer_id=100, status="approved")
     _exclude_flow("204")
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _run(h.amb_unexclude_go(FakeCallback("ambt_unexcl_go:204")))
     assert _run(tdb.list_tiers(100)) == []
     assert _sql("SELECT COUNT(*) FROM miniapp_outbox")[0][0] == 0
 
 
 def test_stale_confirm_button(tmp_path):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _ready(tmp_path)
     cb = FakeCallback("ambt_excl_go")
     _run(h.amb_exclude_go(cb, _new_state()))

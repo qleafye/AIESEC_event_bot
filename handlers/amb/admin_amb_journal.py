@@ -7,7 +7,7 @@
 — после одобрения. Уже закреплённого перезакрепить нельзя: зачёт уже у прежнего пригласившего.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
-импортом `handlers/admin_amb_bulk.py`.
+импортом `handlers/amb/admin_amb_bulk.py`.
 """
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.cities import city_label_or_none
 from database import db as _db
 from handlers.admin import router
-from handlers.admin_amb_bulk import _PICK_MAX, _forwarded_id, _scope
-from handlers.admin_amb_candidates import _alert, _name
+from handlers.amb.admin_amb_bulk import _PICK_MAX, _forwarded_id, _scope
+from handlers.amb.admin_amb_candidates import _alert, _name
 from handlers.states import AmbAttach
 from services import amb_journal, person_search
 from domain.settings.schema import get_setting_typed
@@ -289,4 +289,4 @@ async def attach_go(callback: types.CallbackQuery, state: FSMContext):
 
 # Экран «🪜 Лестница ступеней» (admin_amb_tier_ladder, ambl*) — хвост admin.router после
 # хендлеров этого файла.
-from handlers import admin_amb_tier_ladder  # noqa: E402,F401
+from handlers.amb import admin_amb_tier_ladder  # noqa: E402,F401

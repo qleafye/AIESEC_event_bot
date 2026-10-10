@@ -10,7 +10,7 @@
 в «⚙️ Настройки» под правом settings: запись идёт через `set_setting_by_admin`, значение общее.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
-импортом `handlers/admin_amb_tier_ladder.py`.
+импортом `handlers/amb/admin_amb_tier_ladder.py`.
 """
 from __future__ import annotations
 
@@ -162,4 +162,4 @@ async def amb_points_toggle(callback: types.CallbackQuery):
 
 
 # «🔁 Начислить за прошлых приглашённых» (ambpt_fill*) — хвост admin.router после хендлеров этого файла.
-from handlers import admin_amb_backfill  # noqa: E402,F401
+from handlers.amb import admin_amb_backfill  # noqa: E402,F401
