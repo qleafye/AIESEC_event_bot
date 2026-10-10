@@ -4,7 +4,7 @@
 в handlers/admin_caps.py: все `extf_*` и состояние ExtFormConnect — `settings`.
 
 Шаги: ссылка -> проверка доступа -> ключевые вопросы (по ним ответ привязывается к делегату) ->
-создание формы -> вкладка и адрес приёмника (экраны handlers/admin_ext_forms_setup.py) ->
+создание формы -> вкладка и адрес приёмника (экраны handlers/ext_forms/admin_ext_forms_setup.py) ->
 старые ответы. Из ссылки берётся только id формы / таблицы (+ gid), хосты запросов фиксированы.
 Ход мастера лежит в FSM; после рестарта бота нажатие «✅ Верно» честно просит начать заново."""
 import logging
@@ -18,7 +18,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from database import ext_forms_db as xdb
 from handlers.admin import router
-from handlers.admin_ext_forms import _e, _show, render_form_card
+from handlers.ext_forms.admin_ext_forms import _e, _show, render_form_card
 from handlers.states import ExtFormConnect
 from keyboards.builders import get_cancel_kb
 from services import ext_forms_google as gg

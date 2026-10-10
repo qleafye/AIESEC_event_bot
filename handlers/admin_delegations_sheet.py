@@ -79,7 +79,7 @@ def _form_enabled(form: dict) -> bool:
 async def _hidden_tabs(form: dict) -> set[str]:
     # Ленивый шов: модуль настройки форм живёт в том же роутере, импорт на уровне модуля
     # сдвинул бы порядок регистрации хендлеров.
-    from handlers import admin_ext_forms_setup as setup
+    from handlers.ext_forms import admin_ext_forms_setup as setup
     try:
         return await setup.protected_tab_titles(form)
     except Exception:  # noqa: BLE001 — список служебных вкладок вторичен, выбор не должен падать
