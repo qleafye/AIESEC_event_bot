@@ -514,6 +514,8 @@ def test_render_snapshot_apps(tmp_path):
     expected_keys = [
         "reg_complete_text", "approve_text", "reject_text", "pending_gate_text",
         "pending_reminder_interval",
+        # 10.10: порог «🔒 залип» у вопросов делегатов — сразу после интервала напоминаний.
+        "question_stuck_minutes",
         "preselect_no_username_text", "preselect_fail_text", "preselect_link",
         "nudge_after_minutes", "nudge_text",
         # Phase 28 (28-09, SU-09): слово-фоллбэк для {remaining} — рядом с текстом догонялки.
