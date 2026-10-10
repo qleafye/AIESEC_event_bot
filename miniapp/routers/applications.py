@@ -42,7 +42,7 @@ from pydantic import BaseModel
 
 from domain.cities import ALL_CITIES, cities_module_on, city_label, city_label_or_none, normalize_city
 from services.applications import applications
-from services import quiet_hours
+from services.comms import quiet_hours
 from domain.settings.schema import get_setting_typed
 
 from miniapp import file_tokens, outbox

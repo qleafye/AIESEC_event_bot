@@ -87,7 +87,7 @@ async def _send_one(bot, poll: dict, chat_id: int, intro: str | None, now):
     берётся по его городу, как у рассылок) и опрос лёг в очередь `delayed_notifications`.
     Чекпоинт `poll_messages` для отложенного пишет уже `quiet_hours.flush_due` — иначе ответ
     делегата некуда замапить, а `stop_poll` некуда послать (16.09)."""
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     delivered = []
 

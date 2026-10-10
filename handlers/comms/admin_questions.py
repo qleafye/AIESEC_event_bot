@@ -1,6 +1,6 @@
 """Quick 260904-2cj (QJRN-01..04): раздел «❓ Вопросы делегатов» — журнал ВСЕХ вопросов из
 кнопки «Задать вопрос» со статусом каждого (без ответа / в работе / отвечен) и ответом прямо
-из экрана. Правило статуса — ОДНО место, `services/questions.py` (чистый модуль, эту логику
+из экрана. Правило статуса — ОДНО место, `services/comms/questions.py` (чистый модуль, эту логику
 здесь не дублируем).
 
 Заменяет собой односостояние «🔒 Залипшие вопросы» (T-08-33): старый callback
@@ -29,7 +29,7 @@ from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_view
 from handlers.states import QuestionAnswer
 from keyboards.builders import get_cancel_kb
-from services.questions import (
+from services.comms.questions import (
     FILTER_LABELS,
     format_stamp,
     is_stuck,
@@ -42,7 +42,7 @@ PAGE = 6
 QUESTION_TEXT_LIMIT = 160
 ANSWER_TEXT_LIMIT = 120
 
-# Порядок чипов фильтра на экране — тот же, что в FILTER_LABELS (services/questions.py).
+# Порядок чипов фильтра на экране — тот же, что в FILTER_LABELS (services/comms/questions.py).
 _FILTER_ORDER = ("all", "new", "in_work", "answered")
 
 
@@ -97,7 +97,7 @@ async def render_questions_screen(
     (T-20-10 idiom: экран не навязывает контекст, которого менеджер ещё не выбирал). Любой
     вызов через `aq:*` всегда несёт явный статус (в т.ч. "all"), поэтому обе строки после
     первого тапа появляются всегда."""
-    from services.questions import load_stuck_minutes
+    from services.comms.questions import load_stuck_minutes
 
     await load_stuck_minutes()  # порог «🔒 залип» — из настроек, правка действует сразу
     # WR-05: одно чтение города на экран — тот же scope уходит и в счётчики, и в выборку,

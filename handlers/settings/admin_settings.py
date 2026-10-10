@@ -1561,7 +1561,7 @@ async def toggle_preselect_enabled(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "toggle_pending_reminder")
 async def toggle_pending_reminder(callback: types.CallbackQuery):
-    # Сводка «Заявок в ожидании: N» админам (services/reminders.py): enum on/off, дефолт ON.
+    # Сводка «Заявок в ожидании: N» админам (services/comms/reminders.py): enum on/off, дефолт ON.
     await _toggle_module_setting(callback, "pending_reminder_enabled", "📋 Сводка о заявках")
 
 
@@ -1573,7 +1573,7 @@ async def toggle_nudge_enabled(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "toggle_quiet_hours")
 async def toggle_quiet_hours(callback: types.CallbackQuery):
-    # Quick 260904-dq1: «🌙 Тихие часы» (services/quiet_hours.py) — enum on/off, дефолт OFF.
+    # Quick 260904-dq1: «🌙 Тихие часы» (services/comms/quiet_hours.py) — enum on/off, дефолт OFF.
     await _toggle_module_setting(callback, "quiet_hours_enabled", "🌙 Тихие часы")
 
 

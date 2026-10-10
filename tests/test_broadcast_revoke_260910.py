@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from config import config
 from database import db
 from handlers.comms import admin_broadcasts
-from services import broadcast_run as br
+from services.comms import broadcast_run as br
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900920

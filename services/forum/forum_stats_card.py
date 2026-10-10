@@ -39,7 +39,7 @@ woff2 напрямую и корректно рендерит кириллицу
 Рассылка — идемпотентна по (делегат, сезон) (`database.db.forum_stats_card_sends`,
 `UNIQUE(telegram_id, season)`), захват от двойного тапа — `asyncio.Lock` НА ГОРОД (тот же приём,
 что `services.checkin_broadcast.send_broadcast`). В ОТЛИЧИЕ от QR (D-35: служебное сообщение,
-тихие часы и «🔕» не действуют) — эта рассылка ОБЫЧНАЯ: уважает `services.quiet_hours`
+тихие часы и «🔕» не действуют) — эта рассылка ОБЫЧНАЯ: уважает `services.comms.quiet_hours`
 (делегата в окне тишины пропускаем, НЕ отмечаем отправленным — следующий тап подхватит) и
 «🔕 Не присылать сегодня» (`database.db.get_muted_today_ids`) — этот модуль поэтому явно
 добавлен во владельцы механизма «🔕» в
@@ -98,7 +98,7 @@ from database.db import (
 from services import scheduler as _sched
 from services.forum.checkin import ENTRY_POINT, checkin_denial
 from services.infra.ru_plural import ru_plural
-from services.text_fill import event_kind
+from services.comms.text_fill import event_kind
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
@@ -644,7 +644,7 @@ async def render_preview(lang: str = "ru", city: str | None = None) -> bytes:
     accent = await _brand_colors()
     render_lang = "en" if lang == "en" else "ru"
     city_label_text, date_range_text = await _resolve_footer_parts(city, render_lang)
-    from services.text_fill import event_name
+    from services.comms.text_fill import event_name
 
     return await asyncio.to_thread(
         render_card_sync, _PREVIEW_STATS, background, lang, accent,
@@ -691,7 +691,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         from database.db import get_muted_today_ids
         from handlers.i18n import reg_i18n
         from services.i18n import i18n as i18n_service
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from domain.cities import get_setting_typed_for_city
 
         # Фон/лого/акцент читаются ОДИН раз на всю рассылку (не на каждого делегата) — качаются
@@ -700,7 +700,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         logo = await _load_logo_bytes()
         accent = await _brand_colors()
         caption_base = await get_setting_typed_for_city("forum_stats_card_caption_text", city)
-        from services.text_fill import event_name, fill_event
+        from services.comms.text_fill import event_name, fill_event
 
         event_title = await event_name()
         event_type = await get_setting_typed("event_type")

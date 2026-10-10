@@ -101,7 +101,7 @@ def test_filter_count_past_note(tmp_path):
 
 
 def test_past_season_note_pure(tmp_path):
-    from services import broadcast_scope as sc
+    from services.comms import broadcast_scope as sc
     ready(tmp_path)
     ids = run(seed_delegates())
     allids = [ids["cur1"], ids["empty"], ids["past"]]

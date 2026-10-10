@@ -1513,7 +1513,7 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
             # Quick 260904-dq1: тихие часы — попал в окно, строка в очередь, не сейчас.
             # Начисление монет и _request_game_resync выше НЕ трогаем — деньги и статус
             # проставляются сразу, откладывается только пуш.
-            from services import quiet_hours
+            from services.comms import quiet_hours
             from services.scheduler import _now_moscow_naive
             text = f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{coins}🪙"
             if late and coins != base_coins:
@@ -1634,7 +1634,7 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
         _request_game_resync()  # Phase 09.1 (D, GAME-07): same trigger as grev_approve
         try:
             # Quick 260904-dq1: та же обёртка, что grev_approve выше.
-            from services import quiet_hours
+            from services.comms import quiet_hours
             from services.scheduler import _now_moscow_naive
             text = f"✅ Задание «{html_module.escape(str(task['text']))}» одобрено! +{coins}🪙"
             if late and coins != base_amount:
@@ -1682,7 +1682,7 @@ async def grev_reject_reason(message: types.Message, state: FSMContext):
             user_msg += f"\n\nПричина: {html_module.escape(reason)}"
         try:
             # Quick 260904-dq1: та же обёртка, что у одобрения выше.
-            from services import quiet_hours
+            from services.comms import quiet_hours
             from services.scheduler import _now_moscow_naive
             await quiet_hours.send_or_queue_text(
                 _now_moscow_naive(), submission["user_id"], user_msg,

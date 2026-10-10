@@ -33,7 +33,7 @@ from services.applications import applications
 from services.i18n import i18n
 from services.registration import reg_edit_policy
 from domain.settings.schema import get_setting_typed
-from services.text_fill import fill_collapsing
+from services.comms.text_fill import fill_collapsing
 
 from dashboard.db import read_conn
 from miniapp.deps import Principal, delegate_gate, form_gate, game_denial

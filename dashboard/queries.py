@@ -1298,11 +1298,11 @@ def game_block(conn, scope: Scope) -> dict | None:
 
 _QUESTIONS_TOP_MANAGERS_LIMIT = 3
 
-# Зеркало `services/questions.py::question_status` — ТРИ состояния, порядок веток ФИКСИРОВАН
+# Зеркало `services/comms/questions.py::question_status` — ТРИ состояния, порядок веток ФИКСИРОВАН
 # (сначала `delivered_at`, потом `answered_by`): легаси-строка, которой каким-то образом
 # проставили доставку без захвата, обязана читаться как «отвечен», а не «в работе». Копия, а
 # не импорт — по D-3 (`dashboard/Dockerfile` копирует только `dashboard/`, `shared/web_theme.py`,
-# `shared/tg_media.py`; импорт `services.questions` дал бы `ModuleNotFoundError` на старте
+# `shared/tg_media.py`; импорт `services.comms.questions` дал бы `ModuleNotFoundError` на старте
 # контейнера, тот же класс аварии, что был с `tg_media` 10.09). Паритет с оригиналом закрыт
 # `test_question_status_case_matches_services_question_status`. В отличие от трёх независимых
 # предикатов (см. `database.db._QUESTION_STATUS_SQL`), ветки CASE взаимоисключающие — три

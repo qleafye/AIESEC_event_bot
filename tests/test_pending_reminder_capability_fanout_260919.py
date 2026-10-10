@@ -17,7 +17,7 @@ from aiogram.exceptions import TelegramForbiddenError
 
 from config import config
 from database import db
-import services.reminders as reminders_mod
+import services.comms.reminders as reminders_mod
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 926101
@@ -323,7 +323,7 @@ def test_blocked_staff_recipient_does_not_stop_others(tmp_path, monkeypatch):
 def test_summary_has_open_applications_button():
     """09.10: вместо «Открой /admin → Заявки» (новичок отправлял строку целиком) — кнопка."""
     from handlers.access.admin_caps import required_capability
-    from services import reminders
+    from services.comms import reminders
 
     button = reminders._OPEN_APPS_KB.inline_keyboard[0][0]
     assert button.text == "📋 Открыть заявки"

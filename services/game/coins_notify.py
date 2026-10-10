@@ -5,7 +5,7 @@
 не приходили ВООБЩЕ. Веб пишет событие `coins_manual` в `miniapp_outbox`, а разборщик
 (`services/infra/miniapp_outbox.py`) до этого дня только просил пересборку вкладок геймы — про
 уведомление там не было ни строки, тогда как путь из чата (мастер «🪙 Монеты» и `/coins`)
-уведомлял через `services.quiet_hours`. Класть копию текста в разборщик значило бы завести
+уведомлял через `services.comms.quiet_hours`. Класть копию текста в разборщик значило бы завести
 второй источник формулировки; поэтому функция живёт здесь, а оба пути её зовут.
 
 `handlers/admin.py` реэкспортирует её под прежним именем `_notify_manual_coins` — все
@@ -13,7 +13,7 @@
 (`tests/test_coins_manual_260818.py`, `tests/test_quiet_hours_260904.py`) продолжают работать
 без правок.
 
-Модуль aiogram-free по импортам (бот приходит параметром, как в `services/polls.py`), но
+Модуль aiogram-free по импортам (бот приходит параметром, как в `services/comms/polls.py`), но
 СТОРОНА БОТА по вызову: `services.scheduler._now_moscow_naive` импортируется лениво, внутри
 функции, и веб-процесс её не зовёт — он ставит событие в outbox, а разбирает его бот.
 """
@@ -52,7 +52,7 @@ async def notify_manual_coins(bot, user_id: int, delta: int, reason: str, balanc
         .replace("{balance}", str(balance))
     )
     try:
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.scheduler import _now_moscow_naive
         sent_now = await quiet_hours.send_or_queue_text(
             _now_moscow_naive(), user_id, text,

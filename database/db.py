@@ -1438,7 +1438,7 @@ async def init_db():
         await _ensure_column(db, "reg_submit_digest_queue", "reason", "TEXT")
 
         # Quick 260904-dq1: «🌙 Тихие часы» — очередь уведомлений делегату, отложенных до конца
-        # окна тишины (services/quiet_hours.py). `kind` — закрытый диспетчер на стороне
+        # окна тишины (services/comms/quiet_hours.py). `kind` — закрытый диспетчер на стороне
         # разборщика (application_decision / text_html), `payload` — JSON. `error` хранит след
         # неотправленной/перерешённой строки (T-dq1-06: без отдельного аудита, масштаб
         # 1000-1500 делегатов). FSM — MemoryStorage, поэтому очередь живёт в БД и переживает
@@ -3482,7 +3482,7 @@ def _sheet_safe(value):
     `'@username`, `'-` — phones/usernames no longer matched by filter/ВПР in the sheet.
 
     Used by handlers/registration.py's *_sheet_row builders (active/incomplete/party/short) and
-    by services/sheets/sheet_logs.py / services/polls.py's row builders — everywhere a row is destined
+    by services/sheets/sheet_logs.py / services/comms/polls.py's row builders — everywhere a row is destined
     for Sheets, never for a .csv file. Kept as a named no-op (not just removing the call) so the
     row builders stay self-documenting about WHY no neutralization happens here."""
     return value
@@ -4019,7 +4019,7 @@ async def record_answer_history(
     empty `changes` list — a diff with nothing in it is not an edit worth remembering.
 
     Quick 260906-52m: `changed_at` хранится в UTC (`datetime.utcnow()`), формат строки
-    `"%Y-%m-%d %H:%M:%S"` НЕ менялся — его разбирают и `services/questions.py::_parse_stamp`,
+    `"%Y-%m-%d %H:%M:%S"` НЕ менялся — его разбирают и `services/comms/questions.py::_parse_stamp`,
     и `services/applications/applications.py::format_edited_date`. Показ переводит метку в МСК на всех трёх
     экранах (`services/sheets/sheet_logs.py`, `services/applications/applications.py::_history_entry`,
     `handlers/applications/admin_moderation.py::appr_history`). Соседняя `mark_user_edited` (`edited_at`)
@@ -5212,7 +5212,7 @@ async def cleanup_deliveries(broadcast_id: int):
 
 
 # ── Quick 260910-okb (BC-01..06): immediate-broadcast log store ──────────────
-# `services/broadcast_run.py` is the only caller of the write helpers below — kept here (not
+# `services/comms/broadcast_run.py` is the only caller of the write helpers below — kept here (not
 # there) so the module stays a pure send-loop with no DB-shape knowledge beyond these calls.
 
 async def create_broadcast(
@@ -7371,7 +7371,7 @@ async def set_question_answer(question_id: int, answer_text: str):
     answer was SENT to the delegate OR put into the quiet-hours queue (`delayed_notifications`):
     in quiet hours delivered_at is the moment of queueing, not of the actual delivery. If the
     morning send from the queue fails, `reopen_question_delivery` clears it again.
-    Retried by `services.questions.record_answer`. Never
+    Retried by `services.comms.questions.record_answer`. Never
     called on a claim alone or after a failed send (T-08-33 quick task). delivered_at, not
     answer_text, is the detector `get_stuck_questions()` relies on -- see the column's comment
     in init_db for why answer_text alone can't do it."""
@@ -7414,10 +7414,10 @@ async def list_questions(limit: int = 5000) -> list[dict]:
 
 # ── Quick 260904-2cj (QJRN-01/02/03/04): постраничный журнал вопросов делегатов ─────────────
 #
-# ЗЕРКАЛО `services.questions.question_status` — три фрагмента WHERE ниже обязаны отвечать
+# ЗЕРКАЛО `services.comms.questions.question_status` — три фрагмента WHERE ниже обязаны отвечать
 # ТОЧНО так же, как чистая функция статуса, для каждой строки; расхождение ловит паритет-тест
 # `tests/test_questions_journal_260904.py`. Второй карты «статус вопроса» в проекте нет и не
-# будет — правило объявлено ОДИН раз в services/questions.py, это только SQL-версия того же
+# будет — правило объявлено ОДИН раз в services/comms/questions.py, это только SQL-версия того же
 # правила для фильтрации/подсчёта прямо в базе (без выгрузки всего журнала в Python).
 _QUESTION_STATUS_SQL = {
     "new": "q.answered_by IS NULL",
@@ -9517,7 +9517,7 @@ async def enqueue_delayed_notification(user_id: int, kind: str, payload: dict, d
                                        created_at: str, *, replace: bool) -> int:
     """Кладёт строку в очередь; `replace=True` — сначала удаляет ЛЮБУЮ ещё не отправленную
     строку той же пары (user_id, kind) в ОДНОЙ транзакции («последнее решение выигрывает» —
-    services.quiet_hours.REPLACEABLE_KINDS). `replace=False` — строки копятся списком."""
+    services.comms.quiet_hours.REPLACEABLE_KINDS). `replace=False` — строки копятся списком."""
     async with _connect() as db:
         if replace:
             await db.execute(

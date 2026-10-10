@@ -16,7 +16,7 @@ from aiogram.types import InlineKeyboardButton
 from database.db import SEASON_CURRENT, get_all_users_ids, split_ids_by_season
 from handlers.admin import router
 from handlers.states import Broadcast
-from services.broadcast_scope import current_season_only, season_default_filter
+from services.comms.broadcast_scope import current_season_only, season_default_filter
 
 _ONLY_CURRENT = "🎯 Только текущий сезон"
 

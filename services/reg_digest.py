@@ -123,7 +123,7 @@ def build_digest_text(pending_names: list[str], auto_names: list[str] | None = N
 def auto_reject_block(title: str, names: list[str],
                       rule_counts: list[tuple[str, int]] | None) -> list[str]:
     """Строки блока «🤖 Автоотказ»: заголовок, имена столбиком, правило(а), путь в админке.
-    Общий для пачки уведомлений и периодической сводки ожидания (services/reminders.py)."""
+    Общий для пачки уведомлений и периодической сводки ожидания (services/comms/reminders.py)."""
     block = [title, *_bullets(names)]
     if rule_counts:
         if len(rule_counts) == 1:
@@ -208,7 +208,7 @@ def arm_digest_job(city: str | None, minutes: int, *, first_queued_at: str | Non
 async def auto_rejects_go_to_summary() -> bool:
     """Заявки приходят сводкой раз в N («🔔 Уведомление о заявке» = пачкой) и сама сводка
     включена -> автоотказ не шлётся отдельно: его имена попадают в ту же сводку ожидания
-    (services/reminders.py). Иначе — прежний путь (сразу или пачкой уведомлений)."""
+    (services/comms/reminders.py). Иначе — прежний путь (сразу или пачкой уведомлений)."""
     if await get_setting_typed("pending_notify_mode") != "batched":
         return False
     return await get_setting("pending_reminder_enabled") != "off"

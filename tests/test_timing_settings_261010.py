@@ -63,7 +63,7 @@ def test_deadline_reminder_hours_bad_value_falls_back_to_24(tmp_path, monkeypatc
 # ── Вопрос «🔒 залип»: через сколько минут ───────────────────────────────────────────────
 
 def test_question_stuck_threshold_follows_setting(tmp_path, monkeypatch):
-    from services import questions
+    from services.comms import questions
 
     _ready(tmp_path, "timings_stuck.db")
     monkeypatch.setattr(questions, "_stuck_minutes", questions.STUCK_AFTER_MINUTES)

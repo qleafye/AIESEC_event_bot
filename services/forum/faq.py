@@ -1,7 +1,7 @@
 """Quick 260906-8uq (FAQ-01..06): единственное место, где живёт правило видимости пункта
 FAQ делегату.
 
-Чистый модуль (форма `services/questions.py`, только этот вовсе не ходит в базу — ни одного
+Чистый модуль (форма `services/comms/questions.py`, только этот вовсе не ходит в базу — ни одного
 импорта `database.db`, ни одного импорта `aiogram`): бот и Mini App читают правило отсюда
 ОДИН раз, второй копии «городской пункт перекрывает общий» в проекте нет и не будет.
 
@@ -30,7 +30,7 @@ def normalize_question(text: str | None) -> str:
     """`casefold` (не `lower` — устойчиво к языковым спецсимволам), схлопывание внутренних
     пробелов в один, срез хвостовых `?!.` и кавычек. Используется и правилом перекрытия
     (`apply_city_overrides`), и будущей подсказкой «спрашивали N раз» в журнале вопросов
-    (`services.questions`, follow-up — см. not_in_scope квика)."""
+    (`services.comms.questions`, follow-up — см. not_in_scope квика)."""
     normalized = (text or "").strip().casefold()
     normalized = _WHITESPACE_RE.sub(" ", normalized)
     normalized = _TRAILING_PUNCT_RE.sub("", normalized)

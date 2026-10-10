@@ -340,7 +340,7 @@ async def send_offers(city: str | None) -> dict:
     выключен). Троттлинг/мут/тихие часы — тот же приём, что `forum_noshow_poll.send_poll`."""
     from database.db import get_muted_today_ids, get_user, regional_noshow_move_mark_sent, regional_noshow_move_pending_ids
     from domain.settings.schema import get_setting_typed
-    from services import quiet_hours
+    from services.comms import quiet_hours
     import domain.cities as _cities
 
     bot = _bot()
@@ -357,7 +357,7 @@ async def send_offers(city: str | None) -> dict:
     target_label = await _cities.city_label(target_city)
     raw_text = await _offer_text_for(city)
     dates_label = await _dates_label_for(target_city)
-    from services.text_fill import event_name, fill_event
+    from services.comms.text_fill import event_name, fill_event
 
     event_title = await event_name()
     button_labels = await offer_button_labels()

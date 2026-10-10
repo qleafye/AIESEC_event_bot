@@ -56,7 +56,7 @@ from dashboard.queries import (
     status_totals,
     utm_table,
 )
-from services.questions import question_status
+from services.comms.questions import question_status
 from tests._dbtpl import fast_init_db
 
 DASHBOARD_QUERIES_FILE = REPO_ROOT / "dashboard" / "queries.py"
@@ -841,7 +841,7 @@ def test_questions_block_unnamed_managers_collapse_into_one_row(tmp_path):
 
 def test_question_status_case_matches_services_question_status(tmp_path):
     """Паритет `_QUESTION_STATUS_CASE` (копия в `dashboard/queries.py`, D-3) с оригиналом
-    `services.questions.question_status` -- перебор всех четырёх сочетаний `answered_by`/
+    `services.comms.questions.question_status` -- перебор всех четырёх сочетаний `answered_by`/
     `delivered_at`, бакет читается с РЕАЛЬНОЙ БД через то же SQL-выражение, что использует
     `questions_block`."""
     combos = [

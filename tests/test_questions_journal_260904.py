@@ -1,6 +1,6 @@
 """Quick 260904-2cj (QJRN-01/02/03/04): раздел «❓ Вопросы делегатов».
 
-Задача 1 — общий слой статуса (`services/questions.py`, чистый модуль) + постраничные
+Задача 1 — общий слой статуса (`services/comms/questions.py`, чистый модуль) + постраничные
 аксессоры БД (`database.db.list_questions_page`/`count_questions_by_status`). Задача 2
 дописывает сюда тесты экрана бота (тем же файлом, ниже отдельным блоком).
 
@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from services import questions as q
+from services.comms import questions as q
 
 from tests.test_sheet_logs_260902 import _ready, _add_user
 
@@ -27,7 +27,7 @@ def _run(coro):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# services/questions.py — чистые функции
+# services/comms/questions.py — чистые функции
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_question_status_new_without_answered_by():

@@ -692,7 +692,7 @@ async def _deliver_question_reply(message: types.Message, bot: Bot, user_id: int
     полуправдой.
 
     `on_dispatched`/`on_part_sent`/`question_ref` (10.10) — см. handlers/comms/admin_question_delivery.py."""
-    from services import questions as questions_service, quiet_hours
+    from services.comms import questions as questions_service, quiet_hours
     from services.scheduler import _now_moscow_naive
     now = _now_moscow_naive()
     if message.text:

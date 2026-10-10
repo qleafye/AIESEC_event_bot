@@ -368,7 +368,7 @@ def test_take_without_slot_explains_why(tmp_path):
 
 def test_take_deferred_by_quiet_hours(tmp_path, monkeypatch):
     from handlers.amb import admin_amb_candidates as h
-    from services import quiet_hours
+    from services.comms import quiet_hours
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
     calls = []
