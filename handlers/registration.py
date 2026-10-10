@@ -70,7 +70,7 @@ from handlers.admin_caps import resolve_capabilities
 # reaches into this handler module. Re-imported here since registration.py's own step-flow,
 # sheet builders and finalize/approve path still use every one of these names internally.
 from handlers.reg_schema import (
-    REG_FLOW, _STEP_TO_SETTING, dropout_step_label,
+    REG_FLOW, _STEP_TO_SETTING, dropout_step_label, delegate_step_label,
     REG_DEFAULTS, REG_LABELS, REG_PRESETS, _PARTY_PRESET_OVERNIGHT_EXEMPT,
     _apply_party_preset, _apply_short_preset, REG_CATEGORIES,
     _is_party_track, SHORT_TRACK, _is_short_track,
@@ -823,7 +823,7 @@ async def _show_recall_screen(step_key: str, value, message: types.Message, stat
     await _stamp_reg_step(step_key, message, state, data)
     p = await _progress(step, total) if step else ""
     lang, tr_map = await reg_i18n.ctx_for(message)
-    label = reg_i18n.tr_text(dropout_step_label(step_key), lang, tr_map)
+    label = reg_i18n.tr_text(delegate_step_label(step_key), lang, tr_map)
     display = await _recall_display(step_key, value, lang, tr_map)
     # Phase 17.1 (17.1-02): экран «прошлый ответ» — из реестра. Подстановка цепочкой
     # .replace, не .format: текст менеджера может содержать посторонние {}.
