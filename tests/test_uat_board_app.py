@@ -46,22 +46,25 @@ def test_mark_rejects_bad_payload(board):
 def test_reset_backs_up_previous_state(board):
     state = board._load()
     board._mark(state, {"key": "s1.qr.1", "s": "ok", "note": "", "who": "Кристина"})
+    assert board._mark_agent(state, {"key": "s1.qr.2", "commit": "f052465f"})
     board._store(state)
     data_dir = Path(board.DATA).parent
 
     fresh = board._reset()
 
-    assert fresh == {"v": 2, "steps": {}}
+    # Отметки агента привязаны к коммиту стенда — новый круг начинается и без них.
+    assert fresh == {"v": 3, "steps": {}, "agent": {}}
     assert json.loads(Path(board.DATA).read_text(encoding="utf-8")) == fresh
     backups = sorted(p for p in data_dir.iterdir() if p.name.startswith("state.json.bak-"))
     assert len(backups) == 1
     saved = json.loads(backups[0].read_text(encoding="utf-8"))
     assert saved["steps"]["s1.qr.1"]["who"] == "Кристина"
+    assert saved["agent"]["s1.qr.2"]["c"] == "f052465f"
 
 
 def test_reset_without_file_creates_empty_state(board):
     assert not os.path.exists(board.DATA)
-    assert board._reset() == {"v": 1, "steps": {}}
+    assert board._reset() == {"v": 1, "steps": {}, "agent": {}}
     assert not [p for p in Path(board.DATA).parent.iterdir() if ".bak-" in p.name]
 
 
