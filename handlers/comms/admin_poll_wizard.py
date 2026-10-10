@@ -43,6 +43,15 @@ from handlers.admin import router
 
 logger = logging.getLogger(__name__)
 
+# Экраны мастера: вопрос → варианты → настройки → кому → превью. Номер шага — только через _step,
+# чтобы знаменатель не разъехался, когда экран добавят или уберут.
+POLL_WIZARD_STEPS = 5
+
+
+def _step(n: int) -> str:
+    return f"Шаг {n} из {POLL_WIZARD_STEPS}. "
+
+
 _OPTIONS_SEP = ";"  # «Enter = отправить» на телефоне: варианты можно прислать одной строкой
 
 
@@ -82,7 +91,7 @@ def _settings_kb(anon: bool, multi: bool) -> InlineKeyboardMarkup:
 
 def _settings_text(anon: bool) -> str:
     text = (
-        "⚙️ <b>Настройки опроса</b>\n\n"
+        f"{_step(3)}⚙️ <b>Настройки опроса</b>\n\n"
         "• <b>Анонимный</b> — делегаты не видят, кто как голосовал.\n"
         "• <b>Несколько вариантов</b> — можно выбрать больше одного.\n"
     )
@@ -164,7 +173,7 @@ async def poll_new(callback: types.CallbackQuery, state: FSMContext):
     except Exception:
         pass
     await callback.message.answer(
-        f"📊 <b>Новый опрос</b>\n\nШаг 1 из 4. Напишите вопрос (до {POLL_QUESTION_MAX} символов).\n"
+        f"📊 <b>Новый опрос</b>\n\n{_step(1)}Напишите вопрос (до {POLL_QUESTION_MAX} символов).\n"
         "Например: <i>Во сколько тебе удобнее начать первый день?</i>",
         parse_mode="HTML", reply_markup=get_cancel_kb(),
     )
@@ -202,7 +211,7 @@ async def poll_question_step(message: types.Message, state: FSMContext):
     await state.update_data(question=text, options=[], anon=False, multi=False)
     await state.set_state(PollCreate.options)
     await message.answer(
-        f"Шаг 2 из 4. Пришлите варианты ответа — по одному сообщением или сразу несколько "
+        f"{_step(2)}Пришлите варианты ответа — по одному сообщением или сразу несколько "
         f"через «{_OPTIONS_SEP}» (например: <i>10:00; 11:00; 12:00</i>).\n"
         f"От {POLL_OPTIONS_MIN} до {POLL_OPTIONS_MAX} вариантов, каждый до {POLL_OPTION_MAX} символов. "
         "Когда закончите — «✅ Готово».",
@@ -275,7 +284,7 @@ async def poll_settings_next(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(PollCreate.audience)
     text, kb = await _audience_kb(callback.from_user.id)
     await callback.answer()
-    await callback.message.edit_text("Шаг 3 из 4. " + text, parse_mode="HTML", reply_markup=kb)
+    await callback.message.edit_text(_step(4) + text, parse_mode="HTML", reply_markup=kb)
 
 
 async def _quiet_hours_warning() -> str:
@@ -326,7 +335,7 @@ async def poll_audience_pick(callback: types.CallbackQuery, state: FSMContext, b
         from database.db import get_all_users_ids
         count = len(await get_all_users_ids())
     await callback.message.answer(
-        "Шаг 4 из 4. Выше — как опрос увидит делегат (превью закрыто, голосовать нельзя).\n\n"
+        f"{_step(5)}Выше — как опрос увидит делегат (превью закрыто, голосовать нельзя).\n\n"
         f"Кому: <b>{html_module.escape(audience_label(spec))}</b> — {count} чел.\n"
         f"{await _quiet_hours_warning()}"
         "Отправить сейчас или запланировать?",
