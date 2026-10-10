@@ -91,7 +91,7 @@ def test_off_section_hidden_but_waves_and_tiers_reachable_from_game(tmp_path):
 
 
 def test_waves_screen_back_follows_toggle(tmp_path):
-    from handlers.admin_game_waves import _wave_list_screen
+    from handlers.game.admin_game_waves import _wave_list_screen
     _ready(tmp_path, selection=False)
     _t, kb = _run(_wave_list_screen(ADMIN_ID))
     assert _callbacks(kb)[-1] == "admin_sec:game"

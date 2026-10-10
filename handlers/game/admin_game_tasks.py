@@ -10,7 +10,7 @@ redesigned «🎯 Задания» screens (sketch .planning/sketches/16-game-ui
   final step's «✏️ Изменить» field menu (`gtwiz_edit_menu` / `gtwiz_edit:*` / `gtwiz_back`).
 
 Decorates the SAME shared `admin.router` (13-02/13-03 seam-import technique) -- imported in
-admin.py's bottom seam list right AFTER handlers/admin_gamification.py, so every handler here
+admin.py's bottom seam list right AFTER handlers/game/admin_gamification.py, so every handler here
 lands after the pre-existing gamification handlers in observer order (pure appends to the
 golden snapshot, tests/test_refac_snapshot_260816.py). Split out because admin_gamification.py
 sits at its size ceiling (tests/test_module_size_convention_260816.py); the rendering helpers
@@ -46,7 +46,7 @@ from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync
 from handlers.states import GameTaskCreate, GameTaskEdit
 from domain.game.labels import render_task_card_text
-from handlers.game_task_wizard import (
+from handlers.game.game_task_wizard import (
     _DEADLINE_PAST,
     _PROMPT_CATEGORY,
     _PROMPT_COINS,
@@ -69,10 +69,10 @@ from handlers.game_task_wizard import (
     _wizard_return_to_preview,
 )
 from handlers.admin import router, _parse_positive_int
-# Module reference, NOT `from ... import name`: when a test imports handlers.admin_gamification
+# Module reference, NOT `from ... import name`: when a test imports handlers.game.admin_gamification
 # FIRST, admin.py's seam list reaches this file while admin_gamification is still partially
 # initialised -- attribute access is deferred to call time, so both import orders work.
-from handlers import admin_gamification as _ag
+from handlers.game import admin_gamification as _ag
 
 logger = logging.getLogger(__name__)
 
@@ -503,4 +503,4 @@ __all__ = [
 # discipline, что admin_gamification.py применяет к ЭТОМУ модулю двумя строками выше в
 # цепочке) — золотой снимок порядка (tests/test_refac_snapshot_260816.py) только дополняется,
 # независимо от того, какой модуль импортировали первым.
-from handlers import admin_game_waves  # noqa: E402,F401
+from handlers.game import admin_game_waves  # noqa: E402,F401

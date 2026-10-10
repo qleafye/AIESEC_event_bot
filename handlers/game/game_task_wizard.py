@@ -2,7 +2,7 @@
 («👁 Так увидит делегат» preview + «✅ Опубликовать / ✏️ Изменить / ❌ Отмена») and of the
 deadline presets («сегодня 23:59 / +3 дня / +7 дней / своя дата»). No router, no handlers --
 a seam module in the domain/game/labels.py / game_submit_counter.py mould, imported by BOTH
-handlers/admin_gamification.py (creation steps) and handlers/admin_game_tasks.py (preset
+handlers/game/admin_gamification.py (creation steps) and handlers/game/admin_game_tasks.py (preset
 callbacks, «✏️ Изменить» re-entry, point-edit deadline) -- admin_gamification.py sits at its
 size ceiling (tests/test_module_size_convention_260816.py) and admin_game_tasks.py cannot be
 imported from it (circular seam import), so the shared pieces live here.
@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 
 # Phase 16 (16-03, GAME-UI-03): the wizard's free-text prompts, shared by the creation steps
-# below, the final-step «✏️ Изменить» re-entry (handlers/admin_game_tasks.py) and the
+# below, the final-step «✏️ Изменить» re-entry (handlers/game/admin_game_tasks.py) and the
 # point-edit card -- one literal per prompt, never two copies that can drift.
 _PROMPT_TEXT = "Введите текст задания:"
 _PROMPT_TEXT_EMPTY = "Текст не может быть пустым. Введите текст задания:"
@@ -103,7 +103,7 @@ def _game_task_deadline_preset_kb(prefix: str, cancel_cb: str, *, wave_end: bool
 
 async def _wizard_return_to_preview(target, state: FSMContext) -> bool:
     """Phase 16 (16-03, Task 4): a creation step re-entered from the final preview's
-    «✏️ Изменить» menu (`gt_wiz_edit` flag set by handlers/admin_game_tasks.py) does NOT
+    «✏️ Изменить» menu (`gt_wiz_edit` flag set by handlers/game/admin_game_tasks.py) does NOT
     advance to the next step -- it goes straight back to the preview with the rest of the FSM
     data intact. Returns True when it took over (caller returns), False on a normal first pass."""
     data = await state.get_data()
@@ -117,7 +117,7 @@ async def _wizard_return_to_preview(target, state: FSMContext) -> bool:
 async def _game_task_confirm_kb() -> InlineKeyboardMarkup:
     """Final wizard step (Phase 16, 16-03, Экран 7): «✅ Опубликовать» (callback `gtconfirm`
     unchanged -- creation logic and ADMIN_CAPS untouched), «✏️ Изменить» (field menu, swapped
-    in via edit_reply_markup by handlers/admin_game_tasks.py), «❌ Отмена» (existing)."""
+    in via edit_reply_markup by handlers/game/admin_game_tasks.py), «❌ Отмена» (existing)."""
     publish = await get_setting_typed("game_wizard_publish_btn")
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=publish, callback_data="gtconfirm")],
@@ -181,7 +181,7 @@ async def _show_wizard_preview(target, state: FSMContext):
 
 async def _finish_deadline_step(target, state: FSMContext, when):
     """The tail shared by the typed-date step above and the preset callback
-    (handlers/admin_game_tasks.py::game_task_deadline_preset): store the resolved deadline,
+    (handlers/game/admin_game_tasks.py::game_task_deadline_preset): store the resolved deadline,
     clear a pending «✏️ Изменить» flag (the preview IS the return point) and show the preview.
 
     Phase 32 (32-12, D-27): `when` is either a `datetime` (typed date, a numeric preset, or

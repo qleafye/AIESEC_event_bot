@@ -1,10 +1,10 @@
 """Phase 13 (13-04, REFAC-01): gamification-admin seam.
 
 Task creation/archive/delete wizard ("🎯 Задания" + GameTaskCreate wizard; Phase 16 (16-03):
-the NEW point-edit/preset/preview/«✏️ Изменить» handlers live in handlers/admin_game_tasks.py,
+the NEW point-edit/preset/preview/«✏️ Изменить» handlers live in handlers/game/admin_game_tasks.py,
 imported at the TAIL of this module (see the last lines) -- this file was at its size
 ceiling; Phase 16 (16-04): pure renders/keyboards of the moderation card, manual coins and
-stats bars live in handlers/game_review_render.py, no router), the "🪙 Монеты
+stats bars live in handlers/game/game_review_render.py, no router), the "🪙 Монеты
 вручную" manual-coins wizard (coinsman_*) + "📜 Журнал монет" (coinsjrn_*), submission review
 (grev_*, GameReview wizard), Sheets sync ("🔄 Таблица геймы") and the "📊 Статистика геймы"
 screen — everything gated by moderate_game (ADMIN_CAPS, pre-registered 09-01). Decorates the
@@ -94,13 +94,13 @@ from domain.game.labels import (  # Phase 32 (32-07, D-25/D-27/D-35): срок/�
 from services.game_award import award_for  # Phase 32 (фикс, CR-02): единая формула штрафа —
 # та же функция, что зовёт Mini App (miniapp/routers/review.py::review_approve), больше не
 # собственная копия здесь.
-from handlers.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
+from handlers.game.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
     _CARD_MAX, _CARD_PART_MAX, _GAME_PROOF_LABELS, _MEDIA_CAPTION_MAX, MEDIA_GROUP_MAX,  # noqa: F401
     _coinsman_amount_kb, _coinsman_confirm_kb, _coinsman_person_kb, _proof_types_label,  # noqa: F401
     _render_coinsman_confirm_card, _render_submission_card, _submission_card_kb,  # noqa: F401
     render_category_bars,
 )
-from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers (no router) -- shared
+from handlers.game.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers (no router) -- shared
     _DEADLINE_PAST, _PROMPT_CATEGORY, _PROMPT_COINS, _PROMPT_COINS_INVALID, _PROMPT_DEADLINE,  # noqa: F401
     _PROMPT_TEXT, _PROMPT_TEXT_EMPTY, _finish_deadline_step, _game_task_confirm_kb,  # noqa: F401
     _game_task_deadline_preset_kb, _render_game_task_confirm_card, _resolve_deadline_preset,  # noqa: F401
@@ -633,7 +633,7 @@ async def game_task_proof_done(callback: types.CallbackQuery, state: FSMContext)
     if not await cities_module_on():
         await state.update_data(gt_event_city=None, gt_city_step_shown=False)
         # Phase 32 (32-12, D-12): следующий шаг — кнопочная волна (gtwave:{id|none}, обработчик
-        # game_task_wave_step живёт в handlers/admin_game_tasks.py).
+        # game_task_wave_step живёт в handlers/game/admin_game_tasks.py).
         await _game_task_wave_prompt(callback.message, state, callback.from_user.id)
         await callback.answer()
         return
@@ -2002,11 +2002,11 @@ async def show_game_stats(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ── Seam chain (16-03/16-04): handlers/admin_game_tasks.py decorates the same admin.router and
+# ── Seam chain (16-03/16-04): handlers/game/admin_game_tasks.py decorates the same admin.router and
 # depends one-way on this module (`_ag.<attr>` at call time). It is imported HERE, as the very
 # last statement, so its handlers always register after every handler above -- regardless of
-# whether handlers.admin or handlers.admin_gamification was imported first (admin.py's seam
+# whether handlers.admin or handlers.game.admin_gamification was imported first (admin.py's seam
 # list re-enters while this module is half-initialised; an import from there would register
 # admin_game_tasks' handlers BEFORE ours in that order and break first-match for the shared
 # GameTaskEdit cancel guard). Golden snapshot: tests/test_refac_snapshot_260816.py.
-from handlers import admin_game_tasks  # noqa: E402,F401
+from handlers.game import admin_game_tasks  # noqa: E402,F401

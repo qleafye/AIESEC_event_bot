@@ -5,7 +5,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_game_waves as w
+from handlers.game import admin_game_waves as w
 from tests._dbtpl import fast_init_db
 from tests.test_wave_activate_guard_wr16_260922 import ADMIN_ID, FakeCallback, _new_state
 

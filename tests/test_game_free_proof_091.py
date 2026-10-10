@@ -355,7 +355,7 @@ def test_t2_no_finalizing_sleep_only_album_ack_sleep():
 # ── Task 3: manager checkboxes + moderator sees all parts pooled ─────────────────────────
 
 import handlers.admin as admin_mod
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 from handlers.states import GameTaskCreate
 from tests._dbtpl import fast_init_db
 

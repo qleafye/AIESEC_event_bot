@@ -106,8 +106,8 @@ def test_deadline_preset_key_does_not_shadow_point_edit_key():
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 from handlers import admin as admin_mod  # noqa: E402,F401  (ядро роутера — первым, иначе цикл импорта)
-from handlers import admin_gamification  # noqa: E402
-from handlers import admin_game_tasks  # noqa: E402  (новый шов-модуль этого плана)
+from handlers.game import admin_gamification  # noqa: E402
+from handlers.game import admin_game_tasks  # noqa: E402  (новый шов-модуль этого плана)
 from handlers import admin_core  # noqa: E402
 from handlers import user_actions as ua_mod  # noqa: E402
 from domain.game import labels as game_labels  # noqa: E402
@@ -405,7 +405,7 @@ def test_preview_intro_registry_key_in_game_group():
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 from database.db import GAME_CATEGORIES  # noqa: E402
-from handlers import game_task_wizard  # noqa: E402
+from handlers.game import game_task_wizard  # noqa: E402
 from services.scheduler import _now_moscow_naive  # noqa: E402
 from tests._dbtpl import fast_init_db
 

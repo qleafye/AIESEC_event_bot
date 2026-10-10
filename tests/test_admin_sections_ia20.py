@@ -800,7 +800,7 @@ def test_toggle_inside_section_redraws_that_section(tmp_path, handler_name, call
 ])
 def test_operation_inside_section_redraws_that_section(tmp_path, module, handler_name, callback_data, section):
     from handlers import admin as admin_mod
-    from handlers import admin_gamification as game_mod
+    from handlers.game import admin_gamification as game_mod
 
     _roles_ready(tmp_path)
     cb = FakeCallback(callback_data)
@@ -821,7 +821,7 @@ def test_sheet_operations_return_to_their_section_too():
     import inspect
 
     from handlers.cities import admin_cities as cities_mod
-    from handlers import admin_gamification as game_mod
+    from handlers.game import admin_gamification as game_mod
 
     cases = [
         (admin_sheets.sync_sheet, "callback.data", "admin_sync_sheet", "data"),

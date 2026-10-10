@@ -15,7 +15,7 @@
 модуль импортируется ХВОСТОМ `handlers/admin_settings.py`. Импорты `admin_core`/
 `admin_settings` — ленивые, внутри функций: на уровне модуля они дают цикл
 (admin_core -> admin_sections -> admin_settings -> admin_core). Прецедент ленивого шва —
-`handlers/admin_gamification.py`.
+`handlers/game/admin_gamification.py`.
 """
 import logging
 

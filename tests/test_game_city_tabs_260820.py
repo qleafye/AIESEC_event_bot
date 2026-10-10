@@ -16,7 +16,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin as admin_mod  # noqa: F401 -- seam-imports admin_gamification
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 import services.game_sheets as game_sheets
 from tests._dbtpl import fast_init_db
 

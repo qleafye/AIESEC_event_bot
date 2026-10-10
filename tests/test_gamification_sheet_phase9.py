@@ -18,7 +18,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 from handlers import admin_caps
 from tests._dbtpl import fast_init_db
 

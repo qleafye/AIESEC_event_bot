@@ -283,7 +283,7 @@ def test_journal_paginates_and_hides_task_awards(tmp_path):
     assert row["recipient"] == "Иван Петров"
     assert row["changed_by"] == GAME_MANAGER_ID
     # GAME_MANAGER_ID — staff-only (без строки в `users`); тот же голый id, что и у
-    # `handlers/admin_gamification.py::_coinsman_display_name` в боте (fallback без "User ").
+    # `handlers/game/admin_gamification.py::_coinsman_display_name` в боте (fallback без "User ").
     assert row["changed_by_name"] == str(GAME_MANAGER_ID)
     assert row["reason"] == "причина 3"
     assert row["source_label"] == "Вручную"

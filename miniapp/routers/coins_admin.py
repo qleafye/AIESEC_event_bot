@@ -1,6 +1,6 @@
 """Phase 19 (D-04 волна 2, D-07): менеджерские монеты вручную + журнал из Mini App.
 
-Зеркало визарда `handlers/admin_gamification.py::coinsman_*` (импортировать нельзя — aiogram):
+Зеркало визарда `handlers/game/admin_gamification.py::coinsman_*` (импортировать нельзя — aiogram):
 найти человека -> карточка с балансом -> сумма со знаком -> обязательная причина ->
 подтверждение (на клиенте) -> `add_coins(source="manual", changed_by=менеджер)`. След в БД
 байт-в-байт тот же, что у бота, поэтому «📜 Журнал монет» бота и журнал здесь — одна таблица.
@@ -63,7 +63,7 @@ SOURCE_LABELS = {"manual": "Вручную", "task": "За задание", None
 # ── helpers ──────────────────────────────────────────────────────────────────────────────
 
 def parse_amount_presets(raw: str | None) -> list[int]:
-    """Копия `handlers/game_review_render.py::_parse_amount_presets` (модуль тянет aiogram):
+    """Копия `handlers/game/game_review_render.py::_parse_amount_presets` (модуль тянет aiogram):
     «5,10,20» -> [5, 10, 20]; всё, что не положительное целое, молча пропускается."""
     presets: list[int] = []
     for piece in str(raw or "").split(","):

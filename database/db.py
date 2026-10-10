@@ -8725,7 +8725,7 @@ def task_title(task: dict) -> str:
 
 async def update_task_title(task_id: int, title: str) -> bool:
     """True iff the task existed. `title` must already be validated/truncated by the caller
-    (handlers/admin_gamification.py's wizard-shared validator) -- this is a plain write, no
+    (handlers/game/admin_gamification.py's wizard-shared validator) -- this is a plain write, no
     business rules live here (same division of labor as create_task)."""
     async with _connect() as db:
         cursor = await db.execute(
@@ -9013,7 +9013,7 @@ async def delete_wave(wave_id: int) -> bool:
     выполняется, только если DELETE реально сработал (`rowcount == 1`) — если волна не
     удалилась (проиграна гонка или её уже нет), её задания не должны потерять привязку к
     волне, которая осталась стоять. Сигнатура и поведение при успехе не меняются — вызывающий
-    код (`handlers/admin_game_waves.py::wave_delete_go`) уже не проверяет результат."""
+    код (`handlers/game/admin_game_waves.py::wave_delete_go`) уже не проверяет результат."""
     async with _connect() as db:
         cursor = await db.execute(
             "DELETE FROM ambassador_waves WHERE id = ? AND state != 'announced'", (wave_id,),

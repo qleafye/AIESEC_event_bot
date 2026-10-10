@@ -1,4 +1,4 @@
-"""Ревизия 32-FIX (фиксер 3, находка WR-15) — `handlers/admin_gamification.py::
+"""Ревизия 32-FIX (фиксер 3, находка WR-15) — `handlers/game/admin_gamification.py::
 grev_approve_custom_start`/`grev_approve_amount_step`:
 
 штраф за просрочку применяется и к сумме, введённой менеджером вручную («своя сумма» — как раз
@@ -16,7 +16,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin_gamification
+from handlers.game import admin_gamification
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 932001
