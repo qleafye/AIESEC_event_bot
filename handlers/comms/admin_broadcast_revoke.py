@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_broadcast, list_broadcast_messages
 from handlers.admin import router
-from services.comms.broadcast_run import can_revoke, claim_revoke, run_revoke
+from services.comms.broadcast_run import can_revoke, claim_revoke, release_revoke, run_revoke
 
 # INVARIANT (13-01 cap-test): каждый `@router.*` декоратор ниже — в ОДНУ строку.
 
@@ -93,11 +93,18 @@ async def bc_revgo(callback: types.CallbackQuery, bot: Bot):
         return
     if await _revoke_refused(callback, row):
         return
+    n = len(await list_broadcast_messages(bid))
     if not claim_revoke(bid):
         await callback.answer("Удаление уже идёт.", show_alert=True)
         return
-    n = len(await list_broadcast_messages(bid))
+    try:
+        await _start_revoke(callback, bot, bid, n, ab._spawn)
+    except BaseException:
+        release_revoke(bid)  # прогон не стартовал — иначе «Удаление уже идёт.» до рестарта
+        raise
 
+
+async def _start_revoke(callback: types.CallbackQuery, bot: Bot, bid: int, n: int, spawn) -> None:
     stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="⛔ Остановить", callback_data=f"bc_stop:{bid}")
     ]])
@@ -124,7 +131,7 @@ async def bc_revgo(callback: types.CallbackQuery, bot: Bot):
         except Exception:
             pass
 
-    ab._spawn(run_revoke(bot, bid, on_progress=on_progress, on_finish=on_finish))
+    spawn(run_revoke(bot, bid, on_progress=on_progress, on_finish=on_finish, claimed=True))
 
 
 def revoked_line(row: dict) -> str:
