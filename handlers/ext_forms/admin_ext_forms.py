@@ -373,7 +373,7 @@ async def extf_view(callback: types.CallbackQuery):
     await callback.answer()
 
 # Вход через Яндекс и ключи приложения (шов).
-from handlers import admin_ext_forms_oauth  # noqa: E402,F401
-from handlers import admin_ext_forms_setup  # noqa: E402,F401
-from handlers import admin_ext_forms_connect  # noqa: E402,F401
-from handlers import admin_ext_forms_push  # noqa: E402,F401
+from handlers.ext_forms import admin_ext_forms_oauth  # noqa: E402,F401
+from handlers.ext_forms import admin_ext_forms_setup  # noqa: E402,F401
+from handlers.ext_forms import admin_ext_forms_connect  # noqa: E402,F401
+from handlers.ext_forms import admin_ext_forms_push  # noqa: E402,F401

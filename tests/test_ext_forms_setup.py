@@ -6,7 +6,7 @@ from aiogram.dispatcher.event.bases import UNHANDLED
 
 from config import config
 from database import ext_forms_db as xdb
-from handlers import admin_ext_forms_setup as setup
+from handlers.ext_forms import admin_ext_forms_setup as setup
 from tests.test_roles_phase8 import (
     ADMIN_ID, STRANGER_ID, _fresh_state, _roles_ready, dispatch_callback,
 )
