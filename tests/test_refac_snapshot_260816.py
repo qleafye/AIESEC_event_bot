@@ -1507,6 +1507,9 @@ admin|callback_query|amb_points_cancel|ambpt_coins_cancel
 admin|callback_query|amb_points_toggle|ambpt_toggle:*
 admin|callback_query|amb_backfill_preview|ambpt_fill
 admin|callback_query|amb_backfill_go|ambpt_fill_go
+admin|callback_query|amb_reset_menu|ambrst
+admin|callback_query|amb_reset_preview|ambrst_p:*
+admin|callback_query|amb_reset_go|ambrst_go:*
 admin|callback_query|amb_separator|amb_sep
 admin|callback_query|forumfn_qr_screen|forumfn_qr:*
 admin|callback_query|forumfn_qr_set|forumfn_qr_set:*
@@ -2454,7 +2457,8 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после process_confirm_edit (1223 -> 1224).
     # 10.10 (ретро-применение автоотказа): +3 admin.callback_query сразу после arp_sync (1224 -> 1227).
     # 10.10 («Начислить за прошлых приглашённых»): +2 admin.callback_query после amb_points_toggle (1227 -> 1229).
-    assert len(GOLDEN_SNAPSHOT) == 1229
+    # 10.10 («Сбросить статусы» амбассадоров): +3 admin.callback_query после amb_backfill_go (1229 -> 1232).
+    assert len(GOLDEN_SNAPSHOT) == 1232
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста

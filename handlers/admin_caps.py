@@ -1068,6 +1068,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambc_add_go:*": "moderate_game",
     "ambc_add_cancel": "moderate_game",
     "ambc_arch_csv": "moderate_game",
+    "ambrst": "moderate_game",
+    "ambrst_p:*": "moderate_game",
+    "ambrst_go:*": "moderate_game",
     "state:AmbAppoint:*": "moderate_game",
     # «Закрепить приглашённого» (handlers/admin_amb_journal.py): «ambj_pick:*» не ловит
     # «ambj_go»/«ambj_cancel», поэтому каждый callback отдельной строкой.
