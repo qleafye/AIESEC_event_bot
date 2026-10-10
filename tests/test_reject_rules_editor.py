@@ -425,7 +425,7 @@ def test_delete_confirm_shows_autodescription_and_disable_alternative(tmp_path):
     callback = _FakeCallback(f"arr_d:{rule_id}", user_id=SUPERADMIN_ID)
     _run(admin_reject_rules.arr_delete_confirm(callback))
     text = callback.message.text_edited
-    assert "выключить" in text
+    assert "лучше выключите его" in text
     assert "→ отказ" in text
 
 
@@ -444,7 +444,7 @@ def test_delete_go_does_not_touch_journal_or_delegate_status(tmp_path):
 
     callback = _FakeCallback(f"arr_d:{rule_id}", user_id=SUPERADMIN_ID)
     _run(admin_reject_rules.arr_delete_confirm(callback))
-    assert "заявок: 1" in callback.message.text_edited
+    assert "заявки (1)" in callback.message.text_edited
 
     go_callback = _FakeCallback(f"arr_dgo:{rule_id}", user_id=SUPERADMIN_ID)
     _run(admin_reject_rules.arr_delete_go(go_callback))

@@ -829,19 +829,15 @@ async def arr_delete_confirm(callback: types.CallbackQuery):
         return
     name_or_summary = rule.get("name") or await rule_summary(rule)
     rejected_count = await _rule_reject_count(rule_id)
+    count = f" ({rejected_count})" if rejected_count else ""
+    kept = (f"Уже помеченные им заявки{count} останутся с пометкой, журнал — как есть."
+            if rule.get("action") == "flag"
+            else f"Уже отклонённые им заявки{count} и журнал останутся как есть.")
     lines = [
-        "🗑 <b>Удалить правило навсегда?</b>", "",
-        f"«{html_module.escape(str(name_or_summary))}»", "",
+        f"🗑 <b>Удалить правило «{html_module.escape(str(name_or_summary))}»?</b>", "",
+        f"Правило пропадёт из списка. {kept}",
+        "Вернуть правило нельзя — если сомневаетесь, лучше выключите его.",
     ]
-    if rejected_count:
-        lines.append(f"Уже отклонило заявок: {rejected_count}. Их статус и журнал не изменятся.")
-    else:
-        lines.append("Пока не отклонило ни одной заявки.")
-    lines.append("")
-    lines.append(
-        "Отменить нельзя. Если не уверены — можно вместо удаления просто выключить правило: "
-        "оно останется в списке и перестанет срабатывать, включить его можно будет обратно."
-    )
     buttons = [[InlineKeyboardButton(text="🗑 Да, удалить навсегда", callback_data=f"arr_dgo:{rule_id}")]]
     if rule.get("enabled"):
         buttons.append([InlineKeyboardButton(text="🚫 Выключить вместо удаления", callback_data=f"arr_t:{rule_id}")])
