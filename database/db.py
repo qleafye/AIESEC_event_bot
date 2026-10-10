@@ -6940,6 +6940,7 @@ async def set_payment_due(telegram_id: int, payment_due: str) -> None:
 
 async def add_staff(
     telegram_id: int, role: str, added_by: int | None, expires_at: str | None = None,
+    city: str | None = None,
 ) -> bool:
     """Grant `role` to `telegram_id`. INSERT OR IGNORE against the composite PRIMARY KEY
     (telegram_id, role) makes re-adding an already-held role a no-op, not a duplicate row --
@@ -6950,12 +6951,15 @@ async def add_staff(
 
     `expires_at` (Идея №6, `_ensure_column` above) -- ISO «YYYY-MM-DD» date or None
     (бессрочно). Optional kwarg, every pre-existing call site keeps granting an unlimited
-    role, byte-identical to before this column existed."""
+    role, byte-identical to before this column existed.
+
+    `city` — привязка новой строки к городу в том же INSERT: роль, выданная менеджером с городом,
+    не может ни на миг оказаться «на все города» (NULL), даже если процесс упадёт сразу после."""
     async with _connect() as db:
         cursor = await db.execute(
-            "INSERT OR IGNORE INTO staff (telegram_id, role, added_by, added_at, expires_at) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (telegram_id, role, added_by, datetime.utcnow().isoformat(), expires_at),
+            "INSERT OR IGNORE INTO staff (telegram_id, role, added_by, added_at, expires_at, city) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (telegram_id, role, added_by, datetime.utcnow().isoformat(), expires_at, city),
         )
         await db.commit()
         return cursor.rowcount == 1

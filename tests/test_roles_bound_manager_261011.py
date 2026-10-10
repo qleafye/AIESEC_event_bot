@@ -64,6 +64,44 @@ def test_bound_manager_grants_role_with_own_city(tmp_path):
     assert cb.answers[0][1] is True and "как у вас" in cb.answers[0][0]
 
 
+def test_bound_manager_grant_writes_city_in_the_same_row(tmp_path):
+    """Fail-closed: город лежит в самой строке роли, а не ставится вторым вызовом после неё."""
+    code = _bound_manager(tmp_path)
+    asyncio.run(admin_roles.roles_assign(
+        FakeCallback(f"roles_addrole:{NEWCOMER_ID}:game_manager", user_id=MANAGER_ID), bot=None,
+    ))
+    rows = [r for r in asyncio.run(db.list_staff()) if r["telegram_id"] == NEWCOMER_ID]
+    assert [r["city"] for r in rows] == [code]
+
+
+def test_bound_manager_cannot_grant_to_all_cities_person(tmp_path):
+    """У человека уже есть роль на все города (city NULL) — новая роль от городского менеджера
+    действовала бы во всех городах. Выдаёт только суперадмин или менеджер без города."""
+    _bound_manager(tmp_path)
+    asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID))
+    cb = FakeCallback(f"roles_addrole:{NEWCOMER_ID}:reg_manager", user_id=MANAGER_ID)
+    asyncio.run(admin_roles.roles_assign(cb, bot=None))
+    assert cb.answers == [(admin_roles.ROLES_ALL_CITIES_TARGET_TEXT, True)]
+    assert sorted(asyncio.run(db.get_staff_roles(NEWCOMER_ID))) == ["game_manager"]
+
+
+def test_bound_manager_cannot_grant_to_other_city_person_but_can_to_own(tmp_path):
+    code = _bound_manager(tmp_path)
+    other = next(c for c in cities.city_codes() if c != code)
+    asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID))
+    asyncio.run(db.set_staff_city(NEWCOMER_ID, other))
+    cb = FakeCallback(f"roles_addrole:{NEWCOMER_ID}:reg_manager", user_id=MANAGER_ID)
+    asyncio.run(admin_roles.roles_assign(cb, bot=None))
+    assert cb.answers and cb.answers[0][1] is True and "работает в городе" in cb.answers[0][0]
+    assert sorted(asyncio.run(db.get_staff_roles(NEWCOMER_ID))) == ["game_manager"]
+
+    asyncio.run(db.set_staff_city(NEWCOMER_ID, code))
+    cb = FakeCallback(f"roles_addrole:{NEWCOMER_ID}:reg_manager", user_id=MANAGER_ID)
+    asyncio.run(admin_roles.roles_assign(cb, bot=None))
+    assert sorted(asyncio.run(db.get_staff_roles(NEWCOMER_ID))) == ["game_manager", "reg_manager"]
+    assert {r["city"] for r in asyncio.run(db.list_staff()) if r["telegram_id"] == NEWCOMER_ID} == {code}
+
+
 def test_unbound_manager_grant_stays_all_cities(tmp_path):
     _bound_manager(tmp_path, bound=False)
     cb = FakeCallback(f"roles_addrole:{NEWCOMER_ID}:game_manager", user_id=MANAGER_ID)
@@ -99,3 +137,14 @@ def test_name_from_forward_is_kept_for_roles_list(tmp_path):
     asyncio.run(db.add_staff(NEWCOMER_ID, "game_manager", ADMIN_ID))
     asyncio.run(db.prune_chat_history("2999-01-01 00:00:00"))
     assert asyncio.run(person_label(NEWCOMER_ID)) == "Новый Менеджер (@newbie)"
+
+
+def test_role_keys_through_generic_settings_editor_are_common_and_denied(tmp_path):
+    """Обходной путь: «🔎 Найти настройку» → общий редактор/список с ключом role_caps_* или
+    role_*_enabled. Ключи ролей — общие, запись упирается в тот же гейт, что у остальных общих."""
+    from handlers.settings import admin_settings_global as gscope
+
+    _bound_manager(tmp_path)
+    for key in ("role_caps_reg_manager", "role_reg_manager_enabled"):
+        assert asyncio.run(gscope.common_write_denied(MANAGER_ID, key)) is True
+    assert asyncio.run(gscope.common_write_denied(ADMIN_ID, "role_caps_reg_manager")) is False
