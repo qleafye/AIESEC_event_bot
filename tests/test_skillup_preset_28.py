@@ -165,6 +165,9 @@ def test_settings_block_written_after_toggles(monkeypatch):
     settings_keys = list(fake_preset["settings"])
     first_settings_index = min(calls.index(k) for k in settings_keys)
     assert first_settings_index > last_toggle_index
+    # порядок не должен прикрывать потерю ключей: записаны все ожидаемые
+    expected = set(reg_presets.REG_DEFAULTS) | {"payment_enabled"} | set(fake_preset["settings"])
+    assert expected <= set(calls)
 
 
 # ── Задача 2: пресет «skillup» ─────────────────────────────────────────────────────────────
