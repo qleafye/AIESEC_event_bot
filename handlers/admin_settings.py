@@ -112,7 +112,7 @@ _EVENT_FIELD_ORDER = [
     # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
     "poll_intro_text",
     "event_name", "event_name_genitive", "event_season", "event_type", "bot_name",
-    "bot_description", "bot_short_description", *_UI.BOT_COMMAND_FIELD_ORDER]
+    "bot_description", "bot_short_description", *_UI.BOT_COMMAND_FIELD_ORDER, *_UI.INFO_SCREEN_FIELD_ORDER]
 _EVENT_FIELDS = [
     (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
     for k in _EVENT_FIELD_ORDER
@@ -327,6 +327,7 @@ _GAME_FIELD_ORDER = [
     "balance_history_header_text",
     # Штраф за просрочку и тексты заданий про срок — про задания, не про команду амбассадоров.
     "game_late_penalty_percent", "game_task_no_deadline_text", "game_task_penalty_hint_text",
+    *_UI.GAME_SCREEN_FIELD_ORDER,  # 10.10: кнопки экранов «🪙 Баланс»
 ]
 
 from settings_amb_fields import AMB_FIELD_ORDER as _AMB_FIELD_ORDER  # порядок ключей группы «🤝 Амбассадоры»
