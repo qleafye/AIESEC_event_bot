@@ -21,19 +21,6 @@ class Settings(BaseSettings):
     # PROXY_RECHECK_SECONDS above -> bot_settings.proxy_connect_timeout.
     PROXY_CONNECT_TIMEOUT: int = 5
     ADMIN_IDS: List[int]
-    UNIVERSITIES: List[str] = [
-        "ИТМО",
-        "Политех",
-        "ЛЭТИ",
-        "ГУАП",
-        "БОООНЧ",
-        "Горный",
-        "Военмех",
-        "СПбГАСУ",
-        "СПбГУТ",
-        "Технологический институт (СПбГТИ)",
-        "ВШЭ (Питер)"
-    ]
     DB_PATH: str = "data/forum.db"
     
     # Logging: DEBUG | INFO | WARNING | ERROR. Controls the file-handler level; stdout

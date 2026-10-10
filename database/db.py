@@ -581,6 +581,37 @@ async def seed_lookup_from_snapshot(db: aiosqlite.Connection, kind: str) -> None
     )
 
 
+_UNIVERSITY_LIST_MIGRATION_USER_VERSION = 5
+
+
+async def _freeze_legacy_university_list(db) -> None:
+    """Одноразово по `PRAGMA user_version`. Пустой `university_options` раньше подставлял
+    встроенный список питерских ВУЗов, теперь значит «свободный ввод». Чтобы стеки, где выбор
+    ВУЗа из списка уже включён (`reg_university_mode = list`) и список не задан, не потеряли
+    кнопки, прежний список записывается им явно. Сохранённый менеджером список не трогается;
+    стек в режиме свободного ввода ничего не получает; `user_version` поднимается всегда."""
+    async with db.execute("PRAGMA user_version") as cursor:
+        row = await cursor.fetchone()
+    if (row[0] if row else 0) >= _UNIVERSITY_LIST_MIGRATION_USER_VERSION:
+        return
+    async with db.execute(
+        "SELECT 1 FROM bot_settings WHERE key = 'reg_university_mode' AND value = 'list'"
+    ) as cursor:
+        list_mode = await cursor.fetchone() is not None
+    if list_mode:
+        await db.execute(
+            "INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('university_options', ?)",
+            ("\n".join(reg_options.LEGACY_SPB_UNIVERSITIES),),
+        )
+        await db.execute(
+            "UPDATE bot_settings SET value = ? WHERE key = 'university_options' "
+            "AND trim(value) = ''",
+            ("\n".join(reg_options.LEGACY_SPB_UNIVERSITIES),),
+        )
+    await db.execute(f"PRAGMA user_version = {_UNIVERSITY_LIST_MIGRATION_USER_VERSION}")
+    logger.info("freeze_legacy_university_list: режим списка=%s", bool(list_mode))
+
+
 async def init_db():
     async with _connect() as db:
         await _enable_wal(db)
@@ -2628,6 +2659,7 @@ async def init_db():
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
+        await _freeze_legacy_university_list(db)
 
         # Делегации вузов включаются кнопкой менеджера. Стенды/РилТолк, где форма уже выбрана и
         # модуль работал до гейта, остаются включёнными; прод без формы — выключен. Выключение

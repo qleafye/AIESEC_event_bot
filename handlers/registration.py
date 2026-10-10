@@ -39,7 +39,6 @@ from keyboards.builders import (
     get_informal_day_kb,
     get_source_kb,
     get_education_status_kb,
-    get_universities_kb,
     get_course_kb,
     get_yes_no_kb,
     ADMIN_REREG_BUTTON_TEXT,
@@ -425,7 +424,8 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
                 options = [l.strip() for l in uni_opts.splitlines() if l.strip()]
                 kb = _reply_kb(options, add_other=True)
             else:
-                kb = get_universities_kb()  # fallback: config.UNIVERSITIES
+                # Список не задан: чужие (питерские) вузы не подставляем — свободный ввод.
+                kb = get_skip_kb()
             await _safe_answer(message, f"{p}{await prompt('university', participant_type, city_code)}", reply_markup=kb)
         await state.set_state(Registration.university)
     elif step_key == "course":

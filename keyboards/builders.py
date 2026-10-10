@@ -564,14 +564,6 @@ def get_education_status_kb(options: list[str] | None = None) -> ReplyKeyboardMa
     kb.adjust(1)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
-def get_universities_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    for uni in config.UNIVERSITIES:
-        kb.button(text=uni)
-    kb.button(text="Другое")
-    kb.adjust(2)
-    return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
-
 def get_local_committee_kb() -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
     for lc in LOCAL_COMMITTEE_OPTIONS:
