@@ -102,6 +102,17 @@ async def record_transfer(entries: list[tuple[int, int, str]], changed_by: int) 
     return done
 
 
+async def chat_username_entry(telegram_id: int) -> dict | None:
+    """`{"username", "first_name"}` из `chat_usernames` — то, что бот видел у человека в чате или
+    в пересылке при выдаче роли; `None`, если ничего."""
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT username, first_name FROM chat_usernames WHERE telegram_id = ?", (telegram_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    return {"username": row[0], "first_name": row[1]} if row else None
+
+
 async def chat_username_ids(needles: list[str]) -> dict[str, int]:
     """@ник из чата (без «@», в нижнем регистре) -> telegram_id, только для тех, кто есть в
     `users`: монеты человеку без анкеты некуда показать."""

@@ -22,17 +22,20 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
+from domain.settings.ops import can_write_common
 from domain.settings.schema import get_setting_typed
 from database.db import (
     add_staff,
     get_reg_started_by_id,  # Phase 33 (задача 2): экран назначения роли для «только /start»
     get_setting,
     get_staff_city,
+    get_staff_roles,
     get_user,
     list_staff,
     remove_staff,
     set_staff_city,
     set_staff_expiry,
+    upsert_chat_username,
 )
 from services.access.person_label import msk_stamp_from_utc_iso, person_label
 from services.access.person_search import search_people
@@ -561,11 +564,29 @@ async def show_roles(callback: types.CallbackQuery):
     await callback.answer()
 
 
+# Роль и её права — одни на все города. Менеджер, привязанный к городу, включив себе или
+# соседу «⚙️ Настройки», получал бы доступ ко всем городам (приёмка 10.10, та же дыра, что у
+# тумблеров модулей) — поэтому роли правит только тот, кто и так видит все города.
+ROLES_COMMON_DENIED_TEXT = (
+    "Роли и их права — общие на все города. Менять их может суперадмин или менеджер без "
+    "привязки к городу: напишите им, что поменять."
+)
+
+
+async def _roles_common_denied(callback: types.CallbackQuery) -> bool:
+    if await can_write_common(callback.from_user.id):
+        return False
+    await callback.answer(ROLES_COMMON_DENIED_TEXT, show_alert=True)
+    return True
+
+
 @router.callback_query(F.data.startswith("roles_toggle:"))
 async def toggle_role_enabled(callback: types.CallbackQuery, bot: Bot | None = None):
     role = callback.data.split(":", 1)[1]
     if role not in ROLES:
         await callback.answer("Неизвестная роль", show_alert=True)
+        return
+    if await _roles_common_denied(callback):
         return
 
     # Same body as _toggle_module_setting, but redraws the ROLES screen, not admin_settings.
@@ -669,6 +690,8 @@ async def toggle_role_cap(callback: types.CallbackQuery, bot: Bot | None = None)
     _, role, cap = parts
     if role not in ROLES or cap not in ALL_CAPABILITIES:
         await callback.answer("Неизвестное право", show_alert=True)
+        return
+    if await _roles_common_denied(callback):
         return
 
     caps = _known_caps(await get_setting_typed(role_caps_key(role)))
@@ -904,6 +927,13 @@ async def roles_add_person(message: types.Message, state: FSMContext):
         await message.answer(marker or _STAFF_INPUT_ERROR)
         return
 
+    # Пересылка — единственное место, где бот видит имя человека без анкеты и /start: без него
+    # «👥 Роли и доступы» подписывают менеджера «id N» (приёмка 10.10).
+    origin = getattr(message, "forward_origin", None)
+    sender = getattr(origin, "sender_user", None) or getattr(message, "forward_from", None)
+    if sender is not None and sender.id == telegram_id:
+        await upsert_chat_username(telegram_id, sender.username, sender.full_name)
+
     await state.clear()
     text, kb = await _render_role_assign_screen(telegram_id)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
@@ -932,8 +962,20 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
         await callback.answer("Неизвестная роль", show_alert=True)
         return
 
+    # Менеджер, привязанный к городу, выдаёт роль — новый человек получает его город, а не
+    # NULL («все города»): иначе привязанный выдавал бы второму аккаунту доступ ко всем городам
+    # (выбор города при выдаче — только у суперадмина, ниже).
+    issuer_city = None
+    if callback.from_user.id not in config.ADMIN_IDS and await cities_module_on():
+        issuer_city = await get_staff_city(callback.from_user.id)
+    newcomer = not await get_staff_roles(tid)
+
     created = await add_staff(tid, role, callback.from_user.id)
-    await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
+    if created and issuer_city and newcomer:
+        await set_staff_city(tid, issuer_city)
+        await callback.answer(f"Добавлен — город {await city_label(issuer_city)}, как у вас", show_alert=True)
+    else:
+        await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
 
     # Форум-ночь B3 (идея №22): человеку, только что впервые получившему право «checkin»
     # (сама роль его несёт СЕЙЧАС), — шпаргалка волонтёра; в канун/день форума — с отметкой
