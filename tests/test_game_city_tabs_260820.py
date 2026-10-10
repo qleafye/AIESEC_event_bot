@@ -1,6 +1,6 @@
 """Quick GAME-CITY-TABS: per-city gamification sheet tabs.
 
-- services/game_sheets.py pure filters (tasks by task city / NULL="all", submissions by the
+- services/game/game_sheets.py pure filters (tasks by task city / NULL="all", submissions by the
   DELEGATE's city, both through cities.normalize_city so NULL/unknown fall to the default city);
 - game_tab_plan(): module OFF -> exactly the two whole-event tabs; module ON -> + a matrix/
   history pair per ENABLED city with a non-empty tab base, named base + registry suffix
@@ -17,7 +17,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod  # noqa: F401 -- seam-imports admin_gamification
 from handlers.game import admin_gamification
-import services.game_sheets as game_sheets
+import services.game.game_sheets as game_sheets
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 930991
@@ -230,8 +230,8 @@ def test_rebuild_one_city_tab_failure_does_not_skip_the_rest(tmp_path, monkeypat
 
 
 def test_autosync_treats_any_failed_tab_as_failure(tmp_path, monkeypatch):
-    """services.game_sync's ok-check must understand the longer tuple (2 + 2N)."""
-    import services.game_sync as game_sync
+    """services.game.game_sync's ok-check must understand the longer tuple (2 + 2N)."""
+    import services.game.game_sync as game_sync
     game_sync.reset_for_tests()
     alerts = []
 
