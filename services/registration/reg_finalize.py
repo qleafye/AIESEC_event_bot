@@ -813,16 +813,18 @@ def _edit_admin_text(full: dict, resubmitted: bool) -> str:
     return f"{heading}\n\U0001f464 {safe_name} ({safe_username})"
 
 
-def _auto_reject_admin_text(full: dict, reject_texts: list) -> str:
+def _auto_reject_admin_text(full: dict, reject_texts: list, rule_name: str | None = None) -> str:
     """D-17: короткое уведомление менеджерам об автоотказе — «🤖 Автоотказ: ФИО (ник) —
-    правило «...»». Правило-подпись — первое предложение первого сработавшего текста, обрезка
+    правило «...»». Подпись — имя правила, которое задал менеджер (`rule_name`, читается из
+    живого правила); без имени или если правило уже удалено — первое предложение первого
+    сработавшего текста, обрезка
     до 60 символов, тот же приём, что `services.applications.reject_journal._rule_label` (журнал не хранит
     отдельного поля «имя правила» в снимке — своя копия здесь, тот модуль aiogram-free и не
     импортирует приватные имена соседа)."""
     safe_name = html.escape(str(full.get("full_name") or "-"))
     safe_username = html.escape(str(full.get("username") or "-"))
-    first = (reject_texts[0] if reject_texts else "").strip()
-    for sep in (".", "!", "?"):
+    first = (rule_name or "").strip() or (reject_texts[0] if reject_texts else "").strip()
+    for sep in (() if (rule_name or "").strip() else (".", "!", "?")):
         idx = first.find(sep)
         if idx != -1:
             first = first[: idx + 1]
@@ -831,6 +833,19 @@ def _auto_reject_admin_text(full: dict, reject_texts: list) -> str:
         first = first[:57].rstrip() + "…"
     safe_label = html.escape(first or "-")
     return f"🤖 <b>Автоотказ:</b> {safe_name} ({safe_username}) — правило «{safe_label}»"
+
+
+async def _first_rule_name(full: dict) -> str | None:
+    """Имя первого сработавшего правила из живой строки `reject_rules`; None — имени нет,
+    правило удалено или id не разобрать (тогда подпись строится из текста отказа)."""
+    from database.db import get_reject_rule
+
+    try:
+        rule_ids = json.loads(full.get("auto_reject_rule_ids") or "[]") or []
+        rule = await get_reject_rule(rule_ids[0]) if rule_ids else None
+    except Exception:
+        return None
+    return str((rule or {}).get("name") or "").strip() or None
 
 
 async def _resolve_update_tab(event_city: str | None, participant_type: str | None) -> str | None:
@@ -1070,7 +1085,7 @@ async def post_finalize(
             status == "pending" and await get_setting_typed("pending_notify_mode") == "instant"
         ) or (status == "rejected" and is_new_auto_reject)
         if status == "rejected" and is_new_auto_reject:
-            admin_text = _auto_reject_admin_text(full, auto_reject_texts)
+            admin_text = _auto_reject_admin_text(full, auto_reject_texts, await _first_rule_name(full))
         else:
             admin_text = _new_admin_text(full, status) if notify_admins else None
     else:
