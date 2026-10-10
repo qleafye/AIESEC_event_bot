@@ -258,7 +258,10 @@ SHEET_COLUMNS = [
     ("Источник", "reg_q_source", lambda d: d.get("source") or "-"),
     ("Амбассадор", "reg_q_ambassador", lambda d: "Да" if d.get("is_ambassador_candidate") else "-"),
     ("Резюме (текст)", "reg_q_resume", lambda d: d.get("resume_text") or "-"),
-    ("Резюме (ссылка)", "reg_q_resume", lambda d: d.get("resume_url") or "-"),
+    # Ссылку, присланную в развилке резюме («🔗 Ссылка»), тоже сюда: своя колонка ниже живёт
+    # за тумблером reg_q_resume_link, по умолчанию выключенным, и без этого ссылки на лист
+    # не попадали вовсе. Новую колонку не заводим — вставка в середину сдвигает строки.
+    ("Резюме (ссылка)", "reg_q_resume", lambda d: d.get("resume_url") or d.get("resume_link") or "-"),
     # Phase 28 (28-04, SU-04, СкиллАп 5): развилка резюме — способ и признак проверенного
     # домена, человеческие слова (D-02); gate reg_q_resume — тот же тумблер, что у вопроса.
     (
