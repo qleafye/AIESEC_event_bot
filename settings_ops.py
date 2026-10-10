@@ -84,6 +84,29 @@ async def apply_event_type_preset(event_type: str, admin_id: int | None = None) 
 
 # ── per-city право на правку (Phase 09.2/09.3) ──────────────────────────────────────────────
 
+def writes_common_value(key: str) -> bool:
+    """Запись ключа меняет значение для всех городов: это не городское значение
+    (`{base}__city__{code}`), а сам ключ — общая настройка или общее значение городской."""
+    return PER_CITY_SEP not in key
+
+
+def sees_all_cities(visible_codes: list[str]) -> bool:
+    return set(visible_codes) == set(city_codes())
+
+
+async def can_write_common(admin_id: int | None) -> bool:
+    """Общее значение (одно на все города) пишет только тот, кто видит все города: суперадмин
+    или менеджер без привязки к городу. Привязанный к городу правит только свой город — иначе,
+    правя «свою» настройку, он менял бы её чужим городам. Модуль городов выключен — город
+    один, правило не действует. Единое правило бота (handlers/admin_settings_global.py) и
+    приложения (validate_batch_item)."""
+    from cities import cities_module_on  # ленивый: cities тянет БД, settings_ops импортируют в тестах без неё
+
+    if admin_id is None or not await cities_module_on():
+        return True
+    return sees_all_cities(await per_city_visible_codes(admin_id))
+
+
 async def per_city_visible_codes(admin_id: int) -> list[str]:
     """Which city codes this admin may edit — a RIGHT, not a filter (Phase 07.2 terminology).
     Superadmins (config.ADMIN_IDS) see every city; a manager bound to a city (get_staff_city)
@@ -902,6 +925,10 @@ EMPTY_VALUE_TEXT = (
     "сбросьте её к значению по умолчанию."
 )
 CITIES_OFF_TEXT = "Города выключены — правка отменена."
+COMMON_DENIED_TEXT = (
+    "Это общая настройка — одна на все города. Менять её может суперадмин или менеджер без "
+    "привязки к городу: напишите им, что поменять."
+)
 FOREIGN_CITY_TEXT = "Этот город правит суперадмин — правка отменена."
 CITY_HEADER_MOVED_TEXT = "Город админки изменился — начните правку заново."
 
@@ -985,6 +1012,8 @@ async def validate_batch_item(
         elif is_command_like(value):
             return BatchCheck(None, error=command_like_text(value))
 
+    if cities_on and writes_common_value(key) and not sees_all_cities(visible_codes):
+        return BatchCheck(None, error=COMMON_DENIED_TEXT)  # привязанный к городу — общее не пишет
     if PER_CITY_SEP in key:
         parsed = split_per_city_key(key)
         if parsed is None or not cities_on:

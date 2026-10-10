@@ -330,6 +330,7 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
         value = await get_setting_typed(base)
         if per_city and ctx.on:
             override_labels = [await city_label(code) for code in await city_override_codes(base)]
+        if ctx.on:  # общее значение — только тому, кто видит все города (settings_ops.can_write_common)
             editable = ctx.sees_all
 
     # Quick 260906-6xe: закрытый набор `multi` (сегодня — modcard_fields) уезжает в JSON

@@ -20,6 +20,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from cities import ALL_CITIES, cities_module_on, city_label, is_per_city
+from settings_ops import COMMON_DENIED_TEXT, can_write_common, writes_common_value
 from handlers.admin import router
 from handlers.states import EditSetting
 from settings_schema import SETTINGS_SCHEMA
@@ -38,6 +39,23 @@ async def is_global_in_city_context(key: str, header_code: str | None) -> bool:
     )
 
 
+async def common_write_denied(admin_id: int, key: str) -> bool:
+    """Запись `key` меняет общее значение, а писать общее этому админу нельзя (привязан к
+    городу). Проверяется на ЗАПИСИ (`settings_edit_value`, списки, кнопка «для всех городов»),
+    а не только скрытием кнопки: старая клавиатура в чате живёт вечно."""
+    return writes_common_value(key) and not await can_write_common(admin_id)
+
+
+async def deny(callback_or_message, key: str) -> bool:
+    if not await common_write_denied(callback_or_message.from_user.id, key):
+        return False
+    if hasattr(callback_or_message, "data"):  # нажатие кнопки — всплывающее окно
+        await callback_or_message.answer(COMMON_DENIED_TEXT, show_alert=True)
+    else:
+        await callback_or_message.answer(COMMON_DENIED_TEXT)
+    return True
+
+
 def needs_confirm(key: str) -> bool:
     """Ввод текстом — только через кнопку; enum и списки пишут своими кнопками."""
     return SETTINGS_SCHEMA[key].get("type") not in ("enum", "list")
@@ -46,9 +64,14 @@ def needs_confirm(key: str) -> bool:
 _INPUT_HINT = "Пришлите новое значение сообщением."
 
 
-async def warn_screen(key: str, header_code: str, text: str, kb: InlineKeyboardMarkup) -> tuple[str, InlineKeyboardMarkup]:
+async def warn_screen(key: str, header_code: str, text: str, kb: InlineKeyboardMarkup,
+                      denied: bool = False) -> tuple[str, InlineKeyboardMarkup]:
     """Пометку «Общая настройка (одна на все города)» экран правки уже ставит сам
-    (`admin_settings._settings_edit_screen`); здесь — вход в ввод только через кнопку."""
+    (`admin_settings._settings_edit_screen`); здесь — вход в ввод только через кнопку, а
+    привязанному к городу — объяснение вместо кнопки."""
+    if denied:
+        text = text.replace(_INPUT_HINT, "")
+        return text + f"\n\n🔒 {html.escape(COMMON_DENIED_TEXT)}", kb
     if needs_confirm(key):
         city = html.escape(await city_label(header_code))
         text = text.replace(_INPUT_HINT, f"Нажмите «{CONFIRM_BUTTON_TEXT}» и пришлите новое значение.")
@@ -65,6 +88,8 @@ async def settings_edit_all(callback: types.CallbackQuery, state: FSMContext):
     key = callback.data[len(CONFIRM_PREFIX):]
     if key not in SETTINGS_SCHEMA or is_per_city(key) or not needs_confirm(key):
         await callback.answer("Эта кнопка устарела — откройте настройку заново.", show_alert=True)
+        return
+    if await deny(callback, key):
         return
     await state.clear()
     await state.set_state(EditSetting.waiting_for_value)
