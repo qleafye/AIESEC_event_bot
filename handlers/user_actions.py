@@ -2033,7 +2033,7 @@ async def checkin_not_arrived_respond(callback: types.CallbackQuery):
             entry = None
         if entry is not None and (entry.get("day") == day or entry.get("is_today")):
             text = reg_i18n.tr_fmt(
-                "Ты уже отмечен(а) на входе в {time} — всё в порядке, приятного форума!",
+                "Ты уже отмечен(а) на входе в {time} — всё в порядке, хорошего дня!",
                 lang, tr_map, time=entry["time_label"],
             )
             await callback.answer("✅ " + text, show_alert=True)

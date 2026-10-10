@@ -468,8 +468,8 @@ _CODE_LITERALS_EN = {
     "Сохранил, открывается": "Saved, it opens",
     "Написать": "Write a comment",
     "Покажи этот экран волонтёру на входе.": "Show this screen to the volunteer at the entrance.",
-    "Ты уже отмечен(а) на входе в {time} — всё в порядке, приятного форума!":
-        "You're already checked in at the entrance at {time} — all good, enjoy the forum!",
+    "Ты уже отмечен(а) на входе в {time} — всё в порядке, хорошего дня!":
+        "You're already checked in at the entrance at {time} — all good, have a great day!",
     # Ведущий эмодзи "🎟 " отделяется `split_leading_symbols` ДО перевода (см. докстринг
     # `handlers/reg_i18n.py::tr_text`) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
     "Мой QR": "My QR",
