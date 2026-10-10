@@ -11,8 +11,8 @@ import json
 from config import config
 from database import db
 from handlers import user_actions as ua_mod
-from services import i18n_worker
-from services.i18n_glossary import apply, join_soft_wraps, protect
+from services.i18n import i18n_worker
+from services.i18n.i18n_glossary import apply, join_soft_wraps, protect
 from tests._dbtpl import fast_init_db
 from tests.test_delegate_texts_registry_260819 import FakeMessage
 
@@ -84,7 +84,7 @@ def test_drain_sends_joined_text_and_keeps_mention(tmp_path, monkeypatch):
         return stub
 
     monkeypatch.setattr(i18n_worker, "get_driver", _fake_get_driver)
-    from services.i18n import src_hash
+    from services.i18n.i18n import src_hash
 
     asyncio.run(db.enqueue_translation("en", src_hash(REJECT_RU), REJECT_RU, origin_key="reject_text"))
     asyncio.run(i18n_worker.drain())
@@ -98,7 +98,7 @@ def test_drain_sends_joined_text_and_keeps_mention(tmp_path, monkeypatch):
 
 def test_requeue_picks_only_stale_machine_translations(tmp_path):
     _db_ready(tmp_path)
-    from services.i18n import src_hash
+    from services.i18n.i18n import src_hash
 
     stale_src = "Пиши в @youlead26"
     fresh_src = "Пиши в @youlead27"

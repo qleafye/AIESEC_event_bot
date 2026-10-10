@@ -1309,7 +1309,7 @@ async def show_contacts(message: types.Message):
     parts = []
     if contact_person:
         # Квик 260917-en: contact_person/contact_vk/contact_tg сами НЕ переводятся
-        # (юзернейм/URL, см. services/i18n_sources.py::_NON_LANGUAGE_EVENT_KEYS) — переводим
+        # (юзернейм/URL, см. services/i18n/i18n_sources.py::_NON_LANGUAGE_EVENT_KEYS) — переводим
         # только обёртку вокруг них.
         parts.append(f"{await ui_tr('contacts_person_label_text', lambda s: reg_i18n.tr_text(s, lang, tr_map))}: {contact_person}")
     links = []
@@ -1412,7 +1412,7 @@ async def faq_screen(
     пункт исчез между открытием списка и тапом по стейл-клавиатуре).
 
     Квик 260917-en: сами вопросы/ответы FAQ (`item["question"]`/`item["answer"]`) — свободный
-    текст менеджера per-пункт, вне делегатского корпуса (см. докстринг `services/i18n_sources.py`
+    текст менеджера per-пункт, вне делегатского корпуса (см. докстринг `services/i18n/i18n_sources.py`
     — та же граница, что у текста рассылок/опросов); переводятся только структурные подписи
     экрана (вступление/пусто/кнопки/навигация)."""
     tr_map = tr_map or {}

@@ -543,7 +543,7 @@ async def _render_for(
 ):
     """Подпись и клавиатура на языке получателя — тот же перевод, что у остальных ответов
     делегату (`handlers.i18n.reg_i18n.tr_text`, `show_my_checkin_qr`). `maps` — карты переводов
-    на всю рассылку (`services.i18n.context_cached`), не выборка на каждого.
+    на всю рассылку (`services.i18n.i18n.context_cached`), не выборка на каждого.
 
     В день форума вместо инлайн-кнопки «✅ Сохранил» QR приходит с главным меню делегата:
     reply-клавиатуру сама никто не перерисовывает, и без /start у делегата не появлялась
@@ -551,7 +551,7 @@ async def _render_for(
     инлайн, либо меню; в день форума подтверждение «сохранил» уже ничего не меняет (повторов
     больше не будет), а SOS нужен."""
     from handlers.i18n.reg_i18n import tr_kb, tr_text
-    from services import i18n as i18n_service
+    from services.i18n import i18n as i18n_service
 
     lang, tr_map = await i18n_service.context_cached(telegram_id, maps)
     if forum_day and await _may_be_collecting_sos(telegram_id):

@@ -1,5 +1,5 @@
 """Квик 260917-en (приёмка, английский делегат: «перевод интерфейса очень криво сделан») —
-сторож покрытия корпуса анкеты ручным переводом (`services/i18n_form_manual.py`).
+сторож покрытия корпуса анкеты ручным переводом (`services/i18n/i18n_form_manual.py`).
 
 pytest-asyncio в проекте нет (см. соседние тесты Phase 27) — асинхронные вызовы идут через
 `asyncio.run`, `config.DB_PATH` смотрит в `tmp_path`.
@@ -7,9 +7,9 @@ pytest-asyncio в проекте нет (см. соседние тесты Phase
 Пять пунктов инструкции (5а-5г, 5д проверяется отдельными golden-тестами
 `test_reg_engine_parity.py`/`test_refac_snapshot_260816.py`, не здесь):
 
-(а) каждый RU-текст корпуса по умолчанию (`services.i18n_sources.corpus()` на пустой БД) имеет
-    ручной перевод — в `i18n_ui_en.UI_EN`, `services.i18n_miniapp_manual.MANUAL_EN` или
-    `services.i18n_form_manual.FORM_DEFAULT_EN`. Новый ключ реестра без перевода роняет тест с
+(а) каждый RU-текст корпуса по умолчанию (`services.i18n.i18n_sources.corpus()` на пустой БД) имеет
+    ручной перевод — в `i18n_ui_en.UI_EN`, `services.i18n.i18n_miniapp_manual.MANUAL_EN` или
+    `services.i18n.i18n_form_manual.FORM_DEFAULT_EN`. Новый ключ реестра без перевода роняет тест с
     понятным сообщением (список недостающих строк, не просто счётчик).
 (б) `tr(ru, "en", tr_map)` после `seed()` возвращает ручной перевод — включая строки с ведущим
     эмодзи и HTML-разметкой.
@@ -17,23 +17,23 @@ pytest-asyncio в проекте нет (см. соседние тесты Phase
 (г) сид не перетирает `manual=1` перевод менеджера (другой `origin_key`).
 
 `EVENT_TEXTS_260917` сторож (а) НЕ требует — это снимок реальных текстов конкретного события,
-не часть кодовой базы (см. докстринг `services/i18n_form_manual.py`)."""
+не часть кодовой базы (см. докстринг `services/i18n/i18n_form_manual.py`)."""
 import asyncio
 import re
 
 from config import config
 from database import db
 from domain.i18n.ui_en import UI_EN
-from services import i18n
-from services.i18n_miniapp_manual import MANUAL_EN
-from services.i18n_form_manual import (
+from services.i18n import i18n
+from services.i18n.i18n_miniapp_manual import MANUAL_EN
+from services.i18n.i18n_form_manual import (
     EVENT_TEXTS_260917,
     FORM_DEFAULT_EN,
     ORIGIN_DEFAULT,
     ORIGIN_EVENT,
     seed,
 )
-from services.i18n_sources import corpus
+from services.i18n.i18n_sources import corpus
 from tests._dbtpl import fast_init_db
 
 _PLACEHOLDER_RE = re.compile(r"\{[^{}]*\}")
@@ -55,7 +55,7 @@ def test_default_corpus_fully_covered_by_manual_translations(tmp_path):
     missing = [(origin, text) for origin, text in items if text not in covered]
     assert missing == [], (
         f"{len(missing)} строк(и) корпуса анкеты без ручного перевода "
-        f"(добавь в services/i18n_form_manual.py::FORM_DEFAULT_EN): {missing[:20]}"
+        f"(добавь в services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN): {missing[:20]}"
     )
 
 

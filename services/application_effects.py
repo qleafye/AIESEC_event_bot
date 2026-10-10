@@ -129,7 +129,7 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
             # Квик 260917-en (приёмка 17.09, п.4): «reject_text» — group "reg", уже в
             # делегатском корпусе — не хватало только точки перевода на отправке (тот же
             # класс дыры, что у approve_text в handlers/reg/reg_schema.py).
-            from services.i18n import context as _i18n_context
+            from services.i18n.i18n import context as _i18n_context
             lang, tr_map = await _i18n_context(telegram_id)
             text = await reject_message_text(reason, lang, tr_map)
             send_err = await send_with_retry(

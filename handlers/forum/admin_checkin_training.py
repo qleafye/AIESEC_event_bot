@@ -21,7 +21,8 @@ from aiogram.types import BufferedInputFile, InputMediaPhoto
 
 from handlers.admin import router
 from handlers.access.admin_caps import resolve_capabilities
-from services import checkin_training, i18n
+from services import checkin_training
+from services.i18n import i18n
 
 logger = logging.getLogger(__name__)
 

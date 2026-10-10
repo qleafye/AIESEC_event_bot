@@ -43,7 +43,8 @@ from database.db import (
     reorder_faq_items,
     update_faq_item,
 )
-from services import applications, i18n
+from services import applications
+from services.i18n import i18n
 from services.faq import apply_city_overrides, city_badge, normalize_question
 from domain.settings.schema import get_setting_typed
 

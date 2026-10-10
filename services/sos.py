@@ -668,7 +668,7 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
             return False
 
     user_id = report["telegram_id"]
-    from services import i18n as i18n_service
+    from services.i18n import i18n as i18n_service
 
     # Шапка — на языке делегата («SOS #» остаётся и в переводе: по нему его реплай на ответ
     # уходит обратно в тред, `handlers/forum/sos.py::_is_sos_followup`).
@@ -1029,7 +1029,7 @@ async def _translated_for(telegram_id: int, template: str, **subs) -> str:
     `handlers.i18n.reg_i18n.tr_fmt`). Сбой перевода -> русский шаблон с подстановкой."""
     try:
         from handlers.i18n import reg_i18n
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(telegram_id)
         return reg_i18n.tr_fmt(template, lang, tr_map, **subs)
@@ -1149,7 +1149,7 @@ async def may_be_collecting(telegram_id: int) -> bool:
 def claim_status_parts(report: dict) -> tuple[str, str | None]:
     """`(шаблон, имя)` для перевода делегату (Часть А ревью 24.09: `sos_recent_followup_text`
     уходил сырой русской строкой, потому что `{claim_status}` собирался ЗДЕСЬ, ДО перевода
-    шаблона) — шаблон переводится словарём (`services/i18n_form_manual.py::FORM_DEFAULT_EN`,
+    шаблона) — шаблон переводится словарём (`services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN`,
     ярус B), имя — собственное, НЕ участвует в переводе шаблона, подставляется ПОСЛЕ
     (`handlers/i18n/reg_i18n.py::tr_fmt`, тот же порядок «шаблон сначала», что везде в чате).
     `who is None` -> шаблон без плейсхолдера («ещё не взяли»); иначе — имя держателя ИЛИ
@@ -1197,7 +1197,7 @@ async def close_delegate_collecting(bot, storage, report: dict) -> None:
         logger.error("sos.close_delegate_collecting(%s): FSM делегата не сброшен: %s", report.get("id"), e)
     try:
         from handlers.i18n import reg_i18n
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(tid)
         text = reg_i18n.tr_text(await get_setting_typed("sos_resolved_notify_text"), lang, tr_map)

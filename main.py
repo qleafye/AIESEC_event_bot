@@ -350,7 +350,7 @@ async def main():
     # `seed_cities_if_empty()` выше. Fail-soft: сбой сида не должен ронять бота (T-27-03-04 —
     # тот же принцип, что у остальных врезок в этот путь).
     try:
-        from services.i18n_miniapp_manual import seed as seed_miniapp_manual_translations
+        from services.i18n.i18n_miniapp_manual import seed as seed_miniapp_manual_translations
 
         await seed_miniapp_manual_translations()
     except Exception:
@@ -361,9 +361,9 @@ async def main():
     # Квик 260917-en (приёмка, английский делегат: «перевод интерфейса очень криво сделан») —
     # тот же приём для КОРПУСА АНКЕТЫ (reg_prompts/reg/party): дефолты кодовой базы
     # (`FORM_DEFAULT_EN`) + реальные тексты события «Юлид 26/2» на 17.09 (`EVENT_TEXTS_260917`),
-    # см. докстринг `services/i18n_form_manual.py`. Fail-soft — тот же принцип, что выше.
+    # см. докстринг `services/i18n/i18n_form_manual.py`. Fail-soft — тот же принцип, что выше.
     try:
-        from services.i18n_form_manual import seed as seed_form_manual_translations
+        from services.i18n.i18n_form_manual import seed as seed_form_manual_translations
 
         await seed_form_manual_translations()
     except Exception:
@@ -377,10 +377,10 @@ async def main():
     # На стенде, где модуль включён давно, расширение корпуса в очередь не попадало никогда.
     # Идемпотентно на каждом старте: `bulk_seed` теперь пропускает и ручные, и уже переведённые
     # строки — повторный вызов не гоняет argos по готовому корпусу, ставит в очередь только
-    # реально непереведённые (см. докстринг `services/i18n_worker.py::bulk_seed`).
+    # реально непереведённые (см. докстринг `services/i18n/i18n_worker.py::bulk_seed`).
     try:
         if await get_setting_typed("delegate_lang_enabled") == "on":
-            from services.i18n_worker import bulk_seed, requeue_stale_machine_translations
+            from services.i18n.i18n_worker import bulk_seed, requeue_stale_machine_translations
 
             await bulk_seed()
             await requeue_stale_machine_translations()

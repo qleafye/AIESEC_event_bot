@@ -268,12 +268,12 @@ def test_city_screens_show_photo_button(tmp_path):
 # ── EN-делегат: всплывающие сообщения программы переведены ──────────────────────────────────
 
 def test_program_day_alerts_are_translated_for_english_delegate(tmp_path, monkeypatch):
-    """Оба алерта идут через перевод делегатского чата (словарь — services/i18n_form_manual.py,
-    корпус — services/i18n_sources.py «lit:program.*»); раньше уходили сырым русским."""
+    """Оба алерта идут через перевод делегатского чата (словарь — services/i18n/i18n_form_manual.py,
+    корпус — services/i18n/i18n_sources.py «lit:program.*»); раньше уходили сырым русским."""
     from handlers.forum import program as program_handlers
     from handlers.i18n import reg_i18n
-    from services import i18n
-    from services.i18n_form_manual import _CODE_LITERALS_EN
+    from services.i18n import i18n
+    from services.i18n.i18n_form_manual import _CODE_LITERALS_EN
 
     _ready(tmp_path)
     _delegate(SPB_DELEGATE, "spb")

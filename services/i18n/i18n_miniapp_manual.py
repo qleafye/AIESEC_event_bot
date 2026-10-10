@@ -1,13 +1,13 @@
 """Задача «делегатский интерфейс Mini App на английском» (после Phase 27) — ручной английский
-для делегатских текстов, которые физически лежат ВНЕ корпуса анкеты (`services/i18n_sources.py`
+для делегатских текстов, которые физически лежат ВНЕ корпуса анкеты (`services/i18n/i18n_sources.py`
 ::DELEGATE_GROUPS = reg_prompts/reg/party, LANG-08): группы `miniapp`/`game`/`event`, статусные
-литералы `miniapp/routers/tasks.py`. `tr()` (`services/i18n.py`) ищет перевод по хешу
+литералы `miniapp/routers/tasks.py`. `tr()` (`services/i18n/i18n.py`) ищет перевод по хешу
 СОДЕРЖИМОГО (`src_hash`), а не по группе реестра — запись в `translations` с `manual=1` здесь
 работает для ЛЮБОГО текста, независимо от того, видит ли его корпус/машинный воркер (план 27-03).
 
 Почему не `domain/i18n/ui_en.py` (ярус A): тот словарь — для строк, участвующих в жёстких сравнениях
 aiogram-фильтров (докстринг `domain/i18n/ui_en.py`), не для контента интерфейса. Здесь — ярус B,
-записанный вручную, а не выучен машиной (`manual=1` — `services/i18n_worker.py::drain()` эти
+записанный вручную, а не выучен машиной (`manual=1` — `services/i18n/i18n_worker.py::drain()` эти
 строки не трогает, LANG-05).
 
 Владелец (17.09, приёмка): «машинные переводы плохие» — часть строк из ГРУППЫ `reg_prompts`
@@ -17,7 +17,7 @@ aiogram-фильтров (докстринг `domain/i18n/ui_en.py`), не дл�
 машинный перевод РУЧНЫМ (тот же `upsert_translation(manual=1)`, что и остальной ярус B), не
 трогая при этом РЕАЛЬНУЮ правку менеджера (см. докстринг `seed()`).
 
-Формат: RU-текст БАЙТ-В-БАЙТ (после `.strip()`, как везде — `services.i18n.src_hash`) -> EN.
+Формат: RU-текст БАЙТ-В-БАЙТ (после `.strip()`, как везде — `services.i18n.i18n.src_hash`) -> EN.
 Плейсхолдеры (`{count}`, `{дата}`, `{имя}`, `{город}`, `{entity}`, `{n}`, `{max}`, `{limit}`
 и т.п.) переносятся ДОСЛОВНО — вызывающий код делает `.format()`/`.replace()` ПОСЛЕ `tr()`
 (см. `miniapp/routers/hub.py`/`tasks.py`), значит английский текст обязан нести те же самые
@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 
 from database.db import seed_manual_translations
-from services.i18n import src_hash
+from services.i18n.i18n import src_hash
 
 logger = logging.getLogger(__name__)
 

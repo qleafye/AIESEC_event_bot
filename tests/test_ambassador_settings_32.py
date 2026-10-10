@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 
-import services.i18n_sources as i18n_sources
+import services.i18n.i18n_sources as i18n_sources
 from config import config
 from database import db
 from handlers.settings.admin_settings import _GAME_FIELD_ORDER

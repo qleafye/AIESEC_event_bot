@@ -116,7 +116,7 @@ async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None
     from domain.regform.labels import STATUS_LABELS
     from services.application_effects import apply_decision_effects
     from services.applications import record_decision
-    from services.i18n import context as i18n_context, tr as i18n_tr
+    from services.i18n.i18n import context as i18n_context, tr as i18n_tr
     from services.reject_journal import AUTO_DECIDED_BY, record_auto_reject
 
     pairs = await collect(since)

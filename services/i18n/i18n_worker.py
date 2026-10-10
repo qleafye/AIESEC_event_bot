@@ -13,7 +13,7 @@
 внутри `asyncio.to_thread` — ct2-инференс CPU-bound C++, прямой вызов в event loop подвесил
 бы long polling на десятки секунд (27-RESEARCH.md Pitfall 7).
 
-Конвейер на строку (глоссарий — `services/i18n_glossary.py`, обязательные находки замера
+Конвейер на строку (глоссарий — `services/i18n/i18n_glossary.py`, обязательные находки замера
 27-01 + UAT 260906): `split_leading_symbols`/`split_trailing_symbols` (эмодзи-префикс и
 -суффикс отдельно — движок не переживает голый эмодзи ни в начале, ни в конце строки) ->
 `strip_gender_suffix` (русская скобочная гендерная приписка «(а)»/«(ла)» — у английского нет
@@ -27,7 +27,7 @@
 
 Владелец (чекпоинт 27-01): «embedded с выгрузкой» — модель грузится только пока в очереди
 есть что переводить и выгружается (`driver.unload()`) сразу, как только `drain()` её
-опустошил. `get_driver()` (`services/i18n_engine.py`) не вызывается ВООБЩЕ, если после
+опустошил. `get_driver()` (`services/i18n/i18n_engine.py`) не вызывается ВООБЩЕ, если после
 вычитки очереди не осталось ни одной НЕ-ручной строки — пустая очередь не грузит модель и не
 ходит по HTTP ни разу (проверено тестом `test_drain_empty_queue_never_calls_driver`)."""
 from __future__ import annotations
@@ -46,9 +46,9 @@ from database.db import (
     list_translations,
     upsert_translation,
 )
-from services.i18n import src_hash
-from services.i18n_engine import get_driver
-from services.i18n_glossary import (
+from services.i18n.i18n import src_hash
+from services.i18n.i18n_engine import get_driver
+from services.i18n.i18n_glossary import (
     apply,
     has_soft_wraps,
     join_soft_wraps,
@@ -58,7 +58,7 @@ from services.i18n_glossary import (
     split_trailing_symbols,
     strip_gender_suffix,
 )
-from services.i18n_sources import corpus
+from services.i18n.i18n_sources import corpus
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +157,7 @@ async def drain(limit_batches: int = 1) -> int:
 
 
 async def bulk_seed(lang: str = "en") -> int:
-    """Ставит в очередь корпус делегатских текстов анкеты (`services/i18n_sources.py
+    """Ставит в очередь корпус делегатских текстов анкеты (`services/i18n/i18n_sources.py
     ::corpus()` — единственный перечислитель, второго списка источников в проекте нет), КОТОРЫЙ
     ЕЩЁ НЕ ПЕРЕВЕДЁН — ни машинно, ни руками. Зовётся при включении модуля
     (`delegate_lang_enabled` -> "on", врезка в `database.db.set_setting`) И идемпотентно на

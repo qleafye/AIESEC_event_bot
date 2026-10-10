@@ -388,7 +388,7 @@ def test_take_deferred_by_quiet_hours(tmp_path, monkeypatch):
 
 def test_take_message_in_delegate_language(tmp_path, monkeypatch):
     from handlers.amb import admin_amb_candidates as h
-    from services import i18n
+    from services.i18n import i18n
     from domain.settings.schema import SETTINGS_SCHEMA
     _ready(tmp_path)
     _seed(10, amb_status="candidate")

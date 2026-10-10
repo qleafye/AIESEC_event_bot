@@ -195,7 +195,7 @@ async def preview_decision_text(user: dict) -> str:
     tid = user["telegram_id"]
     if user.get("status") == "rejected":
         from services.applications import last_rejection_reason, reject_message_text
-        from services.i18n import context as _i18n_context
+        from services.i18n.i18n import context as _i18n_context
         lang, tr_map = await _i18n_context(tid)
         raw = await reject_message_text(await last_rejection_reason(tid), lang, tr_map)
     else:

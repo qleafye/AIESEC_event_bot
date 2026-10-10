@@ -65,7 +65,8 @@ from services.checkin import (
     record_arrival,
     resolve_scanned_user,
 )
-from services import checkin_arrival, checkin_forum_day, checkin_training, i18n
+from services import checkin_arrival, checkin_forum_day, checkin_training
+from services.i18n import i18n
 from services import venue_log
 from services.onsite_reg import (
     approve_at_door,

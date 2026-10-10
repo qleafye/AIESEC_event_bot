@@ -145,8 +145,8 @@ def test_escape_groups_are_delegate_answers_only():
 
 
 def test_notices_have_english():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
-    from services.i18n_sources import code_literals
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_sources import code_literals
     missing = [t for t in menu_tap_escape.ESCAPE_NOTICES.values() if t not in FORM_DEFAULT_EN]
     assert missing == []
     corpus = {(origin, text) for origin, text in code_literals()}

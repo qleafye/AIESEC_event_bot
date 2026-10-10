@@ -3,7 +3,7 @@
 
 D-06 («бот для людей»): язык НИКОГДА не угадывается молча по `language_code` клиента Telegram
 и не спрашивается кодом — только двумя кнопками с человеческими подписями. `resolve_lang`
-(`services/i18n.py`) отдаёт `"ask"`, когда клиент не на русском и выбор ещё не сохранён; этот
+(`services/i18n/i18n.py`) отдаёт `"ask"`, когда клиент не на русском и выбор ещё не сохранён; этот
 шов — единственное место, которое показывает экран выбора и пишет ответ в `users.lang`.
 
 Язык **никогда не хранится в FSM** — только `users.lang`: `MemoryStorage` сбрасывается
@@ -28,7 +28,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_stored_lang, get_user, set_user_lang
 from domain.settings.schema import get_setting_typed
-from services.i18n import delegate_lang
+from services.i18n.i18n import delegate_lang
 from handlers.registration import router
 # Задача 1 (смена языка из меню): keyboards.builders хендлеры не импортирует на уровне модуля
 # (докстринг handlers/__init__.py) -- обратного цикла нет, импорт статический.
@@ -159,7 +159,7 @@ async def offer_language(message: types.Message, state: FSMContext, raw_args: st
     logger.info("offer_language: uid=%s language_code=%r mode=%s -> %s", message.from_user.id, language_code, mode, lang)
     if lang != "ask":
         if lang == "ru":
-            # Сеть безопасности — C1 в services/i18n.py::tr (переводим строго при lang=="en"),
+            # Сеть безопасности — C1 в services/i18n/i18n.py::tr (переводим строго при lang=="en"),
             # это лишь избавляет от повторной резолюции "ask" на каждом рендере: без сохранения
             # users.lang следующий же context() без language_code опять упрётся в ступень 4
             # resolve_lang. Пишем только когда модуль включён (иначе delegate_lang дал бы "ru"

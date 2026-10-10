@@ -92,7 +92,7 @@ def parse_walkin_arg(args: str | None) -> tuple[bool, str | None]:
 
 async def wrong_city_text(user: dict, lang: str = "ru", tr_map: dict | None = None) -> str:
     """D-26 для стойки — текст из реестра (D-34), `{city}` — город делегата."""
-    from services.i18n import tr
+    from services.i18n.i18n import tr
 
     delegate_city = normalize_city(user.get("event_city"))
     label = await city_label(delegate_city) if delegate_city else "—"
@@ -132,7 +132,7 @@ async def _stored_reject_reason(user: dict) -> str | None:
 
 async def rejected_reason_text(user: dict, lang: str = "ru", tr_map: dict | None = None) -> str:
     """«Заявка отклонена менеджером» (+ причина, если записана) — тексты из реестра (D-34)."""
-    from services.i18n import tr
+    from services.i18n.i18n import tr
 
     reason = await _stored_reject_reason(user)
     if reason:
@@ -309,12 +309,12 @@ async def after_onsite_approved(bot, telegram_id: int) -> None:
 
     lang, tr_map = "ru", {}
     try:
-        from services.i18n import context as i18n_context
+        from services.i18n.i18n import context as i18n_context
         lang, tr_map = await i18n_context(telegram_id)
     except Exception:
         logger.exception("onsite_reg: язык человека не определён (tid=%s)", telegram_id)
 
-    from services.i18n import tr
+    from services.i18n.i18n import tr
     from services.infra.telegram_send import send_with_retry
 
     try:

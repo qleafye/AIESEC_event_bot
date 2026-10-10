@@ -32,7 +32,7 @@ def _fresh(tmp_path):
 
 
 def test_setting_registered_with_english():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     assert "Меню обновилось" in HINT_TEXT
     assert HINT_TEXT in FORM_DEFAULT_EN
 

@@ -112,7 +112,7 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     now = msk_now()
     day = now.strftime("%Y-%m-%d")
     from handlers.i18n.reg_i18n import tr_text
-    from services import i18n as i18n_service
+    from services.i18n import i18n as i18n_service
 
     sent = quiet = failed = 0
     tr_maps: dict[str, dict] = {}

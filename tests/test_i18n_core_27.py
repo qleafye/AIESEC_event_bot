@@ -14,7 +14,7 @@ import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from domain.i18n.ui_en import UI_EN
-from services.i18n import context, delegate_lang, load_map, resolve_lang, src_hash, tr
+from services.i18n.i18n import context, delegate_lang, load_map, resolve_lang, src_hash, tr
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
@@ -217,8 +217,8 @@ def test_delegate_lang_fails_soft_to_russian(monkeypatch):
 
     import domain.settings.schema as ss
     monkeypatch.setattr(ss, "get_setting_typed", boom)
-    # services.i18n imported get_setting_typed by reference — patch it there too.
-    import services.i18n as i18n_mod
+    # services.i18n.i18n imported get_setting_typed by reference — patch it there too.
+    import services.i18n.i18n as i18n_mod
     monkeypatch.setattr(i18n_mod, "get_setting_typed", boom)
     result = asyncio.run(delegate_lang(12345))
     assert result == "ru"

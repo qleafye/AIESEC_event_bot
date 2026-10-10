@@ -22,7 +22,7 @@ Phase 30 (30-02, A2-03): то же правило действует и у ру�
 что уже отдано в ответе HTTP.
 
 Phase 27 (27-04, LANG-02/LANG-06): `_draft_response`/`draft_patch` — вторая (после чата бота,
-план 27-05) воронка вывода делегатского текста. `services.i18n.context()` грузит `(lang,
+план 27-05) воронка вывода делегатского текста. `services.i18n.i18n.context()` грузит `(lang,
 tr_map)` РОВНО ОДИН раз на запрос (не по разу на текст — см. докстринг `_draft_response`);
 `reg_engine` о языках не знает (A-03, 27-CONTEXT.md) — перевод прогоняется НАД уже собранной
 спекой (`prompt`/`help`/`label`/`options`), контракт JSON не меняется. `draft_patch`
@@ -58,7 +58,8 @@ from database.db import (
     set_user_lang,
 )
 from domain.settings.schema import get_setting_typed
-from services import i18n, reg_edit_policy
+from services.i18n import i18n
+from services import reg_edit_policy
 from services.consent import outstanding_consents
 from services.lookup import search_lookup, top_chips
 from services.reg_finalize import finalize_data, resolve_delegate_text
@@ -329,7 +330,7 @@ async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_userna
     # шаг/текст — form_spec резолвит ~43 шага, наивная врезка удвоила бы число чтений реестра
     # на рендер формы, см. 27-04-PLAN.md). `"ask"` (язык ещё не выбран, делегат не отвечал на
     # экран выбора — Mini App его не показывает, это поверхность бота) трактуется как "ru" —
-    # тот же фоллбэк, что `services.i18n.context` уже применяет к `tr_map` для этого случая.
+    # тот же фоллбэк, что `services.i18n.i18n.context` уже применяет к `tr_map` для этого случая.
     lang, tr_map = await i18n.context(telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
     closed = ctx["kind"] == "new" and await _registration_closed(ctx["event_city"])

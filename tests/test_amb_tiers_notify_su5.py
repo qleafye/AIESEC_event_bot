@@ -137,7 +137,7 @@ def test_blocked_bot_no_retry(tmp_path):
 
 
 def test_english_delegate_gets_english_text(tmp_path):
-    from services.i18n_form_manual import FORM_DEFAULT_EN, seed
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN, seed
 
     _ready(tmp_path)
     _run(seed())
