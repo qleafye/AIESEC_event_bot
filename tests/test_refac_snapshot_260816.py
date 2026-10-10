@@ -1073,7 +1073,7 @@ admin|callback_query|bc_no|bc_no
 admin|callback_query|bc_no_after_start|bc_no
 admin|callback_query|bc_stop|bc_stop:*
 admin|callback_query|bc_rev|bc_rev:*
-admin|callback_query|bc_revno|bc_revno
+admin|callback_query|bc_revno|bc_revno*
 admin|callback_query|bc_revgo|bc_revgo:*
 admin|callback_query|admin_broadcast_log|admin_broadcast_log
 admin|callback_query|admin_broadcast_scheduled|admin_broadcast_scheduled
