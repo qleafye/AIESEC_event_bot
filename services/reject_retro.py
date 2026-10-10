@@ -123,7 +123,7 @@ async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None
     if ids is not None:
         pairs = [(u, p) for u, p in pairs if int(u["telegram_id"]) in ids]
     groups = await resolve_unfinished(split_targets(pairs))
-    done = {"pending": 0, "rejected": 0, "failed": 0, "skipped": 0}
+    done = {"pending": 0, "rejected": 0, "failed": 0, "skipped": 0, "sheet_failed": False}
     sheet_ids: list[int] = []
     for status in ("pending", "rejected"):
         for user, patch in groups[status]:
@@ -159,9 +159,14 @@ async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None
                 logger.exception("reject_retro: не обработан tid=%s", tid)
     if sheet_ids:
         try:
+            from services import sheet_target as _sheet_target
             from services.sheets import bulk_update_status_in_sheet
 
-            await bulk_update_status_in_sheet({str(t): STATUS_LABELS["rejected"] for t in sheet_ids})
+            res = await bulk_update_status_in_sheet({str(t): STATUS_LABELS["rejected"] for t in sheet_ids})
+            if res == -1 and _sheet_target.sheets_enabled():
+                done["sheet_failed"] = True
+                logger.warning("reject_retro: лист не обновлён для %s строк", len(sheet_ids))
         except Exception:
+            done["sheet_failed"] = True
             logger.exception("reject_retro: лист не обновлён для %s строк", len(sheet_ids))
     return done
