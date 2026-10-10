@@ -28,7 +28,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, Teleg
 from domain.regform.labels import STATUS_LABELS
 from services.applications import reject_message_text
 from services.decision_delivery import ERROR_BLOCKED, ERROR_CHAT_NOT_FOUND, ERROR_DEACTIVATED
-from services.sheets import bulk_update_status_in_sheet, update_status_in_sheet
+from services.sheets.sheets import bulk_update_status_in_sheet, update_status_in_sheet
 from services.infra.telegram_send import send_with_retry
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # ── Координатор 25.09: учёт доставки решения ────────────────────────────────────────────────
 #
 # Человеческая причина сбоя — ТОЛЬКО для отчёта «Сверить с БД»/«📨 Переотправить решения»
-# (services/sheet_reconcile.py, services/decision_delivery.py), НЕ для решения «слать ли
+# (services/sheets/sheet_reconcile.py, services/decision_delivery.py), НЕ для решения «слать ли
 # повторно» — та развилка (D-01, services/scheduler.py::_PERMANENT_SEND_ERRORS) намеренно
 # классифицирует по ТИПУ исключения, не тексту («формулировка Telegram меняется без анонса»).
 # Здесь текст читаем осознанно: при неузнанной формулировке функция просто падает в

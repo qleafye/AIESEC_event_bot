@@ -15,8 +15,9 @@ import gspread
 
 from config import config
 from database import db
-import services.sheets as sheets
-from services import chat_tracking, sheet_chat_sync
+import services.sheets.sheets as sheets
+from services import chat_tracking
+from services.sheets import sheet_chat_sync
 from tests._dbtpl import fast_init_db
 from tests.test_sheet_arrival_queue_260925 import QueueFakeWorksheet
 from tests.test_sheet_status_city_tab_260819 import _patch_fake_sheets

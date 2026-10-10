@@ -20,7 +20,7 @@
 опасно» (D-01/D-02/D-08/D-13): `editable_keys`, `SECTION_GROUPS`, `TOGGLE_SECTION`,
 `DANGEROUS_KEYS`, конструктор `item_spec`.
 
-Зависимости — ТОЛЬКО `config`/`settings_schema`/`cities`/`database.db`/`services.sheets`
+Зависимости — ТОЛЬКО `config`/`settings_schema`/`cities`/`database.db`/`services.sheets.sheets`
 (тот же `_reset_sheet_cache`, что и раньше), ни одного импорта `aiogram` или `handlers.*`
 (сторож `tests/test_settings_ops.py::test_settings_ops_module_does_not_load_aiogram`).
 
@@ -45,7 +45,7 @@ from domain.cities import (
 )
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from domain.regform.presets import apply_reg_preset
-from services.sheets import _reset_sheet_cache
+from services.sheets.sheets import _reset_sheet_cache
 import domain.settings.placeholders as settings_placeholders
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
 from domain.settings.validation import (
@@ -203,7 +203,7 @@ SHEET_TAB_WRITE_MODE = {
 
 async def after_tab_setting_saved(key: str) -> None:
     """Called after EVERY save/clear of a SHEET_TAB_WRITE_MODE key — resets the cached MAIN
-    worksheet handle (services.sheets._sheet global) so a renamed main_sheet_tab takes effect
+    worksheet handle (services.sheets.sheets._sheet global) so a renamed main_sheet_tab takes effect
     on the very next write, no bot restart needed. Named-tab caches need no reset: they're
     keyed BY NAME."""
     if key == "main_sheet_tab":
@@ -330,7 +330,7 @@ async def current_tab_titles() -> list[TabTarget]:
         entry = SETTINGS_SCHEMA.get(key, {})
         value = await get_setting_typed(key)
         if not value and key == "main_sheet_tab":
-            # Резолв основной вкладки повторяет 4-ступенчатую цепочку services.sheets._get_sheet
+            # Резолв основной вкладки повторяет 4-ступенчатую цепочку services.sheets.sheets._get_sheet
             # (bot_settings -> .env -> легаси-пин), но без RuntimeError на 4-й ступени — пустой
             # результат здесь просто означает «эту цель пропускаем», не «бот сломан».
             env_value = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
@@ -992,7 +992,7 @@ async def validate_batch_item(
     confirmed: bool = False,
 ) -> BatchCheck:
     """Проверки бота для одного ключа пакета, ни одной записи. `tab_probe` — результат
-    `services.sheets.tab_row_count` (роутер зовёт его сам, ядро остаётся синхронным по I/O
+    `services.sheets.sheets.tab_row_count` (роутер зовёт его сам, ядро остаётся синхронным по I/O
     Sheets); `confirmed` — ключ прислан в `confirm`: гейты подтверждения пропускаются."""
     if value is not None:
         value = value.strip()

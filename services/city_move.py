@@ -21,7 +21,7 @@ msk «как есть, одобренной»). Единая точка прав
     что безопаснее потери — см. `memory/standalone-script-sheet-traps.md` и прецедент 23.09).
     Целевая вкладка = (новый город, СТАРЫЙ трек, `_resolve_sheet_targets`) — вкладка НЕ
     создаётся НИКОГДА (ревью 🔴: `append_to_named_sheet` создаёт вкладку сама, здесь запрещено
-    — пишем через `services.sheets.append_to_existing_named_sheet`). Нет такой вкладки среди
+    — пишем через `services.sheets.sheets.append_to_existing_named_sheet`). Нет такой вкладки среди
     РЕАЛЬНЫХ (`spreadsheet.worksheets()`) — падаем на главную вкладку города; нет и её — не
     пишем вовсе, отчёт называет проблему словами. Сбой листа НЕ откатывает уже применённую
     БД-часть — переезд БД важнее одной отстающей строки таблицы, которую менеджер потом сверит
@@ -48,7 +48,7 @@ from database.db import (
     update_user_answers,
 )
 from domain.regform.engine import _is_party_track, _is_short_track
-import services.sheets as sheets_service
+import services.sheets.sheets as sheets_service
 from database.session_enroll_db import (
     count_enrollments_for_user,
     delete_enrollments_for_user,
@@ -56,7 +56,7 @@ from database.session_enroll_db import (
 
 logger = logging.getLogger(__name__)
 
-# Коды результата функций листа (services/sheets.py) — словами для отчёта менеджеру.
+# Коды результата функций листа (services/sheets/sheets.py) — словами для отчёта менеджеру.
 _SHEET_RESULT_TEXT = {
     "not_found_tab": "вкладки нет в таблице",
     "not_found_row": "строки делегата на вкладке нет",
@@ -93,7 +93,7 @@ async def _track_supported(participant_type: str | None, new_city: str) -> bool:
 
 async def _resolve_sheet_targets(new_city: str, participant_type: str | None) -> dict:
     """Определяет вкладку(и) для строки делегата в НОВОМ городе строго по списку РЕАЛЬНЫХ
-    вкладок таблицы (`services.sheets.list_worksheet_titles`) — вкладка НЕ создаётся никогда.
+    вкладок таблицы (`services.sheets.sheets.list_worksheet_titles`) — вкладка НЕ создаётся никогда.
     Вызывается заново на каждом шаге (экран подтверждения и сам перевод дают СВОЙ вызов) —
     состояние листа между ними могло измениться, повторно использовать чужой результат нельзя.
 

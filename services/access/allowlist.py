@@ -54,7 +54,7 @@ async def refresh_allowlist():
     error logs a warning and leaves the previous set intact, never crashes the caller."""
     global _allowlist
     try:
-        from services.sheets import _get_allowlist_rows_sync  # local import avoids circular
+        from services.sheets.sheets import _get_allowlist_rows_sync  # local import avoids circular
         tab = await get_setting_typed("preselect_tab")
         rows = await asyncio.to_thread(_get_allowlist_rows_sync, tab)
         _allowlist = {_normalize(v) for v in rows[1:] if v and v.strip()}  # skip header

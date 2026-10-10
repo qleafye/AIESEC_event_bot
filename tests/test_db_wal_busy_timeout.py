@@ -1,6 +1,6 @@
 """SQLite concurrency posture: WAL journaling (set once in init_db, persistent) and a busy
 timeout on EVERY connection — async (database.db._connect) and the sync sqlite3 reads in
-services/sheets.py. Without these, one writer holding the lock makes a concurrent reader
+services/sheets/sheets.py. Without these, one writer holding the lock makes a concurrent reader
 fail instantly with "database is locked"."""
 import asyncio
 import re
@@ -66,9 +66,9 @@ def test_no_bare_db_path_connects_outside_db_module():
 
 
 def test_sheets_sync_reads_use_busy_timeout(tmp_path, monkeypatch):
-    """services.sheets opens plain sqlite3 connections from a worker thread; they must pass
+    """services.sheets.sheets opens plain sqlite3 connections from a worker thread; they must pass
     the same timeout so a concurrent commit makes them wait, not fail."""
-    from services import sheets
+    from services.sheets import sheets
 
     _init(tmp_path)
     seen = {}

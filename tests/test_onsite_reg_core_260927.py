@@ -541,7 +541,8 @@ def _fake_bot():
 
 
 def _patch_sheets(monkeypatch, calls, *, fail=False):
-    from services import reg_finalize, sheets
+    from services import reg_finalize
+    from services.sheets import sheets
 
     async def fake_row(tid, full, mode):
         calls.append(("row", tid, mode))
@@ -637,4 +638,4 @@ def test_onsite_reg_module_does_not_import_sheets_or_aiogram_at_top():
             top |= {a.name for a in node.names}
         elif isinstance(node, ast.ImportFrom) and node.module:
             top.add(node.module)
-    assert not any(n.startswith(("services.sheets", "gspread", "aiogram")) for n in top), top
+    assert not any(n.startswith(("services.sheets.sheets", "gspread", "aiogram")) for n in top), top

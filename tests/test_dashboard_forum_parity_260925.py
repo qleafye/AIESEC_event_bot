@@ -10,7 +10,7 @@
 - `queries.stats_card_block` ↔ `database.db.forum_stats_card_summary`;
 - `queries.sos_block` (`by_day`) ↔ `database.db.sos_day_stats` (по дням);
 - `queries.decision_delivery_block` ↔ `services.decision_delivery.summarize_deliveries` над
-  тем же списком пользователей, что читает `services.sheet_reconcile._current_season_users`.
+  тем же списком пользователей, что читает `services.sheets.sheet_reconcile._current_season_users`.
 
 Фикстура — прямые INSERT через `database.db._connect()` (aiosqlite), дашборд читает через
 `sqlite3.connect(..., row_factory=sqlite3.Row)` — тот же приём, что
@@ -27,7 +27,7 @@ import services.decision_delivery as decision_delivery_service
 from config import config
 from database import db
 from database.db import _connect
-from services.sheet_reconcile import _current_season_users
+from services.sheets.sheet_reconcile import _current_season_users
 from tests._dbtpl import fast_init_db
 from tests.test_arrival_stats_260924 import _user
 

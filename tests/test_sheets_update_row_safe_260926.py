@@ -1,4 +1,4 @@
-"""Координатор 25.09 (fix, ветка sheets-update-row-fix): services/sheets.py::update_row_by_id
+"""Координатор 25.09 (fix, ветка sheets-update-row-fix): services/sheets/sheets.py::update_row_by_id
 раньше на промахе целевой именованной вкладки ВСЕГДА откатывался на ГЛАВНЫЙ лист и писал туда
 чужой строкой без проверки формы (памятка standalone-script-sheet-traps находка 2 /
 lost-applications-260914 находка 2 — перенос города между вкладками тихо перезаписывал
@@ -21,7 +21,7 @@ import gspread
 import pytest
 
 from config import config
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 
 
 class _FakeWorksheet:
@@ -317,7 +317,7 @@ def test_update_row_direct_target_exception_retries_then_succeeds(monkeypatch):
 
 
 def test_headers_compatible_rules():
-    from services.sheets import _headers_compatible
+    from services.sheets.sheets import _headers_compatible
     assert _headers_compatible(["id", "Имя"], ["id", "Имя"])
     assert _headers_compatible(["id", "Имя", ""], ["id", "Имя"])  # хвостовые пустые
     assert _headers_compatible(["id", "Имя"], ["id", "Имя", "Пришёл"])  # отстаёт на хвост

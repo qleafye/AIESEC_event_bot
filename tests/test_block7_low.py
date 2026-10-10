@@ -1,7 +1,7 @@
 """BLOCK 7 (LOW) regressions.
 
 - Main-tab Sheets row projection: active_sheet_row must NOT neutralize a crafted cell (квик
-  260919, 08-sheets-dashboard) — services/sheets.py writes with explicit RAW, which Google
+  260919, 08-sheets-dashboard) — services/sheets/sheets.py writes with explicit RAW, which Google
   Sheets never interprets as a formula, so a leading apostrophe would only corrupt real data
   (phones/usernames) instead of protecting anything. See database.db._sheet_safe's docstring.
 - Negative-amount guard: _parse_options must clamp a negative price to 0.
@@ -20,7 +20,7 @@ from tests._dbtpl import fast_init_db
 
 
 def test_main_tab_active_sheet_row_keeps_cell_raw_no_apostrophe(tmp_path):
-    """Квик 260919: services/sheets.py writes RAW, so the cell must reach the sheet exactly as
+    """Квик 260919: services/sheets/sheets.py writes RAW, so the cell must reach the sheet exactly as
     supplied — no leading apostrophe (that used to corrupt phones/usernames, see
     database.db._sheet_safe's docstring)."""
     config.DB_PATH = str(tmp_path / "csv_main.db")

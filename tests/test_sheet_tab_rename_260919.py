@@ -1,12 +1,12 @@
 """Quick 260919-mlu: переименование вкладок Google-таблицы вместо их сиротства.
 
 Прод-инцидент (память проекта sheet-tab-rename-trap): смена ключа-имени вкладки в настройках
-не переименовывает реальный лист — `services/sheets.py::_get_sheet`/`_get_named_sheet` на
+не переименовывает реальный лист — `services/sheets/sheets.py::_get_sheet`/`_get_named_sheet` на
 `WorksheetNotFound` заводят НОВУЮ пустую вкладку, а старая с данными остаётся сиротой. Три
 поколения «Незавершённые» и два поколения «Гейма» на проде — тому доказательство.
 
 Файл растёт по задачам квика (образец — 06-01-style структура, один файл на весь квик):
-- Task 1: примитивы `services/sheets.py` (`list_worksheet_titles`, `rename_worksheet`);
+- Task 1: примитивы `services/sheets/sheets.py` (`list_worksheet_titles`, `rename_worksheet`);
 - Task 2: `domain/settings/ops.py` (`normalize_tab_prefix`, `current_tab_titles`, `plan_prefix_renames`);
 - Task 3: развилка при смене одного ключа-имени (`handlers/sheets/admin_sheet_tabs.py`);
 - Task 4: массовые кнопки «Добавить/Убрать префикс».
@@ -25,7 +25,7 @@ from config import config
 from database import db
 from handlers.sheets import admin_sheet_tabs
 from handlers.access.admin_caps import ADMIN_CAPS
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 import domain.settings.ops as settings_ops
 from tests._dbtpl import fast_init_db
 
@@ -127,7 +127,7 @@ class _FakeBot:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Task 1: services/sheets.py primitives
+# Task 1: services/sheets/sheets.py primitives
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_rename_worksheet_ok(tmp_path, monkeypatch):

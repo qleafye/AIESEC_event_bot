@@ -320,7 +320,7 @@ def test_welcome_time_is_city_local():
 
 
 def test_sheet_arrival_cell_is_city_local():
-    from services.sheet_arrival_sync import arrival_cell_value
+    from services.sheets.sheet_arrival_sync import arrival_cell_value
     assert arrival_cell_value("2026-10-03 08:05:00") == "03.10 08:05"
     assert arrival_cell_value("2026-10-03 08:05:00", 2) == "03.10 10:05"
     assert arrival_cell_value("2026-10-03 23:30:00", 2) == "04.10 01:30"
@@ -329,7 +329,7 @@ def test_sheet_arrival_cell_is_city_local():
 
 def test_sheet_offsets_skip_user_reads_when_no_city_has_offset(tmp_path):
     _db(tmp_path)
-    from services.sheet_arrival_sync import city_offsets_by_user
+    from services.sheets.sheet_arrival_sync import city_offsets_by_user
 
     async def scenario():
         await _seed_delegate(8001, "tyumen")

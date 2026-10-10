@@ -147,7 +147,7 @@ def _reset_alert_state():
 
 @pytest.fixture(autouse=True)
 def _isolate_proxy_alert_module_state(monkeypatch):
-    """`_alert_bot`/`_alert_bot_warned` are module-level globals (mirrors services/sheets.py's
+    """`_alert_bot`/`_alert_bot_warned` are module-level globals (mirrors services/sheets/sheets.py's
     `_alert_bot` pattern). Without this autouse reset, a bot set in an EARLIER test would
     leak into a LATER one that expects `_alert_bot is None` (fail-soft "no bot set" path).
 

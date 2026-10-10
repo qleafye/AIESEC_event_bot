@@ -246,7 +246,7 @@ def test_show_value_picker_participant_type_unknown_value_is_fail_soft(tmp_path)
 
 
 # ── Task 3 regression (updated квик 260919, 08-sheets-dashboard): active_sheet_row must leave
-# every cell RAW — no _csv_safe neutralization — because services/sheets.py always writes with
+# every cell RAW — no _csv_safe neutralization — because services/sheets/sheets.py always writes with
 # explicit value_input_option=RAW, which Google Sheets never parses as a formula. Locks down the
 # same four CSV-injection-looking prefixes tests/test_block7_low.py covers for `=HYPERLINK`, now
 # asserting they pass through byte-for-byte instead of getting a leading apostrophe.

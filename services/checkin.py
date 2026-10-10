@@ -406,7 +406,7 @@ async def mark_arrived_in_sheet(
     Mini App, ручной поиск, CSV, авто-вход от сессии).
 
     Нагрузочный прогон 25.09: сам лист здесь НЕ трогается — только событие в
-    `sheet_arrival_queue`, запись делает джоба бота пачками (`services/sheet_arrival_sync.py`).
+    `sheet_arrival_queue`, запись делает джоба бота пачками (`services/sheets/sheet_arrival_sync.py`).
     Раньше ячейка писалась синхронно: из Mini App (отдельный процесс без Google-кредов) — никогда,
     а в боте каждый первый скан до ответа волонтёру читал весь столбец id листа. Этот модуль
     и `miniapp/` не импортируют Google-листы вовсе (сторож tests/test_sheet_arrival_queue_260925.py).

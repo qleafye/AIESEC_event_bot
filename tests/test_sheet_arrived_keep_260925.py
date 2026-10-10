@@ -1,7 +1,7 @@
 """День форума 25.09: полная перезапись строки делегата в листе не затирает «Пришёл».
 
 Раньше лямбда колонки «Пришёл» в `SHEET_COLUMNS`/`PARTY_SHEET_COLUMNS` всегда отдавала «-»:
-отметку прихода пишет джоба очереди (services/sheet_arrival_sync.py), а любая полная перезапись
+отметку прихода пишет джоба очереди (services/sheets/sheet_arrival_sync.py), а любая полная перезапись
 строки (правка анкеты, ссылка на резюме, перевод в город — `update_row_by_id`; «♻️ Пересобрать» и
 «🔄 Синхронизация» — `build_sheet_batches`) писала «-» поверх времени. Теперь строители строки
 берут значение из базы тем же правилом, что очередь (первый вход за форум, «25.09 05:23»):
@@ -17,7 +17,7 @@ from handlers.registration import (
     active_sheet_row, party_sheet_headers, party_sheet_row, short_sheet_headers, short_sheet_row,
 )
 from services import reg_finalize
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from tests._dbtpl import fast_init_db
 from tests.test_sheet_status_city_tab_260819 import _use_tmp_db
 

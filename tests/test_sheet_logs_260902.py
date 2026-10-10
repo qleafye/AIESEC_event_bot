@@ -6,7 +6,7 @@
 pytest-asyncio в проекте нет — каждый async-вызов через asyncio.run(); БД — tmp_path, форма
 шапки как у tests/test_polls_260822.py.
 
-RED (Task 1): `services/sheet_logs.py` ещё не существует — набор обязан упасть на
+RED (Task 1): `services/sheets/sheet_logs.py` ещё не существует — набор обязан упасть на
 ImportError/AttributeError. Task 2/3 дописаны в этот же файл ниже отдельными блоками.
 """
 import asyncio
@@ -15,7 +15,7 @@ from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA
 from domain.settings.synonyms import SETTINGS_SYNONYMS
-from services import sheet_logs
+from services.sheets import sheet_logs
 import handlers.settings.admin_sections as sec
 from handlers.access.admin_caps import ADMIN_CAPS
 import handlers.sheets.admin_sheet_logs as ash
@@ -132,7 +132,7 @@ def test_history_rows_missing_user_does_not_crash(tmp_path):
 
 def test_history_rows_stay_raw_no_apostrophe(tmp_path):
     """Квик 260919 (08-sheets-dashboard): build_history_sheet_rows больше не нейтрализует —
-    services/sheets.py пишет явным RAW, Google Sheets ячейку формулой не считает."""
+    services/sheets/sheets.py пишет явным RAW, Google Sheets ячейку формулой не считает."""
     _ready(tmp_path)
 
     async def go():
@@ -216,7 +216,7 @@ def test_questions_rows_status_and_answer_columns(tmp_path):
 
 def test_export_uses_tab_setting_and_fails_soft(tmp_path, monkeypatch):
     _ready(tmp_path)
-    import services.sheets as sheets
+    import services.sheets.sheets as sheets
     calls = []
 
     async def fake_sync(title, headers, rows):

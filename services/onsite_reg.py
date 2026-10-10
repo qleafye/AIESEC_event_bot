@@ -274,7 +274,7 @@ async def _alert_if_journal_missing(full: dict) -> None:
             full.get("onsite_at") or ""
         ):
             return
-        from services.sheets import _send_admin_alert
+        from services.sheets.sheets import _send_admin_alert
         await _send_admin_alert(
             f"⚠️ Одобрение на месте не попало в журнал решений: делегат {tid}, одобрил(а) "
             f"{full.get('onsite_by')} в {full.get('onsite_at')}. Одобрение действует, но в "
@@ -302,7 +302,7 @@ async def after_onsite_approved(bot, telegram_id: int) -> None:
     except Exception:
         logger.exception("onsite_reg: строка листа не записана (tid=%s)", telegram_id)
     try:
-        from services.sheets import update_status_in_sheet
+        from services.sheets.sheets import update_status_in_sheet
         await update_status_in_sheet(telegram_id, ONSITE_SHEET_LABEL)
     except Exception:
         logger.exception("onsite_reg: статус в листе не обновлён (tid=%s)", telegram_id)

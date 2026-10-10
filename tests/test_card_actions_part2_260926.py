@@ -1048,7 +1048,7 @@ def test_replace_resume_uploads_and_updates_sheet(tmp_path, monkeypatch):
     _configure_nextcloud(monkeypatch)
 
     from services import nextcloud as nextcloud_mod
-    from services import sheets as sheets_mod
+    from services.sheets import sheets as sheets_mod
 
     upload_calls = []
 

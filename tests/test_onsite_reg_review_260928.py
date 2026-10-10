@@ -426,7 +426,8 @@ def test_journal_failure_at_door_is_marked_in_venue_log_and_logged(tmp_path, mon
 
 
 def _patch_tail(monkeypatch, alerts):
-    from services import reg_finalize, sheets
+    from services import reg_finalize
+    from services.sheets import sheets
 
     async def _noop(*_a, **_kw):
         return None

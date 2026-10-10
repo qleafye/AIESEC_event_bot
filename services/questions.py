@@ -19,7 +19,7 @@
 БД); паритет между зеркалом и этой чистой функцией закреплён тестом
 `tests/test_questions_journal_260904.py`.
 
-`format_stamp` — ПЕРЕЕЗД `services/sheet_logs.py::_fmt_dt` (тот модуль держит алиас на эту
+`format_stamp` — ПЕРЕЕЗД `services/sheets/sheet_logs.py::_fmt_dt` (тот модуль держит алиас на эту
 функцию под старым именем, чтобы не трогать вызовы и золотые тесты).
 """
 from __future__ import annotations
@@ -148,7 +148,7 @@ def waiting_days(row: dict, now: datetime | None = None) -> int | None:
 
 
 def format_stamp(raw: str | None, *, stored_utc: bool = True, offset_hours: int = 0) -> str:
-    """ПЕРЕЕЗД `services/sheet_logs.py::_fmt_dt` — оба формата времени в проекте разобраны
+    """ПЕРЕЕЗД `services/sheets/sheet_logs.py::_fmt_dt` — оба формата времени в проекте разобраны
     одинаково, что для листа «Вопросы», что для экранов бота/приложения. Неразобранное
     отдаётся как есть (fail-soft, форма `polls._fmt_date`); пустое -> ''.
 
@@ -171,7 +171,7 @@ def format_stamp(raw: str | None, *, stored_utc: bool = True, offset_hours: int 
 
     Долг «`reg_answer_history.changed_at` пишется локальным временем» закрыт квиком
     260906-52m: `record_answer_history` переведена на `datetime.utcnow()`, все три точки
-    показа (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
+    показа (`services/sheets/sheet_logs.py`, `services/applications.py::_history_entry`,
     `handlers/applications/admin_moderation.py::appr_history`) переключены на сдвиг в МСК. Долг «семья
     `edited_at`/`approved_at`/`registration_date` пишется локальным временем контейнера и
     отстаёт от Москвы на 3 часа» закрыт квиком 260912-mcj — эта семья теперь сама пишется

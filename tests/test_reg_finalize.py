@@ -19,7 +19,7 @@ from handlers import registration as reg_mod
 import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
 from services.infra import miniapp_outbox
-from services import sheets as sheets_service
+from services.sheets import sheets as sheets_service
 from miniapp import outbox as mo
 from tests._dbtpl import fast_init_db
 

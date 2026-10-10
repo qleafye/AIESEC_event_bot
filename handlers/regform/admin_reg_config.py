@@ -27,7 +27,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.settings.schema import get_setting_typed, option_label
 from database.db import get_setting
 from services.settings.audit import set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
-from services.sheets import ensure_sheet_header
+from services.sheets.sheets import ensure_sheet_header
 from services.infra.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS, menu_hidden_reason
 from keyboards.menu_dynamic import caption_for
@@ -89,7 +89,7 @@ async def _refresh_sheet_header(city_code: str | None = None, setting_key: str |
     Each city tab is its own try/except (mirrors the party/short siblings below) so one city's
     Sheets failure never cancels the rest."""
     from handlers.reg.reg_schema import city_row_tab
-    from services.sheets import ensure_named_sheet_header
+    from services.sheets.sheets import ensure_named_sheet_header
 
     if city_code is not None:
         try:
@@ -145,7 +145,7 @@ async def _refresh_party_sheet_header(city_code: str | None = None, setting_key:
     a city can override the party question independently of its full-track override."""
     from handlers.registration import party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
     from handlers.reg.reg_schema import city_row_tab
-    from services.sheets import ensure_named_sheet_header
+    from services.sheets.sheets import ensure_named_sheet_header
     try:
         # REG-02 (06-05): gate read migrated to the registry; behavior unchanged.
         if (await get_setting_typed("party_enabled")) != "on":
@@ -207,7 +207,7 @@ async def _refresh_short_sheet_header(city_code: str | None = None, setting_key:
     the party sibling above."""
     from handlers.registration import short_sheet_headers, SHORT_SHEET_TAB_DEFAULT
     from handlers.reg.reg_schema import city_row_tab
-    from services.sheets import ensure_named_sheet_header
+    from services.sheets.sheets import ensure_named_sheet_header
     try:
         if (await get_setting_typed("registration_mode")) != "short":
             return

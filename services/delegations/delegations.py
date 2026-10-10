@@ -476,7 +476,7 @@ async def convert_to_delegate(
         if prev_status in ("pending", "rejected"):
             try:
                 from domain.regform.labels import STATUS_LABELS
-                from services.sheets import update_status_in_sheet
+                from services.sheets.sheets import update_status_in_sheet
                 await update_status_in_sheet(tid, STATUS_LABELS["approved"])
             except Exception:
                 logger.exception("delegations: статус в листе не обновлён (tid=%s)", tid)

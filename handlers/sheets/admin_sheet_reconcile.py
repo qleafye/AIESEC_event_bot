@@ -5,7 +5,7 @@
 города — менеджер, привязанный к городу, сверяет только свой (`_admin_city_view`, тот же
 резолвер, что у «📄 Экспорт CSV»).
 
-Сама логика — `services/sheet_reconcile.py` (aiogram-free). Этот модуль только строит текст/
+Сама логика — `services/sheets/sheet_reconcile.py` (aiogram-free). Этот модуль только строит текст/
 клавиатуры и вызывает её.
 
 Шов той же формы, что соседние Phase 33 (`admin_city_move.py`/`admin_resume_replace.py`):
@@ -21,7 +21,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_view
 from services.decision_delivery import resend_undelivered_decisions
-from services.sheet_reconcile import (
+from services.sheets.sheet_reconcile import (
     apply_append_missing,
     apply_fix_statuses,
     build_report,

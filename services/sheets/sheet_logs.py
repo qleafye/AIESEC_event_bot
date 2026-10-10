@@ -16,7 +16,7 @@ import asyncio
 import logging
 
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 from database.db import (
     list_answer_history,
     list_questions,
@@ -153,7 +153,7 @@ async def _resolve_tab(key: str) -> str:
 async def export_history_to_sheet() -> int:
     """Полная перезапись листа «История правок» (название — настройка `history_sheet_tab`).
     -1 при ошибке/не настроенной таблице — буква в букву `polls.export_polls_to_sheet`."""
-    from services.sheets import sync_named_worksheet  # sheets тянет gspread — держим лениво
+    from services.sheets.sheets import sync_named_worksheet  # sheets тянет gspread — держим лениво
     tab = await _resolve_tab("history_sheet_tab")
     try:
         rows = await build_history_sheet_rows()
@@ -165,7 +165,7 @@ async def export_history_to_sheet() -> int:
 
 async def export_questions_to_sheet() -> int:
     """Полная перезапись листа «Вопросы» (название — настройка `questions_sheet_tab`)."""
-    from services.sheets import sync_named_worksheet
+    from services.sheets.sheets import sync_named_worksheet
     tab = await _resolve_tab("questions_sheet_tab")
     try:
         rows = await build_questions_sheet_rows()

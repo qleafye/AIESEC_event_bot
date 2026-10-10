@@ -18,7 +18,7 @@ import domain.regform.engine as reg_engine
 from handlers.reg import reg_schema
 from handlers.regform import admin_reg_config
 from handlers.regform import admin_reg_percity
-import services.sheets as sheets_mod
+import services.sheets.sheets as sheets_mod
 from tests._dbtpl import fast_init_db
 
 

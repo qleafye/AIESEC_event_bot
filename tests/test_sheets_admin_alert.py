@@ -6,7 +6,7 @@ monkeypatch, and sheets.asyncio.sleep patched to a no-op so the retry backoff is
 import asyncio
 
 from config import config
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 
 
 def _configure_sheet_creds(monkeypatch):
