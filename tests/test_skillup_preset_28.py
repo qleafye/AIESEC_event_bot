@@ -156,7 +156,8 @@ def test_settings_block_written_after_toggles(monkeypatch):
         "settings": {"reg_resume_mode": "fork", "nudge_after_minutes": "1440"},
     }
     monkeypatch.setitem(reg_presets.REG_PRESETS, "__test_synthetic__", fake_preset)
-    monkeypatch.setattr(reg_presets, "set_setting", fake_set_setting)
+    from database import db as _db
+    monkeypatch.setattr(_db, "set_setting", fake_set_setting)
     asyncio.run(reg_presets.apply_reg_preset("__test_synthetic__"))
 
     toggle_and_payment = set(reg_presets.REG_DEFAULTS) | {"payment_enabled"}

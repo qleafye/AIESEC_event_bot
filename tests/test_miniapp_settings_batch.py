@@ -612,3 +612,16 @@ def test_batch_bot_applied_true_when_queue_works(tmp_path, no_tab):
     client = _setup(tmp_path, "miniapp_settings_batch_queue_ok.db")
     body = _batch(client, [("event_name", "форума RusCo")]).json()
     assert body["bot_applied"] is True and body["notice"] == ""
+
+
+# ── пресет типа события: автор в логе и реакции бота по записанным ключам ─────────────────
+
+def test_event_type_preset_from_app_queues_event_for_preset_keys(tmp_path, no_tab, caplog):
+    client = _setup(tmp_path, "miniapp_settings_batch_preset.db")
+    with caplog.at_level(logging.INFO):
+        body = _batch(client, [("event_type", "conference")], confirm=["event_type"]).json()
+    assert body["saved"] == ["event_type"]
+    rows = [r for r in _run(bot_db.list_unprocessed_miniapp_outbox(limit=50)) if r["kind"] == "settings_changed"]
+    keys = rows[-1]["payload"]["keys"]
+    assert {"event_type", "payment_enabled", "consent_enabled", "reg_q_lc"} <= set(keys)
+    assert f"admin={ADMIN_ID} setting payment_enabled <- 'on'" in caplog.text
