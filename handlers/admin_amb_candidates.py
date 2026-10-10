@@ -537,3 +537,5 @@ async def show_form_card(callback: types.CallbackQuery):
 # Массовые действия (admin_amb_bulk: ambc_decl*, ambc_add*, ambc_arch_csv) — хвост admin.router
 # после хендлеров этого файла.
 from handlers import admin_amb_bulk  # noqa: E402,F401
+# «🧹 Сбросить статусы» (ambrst*) — хвост admin.router после хендлеров этого файла.
+from handlers import admin_amb_reset  # noqa: E402,F401

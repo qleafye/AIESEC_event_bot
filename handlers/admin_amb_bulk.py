@@ -79,6 +79,8 @@ async def bulk_buttons(scope) -> list[list[InlineKeyboardButton]]:
                 rows.append([InlineKeyboardButton(
                     text=f"🙅 Дослать отказ ({pending})", callback_data="ambc_decl")])
     rows.append([InlineKeyboardButton(text="📥 Прошлые сезоны (CSV)", callback_data="ambc_arch_csv")])
+    if scope is None:
+        rows.append([InlineKeyboardButton(text="🧹 Сбросить статусы", callback_data="ambrst")])
     return rows
 
 

@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -41,80 +40,23 @@ for _stream in (sys.stdout, sys.stderr):
         except Exception:
             pass
 
-SCOPE_PAST = "past-seasons"
-SCOPE_CANDIDATES = "candidates-all"
-
-_STATUS_LABELS = {
-    "candidate": "кандидат",
-    "active": "амбассадор",
-    "left": "вышел сам",
-    "declined": "отказано",
-}
-
-_NO_COLUMN = (
-    "В базе нет статуса амбассадора. Сначала перезапустите бота на новой версии — "
-    "при старте он сам добавит статус и перенесёт старые отметки. Потом запустите инструмент ещё раз."
+from services.amb_status_reset import (  # noqa: E402
+    NO_COLUMN as _NO_COLUMN,
+    SCOPE_CANDIDATES,
+    SCOPE_PAST,
+    breakdown as _breakdown,
+    has_status_column as _has_status_column,
 )
-
-
-async def _has_status_column() -> bool:
-    from database import db as _db
-
-    async with _db._connect() as conn:
-        async with conn.execute("PRAGMA table_info(users)") as cursor:
-            return any(row[1] == "ambassador_status" for row in await cursor.fetchall())
-
-
-async def collect(scope: str) -> dict:
-    """Кого сбросим — только чтение. Возвращает сезон события и строки
-    `(telegram_id, status, season, pack_at)`."""
-    from database import db as _db
-
-    season = ((await _db.get_setting("event_season")) or "").strip()
-    if scope == SCOPE_CANDIDATES:
-        where = "ambassador_status = 'candidate' AND COALESCE(season, '') = ?"
-    elif scope == SCOPE_PAST:
-        where = "ambassador_status IS NOT NULL AND COALESCE(season, '') != ?"
-    else:
-        raise ValueError(f"неизвестный режим: {scope!r}")
-    async with _db._connect() as conn:
-        async with conn.execute(
-            "SELECT telegram_id, ambassador_status, COALESCE(season, ''), ambassador_pack_at "
-            f"FROM users WHERE {where} ORDER BY telegram_id",
-            (season,),
-        ) as cursor:
-            rows = [tuple(r) for r in await cursor.fetchall()]
-    return {"season": season, "rows": rows}
-
-
-def _breakdown(rows: list[tuple]) -> list[str]:
-    by_status = Counter(r[1] for r in rows)
-    by_season = Counter(r[2] for r in rows)
-    status_part = ", ".join(
-        f"{_STATUS_LABELS.get(s, s)} — {n}" for s, n in sorted(by_status.items())
-    )
-    season_part = ", ".join(
-        (f"«{s}» — {n}" if s else f"без сезона — {n}") for s, n in sorted(by_season.items())
-    )
-    lines = [f"По статусу: {status_part}", f"По сезону: {season_part}"]
-    with_pack = sum(1 for r in rows if r[3])
-    if with_pack:
-        lines.append(
-            f"С выданным пакетом: {with_pack} — статус сбросится, место за ними останется."
-        )
-    return lines
+from services import amb_status_reset as _service  # noqa: E402
 
 
 async def run(scope: str = SCOPE_PAST, apply: bool = False) -> tuple[int, list[str]]:
     """Ядро инструмента: (код выхода, строки отчёта). Не зовёт init_db — открывает
-    существующую базу как есть."""
+    существующую базу как есть. Логика — `services/amb_status_reset.py` (она же под кнопкой в админке)."""
     if not await _has_status_column():
         return 2, [_NO_COLUMN]
 
-    from database import amb_status_db
-    from services.timeutil import msk_now
-
-    plan = await collect(scope)
+    plan = await _service.preview(scope)
     season, rows = plan["season"], plan["rows"]
     what = ("кандидаты текущего сезона" if scope == SCOPE_CANDIDATES
             else "статусы прошлых сезонов")
@@ -133,14 +75,8 @@ async def run(scope: str = SCOPE_PAST, apply: bool = False) -> tuple[int, list[s
         lines.append("Это предпросмотр, в базе ничего не изменилось. Чтобы сбросить, добавьте --apply")
         return 0, lines
 
-    at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
-    done, skipped = [], []
-    for row in rows:
-        tid, status = row[0], row[1]
-        if await amb_status_db.set_status(tid, None, at=at, expect=(status,)):
-            done.append(row)
-        else:
-            skipped.append(tid)
+    result = await _service.apply(scope, plan)
+    done, skipped = result["done"], result["skipped"]
     lines.append(f"Сброшено: {len(done)}")
     if done:
         lines += _breakdown(done)
