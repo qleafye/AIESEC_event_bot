@@ -57,13 +57,23 @@ def _escape_like(raw: str) -> str:
     return raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
+# Сколько строк забирает каждый ярус до сортировки — потолок скана вместо прежнего `LIMIT limit`
+# (T-30-04): сортировка по частоте сезона должна видеть больше кандидатов, чем показывает.
+_TIER_SCAN_CAP = 300
+
+
 async def search_lookup(kind: str, q: str, limit: int = 10) -> list[dict]:
     """Ранжирование ТРЕМЯ отдельными параметризованными запросами (30-RESEARCH.md Pattern 2 —
     читаемый стиль `database/db.py`, не одна `CASE WHEN`-эквилибристика): точное совпадение
     `alias_norm` → префикс → подстрока. Каждый следующий запрос добирает результат только до
-    `limit` (T-30-04: `LIMIT` в каждом из трёх, DoS длинным подстрочным сканом закрыт). Дубли
-    по `canonical` схлопываются с сохранением порядка первого попадания — точное совпадение
-    важнее, каким бы конкретным psевдонимом оно ни пришло."""
+    `limit`; скан яруса ограничен `_TIER_SCAN_CAP` (T-30-04). Дубли по `canonical`
+    схлопываются с сохранением порядка первого попадания — точное совпадение важнее, каким бы
+    конкретным псевдонимом оно ни пришло.
+
+    Внутри яруса (приёмка 11.10: «политех» не находил Московский политех — по алфавиту его
+    вытесняли редкие вузы): закреплённые менеджером → частые ответы сезона (та же свёртка
+    псевдонимов, что у `top_chips`) → совпадение по самому `canonical` выше старого псевдонима
+    → короче `alias_norm` → `canonical` по алфавиту."""
     from database.db import _connect
 
     norm = normalize_alias(q)
@@ -76,29 +86,45 @@ async def search_lookup(kind: str, q: str, limit: int = 10) -> list[dict]:
 
     queries = [
         (
-            "SELECT canonical, alias FROM lookup_entries "
-            "WHERE kind = ? AND alias_norm = ? ORDER BY canonical LIMIT ?",
-            (kind, norm, limit),
+            "SELECT canonical, alias, alias_norm FROM lookup_entries "
+            "WHERE kind = ? AND alias_norm = ? LIMIT ?",
+            (kind, norm, _TIER_SCAN_CAP),
         ),
         (
-            "SELECT canonical, alias FROM lookup_entries "
-            "WHERE kind = ? AND alias_norm LIKE ? ESCAPE '\\' ORDER BY canonical LIMIT ?",
-            (kind, escaped + "%", limit),
+            "SELECT canonical, alias, alias_norm FROM lookup_entries "
+            "WHERE kind = ? AND alias_norm LIKE ? ESCAPE '\\' LIMIT ?",
+            (kind, escaped + "%", _TIER_SCAN_CAP),
         ),
         (
-            "SELECT canonical, alias FROM lookup_entries "
-            "WHERE kind = ? AND alias_norm LIKE ? ESCAPE '\\' ORDER BY canonical LIMIT ?",
-            (kind, "%" + escaped + "%", limit),
+            "SELECT canonical, alias, alias_norm FROM lookup_entries "
+            "WHERE kind = ? AND alias_norm LIKE ? ESCAPE '\\' LIMIT ?",
+            (kind, "%" + escaped + "%", _TIER_SCAN_CAP),
         ),
     ]
 
     async with _connect() as conn:
+        rank = None
         for sql, params in queries:
             if len(result) >= limit:
                 break
             cursor = await conn.execute(sql, params)
             rows = await cursor.fetchall()
-            for canonical, alias in rows:
+            if not rows:
+                continue
+            if rank is None:
+                pinned = await _pinned_canonicals(conn, kind)
+                freq = await _season_counts(conn, kind)
+
+                def rank(row, pinned=pinned, freq=freq):
+                    canonical, _alias, alias_norm = row
+                    return (
+                        canonical not in pinned,
+                        -freq.get(canonical, 0),
+                        alias_norm != normalize_alias(canonical),
+                        len(alias_norm),
+                        canonical,
+                    )
+            for canonical, alias, _alias_norm in sorted(rows, key=rank):
                 if canonical in seen:
                     continue
                 seen.add(canonical)
@@ -106,6 +132,13 @@ async def search_lookup(kind: str, q: str, limit: int = 10) -> list[dict]:
                 if len(result) >= limit:
                     break
     return result
+
+
+async def _pinned_canonicals(conn, kind: str) -> set[str]:
+    cursor = await conn.execute(
+        "SELECT DISTINCT canonical FROM lookup_entries WHERE kind = ? AND pinned = 1", (kind,)
+    )
+    return {row[0] for row in await cursor.fetchall()}
 
 
 # Phase 30 (30-02, A2-03, 30-CONTEXT.md решение владельца №4): колонка `users`, по которой
@@ -182,51 +215,7 @@ async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[s
         if len(chips) >= limit:
             return chips[:limit]
 
-        freq_sqls = _SEASON_FREQ_SQL.get(kind)
-        if freq_sqls is None:
-            return chips
-        sql_with_season, sql_without_season = freq_sqls
-
-        season = None
-        try:
-            cursor = await conn.execute("SELECT value FROM bot_settings WHERE key = 'event_season'")
-            season_row = await cursor.fetchone()
-            season = season_row[0] if season_row else None
-        except Exception:
-            season = None
-
-        freq_rows: list[tuple] = []
-        try:
-            if season:
-                cursor = await conn.execute(sql_with_season, (season,))
-            else:
-                cursor = await conn.execute(sql_without_season)
-            freq_rows = await cursor.fetchall()
-        except Exception:
-            # Легаси-тестовая БД без колонки `season`/`university`/`city` на `users` — топ-8
-            # деградирует до закреплённых, а не роняет вызывающего (тот же класс fail-soft,
-            # что у `database/db.py` UPDATE-миграции source/source_legacy — квик 260912-lwy).
-            freq_rows = []
-
-        alias_map: dict[str, str] = {}
-        if freq_rows:
-            cursor = await conn.execute(
-                "SELECT alias, canonical FROM lookup_entries WHERE kind = ?", (kind,)
-            )
-            for alias, canonical in await cursor.fetchall():
-                alias_map[alias.strip().lower()] = canonical
-                alias_map[canonical.strip().lower()] = canonical
-
-        folded: dict[str, int] = {}
-        for value, cnt in freq_rows:
-            normalized_value = (value or "").strip().lower()
-            if normalized_value in _PLACEHOLDER_ANSWERS:
-                continue
-            if _UAT_SEED_MARKER in normalized_value:
-                continue
-            canonical_value = alias_map.get(normalized_value, value)
-            folded[canonical_value] = folded.get(canonical_value, 0) + cnt
-
+        folded = await _season_counts(conn, kind)
         for value in sorted(folded, key=lambda v: folded[v], reverse=True):
             if value in chips:
                 continue
@@ -234,6 +223,57 @@ async def top_chips(kind: str, event_city: str | None, limit: int = 8) -> list[s
             if len(chips) >= limit:
                 break
     return chips[:limit]
+
+
+async def _season_counts(conn, kind: str) -> dict[str, int]:
+    """Частота ответов текущего сезона по `canonical`: заглушки пропуска и засеянные `/uat`
+    строки выброшены, псевдонимы свёрнуты в канонику. Общий счёт для `top_chips` и
+    `search_lookup`; нет сезона/колонки — пустой словарь, не исключение."""
+    freq_sqls = _SEASON_FREQ_SQL.get(kind)
+    if freq_sqls is None:
+        return {}
+    sql_with_season, sql_without_season = freq_sqls
+
+    season = None
+    try:
+        cursor = await conn.execute("SELECT value FROM bot_settings WHERE key = 'event_season'")
+        season_row = await cursor.fetchone()
+        season = season_row[0] if season_row else None
+    except Exception:
+        season = None
+
+    freq_rows: list[tuple] = []
+    try:
+        if season:
+            cursor = await conn.execute(sql_with_season, (season,))
+        else:
+            cursor = await conn.execute(sql_without_season)
+        freq_rows = await cursor.fetchall()
+    except Exception:
+        # Легаси-тестовая БД без колонки `season`/`university`/`city` на `users` — топ-8
+        # деградирует до закреплённых, а не роняет вызывающего (тот же класс fail-soft,
+        # что у `database/db.py` UPDATE-миграции source/source_legacy — квик 260912-lwy).
+        freq_rows = []
+
+    alias_map: dict[str, str] = {}
+    if freq_rows:
+        cursor = await conn.execute(
+            "SELECT alias, canonical FROM lookup_entries WHERE kind = ?", (kind,)
+        )
+        for alias, canonical in await cursor.fetchall():
+            alias_map[alias.strip().lower()] = canonical
+            alias_map[canonical.strip().lower()] = canonical
+
+    folded: dict[str, int] = {}
+    for value, cnt in freq_rows:
+        normalized_value = (value or "").strip().lower()
+        if normalized_value in _PLACEHOLDER_ANSWERS:
+            continue
+        if _UAT_SEED_MARKER in normalized_value:
+            continue
+        canonical_value = alias_map.get(normalized_value, value)
+        folded[canonical_value] = folded.get(canonical_value, 0) + cnt
+    return folded
 
 
 async def enqueue_merge(kind: str, raw_text: str, step_key: str, telegram_id: int) -> None:
