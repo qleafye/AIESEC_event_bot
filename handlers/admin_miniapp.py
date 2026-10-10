@@ -179,13 +179,25 @@ async def sync_chat_menu_button(bot, chat_id: int | None = None, lang: str = "ru
         await bot.set_chat_menu_button(menu_button=MenuButtonDefault(), **kwargs)
 
 
-async def sync_all_chat_menu_buttons(bot, pause: float = 0.05) -> tuple[int, int]:
+_RESYNC_CONCURRENCY = 10  # одновременных запросов
+_RESYNC_PAUSE = 0.3  # пауза после запроса внутри слота: не больше ~30 запросов в секунду
+_RESYNC_RETRIES = 3  # попыток на чат при «Too Many Requests»
+
+
+async def sync_all_chat_menu_buttons(bot, concurrency: int = _RESYNC_CONCURRENCY,
+                                     pause: float = _RESYNC_PAUSE) -> tuple[int, int]:
     """Общая кнопка меню чата и своя кнопка каждого, кто выбрал язык (`reg_lang.lang_pick_choose`
     ставит её на чат, и она главнее общей — без перестановки у него висела бы старая подпись или
     кнопка выключенного приложения). Зовётся в фоне после правки подписи/тумблера приложения
-    (`settings_audit.MENU_BUTTON_KEYS`). Возвращает (переставлено, не удалось): заблокировавший
-    бота делегат — не повод бросать остальных."""
+    (`settings_audit.MENU_BUTTON_KEYS`, там же — один проход на процесс).
+
+    До `concurrency` запросов разом и пауза `pause` после каждого — не больше ~30 в секунду:
+    2000 делегатов — около минуты. «Too Many Requests» — ждём, сколько сказал Telegram, и
+    повторяем; заблокировавший бота делегат не останавливает остальных, кому кнопка не встала —
+    одной строкой WARNING. Возвращает (переставлено, не удалось)."""
     import asyncio
+
+    from aiogram.exceptions import TelegramRetryAfter
 
     from database.db import list_stored_langs
 
@@ -193,17 +205,31 @@ async def sync_all_chat_menu_buttons(bot, pause: float = 0.05) -> tuple[int, int
         await sync_chat_menu_button(bot)
     except Exception:
         logger.warning("sync_all_chat_menu_buttons: общая кнопка не встала", exc_info=True)
-    done = failed = 0
-    for chat_id, lang in (await list_stored_langs()).items():
-        try:
-            await sync_chat_menu_button(bot, chat_id=chat_id, lang=lang)
-            done += 1
-        except Exception:
-            failed += 1
-        if pause:
-            await asyncio.sleep(pause)  # ~20 запросов в секунду — ниже лимита Telegram
-    logger.info("sync_all_chat_menu_buttons: переставлено %s, не удалось %s", done, failed)
-    return done, failed
+    slots = asyncio.Semaphore(concurrency)
+    failed: list[int] = []
+
+    async def one(chat_id: int, lang: str) -> bool:
+        async with slots:
+            for _attempt in range(_RESYNC_RETRIES):
+                try:
+                    await sync_chat_menu_button(bot, chat_id=chat_id, lang=lang)
+                    return True
+                except TelegramRetryAfter as exc:
+                    await asyncio.sleep(exc.retry_after)
+                except Exception:
+                    break
+                finally:
+                    if pause:
+                        await asyncio.sleep(pause)
+            failed.append(chat_id)
+            return False
+
+    results = await asyncio.gather(*(one(c, lang) for c, lang in (await list_stored_langs()).items()))
+    done = sum(results)
+    if failed:
+        logger.warning("sync_all_chat_menu_buttons: не встала у %s: %s", len(failed), sorted(failed)[:100])
+    logger.info("sync_all_chat_menu_buttons: переставлено %s, не удалось %s", done, len(failed))
+    return done, len(failed)
 
 
 async def _rerender(callback: types.CallbackQuery):
