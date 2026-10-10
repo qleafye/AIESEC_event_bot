@@ -16,7 +16,7 @@ from config import config
 from database import db
 import services.scheduler as sched
 import services.regional_noshow_move as rgnm
-import services.city_move as city_move_mod
+import services.cities.city_move as city_move_mod
 from tests._dbtpl import fast_init_db
 from tests._lang_on import enable_delegate_lang
 from tests.test_roles_phase8 import FakeCallback
@@ -968,7 +968,7 @@ def test_offer_text_and_replies_translated_for_en_delegate(tmp_path, monkeypatch
 def test_rnm_confirm_move_exception_releases_claim_for_retry(tmp_path, monkeypatch):
     """`move_user_city` бросил исключение (не `ok=False`) — захват всё равно возвращён."""
     from handlers import user_actions as ua
-    import services.city_move as cm
+    import services.cities.city_move as cm
 
     _ready(tmp_path)
     _run(_add_delegate(UID, city="spb"))

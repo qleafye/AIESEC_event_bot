@@ -1,4 +1,4 @@
-"""Phase 33 (delegate-card admin actions): dry-run обёртка `services.city_move.move_user_city`
+"""Phase 33 (delegate-card admin actions): dry-run обёртка `services.cities.city_move.move_user_city`
 для стенда — та же операция, что кнопка «🏙 Перевести в город» на карточке `/find`, но из
 командной строки, чтобы проверить перенос на синтетическом делегате ДО того, как разработчик
 скажет владельцу «кнопка готова».
@@ -46,7 +46,7 @@ async def main() -> int:
 
     from domain.cities import reload_cities
     from database.db import get_user
-    from services.city_move import move_user_city
+    from services.cities.city_move import move_user_city
 
     # Памятка standalone-script-sheet-traps, пункт 3: справочник городов живёт в памяти
     # процесса бота, отдельный процесс без этого видит холодные дефолты из .env (без боевого

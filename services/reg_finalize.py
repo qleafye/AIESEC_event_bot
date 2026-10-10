@@ -579,7 +579,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 try:
                     from domain.cities import cities_module_on
                     if await cities_module_on():
-                        from services.known_city import known_city
+                        from services.cities.known_city import known_city
                         _known = await known_city(telegram_id)
                         if _known:
                             data["event_city"] = _known

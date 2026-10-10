@@ -445,7 +445,7 @@ def test_revert_to_pending_keeps_slot_with_pack(ready):
 
 
 def test_city_move_to_moderation_releases_slot(ready, monkeypatch):
-    from services.city_move import STATUS_MODE_TO_MODERATION, move_user_city
+    from services.cities.city_move import STATUS_MODE_TO_MODERATION, move_user_city
     from tests.test_city_move_260925 import _install_fake_sheets, _resolve_tabs
     store = _install_fake_sheets(monkeypatch)
     _run(db.set_setting("event_city_enabled", "on"))
