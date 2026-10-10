@@ -305,7 +305,7 @@ def test_batch_hooks_run_per_key_but_reject_rules_once(monkeypatch):
 
     seen, per_key, batch = [], [], []
 
-    async def fake_hooks(key, *, reject_rules=True):
+    async def fake_hooks(key, *, reject_rules=True, reschedule=True):
         seen.append((key, reject_rules))
 
     async def fake_batch(keys):
@@ -319,3 +319,26 @@ def test_batch_hooks_run_per_key_but_reject_rules_once(monkeypatch):
     batch.clear()
     asyncio.run(settings_audit.run_setting_hooks_batch(["a"], reject_rules=False))
     assert batch == []
+
+
+def test_batch_reschedules_once_per_module_not_per_key(monkeypatch):
+    """Пакет из ключей одного модуля — одна перепланировка, а не по ключу; голый ключ
+    покрывает городские того же модуля."""
+    import settings_audit
+    import settings_reschedule
+    from cities import per_city_key
+
+    got = []
+
+    async def fake_reschedule(keys):
+        got.append(list(keys))
+
+    monkeypatch.setattr(settings_reschedule, "reschedule_for_settings", fake_reschedule)
+    asyncio.run(settings_audit.run_setting_hooks_batch(["forum_date", "forum_day_report_time"]))
+    assert got == [["forum_date", "forum_day_report_time"]]
+
+    plan = settings_reschedule._plan(["forum_date", per_city_key("forum_date", "spb"),
+                                      per_city_key("forum_day_report_time", "spb"),
+                                      per_city_key("forum_day_report_time", "spb")])
+    assert [p for p in plan if p[0] == "forum_day_report"] == [("forum_day_report", None, True)]
+    assert [p for p in plan if p[0] == "checkin_qr"] == [("checkin_qr", None, True)]

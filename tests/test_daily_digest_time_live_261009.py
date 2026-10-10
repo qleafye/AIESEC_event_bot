@@ -39,9 +39,9 @@ def test_miniapp_outbox_runs_setting_hooks(monkeypatch):
 
     seen = []
 
-    async def _hooks(key):
-        seen.append(key)
+    async def _batch(keys):
+        seen.append(list(keys))
 
-    monkeypatch.setattr(settings_audit, "run_setting_hooks", _hooks)
+    monkeypatch.setattr(settings_audit, "run_setting_hooks_batch", _batch)
     asyncio.run(miniapp_outbox._handle_row(None, "settings_changed", {"keys": ["daily_digest_time", "x"]}))
-    assert seen == ["daily_digest_time", "x"]
+    assert seen == [["daily_digest_time", "x"]]  # одним вызовом на пакет, не по ключу
