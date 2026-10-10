@@ -105,6 +105,7 @@ EXPECTED_PER_CITY_KEYS = {
     "quiz_disabled_text",
     "quiz_not_approved_text",
     "quiz_no_result_text",
+    "quiz_points_max",  # 10.10: экран теста открыт менеджеру города — и число своё у города
     # Phase 27 (27-04, LANG-01): переключатель языка анкеты в главном меню.
     "menu_lang",
     # Phase 21 (D-25): тексты анкеты в Mini App, обращённые к делегату, -- per-city как их

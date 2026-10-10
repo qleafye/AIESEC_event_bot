@@ -8,7 +8,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import get_setting_typed_for_city, is_per_city
+from cities import get_setting_typed_for_city
 from database import quiz_db as qdb
 from handlers.admin import router
 from handlers.admin_enroll_list import _write_key
@@ -317,7 +317,7 @@ async def prog_qzte(callback: types.CallbackQuery, state: FSMContext):
         lines += ["", html_module.escape(extra)]
     lines += ["", "<i>«-» — вернуть стандартный текст.</i>"]
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": await _write_key(base, code) if is_per_city(base) else base})  # число баллов — общее
+    await state.set_data({"setting_key": await _write_key(base, code)})
     await callback.message.edit_text(
         "\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[_CANCEL_ROW]),
     )
