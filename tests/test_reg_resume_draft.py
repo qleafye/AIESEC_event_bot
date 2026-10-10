@@ -199,7 +199,7 @@ def test_advance_merges_miniapp_draft_without_clobbering_just_answered(tmp_path)
     # чужое поле подмешалось
     assert data.get("full_name") == "Из Приложения"
     # one-time уведомление ушло
-    assert any(t == "📲 Подхватил ответы, которые вы ввели в приложении." for t in _texts(msg))
+    assert any(t == "📲 Подхватил ответы, которые ты ввёл(а) в приложении." for t in _texts(msg))
 
 
 def test_advance_no_notification_when_no_foreign_change(tmp_path):
