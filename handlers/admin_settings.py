@@ -168,7 +168,7 @@ _REG_FIELD_ORDER = [
 # SETTINGS_SCHEMA не тронут: физическое место ключа в реестре прежнее, переехала только
 # группировка экрана.
 _APPS_FIELD_ORDER = [
-    "reg_complete_text", "approve_text", "reject_text",
+    "reg_complete_text", "approve_text", "approve_text__auto", "reject_text",  # __auto — ответ при автоприёме
     # Phase 17.1 (17.1-01): гейт «заявка на рассмотрении» — рядом с reject_text, обе ветки
     # одного `_gate_decision` редактируются в одном месте.
     "pending_gate_text",
@@ -181,6 +181,7 @@ _APPS_FIELD_ORDER = [
     # Quick 260819 (schema-completeness): догонялка брошенных анкет (порог и текст).
     # Phase 28 (28-09, SU-09): слово-фоллбэк для {remaining} — рядом с текстом догонялки.
     "nudge_after_minutes", "nudge_text", "nudge_remaining_fallback_text",
+    "reg_nudge_chat_button_text", "reg_nudge_app_button_text",  # кнопки догонялки
     # Phase 23 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App — общий списочный
     # редактор (admin_settings_lists.py) достаётся бесплатно попаданием в этот список.
     "reject_reason_templates",
@@ -210,14 +211,15 @@ _APPS_FIELD_ORDER = [
     # этот список (иначе менеджер их в боте не увидит вовсе, правило файла, см. preselect_*
     # выше) — сам master-тумблер checkin_qr_enabled НЕ здесь (type "enum", живёт в
     # settings_toggle_rows/admin_sections.SECTIONS, как остальные тумблеры «📋 Заявки»).
-    "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
+    "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_confirm_receipt_text", "checkin_qr_disabled_text",
     # Форум-ночь: текст самой рассылки QR накануне форума (+ утренний повтор) — был заведён
     # в реестре (D-25), но забыт здесь: время рассылки правилось в «✅ Отметки на форуме»
     # (handlers/admin_checkin.py), а сам текст в боте было не найти вовсе (только Mini App).
     "checkin_qr_broadcast_text", "checkin_qr_morning_text",
     # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — тот же приём, что у трёх
     # ключей чек-ина выше (редактор экрана достаётся бесплатно попаданием в этот список).
-    "checkin_not_arrived_text",
+    "checkin_not_arrived_text", "checkin_not_arrived_show_qr_hint_text",  # и ответы на кнопки шаблона
+    "checkin_not_arrived_coming_ack_text", "checkin_not_arrived_cant_ack_text",
     # Форум-ночь B3 (идея №22): шпаргалка волонтёра чек-ина — уходила личным сообщением
     # (handlers/admin_roles.py::roles_assign), но в боте её было негде поправить (только
     # Mini App) — тот же пропуск, что у checkin_qr_broadcast_text выше.
@@ -326,6 +328,7 @@ _GAME_FIELD_ORDER = [
 ]
 
 from settings_amb_fields import AMB_FIELD_ORDER as _AMB_FIELD_ORDER  # порядок ключей группы «🤝 Амбассадоры»
+from settings_chat_fields import CHAT_TEXT_GROUPS  # тексты чата, правившиеся только в приложении
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
 _SYSTEM_FIELD_ORDER = [
@@ -382,6 +385,7 @@ _AMB_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) fo
 _GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _GAME_FIELD_ORDER]
 _SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SYSTEM_FIELD_ORDER]
 _CHAT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CHAT_FIELD_ORDER]
+_CHAT_TEXT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for _l, _t, ks in CHAT_TEXT_GROUPS for k in ks]
 
 # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
 # PDF согласий грузятся в разделе «🧾 PDF согласий».
@@ -389,7 +393,7 @@ _CHAT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) f
 # party_approval are toggle buttons in build_settings_keyboard, not here).
 SETTINGS_FIELDS = (
     _EVENT_FIELDS + _REG_FIELDS + _APPS_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
-    + _SHEETS_FIELDS + _GAME_FIELDS + _AMB_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS + MENU_LABEL_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS + _AMB_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS + MENU_LABEL_FIELDS + _CHAT_TEXT_FIELDS
 )
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
@@ -436,6 +440,7 @@ SETTINGS_GROUPS = [
     ("🤝 Амбассадоры", "amb", _AMB_FIELD_ORDER),
     ("💬 Чат делегатов", "chat", _CHAT_FIELD_ORDER),  # квик 260927: веса рейтинга чата
     ("🔧 Система", "system", _SYSTEM_FIELD_ORDER),
+    *CHAT_TEXT_GROUPS,  # раздел каждой — строка ("group", …) в admin_sections.SECTIONS
 ]
 
 
