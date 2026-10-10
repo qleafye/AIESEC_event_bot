@@ -30,7 +30,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from handlers.reg import reg_extra_steps
-from handlers.registration import _advance, _progress, _safe_answer, _sync_draft_out, router
+from handlers.registration import _advance, _progress, _safe_answer, _step_number, _sync_draft_out, router
 from handlers.states import Registration
 from handlers.i18n import reg_i18n
 from domain.settings.schema import get_setting_typed
@@ -109,7 +109,7 @@ async def back_to_fork(message: types.Message, state: FSMContext) -> None:
     await _sync_draft_out(message.chat.id, state, data, None, answered_col=("resume_type",))
     participant_type = data.get("participant_type") or "full"
     city_code = data.get("event_city")
-    progress_prefix = await _progress(data.get("_reg_step", 1), data.get("_reg_total", 1))
+    progress_prefix = await _progress(*await _renumber("resume", state, data))
     await ask_fork(message, state, progress_prefix, participant_type, city_code)
 
 
@@ -141,6 +141,13 @@ async def _ask_text_branch(message: types.Message, state: FSMContext, progress_p
     ]])
     await _safe_answer(message, text, reply_markup=kb)
     await state.set_state(Registration.resume)
+
+
+async def _renumber(step_key: str, state: FSMContext, data: dict) -> tuple[int, int]:
+    """Номер и знаменатель шага по актуальному списку шагов, записанные в FSM."""
+    step, total = await _step_number(step_key, data) or (data.get("_reg_step", 1), data.get("_reg_total", 1))
+    await state.update_data(_reg_step=step, _reg_total=total)
+    return step, total
 
 
 @router.callback_query(F.data.startswith("regfork:"), Registration.resume)
@@ -177,7 +184,10 @@ async def regfork_pick(callback: types.CallbackQuery, state: FSMContext):
     await _sync_draft_out(tap_message.chat.id, state, data, None, answered_col=("resume_type",))
     participant_type = data.get("participant_type") or "full"
     city_code = data.get("event_city")
-    p = await _progress(data.get("_reg_step", 1), data.get("_reg_total", 1))
+    # Ветка меняет список шагов (ссылка +1, мини-профиль +3): номер первого подшага — его
+    # позиция в новом списке, а не номер самого вопроса резюме.
+    first = {"link": "resume_link", "mini": "mini_projects"}.get(token, "resume")
+    p = await _progress(*await _renumber(first, state, data))
 
     if token == "file":
         await _ask_file_branch(tap_message, state, p, participant_type, city_code)
