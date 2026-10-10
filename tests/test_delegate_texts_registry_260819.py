@@ -907,7 +907,7 @@ def test_party_fork_uses_registry_default_then_setting(tmp_path):
 
 
 def _preselect_on(monkeypatch):
-    from services import allowlist
+    from services.access import allowlist
     monkeypatch.setattr(allowlist, "_allowlist", {"chosen_one"})  # непустой, «нас» там нет
     asyncio.run(db.set_setting("preselect_enabled", "on"))
 
@@ -948,7 +948,7 @@ def test_preselect_texts_stay_escaped_not_html(tmp_path, monkeypatch):
 
 def test_preselect_enabled_default_off_keeps_gate_closed(tmp_path, monkeypatch):
     _db_ready(tmp_path)
-    from services import allowlist
+    from services.access import allowlist
     monkeypatch.setattr(allowlist, "_allowlist", {"chosen_one"})
     # preselect_enabled не задан -> enum-дефолт "off" -> гейт не срабатывает, новичок идёт
     # дальше (получает приветствие, а не «Отбор не пройден.»).

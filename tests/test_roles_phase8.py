@@ -1461,7 +1461,7 @@ def test_gate_single_capability_map():
 
 def test_gate_no_capability_cache():
     """D-05: no RAM cache in handlers/access/admin_caps.py -- staff is a local ~5-row table, not a
-    networked source like services/allowlist.py (the explicitly-named anti-pattern this gate
+    networked source like services/access/allowlist.py (the explicitly-named anti-pattern this gate
     guards against reintroducing)."""
     repo_root = REPO_ROOT
     source = _non_comment_source(repo_root / "handlers" / "access" / "admin_caps.py")

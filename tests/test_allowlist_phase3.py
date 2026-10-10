@@ -1,6 +1,6 @@
 """Phase 3 (VERIF-01/02) pure-helper tests for the pre-selection allowlist."""
-import services.allowlist as allowlist
-from services.allowlist import _normalize, _parse_manual_ids, is_allowed
+import services.access.allowlist as allowlist
+from services.access.allowlist import _normalize, _parse_manual_ids, is_allowed
 
 
 def test_normalize():
