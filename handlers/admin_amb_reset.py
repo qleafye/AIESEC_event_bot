@@ -166,7 +166,16 @@ async def amb_reset_go(callback: types.CallbackQuery):
             await _edit(callback, text, kb)
             return
         await callback.answer()
-        result = await svc.apply(_CODES[code], plan)
+        try:
+            result = await svc.apply(_CODES[code], plan)
+        except Exception:
+            logger.exception("amb_status_reset: сброс оборвался by=%s режим=%s", callback.from_user.id, _CODES[code])
+            await callback.message.answer(
+                "Не получилось сбросить статусы до конца. Часть людей могла успеть сброситься. "
+                "Откройте «🧹 Сбросить статусы» заново: бот покажет, кто остался, повторный сброс "
+                "никого не задвоит. Если снова не выйдет — напишите @qleafye."
+            )
+            return
     done, skipped = result["done"], result["skipped"]
     logger.info(
         "amb_status_reset: by=%s режим=%s сброшено=%s пропущено=%s",
