@@ -75,6 +75,9 @@ async def run(scope: str = SCOPE_PAST, apply: bool = False) -> tuple[int, list[s
         lines.append("Это предпросмотр, в базе ничего не изменилось. Чтобы сбросить, добавьте --apply")
         return 0, lines
 
+    if not season:
+        lines.append(_service.NO_SEASON)
+        return 2, lines
     result = await _service.apply(scope, plan)
     done, skipped = result["done"], result["skipped"]
     lines.append(f"Сброшено: {len(done)}")

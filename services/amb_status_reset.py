@@ -32,6 +32,26 @@ NO_COLUMN = (
 )
 
 
+NO_SEASON = (
+    "Сезон события не задан, поэтому сбрасывать нельзя: без него бот не отличит прошлые сезоны от "
+    "текущего и сбросил бы статусы у всех. Задайте «Сезон события» в настройках и откройте экран заново."
+)
+
+
+class SeasonNotSet(Exception):
+    """Сезон события не задан — сброс запрещён (иначе под сброс попал бы и текущий сезон)."""
+
+
+def ids_digest(rows: list[tuple]) -> str:
+    """Короткий отпечаток списка людей из предпросмотра: кнопка «Сбросить» несёт его, и сброс
+    идёт, только если состав за это время не изменился (одного числа мало: один ушёл, другой
+    пришёл — число то же)."""
+    import hashlib
+
+    ids = sorted(int(r[0]) for r in rows)
+    return hashlib.sha1(",".join(map(str, ids)).encode()).hexdigest()[:8]
+
+
 async def has_status_column() -> bool:
     from database import db as _db
 
@@ -72,6 +92,12 @@ def breakdown(rows: list[tuple]) -> list[str]:
         (f"«{s}» — {n}" if s else f"без сезона — {n}") for s, n in sorted(by_season.items())
     )
     lines = [f"По статусу: {status_part}", f"По сезону: {season_part}"]
+    no_season = sum(1 for r in rows if not r[2])
+    if no_season:
+        lines.append(
+            f"Без сезона — {no_season}: старые записи, заведённые до того, как появились сезоны. "
+            "Бот считает их прошлыми, поэтому они тоже будут сброшены."
+        )
     with_pack = sum(1 for r in rows if r[3])
     if with_pack:
         lines.append(
@@ -91,6 +117,8 @@ async def apply(scope: str, plan: dict | None = None) -> dict:
     from services.timeutil import msk_now
 
     plan = plan if plan is not None else await collect(scope)
+    if not (plan.get("season") or "").strip():
+        raise SeasonNotSet(NO_SEASON)
     at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     done, skipped = [], []
     for row in plan["rows"]:
