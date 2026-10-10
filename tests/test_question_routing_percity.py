@@ -333,7 +333,7 @@ def test_finalize_registration_source_passes_event_city():
     # direct bot call and the Mini App outbox job, T-21-02), which is the one that actually
     # calls notify_by_capability (in "each" mode) or arms a city-scoped digest job. City
     # scoping must survive both hops, not just the first one.
-    from services import reg_finalize as reg_finalize_mod
+    from services.registration import reg_finalize as reg_finalize_mod
     from services import reg_digest as reg_digest_mod
 
     post_finalize_src = inspect.getsource(reg_finalize_mod.post_finalize)

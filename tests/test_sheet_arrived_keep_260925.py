@@ -16,7 +16,7 @@ from handlers.reg import reg_schema
 from handlers.registration import (
     active_sheet_row, party_sheet_headers, party_sheet_row, short_sheet_headers, short_sheet_row,
 )
-from services import reg_finalize
+from services.registration import reg_finalize
 import services.sheets.sheets as sheets
 from tests._dbtpl import fast_init_db
 from tests.test_sheet_status_city_tab_260819 import _use_tmp_db

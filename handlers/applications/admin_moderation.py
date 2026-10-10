@@ -55,7 +55,7 @@ from services.applications.applications import (
 )
 from services.applications.application_effects import apply_decision_effects, mass_approve_effects
 from services.infra.background import spawn as _spawn
-from services.consent import consent_card_line  # noqa: F401 — читает admin_modcard_render
+from services.registration.consent import consent_card_line  # noqa: F401 — читает admin_modcard_render
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
 import domain.regform.moderation_card as moderation_card
@@ -205,7 +205,7 @@ def _render_application_card(user: dict, position: int | None, total: int | None
     if prev_reject_line:
         lines.append(prev_reject_line)
     # Quick 260822: одна строка «Согласие: v…» (+ маркер старой редакции) — готовый текст
-    # от services.consent.consent_card_line; None = подписей нет (модуль выключен/legacy).
+    # от services.registration.consent.consent_card_line; None = подписей нет (модуль выключен/legacy).
     if consent_line:
         lines.append(consent_line)
     return "\n".join(lines)

@@ -541,7 +541,7 @@ def _fake_bot():
 
 
 def _patch_sheets(monkeypatch, calls, *, fail=False):
-    from services import reg_finalize
+    from services.registration import reg_finalize
     from services.sheets import sheets
 
     async def fake_row(tid, full, mode):

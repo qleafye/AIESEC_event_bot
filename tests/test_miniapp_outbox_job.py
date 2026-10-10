@@ -100,7 +100,7 @@ def test_resync_kinds_call_request_resync_and_mark_processed(tmp_path, monkeypat
     assert all(r["processed_at"] for r in rows)
 
 
-# ── reg_finalized/reg_edited/reg_resume_upload -> services.reg_finalize (Phase 21, 21-08) ──
+# ── reg_finalized/reg_edited/reg_resume_upload -> services.registration.reg_finalize (Phase 21, 21-08) ──
 
 def test_reg_finalized_kind_calls_post_finalize_with_new_mode(tmp_path, monkeypatch):
     _init(tmp_path)
@@ -127,7 +127,7 @@ def test_reg_finalized_kind_calls_post_finalize_with_new_mode(tmp_path, monkeypa
 
 def test_reg_edited_kind_calls_post_finalize_with_edit_mode_and_derived_facts(tmp_path, monkeypatch):
     """T-21-08: payload несёт только telegram_id — недостающие changed_columns/remoderated/
-    resubmitted дочитывает services.reg_finalize.derive_edit_facts (payload без ответов
+    resubmitted дочитывает services.registration.reg_finalize.derive_edit_facts (payload без ответов
     анкеты — ПД в очередь не попадают)."""
     _init(tmp_path)
     post_finalize_calls = []

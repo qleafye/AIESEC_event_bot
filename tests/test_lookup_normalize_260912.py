@@ -1,4 +1,4 @@
-"""Phase 30 (30-02, A2-03) — сторож `services/lookup.py`: нормализация псевдонимов, ранжирование
+"""Phase 30 (30-02, A2-03) — сторож `services/registration/lookup.py`: нормализация псевдонимов, ранжирование
 поиска, идемпотентность посева, топ-8 чипов, очередь слияния.
 
 pytest-asyncio в этом окружении не установлен (правило проекта) — каждый async-вызов идёт
@@ -12,7 +12,7 @@ import asyncio
 
 from config import config
 from database.db import _connect, init_db
-from services.lookup import (
+from services.registration.lookup import (
     enqueue_merge,
     normalize_alias,
     pin_chip,

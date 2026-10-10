@@ -7,14 +7,14 @@
 Зачем модуль отдельный от `services/applications/applications.py`: ядро отбора обязано остаться aiogram-free
 (веб-процесс `miniapp/` не имеет права импортировать aiogram, `miniapp/deps.py`: «Модуль
 aiogram-free»), а «отправить приветствие» и «отправить сообщение делегату» физически требуют
-объекта бота — тот же разрез, что `services/reg_finalize.py::finalize_data`/`post_finalize`.
+объекта бота — тот же разрез, что `services/registration/reg_finalize.py::finalize_data`/`post_finalize`.
 
 Зовёт эти две функции и чат (боту, напрямую после решения — `_spawn(apply_decision_effects(...))`
 в `handlers/applications/admin_moderation.py`), и (со следующего плана) джоба очереди событий веба, когда
 истечёт окно отмены (D-06) — один и тот же журнал вызовов и текстов для обеих поверхностей.
 
 Импорт `handlers.reg.reg_schema` — ЛОКАЛЬНЫЙ внутри функции (тот же приём, что
-`services/reg_finalize.py::post_finalize`): `handlers/applications/admin_moderation.py` импортирует ИЗ этого
+`services/registration/reg_finalize.py::post_finalize`): `handlers/applications/admin_moderation.py` импортирует ИЗ этого
 модуля на своём верхнем уровне, обратный модульный импорт дал бы цикл при загрузке пакета
 `handlers`.
 """

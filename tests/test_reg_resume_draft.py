@@ -29,7 +29,7 @@ from handlers.reg import reg_flow
 from handlers.reg import reg_resume_fork
 from handlers.reg import reg_steps
 from handlers.states import Registration
-from services import reg_finalize as rf
+from services.registration import reg_finalize as rf
 
 from tests.test_reg_resume_ttl_260820 import USER_ID
 from tests._dbtpl import fast_init_db

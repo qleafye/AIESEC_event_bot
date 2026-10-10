@@ -14,7 +14,7 @@
 - `services.applications.applications.flush_due_decisions` — одиночное одобрение в Mini App, только когда
   окно «Отменить» прошло (отменённое решение туда не доходит — ступени за него нет);
 - `services.applications.applications.claim_approve_all_with_credits` — «Принять всех» в боте и Mini App;
-- `services/reg_finalize.py` — авто-одобрение на финале анкеты.
+- `services/registration/reg_finalize.py` — авто-одобрение на финале анкеты.
 
 И отдельно — при вступлении в амбассадоры (`check_tiers_for_new_ambassador`: бот
 `handlers/reg/reg_ambassador.py`, возврат `handlers/user_actions.py::ambassador_join`, Mini App

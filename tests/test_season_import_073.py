@@ -94,7 +94,7 @@ class _FakeMessage:
 
 
 class _FakeBot:
-    """`await bot.download(file_id)` — same idiom services/nextcloud.py::upload_resume uses."""
+    """`await bot.download(file_id)` — same idiom services/registration/nextcloud.py::upload_resume uses."""
 
     def __init__(self, content: bytes):
         self.content = content

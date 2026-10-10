@@ -1395,12 +1395,12 @@ async def translation_drain_job():
 async def resume_upload_retry_job():
     """Interval-job target (no args, picklable — Pitfall 3), ровно по образцу
     `translation_drain_job`/`quiet_hours_flush_job` выше. Ленивый импорт
-    `services.reg_finalize` (сам джоба-модуль ничего не знает про Nextcloud/Sheets —
+    `services.registration.reg_finalize` (сам джоба-модуль ничего не знает про Nextcloud/Sheets —
     догрузку резюме, не улетевшего в облако на финале). Джоба сама молчит, когда Nextcloud
     не настроен (`nextcloud.is_configured()` проверяется внутри `retry_pending_resume_uploads`
     ДО любого обращения к БД/боту) — отдельного тумблера на эту джобу поэтому нет."""
     try:
-        from services.reg_finalize import retry_pending_resume_uploads
+        from services.registration.reg_finalize import retry_pending_resume_uploads
         await retry_pending_resume_uploads(_bot)
     except Exception as e:
         logger.error(f"resume_upload_retry_job failed: {e}")

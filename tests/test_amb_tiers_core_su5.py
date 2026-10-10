@@ -502,7 +502,7 @@ def test_undo_window_live_approval_undone_stays_at_two(tmp_path):
 
 def test_auto_approval_on_finalize_gives_tier(tmp_path, monkeypatch):
     """Авто-одобрение на финале анкеты (full_approval=auto) — ступень 1."""
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
 
     _ready(tmp_path)
     _on()

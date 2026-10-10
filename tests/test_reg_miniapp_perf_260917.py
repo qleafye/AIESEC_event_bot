@@ -8,7 +8,7 @@
 SQLite-соединений, `hub` — 16. Фикс — тот же `database.db.settings_snapshot()`, что и у
 admin_settings.py/Mini App settings.py: тонкая обёртка (`_impl`-хвост) вокруг
 `reg_engine.enabled_steps`/`reg_engine.form_v2_flags`/`_draft_response`/`hub`/
-`services.reg_finalize.finalize_data`/`handlers.registration._advance` — ни один не порождает
+`services.registration.reg_finalize.finalize_data`/`handlers.registration._advance` — ни один не порождает
 asyncio.create_task/ensure_future (что было бы опасно — снимок утёк бы в фоновую задачу
 навсегда, см. `test_snapshot_does_not_leak_into_spawned_background_task` ниже).
 

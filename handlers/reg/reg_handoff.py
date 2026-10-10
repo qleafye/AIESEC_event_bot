@@ -23,7 +23,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, TelegramOb
 
 from database.db import get_reg_draft, get_user, set_reg_draft_surface
 from domain.settings.schema import get_setting_typed
-from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
+from services.registration.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
 from domain.regform.engine import has_submitted_anketa
 from handlers.registration import router
 # `reg_resume` — импортирован строкой ВЫШЕ этого модуля в хвосте handlers/registration.py

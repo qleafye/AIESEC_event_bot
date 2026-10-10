@@ -99,7 +99,7 @@ def _callback_datas(kb: InlineKeyboardMarkup):
 
 
 async def _insert_lookup(kind: str, canonical: str, alias: str) -> None:
-    from services.lookup import normalize_alias
+    from services.registration.lookup import normalize_alias
     from database.db import _connect
 
     async with _connect() as conn:
@@ -241,7 +241,7 @@ def test_lookup_other_button_then_free_text_enqueues_merge(tmp_path):
 def test_lookup_chips_enabled_shows_pinned_chip_as_initial_keyboard(tmp_path):
     """Глобальный `reg_form_chips=on` + атрибут списка по умолчанию `"on"` — закреплённый чип
     приходит СРАЗУ инлайн-кнопкой на самом вопросе шага, тапнуть можно не печатая ни буквы."""
-    from services.lookup import pin_chip
+    from services.registration.lookup import pin_chip
 
     _use_tmp_db(tmp_path)
     uid = UID + 6
@@ -267,7 +267,7 @@ def test_lookup_chips_enabled_shows_pinned_chip_as_initial_keyboard(tmp_path):
 def test_lookup_chips_list_attribute_off_hides_initial_keyboard_even_if_global_on(tmp_path):
     """Правило задачи A: глобальный `on` -> решает атрибут СПИСКА — выключенный
     `university_options_chips_enabled` прячет чипы даже при включённом `reg_form_chips`."""
-    from services.lookup import pin_chip
+    from services.registration.lookup import pin_chip
 
     _use_tmp_db(tmp_path)
     uid = UID + 7

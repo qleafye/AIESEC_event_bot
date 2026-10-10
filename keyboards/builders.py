@@ -321,7 +321,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         # Тот же сезон, что сверяет ветка правки в cmd_start, иначе кнопка ведёт в пустое меню.
         if ((user.get("season") or None) == _season
                 and reg_engine.has_submitted_anketa(user, _season)):
-            from services import reg_edit_policy
+            from services.registration import reg_edit_policy
             edit_on, _ = await reg_edit_policy.edit_gate(user)
     except Exception as e:
         logger.error(f"get_main_menu_kb: edit gate resolve failed for {telegram_id}: {e}")

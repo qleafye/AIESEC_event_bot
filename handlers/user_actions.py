@@ -1810,7 +1810,7 @@ async def reg_handoff_idle_fallback(message: types.Message) -> None:
     второй случай: черновик держит БОТ (или ничей), а живого FSM-состояния нет, потому что
     MemoryStorage не пережила рестарт контейнера — 14 из 38 делегатов, оказавшихся в анкете
     за 20 минут до рестарта 05-16.09, не вернулись ни разу."""
-    from services.reg_handoff import draft_holder, SURFACE_APP
+    from services.registration.reg_handoff import draft_holder, SURFACE_APP
     from handlers.reg.reg_handoff import handoff_plate
 
     try:

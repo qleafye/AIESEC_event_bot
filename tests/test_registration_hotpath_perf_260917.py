@@ -173,10 +173,10 @@ def test_start_for_new_delegate_uses_bounded_connections(tmp_path):
 
 
 def test_finalize_data_uses_bounded_connections(tmp_path):
-    """`services.reg_finalize.finalize_data` — данные без сети (Sheets/Nextcloud живут в
+    """`services.registration.reg_finalize.finalize_data` — данные без сети (Sheets/Nextcloud живут в
     `post_finalize`, вне этого замера, см. докстринг `finalize_data`)."""
     _use_tmp_db(tmp_path)
-    from services.reg_finalize import finalize_data
+    from services.registration.reg_finalize import finalize_data
 
     draft = {
         "telegram_id": 6001, "kind": "new", "updated_by": "bot",
@@ -208,7 +208,7 @@ _HOTPATH_FILES = [
     "handlers/reg/reg_types_lookup.py",
     "handlers/reg/reg_types_composite.py",
     "handlers/reg/reg_types_repeatable.py",
-    "services/reg_finalize.py",
+    "services/registration/reg_finalize.py",
     "domain/regform/engine.py",
 ]
 
