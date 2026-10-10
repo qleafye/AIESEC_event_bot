@@ -218,3 +218,28 @@ def test_module_has_no_colors_literals_or_human_text():
     assert not _HEX_OR_RGB_COLOR.findall(text)
     assert "innerHTML" not in text
     assert "import " not in text            # самостоятельный модуль, без зависимостей
+
+
+# ── подключение к экранам: все места загрузки фото в Mini App ─────────────────────────────
+
+from tests.test_miniapp_frontend import SCREENS_DIR  # noqa: E402
+
+FORM_JS = ROOT / "miniapp" / "static" / "js" / "form.js"
+
+
+def _between(text: str, start: str, end: str) -> str:
+    i = text.index(start)
+    return text[i:text.index(end, i)]
+
+
+def test_task_cover_is_shrunk_before_size_check_and_upload_and_previewed_locally():
+    text = _js_without_comments(SCREENS_DIR / "task_edit.js")
+    assert 'from "../photo_shrink.js"' in text
+    body = _between(text, "async function uploadCover(", "function deadlinePicker(")
+    shrink = body.index("await shrinkPhoto(original)")
+    assert shrink < body.index("file.size > limits.photo_max_bytes") < body.index('api("/uploads?target=task_cover"')
+    assert body.index('api("/uploads?target=task_cover"') < body.index("rememberLocalPhoto(res.content, file)")
+    # превью — из локального файла, сервер только если локального нет
+    assert "localPhotoUrl(photoFileId) || fileUrl(photoFileId)" in text
+    # убранная/заменённая обложка освобождает свой object URL
+    assert text.count("forgetLocalPhoto(draft.photo_file_id)") == 2

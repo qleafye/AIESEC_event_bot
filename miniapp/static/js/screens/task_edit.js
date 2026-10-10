@@ -21,6 +21,7 @@ import { unitFor } from "../units.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import { errorText, isAuthError as isAuthErrorBase } from "../form.js";
+import { forgetLocalPhoto, localPhotoUrl, rememberLocalPhoto, shrinkPhoto } from "../photo_shrink.js";
 
 // Иконка по типу подтверждения — та же карта, что у card.js (план 19.1-05): технический
 // код -> имя иконки, не человеческая подпись (подписи по-прежнему только с сервера).
@@ -66,7 +67,9 @@ export async function render(root, params, ctx) {
   function preview(card, photoFileId) {
     const box = h("article", { class: "card task-preview" });
     if (photoFileId) {
-      const img = h("img", { class: "cover", alt: "", src: fileUrl(photoFileId) });
+      // Только что загруженная с этого телефона обложка показывается из локального файла —
+      // без GET /api/file (getFile + скачивание через прокси и туннель на каждый показ).
+      const img = h("img", { class: "cover", alt: "", src: localPhotoUrl(photoFileId) || fileUrl(photoFileId) });
       img.addEventListener("error", () => img.remove());
       box.append(img);
     }
@@ -85,12 +88,14 @@ export async function render(root, params, ctx) {
     return box;
   }
 
-  // ── загрузка обложки: размер проверяется ДО отправки по лимитам из API ──
-  async function uploadCover(file, limits) {
-    if (!file.type.startsWith("image/")) {
+  // ── загрузка обложки: фото ужимается на телефоне (photo_shrink.js), размер проверяется
+  // ДО отправки по лимитам из API — уже у ужатого файла ──
+  async function uploadCover(original, limits) {
+    if (!original.type.startsWith("image/")) {
       say(limits.cover_not_image_text, "warn");
       return null;
     }
+    const file = await shrinkPhoto(original);
     if (file.size > limits.photo_max_bytes) {
       say(limits.too_large_text, "warn");
       return null;
@@ -103,6 +108,7 @@ export async function render(root, params, ctx) {
       say(limits.cover_not_image_text, "warn");
       return null;
     }
+    rememberLocalPhoto(res.content, file);
     return { photo_file_id: res.content, part_token: res.part_token };
   }
 
@@ -443,6 +449,7 @@ export async function render(root, params, ctx) {
             say("Загружаем фото…", "accent");
             const up = await uploadCover(file, limits);
             if (!up) return;
+            if (draft.photo_file_id && draft.photo_file_id !== up.photo_file_id) forgetLocalPhoto(draft.photo_file_id);
             draft.photo_file_id = up.photo_file_id;
             draft.part_token = up.part_token;
             say("Обложка загружена.", "success");
@@ -457,7 +464,7 @@ export async function render(root, params, ctx) {
           h("div", { class: "task-actions" },
             h("button", { class: "btn secondary", type: "button", onClick: () => fileInput.click() }, icon("image"), h("span", { text: draft.photo_file_id ? " Заменить фото" : " Добавить фото" })),
             fileInput,
-            draft.photo_file_id ? h("button", { class: "btn ghost", type: "button", onClick: () => { draft.photo_file_id = null; draft.part_token = null; draw(); } }, icon("x"), h("span", { text: " Убрать фото" })) : null,
+            draft.photo_file_id ? h("button", { class: "btn ghost", type: "button", onClick: () => { forgetLocalPhoto(draft.photo_file_id); draft.photo_file_id = null; draft.part_token = null; draw(); } }, icon("x"), h("span", { text: " Убрать фото" })) : null,
           ),
           navRow(next, draft.photo_file_id ? "Далее →" : "Без фото"));
       } else {
