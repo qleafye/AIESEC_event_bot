@@ -14,16 +14,20 @@
 from __future__ import annotations
 
 import html
+import logging
 
 from aiogram import F, types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import ErrorEvent, InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import ALL_CITIES, cities_module_on, city_label, is_per_city
 from domain.settings.ops import COMMON_DENIED_TEXT, can_write_common, writes_common_value
 from handlers.admin import router
 from handlers.states import EditSetting
 from domain.settings.schema import SETTINGS_SCHEMA
+
+logger = logging.getLogger(__name__)
 
 # INVARIANT (13-01 cap-test): каждый `@router.*` декоратор ниже — в ОДНУ строку.
 
@@ -49,10 +53,38 @@ async def common_write_denied(admin_id: int, key: str) -> bool:
 async def deny(callback_or_message, key: str) -> bool:
     if not await common_write_denied(callback_or_message.from_user.id, key):
         return False
-    if hasattr(callback_or_message, "data"):  # нажатие кнопки — всплывающее окно
-        await callback_or_message.answer(COMMON_DENIED_TEXT, show_alert=True)
-    else:
-        await callback_or_message.answer(COMMON_DENIED_TEXT)
+    await show_common_denied(callback_or_message)
+    return True
+
+
+async def show_common_denied(callback_or_message) -> None:
+    """Нажатие кнопки — всплывающее окно; если на нажатие уже ответили, то сообщение в чат.
+    Присланное сообщение — ответ сообщением."""
+    if hasattr(callback_or_message, "data"):
+        try:
+            await callback_or_message.answer(COMMON_DENIED_TEXT, show_alert=True)
+            return
+        except TelegramBadRequest:  # окно уже не показать — объясняем сообщением
+            callback_or_message = callback_or_message.message
+            if callback_or_message is None:
+                return
+    await callback_or_message.answer(COMMON_DENIED_TEXT)
+
+
+async def on_common_setting_denied(event: ErrorEvent, state: FSMContext | None = None) -> bool:
+    """Воронка записи (`settings_audit.set_setting_by_admin`) отказала привязанному к городу
+    в записи общего ключа — хендлер прерван до «сохранено», здесь менеджер получает объяснение.
+    Регистрируется в `main.py` раньше общего обработчика ошибок; ввод значения, если он шёл,
+    сбрасывается — следующее сообщение не должно снова упереться в тот же отказ."""
+    update = event.update
+    try:
+        if update.message is not None and state is not None:
+            await state.clear()
+        target = update.callback_query or update.message
+        if target is not None:
+            await show_common_denied(target)
+    except Exception as exc:  # noqa: BLE001 — объяснение не должно ронять обработку ошибки
+        logger.warning("Не удалось объяснить отказ в записи общего ключа: %s", exc)
     return True
 
 
