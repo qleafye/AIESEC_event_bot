@@ -34,7 +34,7 @@ from database.db import (
     get_dropout_step_stats,
     settings_snapshot,
 )
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from settings_audit import set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
 from services.sheets import (
     sync_named_worksheet,
     tab_row_count,
@@ -2627,7 +2627,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         await set_setting_by_admin(message.from_user.id, key, value)
         # Phase 4 (D-05): saving event_type applies the module-toggle preset.
         if key == "event_type":
-            await _apply_event_type_preset(value.strip().lower())
+            preset_keys = await _apply_event_type_preset(value.strip().lower(), message.from_user.id)
+            await run_setting_hooks_batch(preset_keys, reject_rules=value.strip().lower() != "skillup")
             await remind_consent_purposes_after_preset(message, value.strip())
         # WR-02: "Отмена"/"Другое"/"Пропустить" are reserved control words in the registration
         # flow — an option list whose line equals one becomes unreachable (it triggers cancel /

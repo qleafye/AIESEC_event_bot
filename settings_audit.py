@@ -38,20 +38,36 @@ from database import db
 logger = logging.getLogger(__name__)
 
 
-async def run_setting_hooks(key: str) -> None:
+async def run_setting_hooks(key: str, *, reject_rules: bool = True) -> None:
     """Реакции бота на правку ключа. Зовётся и после записи из бота, и разборщиком очереди
     приложения (`settings_changed`): правка в приложении должна действовать так же сразу.
     Каждая реакция в своём try — сбой одной не отменяет остальные и не роняет запись."""
     from services import bot_profile, daily_digest, menu_labels, reject_rules_notify, scheduler
     from settings_reschedule import reschedule_for_setting
 
-    for hook in (reject_rules_notify.on_setting_written, bot_profile.on_setting_written,
-                 daily_digest.on_setting_written, scheduler.on_setting_written,
-                 menu_labels.on_setting_written, reschedule_for_setting):
+    hooks = [bot_profile.on_setting_written, daily_digest.on_setting_written,
+             scheduler.on_setting_written, menu_labels.on_setting_written, reschedule_for_setting]
+    if reject_rules:
+        hooks.insert(0, reject_rules_notify.on_setting_written)
+    for hook in hooks:
         try:
             await hook(key)
         except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
             logger.error("settings_audit: реакция на %r сорвалась: %s", key, exc)
+
+
+async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True) -> None:
+    """Хуки для пачки ключей, записанных одним действием (пресет типа события). Каждая реакция
+    узкая — срабатывает только на «свои» ключи, повторные сообщения людям не рассылает.
+    Автоотказ — исключение: он пересчитывает и пишет держателям права, поэтому зовётся ОДИН
+    раз на пачку (`on_settings_written_batch`), а не по ключу; `reject_rules=False` — писатель
+    уже сделал это сам (`reg_presets.apply_reg_preset`)."""
+    for key in dict.fromkeys(keys):
+        await run_setting_hooks(key, reject_rules=False)
+    if reject_rules:
+        from services import reject_rules_notify
+
+        await reject_rules_notify.on_settings_written_batch(list(keys))
 
 
 async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> None:

@@ -55,23 +55,31 @@ from settings_validation import (
 
 # ── event_type preset (D-05) ──────────────────────────────────────────────────────────────
 
-async def apply_event_type_preset(event_type: str):
+async def apply_event_type_preset(event_type: str, admin_id: int | None = None) -> list[str]:
     """D-05: event type presets module flags; each is still manually overridable after.
     conference → payment+consent+вопрос о ЛК ON; forum → payment+consent OFF; custom → no change.
     Phase 28 (28-10, SU-11): fourth branch "skillup" → the whole «🎓 Форум СкиллАп» preset
     (reg_presets.apply_reg_preset), the same bulk-writer the bot's preset button calls —
-    web and bot apply identical state (T-28-10-01)."""
+    web and bot apply identical state (T-28-10-01).
+
+    Пишет с автором (`admin_id`) через `write_setting_logged` и возвращает все записанные ключи:
+    бот гонит по ним хуки (`settings_audit.run_setting_hooks_batch`), приложение ставит в очередь
+    `settings_changed` — иначе пресет менял бы десятки настроек без следа в логе и без реакции."""
+    from settings_audit import write_setting_logged
+
+    writes: dict[str, str] = {}
     if event_type == "conference":
-        await set_setting("payment_enabled", "on")
-        await set_setting("consent_enabled", "on")
-        # Делегаты конференции — члены АЙСЕК, их ЛК нужен в заявке.
-        await set_setting("reg_q_lc", "on")
+        writes = {"payment_enabled": "on", "consent_enabled": "on",
+                  # Делегаты конференции — члены АЙСЕК, их ЛК нужен в заявке.
+                  "reg_q_lc": "on"}
     elif event_type == "forum":
-        await set_setting("payment_enabled", "off")
-        await set_setting("consent_enabled", "off")
+        writes = {"payment_enabled": "off", "consent_enabled": "off"}
     elif event_type == "skillup":
-        await apply_reg_preset("skillup")
+        return await apply_reg_preset("skillup", admin_id)
+    for key, value in writes.items():
+        await write_setting_logged(admin_id, key, value)
     # "custom" → no change (manual control)
+    return list(writes)
 
 
 # ── per-city право на правку (Phase 09.2/09.3) ──────────────────────────────────────────────
@@ -1020,16 +1028,22 @@ async def validate_batch_item(
     return BatchCheck(value)
 
 
-async def commit_batch_item(key: str, value: str | None, admin_id: int | None = None) -> str | None:
+async def commit_batch_item(
+    key: str, value: str | None, admin_id: int | None = None, written: list[str] | None = None,
+) -> str | None:
     """Шаги записи одного ключа (после того как ВЕСЬ пакет прошёл проверки). Возвращает
-    предупреждение (не блокирующее) либо `None`. `admin_id` — автор правки для лога настроек."""
+    предупреждение (не блокирующее) либо `None`. `admin_id` — автор правки для лога настроек;
+    `written` — список, в который дописываются ключи, записанные пресетом типа события (для
+    очереди `settings_changed` приложения)."""
     from settings_audit import write_setting_logged
 
     warning = None
     await write_setting_logged(admin_id, key, value)
     if value is not None:
         if key == "event_type":
-            await apply_event_type_preset(value.strip().lower())
+            preset_keys = await apply_event_type_preset(value.strip().lower(), admin_id)
+            if written is not None:
+                written.extend(preset_keys)
         if key.endswith("_options"):
             clashes = reserved_option_clashes(value)
             if clashes:

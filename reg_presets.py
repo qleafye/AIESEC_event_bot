@@ -13,7 +13,7 @@ REG_PRESETS переехал сюда ДОСЛОВНО из `handlers/reg_schema
 веб-путь применения пресета «СкиллАп» обязан звать ТОТ ЖЕ bulk-writer, что кнопка в боте
 (T-28-10-01/03: один детерминированный писатель настроек — не две копии правила).
 
-Зависимости — ТОЛЬКО `database.db` (`set_setting`) и `reg_engine` (`REG_DEFAULTS`,
+Зависимости — ТОЛЬКО `settings_audit` (`write_setting_logged`, над `database.db`) и `reg_engine` (`REG_DEFAULTS`,
 `MODULE_SWITCH_TOGGLES`), ни одного
 импорта `aiogram`/`handlers.*` (сторож tests/test_skillup_preset_28.py::
 test_reg_presets_module_is_aiogram_free).
@@ -30,7 +30,7 @@ Mini App не имеет права тянуть тот корневой мод�
 """
 import logging
 
-from database.db import set_setting
+from settings_audit import write_setting_logged
 from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
 
 logger = logging.getLogger(__name__)
@@ -172,7 +172,7 @@ REG_PRESETS = {
 }
 
 
-async def apply_reg_preset(preset_key: str) -> None:
+async def apply_reg_preset(preset_key: str, admin_id: int | None = None) -> list[str]:
     """Bulk-write reg_q_* + payment_enabled for the chosen preset (byte-for-byte body of the
     former `handlers.admin_reg_config._apply_event_preset`), then (Phase 28, 28-10) any
     arbitrary registry keys listed in preset["settings"]. Every REG_DEFAULTS key (every
@@ -189,20 +189,25 @@ async def apply_reg_preset(preset_key: str) -> None:
     them must leave the manager's current choice untouched, not silently force it off. Only
     the "skillup" preset opts a module switch IN today (`reg_scoring_enabled` in its "on"
     list) — honoured below by writing "on" for exactly the module switches a preset lists,
-    never "off" for the ones it omits."""
+    never "off" for the ones it omits.
+
+    Каждая запись идёт через `settings_audit.write_setting_logged` — в логе остаётся автор
+    (`admin_id`; None — вызов не из-под пользователя). Возвращает ВСЕ записанные ключи: бот по
+    ним гонит хуки (`settings_audit.run_setting_hooks_batch`), приложение ставит в очередь
+    `settings_changed`. Реакция автоотказа на пресет остаётся здесь — один раз на весь пресет."""
     preset = REG_PRESETS[preset_key]
     on_set = set(preset["on"])
     changed_keys = list(REG_DEFAULTS)
     for key in REG_DEFAULTS:
-        await set_setting(key, "on" if key in on_set else "off")
+        await write_setting_logged(admin_id, key, "on" if key in on_set else "off")
     for key in MODULE_SWITCH_TOGGLES:
         if key in on_set:
-            await set_setting(key, "on")
+            await write_setting_logged(admin_id, key, "on")
             changed_keys.append(key)
-    await set_setting("payment_enabled", preset["payment_enabled"])
+    await write_setting_logged(admin_id, "payment_enabled", preset["payment_enabled"])
     changed_keys.append("payment_enabled")
     for key, value in preset.get("settings", {}).items():
-        await set_setting(key, value)
+        await write_setting_logged(admin_id, key, value)
         changed_keys.append(key)
 
     try:
@@ -210,3 +215,4 @@ async def apply_reg_preset(preset_key: str) -> None:
         await _rrn.on_settings_written_batch(changed_keys)
     except Exception as exc:  # noqa: BLE001 — запись пресета важнее реакции на неё
         logger.error("reg_presets.apply_reg_preset(%r): реакция на правки сорвалась: %s", preset_key, exc)
+    return changed_keys
