@@ -64,8 +64,9 @@ class _FakeMessage:
         self.text_edited = None
         self.edit_markup = None
 
-    async def answer(self, text, parse_mode=None, reply_markup=None):
+    async def answer(self, text, parse_mode=None, reply_markup=None, **kw):
         self.answers_sent.append(text)
+        self.last_markup = reply_markup
 
     async def edit_text(self, text, parse_mode=None, reply_markup=None):
         self.text_edited = text
@@ -381,3 +382,22 @@ def test_escalation_minutes_refuses_zero_with_explanation():
     value, error = validate_setting_value("sos_escalation_minutes__city__msk", "0")
     assert value is None and "1 или больше" in error
     assert validate_setting_value("sos_escalation_minutes", "7") == ("7", None)
+
+
+def test_after_save_and_cancel_manager_is_offered_the_sos_screen_back(tmp_path):
+    """10.10: правку текста/тайминга открыл экран SOS — после сохранения и после отмены кнопка
+    ведёт обратно на него, а не на экран группы реестра, где этих кнопок нет."""
+    from handlers import admin_settings
+    _ready(tmp_path)
+    state = _new_state(SUPERADMIN_ID)
+    _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:sent"), state))
+    msg = _FakeMessage(text="Сигнал у оргкомитета!", user_id=SUPERADMIN_ID)
+    _run(admin_settings.settings_edit_value(msg, state))
+    assert _run(db.get_setting("sos_sent_text")) == "Сигнал у оргкомитета!"
+    assert _cbs(msg.last_markup) == ["asos_settings"]
+
+    state = _new_state(SUPERADMIN_ID)
+    _run(admin_sos.asos_delay_custom_start(_FakeCallback("asos_delay_custom:escalation"), state))
+    cancel = _FakeCallback("settings_cancel")
+    _run(admin_settings.cancel_edit_setting_callback(cancel, state))
+    assert _cbs(cancel.message.edit_markup) == ["asos_settings"]

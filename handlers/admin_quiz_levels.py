@@ -317,7 +317,8 @@ async def prog_qzte(callback: types.CallbackQuery, state: FSMContext):
         lines += ["", html_module.escape(extra)]
     lines += ["", "<i>«-» — вернуть стандартный текст.</i>"]
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": await _write_key(base, code)})
+    await state.set_data({"setting_key": await _write_key(base, code),  # назад — на ту же страницу текстов
+                          "return_cb": f"prog_qztx:{code}:{idx // _TEXT_PAGE}", "return_label": "← К текстам теста"})
     await callback.message.edit_text(
         "\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[_CANCEL_ROW]),
     )

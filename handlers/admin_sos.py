@@ -616,6 +616,8 @@ async def admin_reply_to_sos(message: types.Message, bot: Bot):
 # принятый компромисс, не новый.
 
 _SOS_DELAY_PRESETS = (5, 10, 15, 30)
+# После сохранения/отмены — назад на этот экран (admin_sections.settings_return_screen, шаг 0).
+_BACK_TO_SOS = {"return_cb": "asos_settings", "return_label": "← К текстам и таймингам SOS"}
 
 # D-31: третий тайминг — «сколько ждать дозапись» (режим «дописываю SOS», handlers/sos.py::
 # SosReport.collecting) — тот же реестровый ключ `sos_collecting_timeout_minutes`, тот же
@@ -812,7 +814,7 @@ async def asos_delay_custom_start(callback: types.CallbackQuery, state: FSMConte
         await callback.answer("Неизвестный город", show_alert=True)
         return
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": key})
+    await state.set_data({"setting_key": key, **_BACK_TO_SOS})
     await callback.answer()
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
     await callback.message.answer(
@@ -854,7 +856,7 @@ async def asos_settings_edit_start(callback: types.CallbackQuery, state: FSMCont
         text += "\n\n<i>«-» — вернуть стандартный текст.</i>"
 
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": key})
+    await state.set_data({"setting_key": key, **_BACK_TO_SOS})
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
