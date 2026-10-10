@@ -349,11 +349,11 @@ def test_register_is_idempotent(tmp_path):
 
 def test_english_delegate_gets_translated_greeting(tmp_path):
     """Задача 3 (D-03 соседей): текст уходит через тот же перевод, что «🎟 Мой QR» —
-    `handlers.i18n.reg_i18n.tr_fmt`, шаблон переводится СНАЧАЛА (`services.i18n_form_manual.
+    `handlers.i18n.reg_i18n.tr_fmt`, шаблон переводится СНАЧАЛА (`services.i18n.i18n_form_manual.
     FORM_DEFAULT_EN`), `{time}` подставляется ПОСЛЕ (тот же приём, что
     `tests/test_checkin_qr_broadcast_260924.py::test_send_broadcast_translates_caption_for_english_delegate`)."""
     import sqlite3
-    from services.i18n_form_manual import FORM_DEFAULT_EN, seed
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN, seed
 
     _ready(tmp_path)
     _run(db.set_setting("forum_welcome_enabled", "on"))

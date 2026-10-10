@@ -181,7 +181,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # группе "apps" (settings_group:apps, экран не видит делегат). Подпись под фото и текст
         # «модуль выключен» — group "reg" (settings_group:reg, раздел «📝 Анкета»), не "apps":
         # это ДЕЛЕГАТСКИЙ текст, group "reg" — тот же корпус машинного перевода, что у соседних
-        # reject_text/pending_gate_text (services/i18n_sources.py::DELEGATE_GROUPS).
+        # reject_text/pending_gate_text (services/i18n/i18n_sources.py::DELEGATE_GROUPS).
         ("toggle", "toggle_checkin_qr_enabled"),
         ("group", "apps"),
     ]),

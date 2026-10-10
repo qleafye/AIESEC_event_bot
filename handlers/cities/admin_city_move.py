@@ -19,7 +19,7 @@ from database.db import get_user
 from handlers.i18n import reg_i18n
 from handlers.admin import router
 from handlers.forum.admin_checkin import _city_allowed
-from services import i18n as i18n_service
+from services.i18n import i18n as i18n_service
 from services.city_move import (
     STATUS_MODE_KEEP,
     STATUS_MODE_TO_MODERATION,

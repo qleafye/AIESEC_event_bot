@@ -15,7 +15,7 @@ segno
 pillow>=11,<12
 
 # Phase 27 (27-03, LANG-04/LANG-10): встроенный драйвер перевода делегатской анкеты
-# (services/i18n_engine.py::EmbeddedArgosDriver). Пин `-lt` (torch-free форк, MIT), а не
+# (services/i18n/i18n_engine.py::EmbeddedArgosDriver). Пин `-lt` (torch-free форк, MIT), а не
 # обычный `argostranslate` 1.11.0 — тот тянет `stanza`+`spacy` (-> torch, сотни МБ в образ,
 # общий с сервисом `miniapp`). Ровно та библиотека, на которой работает сам LibreTranslate
 # 1.9.6 (27-RESEARCH.md, `requires_dist`). Модель (`translate-ru_en-1_9`, 156 МБ) в образ НЕ

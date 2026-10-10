@@ -14,7 +14,7 @@ entities») — тоже не временный сбой: пять повтор
 этого отката нет.
 
 Тексты — ключи реестра `amb_tier*_text`; в них только цифры и ступени, ни имени, ни ника,
-ни статуса конкретного приглашённого. Перевод на язык амбассадора — `services.i18n`, тот же
+ни статуса конкретного приглашённого. Перевод на язык амбассадора — `services.i18n.i18n`, тот же
 приём, что у сообщения об одобрении на площадке (`services/onsite_reg.py`).
 
 Модуль aiogram-free по импортам: бот приходит параметром, типы исключений aiogram читаются
@@ -85,11 +85,11 @@ async def deliver_tier_notification(bot, telegram_id: int, tier: int, left: int 
         template = await get_setting_typed(key) or SETTINGS_SCHEMA[key]["default"]
         lang, tr_map = "ru", {}
         try:
-            from services.i18n import context as i18n_context
+            from services.i18n.i18n import context as i18n_context
             lang, tr_map = await i18n_context(telegram_id)
         except Exception:
             logger.exception("amb_tiers_notify: язык не определён (tid=%s)", telegram_id)
-        from services.i18n import tr
+        from services.i18n.i18n import tr
 
         text = str(tr(template, lang, tr_map)).replace("{left}", str(max(int(left or 0), 0)))
 

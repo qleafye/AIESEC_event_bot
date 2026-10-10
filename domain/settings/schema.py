@@ -2129,7 +2129,7 @@ SETTINGS_SCHEMA = {
     # get_setting_typed/валидации/дефолта, но не для повседневной настройки менеджером —
     # переключение делает разработчик/план 27-06 напрямую). Дефолт "embedded" — решение
     # владельца на чекпоинте 27-01 (модель грузится только пока очередь непуста и
-    # выгружается сразу после — см. services/i18n_engine.py::EmbeddedArgosDriver.unload).
+    # выгружается сразу после — см. services/i18n/i18n_engine.py::EmbeddedArgosDriver.unload).
     "delegate_lang_driver": {
         "type": "enum", "group": "reg", "label": "Драйвер перевода анкеты (служебное)",
         "options": ["embedded", "http"],
@@ -2711,7 +2711,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     # Phase 27 (27-02, LANG-01): спрашивать язык только у тех делегатов, чей клиент Telegram
-    # не на русском (resolve_lang в services/i18n.py) — не молчаливое переключение по
+    # не на русском (resolve_lang в services/i18n/i18n.py) — не молчаливое переключение по
     # language_code (часть российских делегатов держит клиент на английском). Дефолт ON:
     # если менеджер включил модуль, разумно по умолчанию сразу предлагать выбор.
     # Правка 15.09 (владелец, сеть безопасности): третье положение "everyone" — спрашивать
@@ -4926,7 +4926,7 @@ SETTINGS_SCHEMA = {
 
     # Phase 32 (32-02, D-04): делегатские тексты волн — русские дефолты из «Message Patterns»
     # доменного исследования (32-RESEARCH-DOMAIN.md), бренды кириллицей, мало эмодзи. Группа
-    # `game` целиком входит в `DELEGATE_GROUPS` (services/i18n_sources.py) — переводятся
+    # `game` целиком входит в `DELEGATE_GROUPS` (services/i18n/i18n_sources.py) — переводятся
     # автоматически, кроме `wave_end_manager_text` ниже (явно исключён в _ADMIN_ONLY_GAME_KEYS).
     "wave_start_message_text": {
         "type": "text", "group": "amb", "label": "🌊 Старт волны: текст",
@@ -5100,7 +5100,7 @@ SETTINGS_SCHEMA = {
         "prompt": "Что видит делегат сразу после подтверждённого выхода из амбассадоров.",
         "default": "Готово — ты больше не амбассадор. Спасибо за работу!",
     },
-    # Менеджерский текст (НЕ делегатский) — см. services/i18n_sources.py::_ADMIN_ONLY_GAME_KEYS.
+    # Менеджерский текст (НЕ делегатский) — см. services/i18n/i18n_sources.py::_ADMIN_ONLY_GAME_KEYS.
     "wave_end_manager_text": {
         "type": "text", "group": "amb", "label": "🌊 Конец волны: сообщение менеджеру",
         "prompt": (
@@ -7468,7 +7468,7 @@ SETTINGS_SCHEMA = {
     # (handlers/comms/admin_broadcasts.py::bc_important_toggle / sched_important_toggle) — раньше
     # уходила отдельным сообщением, что дублировалось при 429-ретрае и терялось при
     # crash-resume отложенной рассылки. group "system", НЕ входит в DELEGATE_GROUPS
-    # (services/i18n_sources.py) — тот же приём, что у остальных технических текстов этой
+    # (services/i18n/i18n_sources.py) — тот же приём, что у остальных технических текстов этой
     # группы: машинный перевод/ручная EN-запись не требуются.
     "important_broadcast_label": {
         "type": "text", "group": "system", "label": "❗ Пометка важной рассылки",
@@ -7503,7 +7503,7 @@ SETTINGS_SCHEMA = {
         "default": None,
     },
     # group "reg" (НЕ "apps") — это текст, который читает ДЕЛЕГАТ (кнопка «🎟 Мой QR» меню), а
-    # не менеджер. Группа "apps" в services/i18n_sources.py прямо исключена из корпуса
+    # не менеджер. Группа "apps" в services/i18n/i18n_sources.py прямо исключена из корпуса
     # машинного перевода делегатских текстов («чисто административные поверхности, делегат их
     # не видит никогда») — тот же приём, что у соседних reject_text/pending_gate_text (тоже
     # group "reg", тоже статус-текст ПОСЛЕ решения по заявке).
@@ -7579,7 +7579,7 @@ SETTINGS_SCHEMA = {
     # конференционная. Бот узнаёт кнопку по любой актуальной подписи, по дефолту и по
     # английской версии — старые клавиатуры у делегатов продолжают работать. Своя группа
     # "menu_labels" (экран «✏️ Подписи кнопок меню» в разделе «🎪 Событие») — делегатский
-    # текст, входит в корпус перевода (services/i18n_sources.py::DELEGATE_GROUPS).
+    # текст, входит в корпус перевода (services/i18n/i18n_sources.py::DELEGATE_GROUPS).
     "menu_referral_label": {
         "type": "text", "group": "menu_labels", "label": "🔘 Подпись кнопки «🔗 Моя реферальная ссылка»",
         "prompt": (
@@ -8009,8 +8009,8 @@ SETTINGS_SCHEMA = {
     # Ручной запуск из «✅ Отметки на форуме» → «📨 Написать не пришедшим» (handlers/
     # admin_checkin.py). per_city — тот же довод, что у checkin_qr_broadcast_text выше: регионы
     # и Москва живут в разных фазах форума одновременно. group "reg" — делегатский текст,
-    # входит в корпус машинного перевода (services/i18n_sources.py, группа "reg"), отдельной
-    # записи в services/i18n_form_manual.py::FORM_DEFAULT_EN не требует.
+    # входит в корпус машинного перевода (services/i18n/i18n_sources.py, группа "reg"), отдельной
+    # записи в services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN не требует.
     "checkin_not_arrived_text": {
         "type": "text", "group": "reg", "label": "🚪 «Не пришёл»: текст рассылки",
         "prompt": (
@@ -8095,7 +8095,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     # group "reg" — тот же довод, что у checkin_qr_broadcast_text/checkin_not_arrived_text выше:
-    # делегатский текст, корпус машинного перевода (services/i18n_sources.py) подхватывает сам,
+    # делегатский текст, корпус машинного перевода (services/i18n/i18n_sources.py) подхватывает сам,
     # отдельной записи в i18n_form_manual.py не требует. Подстановка `{time}` — ПОСЛЕ перевода
     # (`handlers.i18n.reg_i18n.tr_fmt`, тот же порядок, что у `{claim_status}`/`{title}` — см.
     # `handlers/forum/sos.py`/`services/session_feedback.py`), время скана ЧЧ:ММ по Москве.
@@ -8176,7 +8176,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     # Делегатские тексты (group "reg" — корпус машинного/ручного перевода подхватывает сам,
-    # см. services/i18n_form_manual.py::FORM_DEFAULT_EN, дефолты этих пяти ключей добавлены
+    # см. services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN, дефолты этих пяти ключей добавлены
     # туда же). НЕ per_city — вопрос и подписи кнопок одинаковы для любого города (тот же
     # довод, что у checkin_not_arrived_coming_ack_text выше).
     "forum_noshow_poll_question_text": {
@@ -8294,7 +8294,7 @@ SETTINGS_SCHEMA = {
     },
     # Делегатские тексты (group "reg" — тот же корпус, что forum_noshow_poll_* выше, машинный/
     # ручной перевод подхватывает сам, дефолты добавлены в
-    # services/i18n_form_manual.py::FORM_DEFAULT_EN). НЕ per_city — приглашённый видит текст
+    # services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN). НЕ per_city — приглашённый видит текст
     # своего города независимо от того, где живёт менеджер, содержательной разницы по городу
     # нет (в отличие от расписания рассылок выше).
     "volunteer_invite_welcome_text": {
@@ -8323,7 +8323,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     # Тексты человеку у стойки (group "reg" — делегатский корпус, английские дефолты в
-    # services/i18n_form_manual.py::FORM_DEFAULT_EN). D-34: тексты в настройках, не в коде.
+    # services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN). D-34: тексты в настройках, не в коде.
     "onsite_reg_intro_text": {
         "type": "text", "group": "reg", "label": "📝 На месте: приветствие анкеты",
         "prompt": "Первое сообщение человеку, открывшему ссылку регистрации на месте. Под ним — кнопка согласия.",
@@ -8548,7 +8548,7 @@ SETTINGS_SCHEMA = {
     },
     # group "apps" (НЕ "reg"): шаблон читает и правит волонтёр/менеджер, публикуется он в
     # ОБЩИЙ чат делегатов, а не персонально каждому — корпус машинного перевода
-    # (services/i18n_sources.py::DELEGATE_GROUPS) намеренно его не подхватывает (владелец
+    # (services/i18n/i18n_sources.py::DELEGATE_GROUPS) намеренно его не подхватывает (владелец
     # 24.09: «с EN не нужен — пост в общий чат, пишем на русском»); редактор экрана — общий
     # текстовый (handlers/settings/admin_settings.py::_APPS_FIELD_ORDER). Плейсхолдер {where}
     # подставляется простой заменой (без перевода подставлять «после» нечего) —
@@ -8575,7 +8575,7 @@ SETTINGS_SCHEMA = {
     },
     # Подпись к фото карточки — личное сообщение делегату, тот же довод, что city_move_
     # delegate_notice_text ниже (group "reg", корпус машинного перевода подхватывает сам, EN —
-    # ручной перевод в services/i18n_form_manual.py::FORM_DEFAULT_EN). per_city — тот же
+    # ручной перевод в services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN). per_city — тот же
     # довод, что у соседних форумных текстов (checkin_qr_broadcast_text и т.д.): регионы и
     # Москва в разных фазах, подпись может отличаться. {name} — имя делегата, подставляется
     # ПОСЛЕ перевода (сами цифры карточки — на самой картинке, не в подписи).
@@ -8609,7 +8609,7 @@ SETTINGS_SCHEMA = {
     # перевода (handlers/cities/admin_city_move.py, тумблер «🔔 Сообщить делегату» на экране
     # подтверждения, дефолт «да»). group "reg" — личное сообщение делегату, тот же довод, что у
     # forum_welcome_text выше (корпус машинного перевода подхватывает сам, EN — ручной перевод в
-    # services/i18n_form_manual.py::FORM_DEFAULT_EN, тот же приём). НЕ per_city — текст не
+    # services/i18n/i18n_form_manual.py::FORM_DEFAULT_EN, тот же приём). НЕ per_city — текст не
     # зависит от того, ИЗ какого города переводят, город подставляется плейсхолдером.
     # {city} — city_label НОВОГО города, подставляется ПОСЛЕ перевода.
     "city_move_delegate_notice_text": {

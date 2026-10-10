@@ -8,7 +8,7 @@
 тестируется без БД (`tests/test_lookup_normalize_260912.py`). `search_lookup`/`top_chips`/
 `enqueue_merge`/`pin_chip`/`pinned_chips` ходят в `lookup_entries`/`lookup_merge_queue`
 (`database/db.py`, задача 1 этого плана) через ОТЛОЖЕННЫЙ импорт `_connect` внутри функции —
-та же дисциплина разрыва цикла, что у `services/i18n_sources.py`/`services/scheduler.py`
+та же дисциплина разрыва цикла, что у `services/i18n/i18n_sources.py`/`services/scheduler.py`
 (`database.db.seed_lookup_from_snapshot`, в свою очередь, тем же приёмом в обратную сторону
 отложенно импортирует `normalize_alias` отсюда).
 

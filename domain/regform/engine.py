@@ -18,7 +18,7 @@ admin, payment` (полный бот на бот-фреймворке, см. д�
 реэкспортирует их обратно (тот же приём, каким она уже реэкспортирует `REG_LABELS` из
 корневого `domain/regform/labels.py` — комментарий там же).
 
-Phase 27 (27-04, LANG-06): к разрешённым импортам «наверх» добавляются `services.i18n` (сама
+Phase 27 (27-04, LANG-06): к разрешённым импортам «наверх» добавляются `services.i18n.i18n` (сама
 функция `tr()` — чистая, зависит только от `database.db`/`i18n_ui_en`/`settings_schema`, из
 `handlers` не импортирует ничего, цикл невозможен) и корневой `i18n_ui_en` (ярус A — обратный
 индекс `EN_TO_RU` для служебных слов «Other»/«Skip»/«Yes»/«No», тот же класс модуля-словаря без
@@ -46,7 +46,7 @@ from domain.cities import (
 )
 from domain.regform.labels import DELEGATE_LABELS, REG_LABELS
 import domain.regform.options as _opts
-from services.i18n import tr as _tr
+from services.i18n.i18n import tr as _tr
 from domain.i18n.ui_en import EN_TO_RU as _EN_TO_RU
 
 # ── Registration Flow Engine: REG_FLOW + непосредственные зависимости ──────────────────────
@@ -436,7 +436,7 @@ def canonical_option(pairs: list[tuple[str, str]], text) -> str | None:
     1) точное совпадение по ПОДПИСИ (обычный путь — делегат выбрал вариант на своём языке);
     2) точное совпадение по КАНОНУ (подпись совпала с русским текстом — `lang == "ru"`, или
        перевод этого конкретного варианта ещё не готов и `tr()` fail-soft вернул русский же
-       текст, см. `services/i18n.py::tr`);
+       текст, см. `services/i18n/i18n.py::tr`);
     3) служебные слова яруса A (`i18n_ui_en.EN_TO_RU`: «Other» -> «Другое», «Skip» ->
        «Пропустить», «Yes»/«No» -> «Да»/«Нет», …) — покрывает generic-подсказки движка, которые
        не входят в `options()` этого шага, но встречаются в его допустимых литералах

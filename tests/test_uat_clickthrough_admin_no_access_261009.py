@@ -9,7 +9,7 @@ from pathlib import Path
 
 from config import config
 from handlers.access import admin_no_access
-from services import i18n_sources
+from services.i18n import i18n_sources
 from tests._dbtpl import fast_init_db
 
 ROOT = REPO_ROOT

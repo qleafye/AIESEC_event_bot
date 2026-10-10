@@ -23,7 +23,7 @@ from database.db import get_user
 from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link
 from services.amb import amb_progress, amb_screen
-from services import i18n as i18n_service
+from services.i18n import i18n as i18n_service
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

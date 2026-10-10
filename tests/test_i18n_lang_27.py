@@ -321,7 +321,7 @@ def test_offer_language_persists_ru_for_existing_null_lang_row(tmp_path):
         user = await db.get_user(UID)
         assert user["lang"] == "ru"
 
-        from services import i18n
+        from services.i18n import i18n
         lang, tr_map = await i18n.context(UID)  # без language_code -- как реальный вызывающий
         assert (lang, tr_map) == ("ru", {})
 

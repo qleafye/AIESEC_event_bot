@@ -222,7 +222,7 @@ def test_approve_endpoint_rejected_needs_explicit_override(tmp_path):
 
 
 def test_override_texts_in_registry_with_english_defaults(tmp_path):
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     staff_group = SETTINGS_SCHEMA["checkin_undo_button_text"]["group"]
     for key in ("onsite_override_button_text", "onsite_override_confirm_text",
                 "onsite_rejected_text", "onsite_rejected_reason_text"):
@@ -641,7 +641,7 @@ def test_search_shows_other_city_walkin_with_move_note(tmp_path):
 
 
 def test_move_confirm_text_in_registry_and_scanner():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     meta = SETTINGS_SCHEMA["onsite_move_confirm_text"]
     assert "{city}" in meta["default"] and meta["default"] in FORM_DEFAULT_EN
     src = SCANNER_JS.read_text(encoding="utf-8")
@@ -668,7 +668,7 @@ class _EnUser:
 
 def test_walkin_asks_language_when_event_is_multilingual_then_speaks_english(tmp_path):
     from handlers import registration as reg
-    from services import i18n_form_manual
+    from services.i18n import i18n_form_manual
     from tests.test_onsite_reg_chat_260927 import _Bot, _Cmd, _Msg
     from tests.test_roles_phase8 import _fresh_state
 
@@ -692,7 +692,7 @@ def test_walkin_asks_language_when_event_is_multilingual_then_speaks_english(tmp
     again = _Msg(uid)
     again.from_user = _EnUser(uid)
     _run(reg.cmd_start(again, state, bot=_Bot(), command=_Cmd("walkin")))
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     intro_en = FORM_DEFAULT_EN[SETTINGS_SCHEMA["onsite_reg_intro_text"]["default"]]
     assert any(intro_en in t for t in again.texts()), again.texts()
 
@@ -713,8 +713,8 @@ def test_walkin_single_language_event_goes_straight_to_form(tmp_path):
 
 
 def test_approval_message_uses_person_language(tmp_path, monkeypatch):
-    from services import i18n_form_manual
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n import i18n_form_manual
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     _seed_ready(tmp_path)
     _run(i18n_form_manual.seed("en"))
     _onsite_on()
@@ -778,7 +778,7 @@ def test_own_contact_is_accepted(tmp_path):
 
 
 def test_foreign_contact_text_has_english_default():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     meta = SETTINGS_SCHEMA["onsite_reg_foreign_contact_text"]
     assert meta["group"] == "reg" and meta["default"] in FORM_DEFAULT_EN
 
@@ -966,7 +966,7 @@ def test_scanner_js_has_remove_paging_and_search():
 
 
 def test_remove_texts_in_registry():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     for key in ("onsite_remove_button_text", "onsite_remove_confirm_text", "onsite_reg_rate_limited_text"):
         assert SETTINGS_SCHEMA[key]["default"] in FORM_DEFAULT_EN, key
     assert "{name}" in SETTINGS_SCHEMA["onsite_remove_confirm_text"]["default"]
@@ -1129,7 +1129,7 @@ def test_consent_write_failure_stops_with_human_text(tmp_path, monkeypatch):
 
 
 def test_consent_failed_text_has_english_default():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     meta = SETTINGS_SCHEMA["onsite_reg_consent_failed_text"]
     assert meta["group"] == "reg" and meta["default"] in FORM_DEFAULT_EN
 
@@ -1143,7 +1143,7 @@ VOLUNTEER_TEXTS = ("onsite_wrong_city_text", "onsite_approved_scanner_text",
 
 
 def test_volunteer_texts_in_registry_with_english_defaults():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     staff_group = SETTINGS_SCHEMA["checkin_undo_button_text"]["group"]
     for key in VOLUNTEER_TEXTS:
         meta = SETTINGS_SCHEMA[key]
@@ -1198,7 +1198,7 @@ def test_approve_at_door_with_empty_event_season_keeps_season(tmp_path):
 
 def test_university_answer_is_capped_with_hint(tmp_path):
     from handlers.reg import onsite_reg as onsite_handlers
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     from tests.test_onsite_reg_chat_260927 import _Msg
     from tests.test_roles_phase8 import _fresh_state
     _chat_ready(tmp_path)

@@ -14,7 +14,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from domain.settings.schema import get_setting_typed
-from services import i18n as i18n_service
+from services.i18n import i18n as i18n_service
 
 PART_KIND_ORDER = ("photo", "document", "text", "link")
 PART_KIND_EMOJI = {"photo": "📸", "document": "📄", "text": "✍️", "link": "🔗"}

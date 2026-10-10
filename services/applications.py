@@ -792,14 +792,14 @@ async def reject_message_text(reason: str | None, lang: str = "ru", tr_map: dict
     Квик 260917-en (приёмка 17.09, п.4): `lang`/`tr_map` — необязательные (byte-compat со всеми
     существующими вызовами, включая Mini App, если он когда-нибудь позовёт эту функцию
     напрямую), переводят ТОЛЬКО префикс (`reject_text`, group "reg", уже в делегатском
-    корпусе) через `services.i18n.tr` — этот модуль aiogram-free
+    корпусе) через `services.i18n.i18n.tr` — этот модуль aiogram-free
     (`test_applications_module_does_not_load_aiogram`), поэтому `handlers.i18n.reg_i18n.tr_text`
     (тянет aiogram-типы) сюда импортировать нельзя; `tr()` без символьного сплита достаточно —
     `reject_text` не несёт эмодзи-префикса в объявлении реестра. `reason` (причина отказа,
     введённая менеджером на КОНКРЕТНУЮ заявку) НЕ переводится — тот же принцип, что у
     `coins_manual_notify_text`/{reason} в user_actions.py: заранее неизвестный текст менеджера
     вне делегатского корпуса."""
-    from services.i18n import tr as _tr
+    from services.i18n.i18n import tr as _tr
     prefix = await get_setting("reject_text") or SETTINGS_SCHEMA["reject_text"]["default"]
     prefix = _tr(prefix, lang, tr_map or {})
     text = html_module.escape(prefix)

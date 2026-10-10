@@ -13,7 +13,7 @@
 from __future__ import annotations
 from tests._paths import REPO_ROOT
 
-from services.i18n_form_manual import _REGISTRY_TEXTS_EN
+from services.i18n.i18n_form_manual import _REGISTRY_TEXTS_EN
 from domain.settings.schema import SETTINGS_SCHEMA
 from domain.settings.synonyms import SETTINGS_SYNONYMS
 

@@ -17,7 +17,7 @@ from datetime import datetime
 
 from config import config
 from database import db
-from services.i18n_sources import delegate_registry_keys
+from services.i18n.i18n_sources import delegate_registry_keys
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
 from domain.settings.validation import validate_setting_value
 from tests._dbtpl import fast_init_db
@@ -118,7 +118,7 @@ def test_reject_rules_enabled_reads_as_false_on_empty_db(tmp_path):
 
 def test_reject_rules_return_text_is_a_delegate_text():
     """D-18: делегатский текст возврата попадает в корпус машинного перевода автоматически
-    (group "reg" + type "text" -> services.i18n_sources.delegate_registry_keys), без второго
+    (group "reg" + type "text" -> services.i18n.i18n_sources.delegate_registry_keys), без второго
     ключа реестра и без ручной врезки в очередь перевода."""
     assert "reject_rules_return_text" in delegate_registry_keys()
 

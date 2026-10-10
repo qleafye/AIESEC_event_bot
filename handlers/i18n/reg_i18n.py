@@ -9,9 +9,9 @@
 27-05, Задача 2).
 
 `reg_engine` о языках не знает (A-03, 27-CONTEXT.md) — перевод целиком живёт здесь и в
-`services/i18n.py`, ядро анкеты не тронуто.
+`services/i18n/i18n.py`, ядро анкеты не тронуто.
 
-Идентичность объекта при `lang == "ru"` — ЖЁСТКОЕ требование (как и у `services.i18n.tr`):
+Идентичность объекта при `lang == "ru"` — ЖЁСТКОЕ требование (как и у `services.i18n.i18n.tr`):
 `tr_text`/`tr_kb` отдают ТЕ ЖЕ объекты текста/разметки, а не пересобранные копии — иначе
 `test_registration_send_guard_260816.py` (сверяет объекты `is`) и golden-снимки текстов бота
 ловят фазу там, где её быть не должно.
@@ -30,13 +30,13 @@ import re
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
-from services import i18n as i18n_service
+from services.i18n import i18n as i18n_service
 # REG_LABELS (подписи сводки, "🎖 Позиция в АЙСЕК") и подписи multi-клавиатуры (_multi_kb:
 # "✅ "/"▫️ " + вариант) — оба ведущий-символьный префикс поверх слова, который точечный
 # словарь UI_EN/tr_map никогда не матчит целиком. Та же функция, что уже решает эту задачу для
-# машинного перевода контента (services/i18n_worker.py) — переиспользуем её и здесь, а не
+# машинного перевода контента (services/i18n/i18n_worker.py) — переиспользуем её и здесь, а не
 # заводим вторую копию регулярки.
-from services.i18n_glossary import split_leading_symbols
+from services.i18n.i18n_glossary import split_leading_symbols
 # Задача 3 (LANG-06): канонизация английской подписи варианта в русский канон ДО
 # validate_answer — reg_engine сам о языках не знает (A-03), эти две функции существуют
 # РЯДОМ с ним как узкий вход (план 27-04). reg_engine НЕ импортирует handlers ни при каких
@@ -81,8 +81,8 @@ def tr_text(text, lang: str, tr_map: dict[str, str]):
     2. на остатке снять ведущий эмодзи/символьный префикс (если есть, `split_leading_symbols`
        — REG_LABELS/кнопки multi-шага несут его: «🎖 Позиция в АЙСЕК», «✅ Пропустить»; точечный
        словарь `UI_EN`/`tr_map` целиком такую строку не матчит, см. докстринг модуля
-       `services/i18n_glossary.py`);
-    3. перевести ядро через `services.i18n.tr` (ярус A побеждает всегда, потом `tr_map`, потом
+       `services/i18n/i18n_glossary.py`);
+    3. перевести ядро через `services.i18n.i18n.tr` (ярус A побеждает всегда, потом `tr_map`, потом
        fail-soft — русский как есть);
     4. склеить оба префикса обратно, без перевода."""
     if lang == "ru" or not isinstance(text, str) or not text:
@@ -147,7 +147,7 @@ def tr_fmt(text, lang: str, tr_map: dict[str, str], **subs) -> str:
 
     Подстановка — `.replace("{key}", str(value))` цепочкой, НЕ `.format()` (T-073-03-05: текст
     менеджера может содержать посторонние `{}`, `.format()` на них упал бы). Плейсхолдеры
-    переживают машинный перевод сентинелами глоссария (`services/i18n_glossary.py`), поэтому
+    переживают машинный перевод сентинелами глоссария (`services/i18n/i18n_glossary.py`), поэтому
     после `tr_text` они остаются в переведённом тексте нетронутыми и годными для `.replace`."""
     translated = tr_text(text, lang, tr_map)
     if not isinstance(translated, str):
@@ -225,7 +225,7 @@ async def summary_value_maps(lang: str, tr_map: dict[str, str]) -> dict[str, dic
     раз за рендер (`_advance`, перед `_build_summary`), не по шагу внутри цикла: `option_pairs`
     читает реестровые option-листы (city_options/source_options/...) через БД, N чтений на
     рендер сводки того же класса проблемы, которую уже решает `load_map` для меток (докстринг
-    `services/i18n.py::load_map`). `lang == "ru"` -> пустой словарь без единого чтения."""
+    `services/i18n/i18n.py::load_map`). `lang == "ru"` -> пустой словарь без единого чтения."""
     if lang == "ru":
         return {}
     maps: dict[str, dict[str, str]] = {}

@@ -3,16 +3,16 @@
 Бот шлёт делегатские тексты через `handlers.i18n.reg_i18n.tr_text`, который снимает ведущий эмодзи
 ДО поиска перевода: ручной словарь обязан держать ключ и без префикса, иначе EN-делегат
 получает русский текст (подпись QR, «сигнал SOS отправлен»). Mini App переводит целиком через
-`services.i18n.tr` — там нужен ключ С эмодзи. Проверяем обе дороги без БД: карта `src_hash ->
+`services.i18n.i18n.tr` — там нужен ключ С эмодзи. Проверяем обе дороги без БД: карта `src_hash ->
 en` собирается из `FORM_DEFAULT_EN` так же, как её пишет `seed()`."""
 from __future__ import annotations
 
 import pytest
 
 from handlers.i18n import reg_i18n
-from services import i18n
-from services.i18n_form_manual import FORM_DEFAULT_EN
-from services.i18n_glossary import split_leading_symbols
+from services.i18n import i18n
+from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
+from services.i18n.i18n_glossary import split_leading_symbols
 from domain.settings.schema import SETTINGS_SCHEMA
 
 _TR_MAP = {i18n.src_hash(ru): en for ru, en in FORM_DEFAULT_EN.items()}

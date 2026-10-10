@@ -2,8 +2,8 @@
 from aiogram.types import ReplyKeyboardMarkup
 
 from handlers.i18n import reg_i18n
-from services import i18n
-from services.i18n_form_manual import FORM_DEFAULT_EN
+from services.i18n import i18n
+from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
 
 EN_MAP = {i18n.src_hash(ru): en for ru, en in FORM_DEFAULT_EN.items()}
 
@@ -48,7 +48,7 @@ class _OrgMessage:
 
 
 def _english(monkeypatch):
-    from services import i18n as i18n_service
+    from services.i18n import i18n as i18n_service
 
     async def fake_context(telegram_id, language_code=None):
         return "en", EN_MAP

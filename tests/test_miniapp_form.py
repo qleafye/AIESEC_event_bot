@@ -757,7 +757,7 @@ def test_patch_empty_city_and_track_ask_to_choose(client):
 
 def test_empty_choice_texts_have_english():
     import domain.regform.engine as reg_engine
-    from services import i18n_form_manual
+    from services.i18n import i18n_form_manual
 
     for text in (reg_engine.CITY_CHOICE_EMPTY_TEXT, reg_engine.TRACK_CHOICE_EMPTY_TEXT):
         assert text in i18n_form_manual._ENGINE_DYNAMIC_EN, text

@@ -270,7 +270,7 @@ async def send_poll(city: str | None) -> dict:
             continue
 
         from handlers.i18n import reg_i18n
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(tid)
         text = reg_i18n.tr_text(question, lang, tr_map)

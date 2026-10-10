@@ -47,7 +47,7 @@ from keyboards.builders import get_main_menu_kb
 # handlers.reg.reg_schema ни статически, ни лениво — цикла нет; модуль не заводит Router/хендлеры,
 # порядок регистрации хендлеров (golden-снимок) не затронут.
 from handlers.i18n import reg_i18n
-from services import i18n as i18n_service
+from services.i18n import i18n as i18n_service
 
 logger = logging.getLogger(__name__)
 

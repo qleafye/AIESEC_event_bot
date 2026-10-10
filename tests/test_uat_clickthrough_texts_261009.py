@@ -148,8 +148,8 @@ def test_admin_header_leads_with_buttons_and_folds_commands(tmp_path):
 
 
 def test_resume_fork_help_texts_have_english_and_are_in_corpus():
-    from services import i18n_sources
-    from services.i18n_form_manual import _REGISTRY_TEXTS_EN
+    from services.i18n import i18n_sources
+    from services.i18n.i18n_form_manual import _REGISTRY_TEXTS_EN
     corpus = {t for _k, t in i18n_sources.code_literals()}
     for text in (reg_engine._STEP_HELP_RESUME_FORK, reg_engine._STEP_HELP_RESUME_FORK_FILE_CHAT):
         assert text in _REGISTRY_TEXTS_EN, text

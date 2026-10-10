@@ -156,7 +156,7 @@ def test_manager_override_text_still_goes_through_general_translation_path(tmp_p
     assert len(calls) == 1
     text, _kwargs = calls[0]
     # Нет записи в UI_EN/tr_map для кастомного текста менеджера -- fail-soft отдаёт русский
-    # как есть (services.i18n.tr, ярус A -> tr_map -> русский), хендлер не заводит свою копию.
+    # как есть (services.i18n.i18n.tr, ярус A -> tr_map -> русский), хендлер не заводит свою копию.
     assert text == "Свой текст менеджера про приложение"
 
 

@@ -25,7 +25,7 @@
 Журнал площадки тренировку не видит вовсе — ни отметок, ни отказов: журнал читают как «что
 было на входе», учебные сканы там были бы шумом (и попали бы в «кто сколько отметил»).
 
-Тексты волонтёру — реестр (`checkin_training_*`, group "event"), перевод — `services.i18n`.
+Тексты волонтёру — реестр (`checkin_training_*`, group "event"), перевод — `services.i18n.i18n`.
 Лист A4 (`training_sheet_inputs` + `render_training_sheet`) рисует Pillow шрифтами Mini App (Lato/Raleway, кириллица в
 сабсете есть); без Pillow вызывающий шлёт пять QR отдельными картинками (`training_qr_pngs`)."""
 from __future__ import annotations
@@ -40,7 +40,7 @@ from typing import TypedDict
 import segno
 
 from database.db import list_checkins_for_user
-from services import i18n
+from services.i18n import i18n
 from services.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
@@ -261,7 +261,7 @@ _QR_BOX = 250
 
 def _strip_symbols(text: str) -> str:
     """Ведущие эмодзи шрифт листа не рисует (квадратики) — снимаем их."""
-    from services.i18n_glossary import split_leading_symbols
+    from services.i18n.i18n_glossary import split_leading_symbols
 
     prefix, rest = split_leading_symbols((text or "").strip())
     return rest if prefix else (text or "").strip()

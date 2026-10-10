@@ -10,7 +10,7 @@ import asyncio
 
 import domain.regform.engine as reg_engine
 from domain.regform.labels import DELEGATE_LABELS, REG_LABELS
-from services import i18n_form_manual
+from services.i18n import i18n_form_manual
 
 
 def test_admin_label_unchanged():

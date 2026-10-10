@@ -845,7 +845,7 @@ def test_registry_defaults_and_format():
 
 def test_registry_default_text_has_manual_en_translation():
     from domain.settings.schema import SETTINGS_SCHEMA
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
 
     default = SETTINGS_SCHEMA["regional_noshow_offer_text"]["default"]
     assert default in FORM_DEFAULT_EN
@@ -939,7 +939,7 @@ def test_cfg_screen_target_pick_sets_city(tmp_path, monkeypatch):
 
 def test_offer_text_and_replies_translated_for_en_delegate(tmp_path, monkeypatch):
     from handlers import user_actions as ua
-    from services.i18n_form_manual import seed
+    from services.i18n.i18n_form_manual import seed
 
     _ready(tmp_path)
     _run(enable_delegate_lang())
