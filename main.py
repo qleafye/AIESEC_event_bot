@@ -326,14 +326,14 @@ async def main():
     await init_db()
 
     # Форум-ночь (идея №3 бэклога чек-ина): приветствие после первой отметки входа делегата —
-    # регистрация слушателя `services.checkin.register_first_entry_listener`. Слушатели живут
-    # только в процессе бота (докстринг `services/forum_welcome.py`) — регистрация здесь, до
+    # регистрация слушателя `services.forum.checkin.register_first_entry_listener`. Слушатели живут
+    # только в процессе бота (докстринг `services/forum/forum_welcome.py`) — регистрация здесь, до
     # старта поллинга. Синхронный вызов (список в памяти, без сети/БД) — try/except не нужен.
-    from services.forum_welcome import register as register_forum_welcome
+    from services.forum.forum_welcome import register as register_forum_welcome
     register_forum_welcome()
     # Делегации вузов: после первого входа делегата из формы — отметка «🎟 пришёл» в колонке M
     # листа UR REGS (строка ответа уходит на перезапись зеркалом).
-    from services.checkin import register_first_entry_listener
+    from services.forum.checkin import register_first_entry_listener
     register_first_entry_listener(delegations.on_first_entry)
 
     # Phase 14 (CITY-07): one-time .env -> `cities` table seed, then load the in-memory cache

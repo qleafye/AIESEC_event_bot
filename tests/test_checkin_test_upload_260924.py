@@ -18,8 +18,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from handlers.forum import admin_checkin
 from handlers.states import CheckinTestUpload
-from services import checkin as checkin_mod
-from services.checkin import build_payload, current_event_tag
+from services.forum import checkin as checkin_mod
+from services.forum.checkin import build_payload, current_event_tag
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 910401

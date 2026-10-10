@@ -8,8 +8,8 @@ import json
 
 from database import db as bot_db
 from handlers.forum import admin_venue
-from services import venue_log
-from services.checkin import build_payload
+from services.forum import venue_log
+from services.forum.checkin import build_payload
 
 from tests.test_miniapp_checkin_260924 import (
     BASE,
@@ -134,7 +134,7 @@ def test_journal_screen_shows_denial_reason_and_staff_filter(tmp_path):
 
 
 def test_every_denial_code_has_human_label():
-    from services.checkin import DENIAL_REASON_TEXT
+    from services.forum.checkin import DENIAL_REASON_TEXT
 
     for code in (*DENIAL_REASON_TEXT, "wrong_city", "wrong_city_point", "wrong_day", "invalid_point"):
         assert code in venue_log.DENIAL_LABELS, code

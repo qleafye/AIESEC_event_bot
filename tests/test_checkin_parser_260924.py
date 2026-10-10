@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import time
 
-from services.checkin import (
+from services.forum.checkin import (
     build_payload,
     decode_scan_export,
     find_checkin_records,

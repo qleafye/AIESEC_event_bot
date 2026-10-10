@@ -662,7 +662,7 @@ async def preview_reevaluate() -> int:
 
 
 async def on_first_entry(bot, user_id: int, city, day, **kwargs) -> None:
-    """Слушатель первой отметки входа (`services.checkin.register_first_entry_listener`):
+    """Слушатель первой отметки входа (`services.forum.checkin.register_first_entry_listener`):
     у делегата из формы строка UR REGS уходит на перезапись — колонка «В боте» покажет «пришёл»."""
     user = await get_user(user_id)
     answer_id = (user or {}).get("delegation_answer_id")

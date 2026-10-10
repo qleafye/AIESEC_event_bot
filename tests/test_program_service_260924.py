@@ -1,4 +1,4 @@
-"""Форум-ночь п.4 (расписание форума в боте) — сервисный слой `services/program.py`: разбор
+"""Форум-ночь п.4 (расписание форума в боте) — сервисный слой `services/forum/program.py`: разбор
 времени/дня, предупреждение о занятости зала, слоты параллельных сессий, копирование программы
 между городами. БД — шаблонная копия через `tests/_dbtpl.py::fast_init_db`, `asyncio.run()` —
 pytest-asyncio недоступен в этом окружении (тот же приём, что у соседних тестов БД-слоя).
@@ -12,7 +12,7 @@ import pytest
 
 from config import config
 from database import db
-from services import program
+from services.forum import program
 from tests._dbtpl import fast_init_db
 
 

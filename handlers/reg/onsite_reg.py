@@ -5,7 +5,7 @@
 «📝 Регистрация на месте», handlers/forum/admin_onsite_reg.py). Бот задаёт три вопроса — ФИО, телефон,
 вуз (можно пропустить) — и заводит строку `users` pending с `onsite_kind='walkin'`
 (`database.db.create_onsite_user`). QR и уведомлений менеджерам здесь НЕТ (D-02): решение о
-входе принимает волонтёр у стойки, QR придёт после одобрения (`services.onsite_reg.
+входе принимает волонтёр у стойки, QR придёт после одобрения (`services.forum.onsite_reg.
 after_onsite_approved`).
 
 Существующую анкету ссылка не трогает никогда: одобренный текущего сезона получает подсказку
@@ -46,7 +46,7 @@ from domain.cities import (
 from database.db import create_onsite_user, get_user, record_user_consent
 from handlers.i18n import reg_i18n
 from domain.regform.engine import is_past_season_row, validate_answer
-from services.onsite_reg import onsite_enabled, parse_walkin_arg
+from services.forum.onsite_reg import onsite_enabled, parse_walkin_arg
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

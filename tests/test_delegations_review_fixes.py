@@ -146,7 +146,7 @@ def test_summary_counts_one_person_once_per_university(tmp_path):
 
 def test_existing_user_moves_to_current_season_and_city(tmp_path):
     import domain.cities as cities_mod
-    from services.checkin import checkin_denial
+    from services.forum.checkin import checkin_denial
     _env(tmp_path)
     fid = _delegation_form()
     _answer_from_fixture(fid, "a1", course="3 бакалавриат")

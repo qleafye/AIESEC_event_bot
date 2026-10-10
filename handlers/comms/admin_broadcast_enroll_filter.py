@@ -18,7 +18,7 @@ from database.quiz_db import get_quiz_for_city
 from database.session_enroll_db import list_trackable_sessions
 from handlers.admin import router
 from handlers.states import Broadcast
-from services.program import day_label, session_point_label
+from services.forum.program import day_label, session_point_label
 
 _KINDS = (SESSION_ENROLL_IN, SESSION_ENROLL_NONE, "quiz")
 _BACK_ROW = [[InlineKeyboardButton(text="← Назад", callback_data="enrf_cancel")]]

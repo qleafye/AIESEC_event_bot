@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from database import db as bot_db
-from services.checkin import ENTRY_POINT
+from services.forum.checkin import ENTRY_POINT
 
 from tests.test_miniapp_checkin_260924 import (
     BASE,
@@ -106,7 +106,7 @@ def test_scan_journal_keeps_volunteer_name(tmp_path):
 
 
 def test_undo_db_failure_is_human_refusal_not_500(tmp_path, monkeypatch):
-    from services import venue_log
+    from services.forum import venue_log
 
     client = client_with(tmp_path)
     _grant_checkin_to_game_manager()

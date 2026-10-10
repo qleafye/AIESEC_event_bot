@@ -145,9 +145,9 @@ class _FakeBot:
 
 
 def _welcome_after_entry(tmp_path, event_title: str | None) -> str:
-    import services.checkin as checkin_mod
-    import services.forum_welcome as fw
-    from services.checkin import ENTRY_POINT, record_arrival
+    import services.forum.checkin as checkin_mod
+    import services.forum.forum_welcome as fw
+    from services.forum.checkin import ENTRY_POINT, record_arrival
 
     _ready(tmp_path)
     checkin_mod.clear_first_entry_listeners()
@@ -236,7 +236,7 @@ def test_regional_offer_sent_without_raw_event_token(tmp_path, monkeypatch):
 
 
 def test_stats_card_caption_sent_without_raw_event_token(tmp_path, monkeypatch):
-    import services.forum_stats_card as fsc
+    import services.forum.forum_stats_card as fsc
     from tests import test_forum_stats_card_260926 as st
 
     st._ready(tmp_path)

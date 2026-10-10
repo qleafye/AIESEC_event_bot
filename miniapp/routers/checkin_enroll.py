@@ -15,7 +15,7 @@ from domain.cities import get_setting_typed_for_city
 from domain.settings.schema import SETTINGS_SCHEMA
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.routers.checkin import _CAP, _SECTION, _bound_city, _point_city_denial
-from services.session_enroll import enroll_by_staff, scan_hint
+from services.forum.session_enroll import enroll_by_staff, scan_hint
 
 logger = logging.getLogger(__name__)
 

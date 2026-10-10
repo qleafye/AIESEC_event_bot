@@ -63,10 +63,10 @@ def test_filter_field_label_checkin_entry():
 
 
 def test_entry_point_literal_matches_service():
-    """`db.CHECKIN_ENTRY_POINT` ОБЯЗАН побайтово совпадать с `services.checkin.ENTRY_POINT` —
+    """`db.CHECKIN_ENTRY_POINT` ОБЯЗАН побайтово совпадать с `services.forum.checkin.ENTRY_POINT` —
     два независимых литерала одного и того же `checkins.point`, синхронизация только этим
-    тестом (db.py не может импортировать services.checkin — см. докстринг константы)."""
-    from services.checkin import ENTRY_POINT
+    тестом (db.py не может импортировать services.forum.checkin — см. докстринг константы)."""
+    from services.forum.checkin import ENTRY_POINT
     assert db.CHECKIN_ENTRY_POINT == ENTRY_POINT == "entry"
 
 
@@ -137,7 +137,7 @@ def test_checkin_entry_auto_session_counts_as_arrived(tmp_path):
     _run(_add_user(1, status="approved", city="msk"))
     sid = _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Sess"))
 
-    from services.checkin import record_arrival
+    from services.forum.checkin import record_arrival
 
     user = {"telegram_id": 1, "event_city": "msk"}
     _run(record_arrival(

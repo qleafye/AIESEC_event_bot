@@ -15,7 +15,7 @@ from handlers.forum.admin_enroll_list import _write_key
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.forum.admin_quiz import _STALE, _btn, _cancel_kb, ask_value, deny, quiz_by_code
 from handlers.states import EditSetting
-from services import quiz as quiz_service
+from services.forum import quiz as quiz_service
 from domain.settings.placeholders import hint
 from domain.settings.schema import SETTINGS_SCHEMA
 

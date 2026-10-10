@@ -96,7 +96,7 @@ from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_
 from services.broadcast_scope import (
     past_season_note, restrict_to_sender_city, season_default_filter, sender_city_note, split_by_sender_city,
 )
-from services.forum_days import day_cities_suffix  # «не пришли 25.09 — Москва»
+from services.forum.forum_days import day_cities_suffix  # «не пришли 25.09 — Москва»
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
 from domain.cities import CITIES, cities_module_on, city_label, city_scope
@@ -1738,7 +1738,7 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="filter_schedule")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
-    from services.forum_days import not_arrived_city_note  # «не пришли» — по городам форума
+    from services.forum.forum_days import not_arrived_city_note  # «не пришли» — по городам форума
     await callback.message.edit_text(
         f"{await sender_city_note(callback.from_user.id)}🎯 Условия: {_filter_summary(filters)}\n"
         f"Под фильтр попадает <b>{len(ids)}</b> пользователей.{await past_season_note(ids)}"

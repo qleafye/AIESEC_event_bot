@@ -14,7 +14,7 @@ per_city `forum_date`, Phase 31/D-30) — второй копии чтения �
 даты форума у города -> джобы не ставятся вовсе (`schedule_city_jobs` снимает обе, если были).
 
 Аудитория обеих рассылок — `database.db.list_approved_users(city_scope=...)`, отфильтрованная
-`services.checkin.checkin_denial` НА КАЖДОЙ СТРОКЕ (единая точка правила допуска D-02 — не
+`services.forum.checkin.checkin_denial` НА КАЖДОЙ СТРОКЕ (единая точка правила допуска D-02 — не
 вторая копия сезонного условия SQL-строкой). Идемпотентность вечерней рассылки И ручной кнопки
 «📤 Разослать QR сейчас» (handlers/forum/admin_checkin.py) — `database.db.checkin_qr_sent_ids` (кому
 УЖЕ отправлен QR когда-либо) вычитается из пула ДО отправки, обе точки входа зовут ОДНУ и ту же
@@ -46,7 +46,7 @@ from database.db import (
     list_approved_users,
 )
 from services import scheduler as _sched
-from services.checkin import build_checkin_qr, checkin_denial
+from services.forum.checkin import build_checkin_qr, checkin_denial
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
 from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
@@ -444,7 +444,7 @@ async def reconcile_forum_jobs() -> None:
 # ── Аудитория ─────────────────────────────────────────────────────────────────────────────
 
 async def eligible_recipients(city: str | None) -> list[dict]:
-    """Одобренные текущего сезона города — через `services.checkin.checkin_denial` НА КАЖДОЙ
+    """Одобренные текущего сезона города — через `services.forum.checkin.checkin_denial` НА КАЖДОЙ
     строке (единая точка правила допуска D-02), не отдельная копия сезонного условия. Общий
     пул для вечерней/ручной рассылки И для превью счётчика (`pending_broadcast_count`)."""
     import domain.cities as _cities

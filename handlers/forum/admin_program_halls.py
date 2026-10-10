@@ -31,7 +31,7 @@ from handlers.forum.admin_program import (
 )
 from handlers.states import ProgramHallName, ProgramSessionField
 from keyboards.builders import get_cancel_kb
-from services.program import copy_program_day, day_label, hall_conflict_warning
+from services.forum.program import copy_program_day, day_label, hall_conflict_warning
 
 
 async def render_halls_screen(code: str) -> tuple[str, InlineKeyboardMarkup]:

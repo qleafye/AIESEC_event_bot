@@ -249,7 +249,7 @@ def test_delete_go_removes_item_everywhere_and_alert_says_forever(tmp_path):
 
 def test_list_admin_still_sees_hidden_items_enabled_only_false(tmp_path):
     """Регресс: `list_faq_items` в админском списке остаётся БЕЗ `enabled_only` — менеджер
-    видит скрытые пункты (делегатская видимость `services/faq.py` не тронута отдельно)."""
+    видит скрытые пункты (делегатская видимость `services/forum/faq.py` не тронута отдельно)."""
     _admin_ready(tmp_path)
     hidden_id = _run(db.create_faq_item(city=None, question="Скрыт?", answer="b", created_by=ADMIN_ID))
     _run(db.update_faq_item(hidden_id, enabled=0))

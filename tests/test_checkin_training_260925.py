@@ -1,5 +1,5 @@
 """Бэклог чек-ина №7: тренировочный режим сканера и лист учебных QR
-(`services/checkin_training.py`, `miniapp/routers/checkin.py`, `handlers/forum/admin_checkin.py`,
+(`services/forum/checkin_training.py`, `miniapp/routers/checkin.py`, `handlers/forum/admin_checkin.py`,
 `handlers/forum/admin_checkin_training.py`).
 
 Главное свойство: тренировка НИЧЕГО не пишет — ни `checkins`, ни `venue_log`, — но плашка та
@@ -15,9 +15,9 @@ from config import config as bot_config
 from database import db as bot_db
 from handlers.forum import admin_checkin, admin_checkin_training
 from handlers.states import CheckinImport
-from services import checkin as checkin_mod
-from services import checkin_training as training
-from services.checkin import build_payload
+from services.forum import checkin as checkin_mod
+from services.forum import checkin_training as training
+from services.forum.checkin import build_payload
 
 from tests.test_admin_checkin_260924 import (
     _FakeBot,

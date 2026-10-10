@@ -40,7 +40,7 @@ def test_qr_confirm_button_english():
 
 
 def test_not_arrived_buttons_english():
-    from services import checkin_not_arrived as cna
+    from services.forum import checkin_not_arrived as cna
     kb = cna._response_kb("2026-10-03", "en", _TR_MAP)
     assert _texts(kb) == ["🚶 On my way", "😔 Can't make it", "📍 I'm here"]
     assert _texts(cna._response_kb("2026-10-03")) == ["🚶 Уже еду", "😔 Не смогу прийти", "📍 Я на месте"]
@@ -103,7 +103,7 @@ def test_context_cached_loads_map_once_per_language(monkeypatch):
 # `registration._safe_answer`/`reg_i18n.say`, переводящего разметку при отправке.
 DELEGATE_KB_FILES = [
     ROOT / "services" / "checkin_broadcast.py",
-    ROOT / "services" / "checkin_not_arrived.py",
+    ROOT / "services" / "forum" / "checkin_not_arrived.py",
     ROOT / "services" / "session_feedback.py",
     ROOT / "services" / "forum_noshow_poll.py",
 ]

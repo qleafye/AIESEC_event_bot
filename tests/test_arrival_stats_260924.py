@@ -16,8 +16,8 @@ from config import config
 from database import db
 from database.db import _connect
 from handlers.forum import admin_checkin, admin_checkin_stats
-from services import checkin as checkin_service
-from services import checkin_arrival
+from services.forum import checkin as checkin_service
+from services.forum import checkin_arrival
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 924100

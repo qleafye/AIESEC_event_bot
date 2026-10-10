@@ -336,7 +336,7 @@ def test_each_screen_resolves_city_exactly_once():
 
 
 def test_consumer_screens_use_resolver():
-    from services import event_info
+    from services.forum import event_info
 
     for fn in (ua_mod.show_contacts, ua_mod.info_date, ua_mod.info_place):
         assert "get_setting_for_city" in inspect.getsource(fn)

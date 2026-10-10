@@ -1,7 +1,7 @@
 """Quick 260906-8uq (FAQ-01..06): раздел «❓ Частые вопросы» в Mini App.
 
 `GET /app/api/faq` (задача 5) — делегатский список. Правило видимости пункта («городской
-пункт перекрывает общий») живёт ОДИН раз в `services/faq.py::apply_city_overrides` — здесь
+пункт перекрывает общий») живёт ОДИН раз в `services/forum/faq.py::apply_city_overrides` — здесь
 второй копии нет, только `list_faq_for_city` + применение правила (тот же приём, что
 `handlers/user_actions.py::_faq_visible_items` использует на стороне бота).
 
@@ -45,7 +45,7 @@ from database.db import (
 )
 from services import applications
 from services.i18n import i18n
-from services.faq import apply_city_overrides, city_badge, normalize_question
+from services.forum.faq import apply_city_overrides, city_badge, normalize_question
 from domain.settings.schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_cap, require_section

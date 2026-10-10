@@ -1,5 +1,5 @@
 """Загрузка выгрузки офлайн-сканера в боте (`handlers/forum/admin_checkin.py::checkin_point_pick` +
-`services/checkin_csv_import.py`): удалённая сессия не выдаётся за «уже были», кнопка после
+`services/forum/checkin_csv_import.py`): удалённая сессия не выдаётся за «уже были», кнопка после
 перезапуска отвечает «пришлите файл заново», повторный тап не отмечает второй раз, большой файл
 получает «⏳ Отмечаю…», записи без времени перечислены в отчёте, UTF-16 и дубли — сквозь весь
 путь. Разбор форматов — `tests/test_checkin_csv_formats_261001.py`."""
@@ -10,8 +10,8 @@ import asyncio
 from database import db
 from handlers.forum import admin_checkin
 from handlers.states import CheckinImport
-from services.checkin import build_payload
-from services import checkin_csv_import
+from services.forum.checkin import build_payload
+from services.forum import checkin_csv_import
 from tests.test_admin_checkin_260924 import (
     ADMIN_ID,
     _db_ready,

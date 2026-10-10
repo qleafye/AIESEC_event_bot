@@ -37,13 +37,13 @@ def _ready(tmp_path, name="mute_isolation.db"):
 
 # services/regional_noshow_move.py — предложение переноса на московский форум: тот же класс
 # рассылки, что forum_noshow_poll выше (не служебное сообщение, «🔕» уважает).
-# services/forum_stats_card.py — идея №29 бэклога чек-ина («Твой Юлид в цифрах»): картинка-итог
+# services/forum/forum_stats_card.py — идея №29 бэклога чек-ина («Твой Юлид в цифрах»): картинка-итог
 # после форума, тот же класс рассылки, что forum_noshow_poll/regional_noshow_move выше (обычная
 # рассылка-повод, НЕ служебное сообщение вроде QR — «🔕» уважает).
 _ALLOWED_OWNERS = {
     "database/db.py", "handlers/comms/admin_broadcasts.py", "services/scheduler.py",
     "services/regional_noshow_move.py",
-    "services/forum_stats_card.py",
+    "services/forum/forum_stats_card.py",
 }
 _NEEDLES = ("mute_broadcasts_until", "get_muted_today_ids")
 

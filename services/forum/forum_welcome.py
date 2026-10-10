@@ -1,6 +1,6 @@
 """Идея №3 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): приветствие делегату
-сразу после ПЕРВОЙ отметки входа — слушатель `services.checkin.register_first_entry_listener`
-(точка расширения из коммита d08e95e, `services/checkin.py` этим модулем не тронут).
+сразу после ПЕРВОЙ отметки входа — слушатель `services.forum.checkin.register_first_entry_listener`
+(точка расширения из коммита d08e95e, `services/forum/checkin.py` этим модулем не тронут).
 
 Регистрация — `register()` ниже, зовётся ОДИН раз из `main.py` при старте бота: слушатели живут
 только в процессе бота (Mini App без `Bot` переносит событие в `miniapp_outbox`, бот разбирает
@@ -23,7 +23,7 @@
 не несёт смысла).
 
 Сбой отправки (нет сети/делегат заблокировал бота/сбой перевода) — fail-soft, логируется и не
-пробрасывается: `services.checkin.fire_first_entry` и так ловит исключение любого слушателя, но
+пробрасывается: `services.forum.checkin.fire_first_entry` и так ловит исключение любого слушателя, но
 это НЕ повод не логировать конкретику здесь же (тот же приём, что `services/session_feedback.py::
 deliver_feedback_prompts`)."""
 from __future__ import annotations
@@ -43,7 +43,7 @@ def _is_fresh_csv_scan(scanned_at: str | None, approx: bool) -> bool:
     """CSV-скан «свежий» -> можно слать: время скана известно (`approx` не выставлен),
     парсится, тот же календарный день (МСК) и не старше `_MAX_CSV_AGE_MINUTES`. Любая кривизна
     (пусто/не парсится/будущее/вчерашнее/старше часа) -> `False` — тот же fail-soft баланс, что
-    у остальных парсеров дат чек-ина (`services.checkin._parse_cell_datetime` и соседи)."""
+    у остальных парсеров дат чек-ина (`services.forum.checkin._parse_cell_datetime` и соседи)."""
     if approx or not scanned_at:
         return False
     from services.infra.timeutil import msk_now
@@ -91,7 +91,7 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
         # двухдневного форума (False) — иначе делегат Москвы получил бы приветствие дважды.
         # Отсутствие kwarg — обратная совместимость со старым событием из outbox
         # (`services/infra/miniapp_outbox.py`, событие могло попасть в очередь ДО того, как
-        # `services.checkin` начал класть `first_of_forum` в событие) — трактуем как True,
+        # `services.forum.checkin` начал класть `first_of_forum` в событие) — трактуем как True,
         # чтобы не потерять приветствие для уже поставленных в очередь событий.
         if not kwargs.get("first_of_forum", True):
             return
@@ -131,9 +131,9 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
 
 
 def register() -> None:
-    """Подписывает слушателя приветствия на `services.checkin.register_first_entry_listener` —
+    """Подписывает слушателя приветствия на `services.forum.checkin.register_first_entry_listener` —
     идемпотентно (сама функция-регистратор уже проверяет `if fn not in _first_entry_listeners`),
     повторный вызов (рестарт, тест) не даёт дубля отправки."""
-    from services.checkin import register_first_entry_listener
+    from services.forum.checkin import register_first_entry_listener
 
     register_first_entry_listener(_on_first_entry)

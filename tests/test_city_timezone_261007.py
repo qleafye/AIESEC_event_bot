@@ -130,7 +130,7 @@ def _seed_tyumen_sessions():
 def test_checkin_points_zero_offset_unchanged(tmp_path, monkeypatch):
     """Без настройки Тюмень считается по МСК, как раньше: 10:30 МСК -> «Открытие» живая."""
     _db(tmp_path)
-    from services.program import checkin_session_points
+    from services.forum.program import checkin_session_points
     _seed_tyumen_sessions()
     _freeze(monkeypatch, datetime(2026, 10, 3, 10, 30))
     points = _run(checkin_session_points("tyumen"))
@@ -140,7 +140,7 @@ def test_checkin_points_zero_offset_unchanged(tmp_path, monkeypatch):
 def test_checkin_points_tyumen_plus2_uses_local_clock(tmp_path, monkeypatch):
     """08:30 МСК = 10:30 в Тюмени: живая «Открытие». 10:30 МСК = 12:30 в Тюмени: живая «Вторая»."""
     _db(tmp_path)
-    from services.program import checkin_session_points
+    from services.forum.program import checkin_session_points
     _run(_tyumen_plus2())
     _seed_tyumen_sessions()
     _freeze(monkeypatch, datetime(2026, 10, 3, 8, 30))
@@ -156,7 +156,7 @@ def test_checkin_points_tyumen_plus2_uses_local_clock(tmp_path, monkeypatch):
 
 def test_delegate_program_tyumen_plus2_now_and_next(tmp_path, monkeypatch):
     _db(tmp_path)
-    from services.program import build_delegate_program
+    from services.forum.program import build_delegate_program
     _run(_tyumen_plus2())
     _seed_tyumen_sessions()
     _freeze(monkeypatch, datetime(2026, 10, 3, 8, 30))  # 10:30 в Тюмени
@@ -223,7 +223,7 @@ def test_quiet_hours_tyumen_uses_local_window(tmp_path):
 def test_not_arrived_send_quiet_hours_tyumen(tmp_path, monkeypatch):
     """В Тюмени 09:30 местного (07:30 МСК) делегат вне тихих часов — шаблон уходит."""
     _db(tmp_path)
-    from services import checkin_not_arrived as cna
+    from services.forum import checkin_not_arrived as cna
 
     class FakeBot:
         def __init__(self):
@@ -313,7 +313,7 @@ def test_sos_card_shows_city_local_time():
 
 
 def test_welcome_time_is_city_local():
-    from services.forum_welcome import _format_time
+    from services.forum.forum_welcome import _format_time
     assert _format_time("2026-10-03 08:05:00") == "08:05"
     assert _format_time("2026-10-03 08:05:00", 2) == "10:05"
     assert _format_time(None, 2) == "сейчас"
@@ -364,7 +364,7 @@ def test_day_report_peak_hour_in_city_time(tmp_path, monkeypatch):
 # ── CSV сканера: время телефона = местное ────────────────────────────────────────────────────
 
 def test_csv_parser_marks_naive_times_only():
-    from services.checkin import build_payload, find_checkin_records
+    from services.forum.checkin import build_payload, find_checkin_records
     qr = build_payload("YL26", "И", "tyumen", "tok1")
     qr2 = build_payload("YL26", "И", "tyumen", "tok2")
     qr3 = build_payload("YL26", "И", "tyumen", "tok3")
@@ -380,7 +380,7 @@ def test_csv_parser_marks_naive_times_only():
 
 
 def test_session_window_check_in_city_local_time():
-    from services.program import scanned_outside_session_window
+    from services.forum.program import scanned_outside_session_window
     session = {"day": "2026-10-03", "start_time": "10:00", "end_time": "11:00"}
     # метка МСК 08:15 = 10:15 в Тюмени -> внутри сессии; без смещения — вне окна
     assert scanned_outside_session_window(session, "2026-10-03 08:15:00", offset_hours=2) is False
@@ -388,8 +388,8 @@ def test_session_window_check_in_city_local_time():
 
 
 def test_csv_import_converts_naive_local_stamp_to_msk(tmp_path, monkeypatch):
-    from services import checkin_csv_import
-    from services.checkin import build_payload
+    from services.forum import checkin_csv_import
+    from services.forum.checkin import build_payload
     from handlers.forum import admin_checkin
     from tests.test_checkin_forum_day_261001 import _forum, _insert_user, _setup
 
@@ -424,7 +424,7 @@ def test_csv_import_converts_naive_local_stamp_to_msk(tmp_path, monkeypatch):
 def test_floor_report_live_flag_uses_each_sessions_city_clock(tmp_path):
     """«Сейчас на площадке»: в 08:30 МСК у Тюмени (МСК+2) идёт сессия 10:00–11:00, у СПб — нет."""
     _db(tmp_path)
-    from services import checkin_arrival
+    from services.forum import checkin_arrival
 
     async def scenario():
         await _tyumen_plus2()
