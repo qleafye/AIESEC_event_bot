@@ -4,7 +4,7 @@
 Менеджер выбирает кнопкой, что сбросить, видит предпросмотр с перечнем, что пропадёт и у скольких
 людей, и подтверждает отдельной кнопкой. Логика — `services.amb_status_reset` (она же под
 `tools/amb_status_reset.py`). Сообщений людям не уходит, баллы не трогаются, место за человеком с
-выданным пакетом остаётся. Кнопка подтверждения несёт число, которое менеджер видел: если за это
+выданным пакетом остаётся. Кнопка подтверждения несёт отпечаток списка, который менеджер видел: если за это
 время список изменился, сброс не выполняется, а предпросмотр показывается заново.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
@@ -116,8 +116,13 @@ async def _render_preview(code: str) -> tuple[str, InlineKeyboardMarkup]:
         "Сообщений людям не уйдёт, баллы не изменятся. Если человека успели взять в команду, "
         "его пропустим."
     )
+    if not season:
+        lines += ["", f"⚠️ {svc.NO_SEASON}"]
+        return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=[back])
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"✅ Сбросить ({len(rows)})", callback_data=f"ambrst_go:{code}:{len(rows)}")],
+        [InlineKeyboardButton(
+            text=f"✅ Сбросить ({len(rows)})", callback_data=f"ambrst_go:{code}:{svc.ids_digest(rows)}",
+        )],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="ambrst")],
     ])
     return "\n".join(lines), kb
@@ -140,10 +145,10 @@ async def amb_reset_preview(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("ambrst_go:"))
 async def amb_reset_go(callback: types.CallbackQuery):
     parts = callback.data.split(":")
-    if len(parts) != 3 or parts[1] not in _CODES or not parts[2].isdigit():
+    if len(parts) != 3 or parts[1] not in _CODES or not parts[2]:
         await callback.answer(_STALE, show_alert=True)
         return
-    code, expected = parts[1], int(parts[2])
+    code, expected = parts[1], parts[2]
     if not await _is_global(callback.from_user.id):
         await callback.answer(_NOT_GLOBAL, show_alert=True)
         return
@@ -151,14 +156,17 @@ async def amb_reset_go(callback: types.CallbackQuery):
         await callback.answer("Сброс уже идёт — дождитесь итога.", show_alert=True)
         return
     async with _lock:
-        now = len((await svc.preview(_CODES[code]))["rows"])
-        if now != expected:
+        plan = await svc.preview(_CODES[code])
+        if not plan["season"]:
+            await callback.answer(svc.NO_SEASON, show_alert=True)
+            return
+        if svc.ids_digest(plan["rows"]) != expected:
             text, kb = await _render_preview(code)
             await callback.answer("Список изменился, проверьте ещё раз.", show_alert=True)
             await _edit(callback, text, kb)
             return
         await callback.answer()
-        result = await svc.apply(_CODES[code])
+        result = await svc.apply(_CODES[code], plan)
     done, skipped = result["done"], result["skipped"]
     logger.info(
         "amb_status_reset: by=%s режим=%s сброшено=%s пропущено=%s",
