@@ -487,3 +487,22 @@ def test_upload_receipt_entry_threads_own_track_not_full(tmp_path, monkeypatch):
     asyncio.run(user_actions.upload_receipt_entry(FakeMessage(), FakeBot()))
 
     assert captured["participant_type"] == "party_overnight"
+
+
+
+def test_payment_options_tracks_in_words_and_prompt_has_no_codes():
+    """Подсказка «💳 Варианты оплаты» называет треки словами — парсер их принимает; старые
+    коды в уже сохранённых настройках по-прежнему работают."""
+    from payment_options import parse_options
+    from settings_schema import SETTINGS_SCHEMA
+    opts = parse_options("Вход|1000|с ночёвкой, Без ночевки\nПолный|5000|полная регистрация\nСтарый|1|party_overnight")
+    assert opts == [
+        ("Вход", 1000, {"party_overnight", "party_noovernight"}),
+        ("Полный", 5000, {"full"}),
+        ("Старый", 1, {"party_overnight"}),
+    ]
+    prompt = SETTINGS_SCHEMA["payment_options"]["prompt"]
+    for code in ("party_overnight", "party_noovernight", "full —", "латиниц"):
+        assert code not in prompt
+    example = prompt.rsplit("\n", 1)[-1]
+    assert parse_options(example)[0][2] == {"party_overnight", "party_noovernight"}

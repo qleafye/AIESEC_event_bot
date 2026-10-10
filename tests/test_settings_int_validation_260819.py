@@ -169,7 +169,9 @@ def test_enum_key_rejects_unknown_option(tmp_path):
     assert saved is None
     assert asyncio.run(state.get_state()) == "EditSetting:waiting_for_value"
     hint = message.answers[-1]
-    assert "forum" in hint and "conference" in hint and "custom" in hint
+    # 10.10: варианты названы подписями, как на кнопках, — без кодов forum/conference/custom.
+    assert "«Форум»" in hint and "«Конференция»" in hint and "«Вручную»" in hint
+    assert "forum" not in hint and "conference" not in hint
 
 
 def test_enum_key_normalizes_case(tmp_path):
