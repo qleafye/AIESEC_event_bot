@@ -123,6 +123,8 @@ let queue = Promise.resolve();
  * @returns {Promise<File>}
  */
 export function shrinkPhoto(file, { maxSide = MAX_SIDE, quality = JPEG_QUALITY } = {}) {
+  // PDF/документ, выбранный вместе с фото, не ждёт в очереди их сжатия.
+  if (!file || typeof file.size !== "number" || !looksLikeImage(file)) return Promise.resolve(file);
   const run = queue.then(() => shrinkNow(file, maxSide, quality));
   queue = run.catch(() => null);
   return run;
