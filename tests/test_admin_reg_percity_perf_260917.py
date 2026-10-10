@@ -1,5 +1,5 @@
 """Quick 260917 (перф-приёмка, продолжение settings/all): экран «📋 Вопросы регистрации» и
-«✏️ Тексты вопросов» в ЧАТЕ админки (`handlers/admin_reg_percity.py`) — тот же класс N+1, что
+«✏️ Тексты вопросов» в ЧАТЕ админки (`handlers/regform/admin_reg_percity.py`) — тот же класс N+1, что
 чинили в Mini App/группах настроек бота (`tests/test_miniapp_settings_perf_260917.py`,
 `admin_settings.py::settings_toggle_rows`/`render_settings_group_text`).
 
@@ -53,7 +53,7 @@ def _admin_ready(tmp_path, db_name="test_admin_reg_percity_perf_260917.db"):
 
 def test_render_questions_text_uses_one_connection_not_n_plus_one(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_reg_percity as arp
+    from handlers.regform import admin_reg_percity as arp
 
     with _ConnectCounter() as counter:
         _run(arp.render_questions_text("full", None))
@@ -65,7 +65,7 @@ def test_render_questions_text_uses_one_connection_not_n_plus_one(tmp_path):
 
 def test_build_questions_keyboard_uses_one_connection_not_n_plus_one(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_reg_percity as arp
+    from handlers.regform import admin_reg_percity as arp
 
     with _ConnectCounter() as counter:
         _run(arp.build_questions_keyboard("full", None))
@@ -76,7 +76,7 @@ def test_build_questions_keyboard_uses_one_connection_not_n_plus_one(tmp_path):
 
 def test_build_prompts_keyboard_uses_one_connection_not_n_plus_one(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_reg_percity as arp
+    from handlers.regform import admin_reg_percity as arp
 
     with _ConnectCounter() as counter:
         _run(arp.build_prompts_keyboard("full", None))
@@ -89,7 +89,7 @@ def test_questions_screen_output_unchanged_by_snapshot(tmp_path):
     """Эквивалентность: снимок — оптимизация чтения, не смена контракта. Прогоняем рендер
     дважды (снимок пересоздаётся на каждый вызов) и сверяем побайтово."""
     _admin_ready(tmp_path)
-    from handlers import admin_reg_percity as arp
+    from handlers.regform import admin_reg_percity as arp
 
     first = _run(arp.render_questions_text("full", None))
     second = _run(arp.render_questions_text("full", None))

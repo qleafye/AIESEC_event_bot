@@ -43,7 +43,7 @@ from database import db
 from domain.settings.schema import SETTINGS_SCHEMA
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
+from handlers.regform import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
 from handlers import admin_caps
 from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod

@@ -249,7 +249,7 @@ _PREFIX_PREVIEW_LIMIT = 20
 
 def sheet_tabs_group_extra_buttons() -> list[list[InlineKeyboardButton]]:
     """Две кнопки на экране «📄 Вкладки таблицы» (образец —
-    `handlers/admin_consent.py::consent_group_extra_buttons`)."""
+    `handlers/regform/admin_consent.py::consent_group_extra_buttons`)."""
     return [
         [InlineKeyboardButton(
             text="🤖 Добавить префикс ко всем вкладкам бота", callback_data="sheet_tabs_prefix_add",

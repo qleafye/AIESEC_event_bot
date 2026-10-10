@@ -218,7 +218,7 @@ def test_labels_group_in_chat_settings():
 
 
 def test_menu_buttons_screen_links_to_labels(ready):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
 
     kb = asyncio.run(admin_reg_config.build_menu_keyboard(ADMIN_ID))
     datas = [b.callback_data for row in kb.inline_keyboard for b in row]
@@ -226,7 +226,7 @@ def test_menu_buttons_screen_links_to_labels(ready):
 
 
 def test_menu_buttons_screen_shows_custom_caption(ready):
-    from handlers import admin_reg_config
+    from handlers.regform import admin_reg_config
 
     async def go():
         await db.set_setting("menu_faq_label", "❓ Ответы")

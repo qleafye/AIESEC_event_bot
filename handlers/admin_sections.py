@@ -85,7 +85,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_resume_filename_short_mode"),
         # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» (артборд 13) — порядок:
         # мастер -> чипы -> поиск -> образование -> повторяемые -> счётчик -> статус -> шапка
-        # -> вибрация. Хендлеры — handlers/admin_reg_form.py, строки — settings_toggle_rows.
+        # -> вибрация. Хендлеры — handlers/regform/admin_reg_form.py, строки — settings_toggle_rows.
         ("toggle", "toggle_reg_form_v2"),
         ("toggle", "toggle_reg_form_chips"),
         ("toggle", "toggle_reg_form_lookup_search"),
@@ -731,11 +731,11 @@ from handlers.sheets import admin_sheet_logs  # noqa: E402,F401
 from handlers.comms import admin_quiet_hours  # noqa: E402,F401
 
 # Phase 30 (30-01, A2-08): шов «📝 Анкета» (девять тумблеров «Анкета 2.0») — импорт СРАЗУ ПОСЛЕ
-# admin_quiet_hours, тот же хвостовой приём; `handlers.admin_reg_form` читает
+# admin_quiet_hours, тот же хвостовой приём; `handlers.regform.admin_reg_form` читает
 # `_toggle_module_setting` из `handlers.admin_settings`, который к этому моменту импорта уже
 # полностью определён (admin_settings.py импортирует этот модуль (admin_sections) последним в
 # своей собственной хвостовой цепочке). Golden snapshot: tests/test_refac_snapshot_260816.py.
-from handlers import admin_reg_form  # noqa: E402,F401
+from handlers.regform import admin_reg_form  # noqa: E402,F401
 
 # Квик 260913-16o: шов «подтверждение выключения модерации» — импорт СРАЗУ ПОСЛЕ admin_reg_form,
 # тот же хвостовой приём; `handlers.admin_settings_audit` читает `settings_return_screen` отсюда

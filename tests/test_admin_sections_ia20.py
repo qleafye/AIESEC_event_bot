@@ -27,8 +27,8 @@ import pytest
 
 from database import db
 import domain.cities as cities
-from handlers import admin_reg_config as regcfg
-from handlers import admin_reg_percity as regpercity  # module-size split: questions/prompts screens
+from handlers.regform import admin_reg_config as regcfg
+from handlers.regform import admin_reg_percity as regpercity  # module-size split: questions/prompts screens
 from handlers import admin_roles as roles
 from handlers import admin_sections as sec
 from handlers import admin_settings as st
@@ -915,9 +915,8 @@ def test_no_handler_redraws_the_flat_settings_screen():
     единственное упоминание `build_settings_keyboard(` на весь handlers/ — её объявление."""
     from pathlib import Path
 
-    handlers_dir = REPO_ROOT / "handlers"
-    settings_src = (handlers_dir / "admin_settings.py").read_text(encoding="utf-8")
-    regcfg_src = (handlers_dir / "admin_reg_config.py").read_text(encoding="utf-8")
+    settings_src = (REPO_ROOT / "handlers/admin_settings.py").read_text(encoding="utf-8")
+    regcfg_src = (REPO_ROOT / "handlers/regform/admin_reg_config.py").read_text(encoding="utf-8")
 
     assert settings_src.count("build_settings_keyboard(") == 1, "перерисовка снова целится в лендинг"
     assert "async def build_settings_keyboard(" in settings_src  # это именно объявление

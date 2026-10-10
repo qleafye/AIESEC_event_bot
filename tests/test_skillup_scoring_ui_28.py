@@ -1,6 +1,6 @@
 """Phase 28 Plan 08 (SU-08, 28-UI-SPEC §8) — правила балла кнопками.
 
-Задача 1: бот-экран `handlers/admin_reg_scoring.py` — чекбокс-пикеры ЧЕТЫРЁХ скоринговых
+Задача 1: бот-экран `handlers/regform/admin_reg_scoring.py` — чекбокс-пикеры ЧЕТЫРЁХ скоринговых
 множеств строятся из ТЕКУЩЕГО списка вариантов вопроса анкеты (`reg_engine.options(step_key)`),
 а не замороженного словаря (в этом разница с `type: "multi"`, см. `admin_modcard.py`). Харнесс
 — прямой вызов хендлеров с фейковым `CallbackQuery` (без реального aiogram-диспетчера), тот же
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-import handlers.admin_reg_scoring as admin_reg_scoring
+import handlers.regform.admin_reg_scoring as admin_reg_scoring
 import services.applications as applications
 import domain.settings.ops as settings_ops
 from config import config

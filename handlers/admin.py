@@ -899,7 +899,7 @@ from handlers.comms import admin_broadcasts  # noqa: E402
 from handlers.comms.admin_broadcasts import show_admin_broadcast  # noqa: E402
 
 
-from handlers import admin_reg_config  # noqa: E402
+from handlers.regform import admin_reg_config  # noqa: E402
 
 
 # Module-size convention split (tests/test_module_size_convention_260816.py): the per-city
@@ -910,7 +910,7 @@ from handlers import admin_reg_config  # noqa: E402
 # (event-preset/menu-button handlers now register before question/prompt handlers, instead of
 # being interleaved as in the original single file) is intentional and reviewed, not a residual
 # artifact of the split.
-from handlers import admin_reg_percity  # noqa: E402
+from handlers.regform import admin_reg_percity  # noqa: E402
 
 
 # Quick 260904-2cj (QJRN-01..04): shared-router seam import for the delegate-questions journal
