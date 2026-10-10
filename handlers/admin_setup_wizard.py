@@ -47,16 +47,28 @@ def set_return(admin_id: int, step_key: str, field_key: str) -> None:
     _return_to[admin_id] = (step_key, field_key, time.monotonic())
 
 
-def _matches(field_key: str, setting_key: str | None) -> bool:
+# Экраны бота, которые мастер открывает целиком (не поле): их «Назад» зовёт
+# `settings_return_screen(callback_data=<экран>)` — по нему и возвращаемся в шаг.
+_SCREENS = {
+    "admin_menu_buttons": "🔘 Кнопки меню",
+    "admin_reg_questions": "📋 Вопросы регистрации",
+}
+_SCREEN_MARK = "screen:"
+
+
+def _matches(field_key: str, setting_key: str | None, callback_data: str | None = None) -> bool:
     """Сохранили именно поле мастера: тот же ключ, его городское значение
-    (`{key}__city__{code}`) или файл фото/документа поля (`{key}_photo_file_id`)."""
+    (`{key}__city__{code}`) или файл фото/документа поля (`{key}_photo_file_id`); для экрана —
+    выход с этого экрана («Назад» зовёт возврат с его callback_data)."""
+    if field_key.startswith(_SCREEN_MARK):
+        return callback_data == field_key[len(_SCREEN_MARK):]
     if not setting_key:
         return False
     base = setting_key.split("__city__", 1)[0]
     return base in (field_key, f"{field_key}_photo_file_id", f"{field_key}_doc_file_id")
 
 
-def pop_return(admin_id: int, setting_key: str | None = None) -> str | None:
+def pop_return(admin_id: int, setting_key: str | None = None, callback_data: str | None = None) -> str | None:
     """Шаг мастера, если сохранение — правка поля, открытого из мастера (ревью 10.10: раньше
     возврат перехватывал ЛЮБОЕ сохранение и тумблер в течение 30 минут). Чужой возврат
     отметку не трогает — она снимается своим сохранением, сроком или входом в мастер."""
@@ -67,7 +79,7 @@ def pop_return(admin_id: int, setting_key: str | None = None) -> str | None:
     if time.monotonic() - at > _RETURN_TTL_S:
         _return_to.pop(admin_id, None)
         return None
-    if not _matches(field_key, setting_key):
+    if not _matches(field_key, setting_key, callback_data):
         return None
     _return_to.pop(admin_id, None)
     return step_key
@@ -192,7 +204,7 @@ async def step_screen(step_key: str, admin_id: int | None = None) -> tuple[str, 
     app_only = False
     if step.kind == "fields":
         lines.append("")
-        menu_added = False
+        screens_added: set[str] = set()
         for key in step.fields:
             label = _field_label(key)
             state = TEXTS["value_set_text"] if filled.get(key) else TEXTS["value_default_text"]
@@ -202,10 +214,14 @@ async def step_screen(step_key: str, admin_id: int | None = None) -> tuple[str, 
                     callback_data=f"setupw_f:{step.key}:{key}",
                 )])
                 lines.append(f"• {html.escape(label)} — {state}")
-            elif key.startswith("menu_"):
-                if not menu_added:
-                    rows.append([InlineKeyboardButton(text="🔘 Кнопки меню", callback_data="admin_menu_buttons")])
-                    menu_added = True
+            elif key.startswith(("menu_", "reg_q_")):
+                # Кнопки меню и вопросы анкеты правятся своими экранами бота, а не полем.
+                screen = "admin_menu_buttons" if key.startswith("menu_") else "admin_reg_questions"
+                if screen not in screens_added:
+                    rows.append([InlineKeyboardButton(
+                        text=_SCREENS[screen], callback_data=f"setupw_scr:{step.key}:{screen}",
+                    )])
+                    screens_added.add(screen)
                 lines.append(f"• {html.escape(label)} — {state}")
             else:
                 app_only = True
@@ -277,3 +293,24 @@ async def setup_wizard_field(callback: types.CallbackQuery, state: FSMContext):
         await admin_settings.settings_file_start(edit, state)
     else:
         await admin_settings.settings_edit_start(edit, state)
+
+
+@router.callback_query(F.data.startswith("setupw_scr:"))
+async def setup_wizard_screen(callback: types.CallbackQuery):
+    """Экран бота из шага мастера («🔘 Кнопки меню», «📋 Вопросы регистрации»): «Назад» с
+    него вернёт в тот же шаг (отметка возврата по callback_data экрана)."""
+    if not _is_super(callback.from_user.id):
+        await callback.answer(ONLY_SUPERADMIN, show_alert=True)
+        return
+    _prefix, step_key, screen = callback.data.split(":", 2)
+    if screen not in _SCREENS:
+        await callback.answer()
+        return
+    set_return(callback.from_user.id, step_key, _SCREEN_MARK + screen)
+    opened = callback.model_copy(update={"data": screen})
+    if screen == "admin_menu_buttons":
+        from handlers.admin_reg_config import show_menu_buttons  # ленивый шов
+        await show_menu_buttons(opened)
+    else:
+        from handlers.admin_reg_percity import show_reg_questions  # ленивый шов
+        await show_reg_questions(opened)
