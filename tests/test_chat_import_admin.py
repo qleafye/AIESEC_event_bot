@@ -304,6 +304,41 @@ def test_failed_write_keeps_state_and_says_not_written(db_path, monkeypatch):  #
     assert _count(db_path, "chat_messages") == 0
 
 
+def test_redownload_failure_says_nothing_written(db_path):  # noqa: F811
+    _setup(db_path)
+    state = _state()
+    _to_confirm(state)
+
+    class _Broken:
+        async def download(self, file_id, destination=None):
+            raise OSError("сеть")
+
+    go = _Callback("chimp:go")
+    go.bot = _Broken()
+    _run(h.chat_import_go(go, state))
+    text = go.message.answers[0][0]
+    assert "Файл не скачался, ничего не записано" in text and "Часть сообщений" not in text
+    assert _run(state.get_state()) == ChatExportImport.confirm.state
+    assert _count(db_path, "chat_messages") == 0
+
+
+def test_write_runs_under_parse_lock(db_path, monkeypatch):  # noqa: F811
+    _setup(db_path)
+    state = _state()
+    _to_confirm(state)
+    seen = []
+
+    def spy(plan):
+        seen.append(h._parse_lock.locked())
+        return 0, 0
+
+    monkeypatch.setattr(h, "_db_apply", spy)
+    go = _Callback("chimp:go")
+    go.bot = _Bot(_payload())
+    _run(h.chat_import_go(go, state))
+    assert seen == [True]
+
+
 def test_export_without_chat_id_is_flagged(db_path):  # noqa: F811
     _setup(db_path)
     data = _fixture_export()

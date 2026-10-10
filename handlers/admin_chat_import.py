@@ -351,6 +351,11 @@ async def chat_import_not_document(message: types.Message):
     )
 
 
+_NOT_DOWNLOADED = (
+    "Файл не скачался, ничего не записано. Нажмите «✅ Загрузить» ещё раз — если снова не выйдет, "
+    "откройте «🏆 Рейтинг чата» → «📥 Загрузить историю чата» и пришлите файл заново."
+)
+
 _NOT_WRITTEN = (
     "Ничего не записано — загрузка прервалась. Откройте «🏆 Рейтинг чата» → «📥 Загрузить историю "
     "чата» и пришлите файл заново. Часть сообщений могла успеть записаться: повторная загрузка "
@@ -379,11 +384,17 @@ async def chat_import_go(callback: types.CallbackQuery, state: FSMContext):
             )
             return
         try:
+            # Скачать -> разобрать -> записать держим под одним замком: иначе чужой разбор идёт
+            # параллельно с записью и два плана висят в памяти сразу.
             async with _parse_lock:
                 plan = await _fetch_plan(callback.bot, file_id, data.get("file_name") or "result.json", chat_id)
-            to_add = plan["to_add"]
-            added_messages, added_reactions = await asyncio.to_thread(_db_apply, plan)
-            del plan
+                to_add = plan["to_add"]
+                added_messages, added_reactions = await asyncio.to_thread(_db_apply, plan)
+                del plan
+        except _DownloadFailed:
+            logger.warning("chat_import: файл не скачался при подтверждении, chat=%s", chat_id)
+            await callback.message.answer(_NOT_DOWNLOADED)
+            return
         except Exception:
             logger.exception("chat_import: запись не удалась, chat=%s", chat_id)
             await callback.message.answer(_NOT_WRITTEN)
