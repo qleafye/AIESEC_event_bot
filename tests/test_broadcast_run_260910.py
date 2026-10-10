@@ -230,13 +230,13 @@ def test_run_revoke_deletes_every_saved_pair_and_marks_revoked(tmp_path, monkeyp
         bot = _RevokeBot(fail_pairs={(2, 200)})
         finishes = []
 
-        async def on_finish(deleted, failed):
-            finishes.append((deleted, failed))
+        async def on_finish(deleted, failed, stopped):
+            finishes.append((deleted, failed, stopped))
 
         await br.run_revoke(bot, bid, on_finish=on_finish)
 
         assert sorted(bot.deleted) == [(1, 100), (3, 300)]
-        assert finishes == [(2, 1)]
+        assert finishes == [(2, 1, False)]
         row = await db.get_broadcast(bid)
         assert row["status"] == "revoked"
 

@@ -71,7 +71,6 @@ from database.db import (
     create_broadcast,
     get_broadcast,
     list_recent_broadcasts,
-    list_broadcast_messages,
     # Квик 260915-twr (Task B2): предупреждение об аудитории «Всем» на экране подтверждения.
     list_staff,
 )
@@ -92,7 +91,7 @@ from services.scheduler import (
 )
 from services.access.allowlist import refresh_allowlist, allowlist_size
 from services.infra.background import spawn as _spawn
-from services.comms.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
+from services.comms.broadcast_run import run_broadcast, request_stop, can_revoke
 from services.comms.broadcast_scope import (
     past_season_note, restrict_to_sender_city, season_default_filter, sender_city_note, split_by_sender_city,
 )
@@ -791,74 +790,9 @@ def _broadcast_card(row: dict) -> tuple[str, InlineKeyboardMarkup | None]:
     return text, kb
 
 
-@router.callback_query(F.data.startswith("bc_rev:"))
-async def bc_rev(callback: types.CallbackQuery):
-    """Подтверждение отзыва — гейт 48 ч перепроверяется ЗДЕСЬ: инлайн-кнопки не истекают,
-    карточка списка могла быть нарисована вчера."""
-    try:
-        bid = int(callback.data.split(":", 1)[1])
-    except ValueError:
-        await callback.answer("Некорректные данные.", show_alert=True)
-        return
-    row = await get_broadcast(bid)
-    if not row:
-        await callback.answer("Рассылка не найдена.", show_alert=True)
-        return
-    if row["status"] == "revoked" or not can_revoke(row.get("started_at")):
-        await callback.answer("Удалить нельзя: прошло больше 48 часов.", show_alert=True)
-        return
-    n = len(await list_broadcast_messages(bid))
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑 Да, удалить", callback_data=f"bc_revgo:{bid}")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_revno")],
-    ])
-    await callback.message.edit_text(
-        f"Сообщение удалится у {n} человек. Вернуть нельзя. Удалить?", reply_markup=kb,
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "bc_revno")
-async def bc_revno(callback: types.CallbackQuery):
-    await callback.message.edit_text("Удаление отменено.")
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("bc_revgo:"))
-async def bc_revgo(callback: types.CallbackQuery, bot: Bot):
-    try:
-        bid = int(callback.data.split(":", 1)[1])
-    except ValueError:
-        await callback.answer("Некорректные данные.", show_alert=True)
-        return
-    row = await get_broadcast(bid)
-    if not row:
-        await callback.answer("Рассылка не найдена.", show_alert=True)
-        return
-    n = len(await list_broadcast_messages(bid))
-
-    stop_kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⛔ Остановить", callback_data=f"bc_stop:{bid}")
-    ]])
-    try:
-        await callback.message.edit_text(f"🗑 Удалено 0 из {n}…", reply_markup=stop_kb)
-    except Exception:
-        pass
-    await callback.answer()
-
-    async def on_progress(deleted, failed, total_n):
-        try:
-            await callback.message.edit_text(f"🗑 Удалено {deleted} из {total_n}…", reply_markup=stop_kb)
-        except Exception:
-            pass
-
-    async def on_finish(deleted, failed):
-        try:
-            await callback.message.edit_text(f"Удалено {deleted}, не удалось {failed}")
-        except Exception:
-            pass
-
-    _spawn(run_revoke(bot, bid, on_progress=on_progress, on_finish=on_finish))
+# Удаление у получателей (bc_rev/bc_revno/bc_revgo) — шов admin_broadcast_revoke; импорт здесь
+# держит прежний порядок регистрации хендлеров.
+from handlers.comms.admin_broadcast_revoke import bc_rev, bc_revgo, bc_revno, revoked_line  # noqa: E402,F401
 
 
 async def _render_broadcast_log(target):
@@ -869,8 +803,13 @@ async def _render_broadcast_log(target):
         await target.answer("Рассылок пока не было.")
         return
     for row in rows:
+        if row.get("status") == "revoked":
+            # Удалённая — одной строкой: кнопок у неё нет, счётчики доставки уже неправда.
+            await target.answer(revoked_line(row))
+            continue
         text, kb = _broadcast_card(row)
         await target.answer(text, reply_markup=kb)
+
 
 
 @router.callback_query(F.data == "admin_broadcast_log")

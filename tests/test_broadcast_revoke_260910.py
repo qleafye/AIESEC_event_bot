@@ -161,7 +161,7 @@ def test_bc_rev_shows_confirmation_without_deleting(tmp_path):
         assert "3" in cb.message.text
         assert "Вернуть нельзя" in cb.message.text
         assert f"bc_revgo:{bid}" in _cb_datas(cb.message.markup)
-        assert "bc_revno" in _cb_datas(cb.message.markup)
+        assert f"bc_revno:{bid}" in _cb_datas(cb.message.markup)
 
     asyncio.run(go())
 
@@ -203,8 +203,8 @@ def test_bc_revgo_deletes_every_saved_pair_marks_revoked_and_reports_counts(tmp_
         assert sorted(bot.deleted) == [(1, 100), (3, 300)]
         row = await db.get_broadcast(bid)
         assert row["status"] == "revoked"
-        assert "Удалено 2" in cb.message.text
-        assert "не удалось 1" in cb.message.text
+        assert cb.message.text == f"🗑 Рассылка #{bid} удалена у получателей: 2, не удалось 1."
+        assert "admin_broadcast" in _cb_datas(cb.message.markup)  # кнопка назад
 
     asyncio.run(go())
 
@@ -214,11 +214,17 @@ def test_bc_revno_cancels_without_deleting(tmp_path):
 
     async def go():
         bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100)])
-        cb = FakeCallback("bc_revno")
+        cb = FakeCallback(f"bc_revno:{bid}")
         await admin_broadcasts.bc_revno(cb)
-        assert cb.message.text == "Удаление отменено."
         row = await db.get_broadcast(bid)
         assert row["status"] == "done"  # отмена не трогает статус
+        # «Отмена» возвращает карточку рассылки, а не тупиковое «Удаление отменено.»
+        assert (cb.message.text, cb.message.markup) == admin_broadcasts._broadcast_card(row)
+        assert f"bc_rev:{bid}" in _cb_datas(cb.message.markup)
+
+        legacy = FakeCallback("bc_revno")  # кнопка с экрана до 11.10 — без номера
+        await admin_broadcasts.bc_revno(legacy)
+        assert legacy.message.text == "Удаление отменено."
 
     asyncio.run(go())
 
@@ -342,5 +348,115 @@ def test_scheduled_button_empty_state_shows_human_line_and_back_button(tmp_path)
         assert text == "Запланированных рассылок нет."
         assert _btn_texts(kb) == ["◀️ Назад"]
         assert _cb_datas(kb) == ["admin_broadcast"]
+
+    asyncio.run(go())
+
+
+def test_bc_rev_and_revgo_on_revoked_say_already_deleted(tmp_path):
+    """Удалённая рассылка: и «🗑 Удалить», и старая «🗑 Да, удалить» отвечают «Уже удалена у
+    получателей.», а не «прошло больше 48 часов»; ничего не удаляется."""
+    _ready(tmp_path)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100)], status="revoked")
+        bot = FakeBot()
+        for handler, data in ((admin_broadcasts.bc_rev, f"bc_rev:{bid}"),
+                              (admin_broadcasts.bc_revgo, f"bc_revgo:{bid}")):
+            cb = FakeCallback(data)
+            await (handler(cb) if handler is admin_broadcasts.bc_rev else handler(cb, bot))
+            assert cb.answers == [("Уже удалена у получателей.", True)]
+            assert cb.message.edits == []
+        assert bot.deleted == []
+
+    asyncio.run(go())
+
+
+def test_bc_revgo_rechecks_48h_gate(tmp_path, monkeypatch):
+    """Экран «Удалить?» могли открыть вчера: «🗑 Да, удалить» сам перепроверяет 48 ч."""
+    _ready(tmp_path)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100)], started_ago_hours=49)
+        spawned = []
+        monkeypatch.setattr(admin_broadcasts, "_spawn", lambda coro: spawned.append(coro))
+        cb = FakeCallback(f"bc_revgo:{bid}")
+        await admin_broadcasts.bc_revgo(cb, FakeBot())
+        assert cb.answers == [("Удалить нельзя: прошло больше 48 часов.", True)]
+        assert spawned == []
+
+    asyncio.run(go())
+
+
+def test_bc_revgo_second_tap_does_not_start_second_revoke(tmp_path, monkeypatch):
+    """Двойной тап «🗑 Да, удалить»: второй run_revoke не запускается, пока идёт первый; после
+    конца прогона захват снят."""
+    _ready(tmp_path)
+    _fast_sleep(monkeypatch)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100), (2, 200)])
+        spawned = []
+        monkeypatch.setattr(admin_broadcasts, "_spawn", lambda coro: spawned.append(coro))
+        bot = FakeBot()
+        await admin_broadcasts.bc_revgo(FakeCallback(f"bc_revgo:{bid}"), bot)
+        second = FakeCallback(f"bc_revgo:{bid}")
+        await admin_broadcasts.bc_revgo(second, bot)
+        assert len(spawned) == 1
+        assert second.answers == [("Удаление уже идёт.", True)]
+        await spawned[0]
+        assert sorted(bot.deleted) == [(1, 100), (2, 200)]
+        assert br.claim_revoke(bid) is True  # захват отпущен в finally
+        br._revoking.discard(bid)
+
+    asyncio.run(go())
+
+
+def test_revoke_stopped_keeps_status_and_says_stopped(tmp_path, monkeypatch):
+    """⛔ посреди удаления: статус не становится revoked (часть сообщений осталась у людей,
+    кнопка удаления нужна дальше), итог говорит «остановлено»."""
+    _ready(tmp_path)
+    _fast_sleep(monkeypatch)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100), (2, 200), (3, 300)])
+
+        class StoppingBot(FakeBot):
+            async def delete_message(self, chat_id, message_id):
+                await super().delete_message(chat_id, message_id)
+                br.request_stop(bid)
+
+        bot = StoppingBot()
+        spawned = []
+        monkeypatch.setattr(admin_broadcasts, "_spawn", lambda coro: spawned.append(coro))
+        cb = FakeCallback(f"bc_revgo:{bid}")
+        await admin_broadcasts.bc_revgo(cb, bot)
+        await spawned[0]
+
+        assert bot.deleted == [(1, 100)]
+        row = await db.get_broadcast(bid)
+        assert row["status"] == "done"
+        assert cb.message.text.startswith(f"⛔ Удаление рассылки #{bid} остановлено. Удалено: 1")
+        text, kb = admin_broadcasts._broadcast_card(row)
+        assert f"bc_rev:{bid}" in _cb_datas(kb)
+
+    asyncio.run(go())
+
+
+def test_broadcast_log_shows_revoked_as_one_line(tmp_path):
+    """В «Последних рассылках» удалённая — одна строка без кнопок; превью обрезано."""
+    _ready(tmp_path)
+
+    async def go():
+        long_text = "Очень длинный текст рассылки, который не влезет в одну строку & ещё"
+        bid = await _seed_broadcast(ADMIN_ID, long_text, [(1, 100)], status="revoked")
+        target = FakeLogTarget()
+        await admin_broadcasts._render_broadcast_log(target)
+        assert len(target.answers_sent) == 1
+        text, kb = target.answers_sent[0]
+        assert kb is None
+        assert "\n" not in text
+        assert text.startswith(f"🗑 #{bid} — ")
+        assert "удалена у получателей" in text
+        assert text.endswith("…")
 
     asyncio.run(go())
