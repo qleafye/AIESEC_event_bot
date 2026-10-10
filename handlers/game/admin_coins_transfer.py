@@ -255,5 +255,5 @@ async def cointr_go(callback: types.CallbackQuery, state: FSMContext):
         lines.append(f"Сообщение получили: {delivered} из {len(done)}.")
     if plan.unknown:
         lines.append(f"Не нашёл в боте: {len(plan.unknown)} — после правки ников запустите перенос ещё раз.")
-    lines.append("Все строки — в «📜 Журнал баллов».")
+    lines.append("Все строки — в «📜 Ручные начисления».")
     await callback.message.answer("\n".join(lines))

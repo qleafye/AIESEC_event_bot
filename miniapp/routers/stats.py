@@ -36,6 +36,9 @@ async def game_stats(
             "approved": stats["approved"],
             "rejected": stats["rejected"],
         },
+        # Сумма баллов за одобренные сдачи — та же цифра, что строка «🪙 Начислено баллов за
+        # задания» на экране бота (без персональных данных, T-19-32).
+        "coins_awarded": int(stats.get("coins_awarded", 0)),
         "by_category": [
             {"code": code, "label": await category_label(code), "count": int(by_category.get(code, 0))}
             for code in GAME_CATEGORIES
