@@ -6,8 +6,9 @@
 """
 
 _CMD_TAIL = (
-    "\n\nДо 256 символов. Применяется сразу после сохранения.\n\nЕсли очистить поле, бот этот "
-    "список команд не трогает — останется заданный раньше (в том числе через BotFather)."
+    "\n\nДо 256 символов. Применяется сразу после сохранения.\n\nПока поле не задано или "
+    "очищено, бот этот список команд не трогает — остаётся заданный раньше (в том числе через "
+    "BotFather)."
 )
 
 UI_TEXT_SCHEMA: dict[str, dict] = {
@@ -18,7 +19,7 @@ UI_TEXT_SCHEMA: dict[str, dict] = {
             "Подпись команды /start в синей кнопке «Меню» слева от поля ввода — её видят все. "
             "Например: «Главное меню»." + _CMD_TAIL
         ),
-        "default": "Главное меню",
+        "default": None,
     },
     "bot_command_admin_text": {
         "type": "text", "group": "event", "label": "⌨️ Кнопка «Меню»: подпись /admin",
@@ -28,7 +29,7 @@ UI_TEXT_SCHEMA: dict[str, dict] = {
             "показывается. Например: «Панель организатора».\n\nНовый организатор увидит "
             "команду в меню после перезапуска бота или следующей правки этой подписи." + _CMD_TAIL
         ),
-        "default": "Панель организатора",
+        "default": None,
     },
     "bot_command_start_text_en": {
         "type": "text", "group": "event", "label": "⌨️ Кнопка «Меню»: /start по-английски",
@@ -36,7 +37,7 @@ UI_TEXT_SCHEMA: dict[str, dict] = {
             "Подпись /start для тех, у кого Telegram на английском. Например: «Main menu»."
             + _CMD_TAIL
         ),
-        "default": "Main menu",
+        "default": None,
     },
     "bot_command_admin_text_en": {
         "type": "text", "group": "event", "label": "⌨️ Кнопка «Меню»: /admin по-английски",
@@ -44,7 +45,7 @@ UI_TEXT_SCHEMA: dict[str, dict] = {
             "Подпись /admin для организаторов с Telegram на английском. Например: «Organizer "
             "panel»." + _CMD_TAIL
         ),
-        "default": "Organizer panel",
+        "default": None,
     },
 }
 
@@ -105,7 +106,10 @@ BACKGROUND_BUTTON_FIELD_ORDER = [
     "broadcast_mute_button_text", "broadcast_unmute_button_text",
 ]
 
-_FRAG = "\n\nБез разметки. Если очистить поле, вернётся текст по умолчанию."
+_FRAG = (
+    "\n\nБез разметки. Если очистить поле, вернётся текст по умолчанию. Делегатам с "
+    "английским языком свой текст уходит в переводе, а пока перевод не готов — по-русски."
+)
 
 
 def _text(group: str, label: str, where: str, default: str) -> dict:
