@@ -7,7 +7,7 @@
 на одном месте, плюс состояние: действующее окно, для какого города оно показано, что именно
 откладывается и сколько уведомлений уже в очереди.
 
-Форма шва — `handlers/admin_purge.py`: своего `Router()` нет, `from handlers.admin import
+Форма шва — `handlers/access/admin_purge.py`: своего `Router()` нет, `from handlers.admin import
 router`, декоратор — в одну строку (инвариант cap-теста `tests/test_roles_phase8.py`).
 `handlers.admin_settings`/`handlers.admin_sections` импортируются ЛЕНИВО внутри функции —
 на уровне модуля они замкнули бы цикл (admin_sections -> admin_settings -> хвост admin_sections

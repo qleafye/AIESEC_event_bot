@@ -6,7 +6,7 @@
 - `is_unreachable_error` — ошибка доставки значит «человек недоступен» (заблокировал бота,
   удалил аккаунт, ни разу не писал боту), а не сетевой сбой;
 - `note_undeliverable` / `note_delivered` — поставить / снять отметку в `staff_unreachable`;
-  зовутся из циклов рассылки сотрудникам (`handlers.admin_caps.notify_by_capability`,
+  зовутся из циклов рассылки сотрудникам (`handlers.access.admin_caps.notify_by_capability`,
   `services.daily_digest`). Кому и в каком порядке слать, они НЕ решают — только помечают;
 - `StaffReachMiddleware` — человек сам написал боту в личку -> отметка снимается;
 - `first_warning_today` — один WARNING на человека в сутки вместо ERROR на каждую заявку.

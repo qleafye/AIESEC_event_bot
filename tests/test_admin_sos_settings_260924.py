@@ -20,7 +20,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin_sos
-from handlers.admin_caps import role_caps_key
+from handlers.access.admin_caps import role_caps_key
 from handlers.states import EditSetting
 from tests._dbtpl import fast_init_db
 

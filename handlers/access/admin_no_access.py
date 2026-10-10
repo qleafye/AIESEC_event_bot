@@ -1,6 +1,6 @@
 """Приёмка 09.10: `/admin` от человека без прав — молчание.
 
-Deny-by-default `CapabilityMiddleware` (`handlers/admin_caps.py::_deny`) намеренно не отвечает
+Deny-by-default `CapabilityMiddleware` (`handlers/access/admin_caps.py::_deny`) намеренно не отвечает
 человеку без единого права и пропускает апдейт дальше (UNHANDLED) — поверхность админки не
 раскрывается. Но сам `/admin` дальше не ловил никто, и человек решал, что бот завис. Этот
 роутер подключён в main.py СРАЗУ после `admin.router` и отвечает только на `/admin` в личке:

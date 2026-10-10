@@ -7,7 +7,7 @@
 - ни в одном из двух доков нет «сырых» кодовых имён настроек фазы (латиница-бренды уже
   покрыты tests/test_ru_brand_wording_260824.py::test_human_docs_have_no_owner_latin_brand);
 - каждый ключ, задокументированный этим планом во встроенной справке
-  (handlers.admin_roles.SETTINGS_GUIDE_SECTIONS), реально существует в SETTINGS_SCHEMA и его
+  (handlers.access.admin_roles.SETTINGS_GUIDE_SECTIONS), реально существует в SETTINGS_SCHEMA и его
   `where` начинается с подписи настоящего раздела (переиспользует ту же идиому, что
   test_admin_sections_ia20.py::test_settings_guide_where_starts_with_a_real_section, второй
   сторож на ту же тему не заводим);
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-import handlers.admin_roles as roles
+import handlers.access.admin_roles as roles
 import handlers.admin_sections as sec
 from domain.settings.schema import SETTINGS_SCHEMA
 
@@ -33,7 +33,7 @@ CHEATSHEET = DOCS_ROOT / "ADMIN_CHEATSHEET.md"
 REQUIRED_WORDS = ("волн", "амбассадор", "приглаш", "штраф")
 
 # Единый список ключей фазы 32, которые обязаны быть видны во встроенной справке
-# (`handlers.admin_roles.SETTINGS_GUIDE_SECTIONS`) — параметрический тест ниже читает ЭТОТ
+# (`handlers.access.admin_roles.SETTINGS_GUIDE_SECTIONS`) — параметрический тест ниже читает ЭТОТ
 # список, а не дублирует ключи по одному ассертами.
 PHASE_32_GUIDE_KEYS = [
     "ambassador_referral_coins",

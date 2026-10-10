@@ -74,7 +74,7 @@ class Approval(StatesGroup):
 class QuestionAnswer(StatesGroup):
     # Quick 260904-2cj: ответ на вопрос делегата прямо из экрана «❓ Вопросы делегатов»
     # (handlers/comms/admin_questions.py), право `moderate_reg` ("state:QuestionAnswer:*" в
-    # handlers/admin_caps.py). Qid/user_id — в state.get_data() (aq_qid/aq_user_id), тот же
+    # handlers/access/admin_caps.py). Qid/user_id — в state.get_data() (aq_qid/aq_user_id), тот же
     # приём, что GameTaskEdit несёт task id.
     text = State()
 
@@ -92,7 +92,7 @@ class FaqItem(StatesGroup):
     # журнала вопросов (faq_mode="draft", faq_qid/faq_draft_q/faq_draft_a/faq_field —
     # faq_qid — id ИСХОДНОГО вопроса журнала, не пункта FAQ, отличает «draft» от «edit», у
     # которого вместо этого faq_id пункта) — форма QuestionAnswer, право `moderate_reg`
-    # ("state:FaqItem:*" в handlers/admin_caps.py).
+    # ("state:FaqItem:*" в handlers/access/admin_caps.py).
     text = State()
 
 class LookupAdmin(StatesGroup):
@@ -100,7 +100,7 @@ class LookupAdmin(StatesGroup):
     # «📚 Справочники» (handlers/admin_lookup.py) — заведён здесь (не локально в шве), т.к.
     # `tests/test_roles_phase8.py::_message_keys_from_line` резолвит "state:X:*" ТОЛЬКО для
     # групп, живущих в этом модуле (`hasattr(states_mod, group_name)`); "state:LookupAdmin:*"
-    # в handlers/admin_caps.py.
+    # в handlers/access/admin_caps.py.
     search = State()
 
 class Broadcast(StatesGroup):
@@ -108,13 +108,13 @@ class Broadcast(StatesGroup):
     message = State()
     # Quick 260910-okb (BC-01/02/03): превью+подтверждение перед немедленной рассылкой —
     # process_broadcast больше не шлёт напрямую из Broadcast.message, а копит FSM и переводит
-    # сюда; "state:Broadcast:*" в handlers/admin_caps.py уже покрывает новое состояние.
+    # сюда; "state:Broadcast:*" в handlers/access/admin_caps.py уже покрывает новое состояние.
     confirm = State()
     # Phase 3: scheduled broadcast (SCHED-01)
     schedule_when = State()
     schedule_message = State()
     # Форум-ночь п.7: экран подтверждения (тумблер «❗ Важное») перед созданием отложенной
-    # рассылки — "state:Broadcast:*" в handlers/admin_caps.py уже покрывает новое состояние.
+    # рассылки — "state:Broadcast:*" в handlers/access/admin_caps.py уже покрывает новое состояние.
     schedule_confirm = State()
     # Phase 3: filtered broadcast builder (COMM-01/02/03)
     filter_field = State()
@@ -191,7 +191,7 @@ class GameSubmit(StatesGroup):
 
 class CoinsManual(StatesGroup):
     # Phase 14 (14-04, GAME-09): «🪙 Монеты вручную» button wizard — lives under moderate_game
-    # (registered in handlers/admin_caps.py, "state:CoinsManual:*"), same as GameTaskCreate. The
+    # (registered in handlers/access/admin_caps.py, "state:CoinsManual:*"), same as GameTaskCreate. The
     # confirm step is a callback (coinsman_confirm) reading state.get_data() directly, not a
     # fourth State — same shape GameTaskCreate.confirm's own confirm callback (gtconfirm) uses.
     person = State()  # waiting for a forwarded message / @username to resolve the recipient
@@ -200,7 +200,7 @@ class CoinsManual(StatesGroup):
 
 class CityForm(StatesGroup):
     # Phase 14 (14-07, CITY-07): city registry wizard — lives under `settings`
-    # (registered in handlers/admin_caps.py, "state:CityForm:*"). Add-wizard is two steps
+    # (registered in handlers/access/admin_caps.py, "state:CityForm:*"). Add-wizard is two steps
     # (label -> tab base); the two edit flows are one field each. The city CODE is never a
     # state itself — on add it's generated server-side (cities.make_city_code); on edit it's
     # carried in state.get_data()["city_code"], set by the callback that opened the step.
@@ -222,7 +222,7 @@ class SeasonReset(StatesGroup):
 
 class SeasonImport(StatesGroup):
     # Phase 07.3 (06, RET-04): «📥 Импорт прошлого события» wizard — lives under `settings`
-    # (registered in handlers/admin_caps.py, "state:SeasonImport:*"). No third confirm State —
+    # (registered in handlers/access/admin_caps.py, "state:SeasonImport:*"). No third confirm State —
     # same CoinsManual/CityForm precedent: the confirm step is a callback reading
     # state.get_data() (season_import_go), not a State.
     waiting_file = State()  # waiting for a document (the foreign forum.db)
@@ -231,7 +231,7 @@ class SeasonImport(StatesGroup):
 
 class PollCreate(StatesGroup):
     # «📊 Опросы» → «➕ Новый опрос» (handlers/comms/admin_poll_wizard.py), право `broadcast`
-    # ("state:PollCreate:*" в handlers/admin_caps.py). Тумблеры/аудитория/подтверждение —
+    # ("state:PollCreate:*" в handlers/access/admin_caps.py). Тумблеры/аудитория/подтверждение —
     # кнопки, но стейт между шагами стоит: тот же guard «Отмена посреди мастера».
     question = State()       # текст вопроса (≤300 символов)
     options = State()        # варианты по одному сообщением (или через «;»), 2–10, ≤100 символов
@@ -244,7 +244,7 @@ class PollCreate(StatesGroup):
 class MiniAppTheme(StatesGroup):
     # Phase 19 (08, D-06) + Phase 19.1 (07, D-20): экраны «🎨 Оформление» / «🎭 Пресеты и ручки»
     # Mini App (handlers/admin_miniapp.py + handlers/admin_miniapp_theme.py), право `settings`
-    # ("state:MiniAppTheme:*" в handlers/admin_caps.py). Своя маленькая группа, а не
+    # ("state:MiniAppTheme:*" в handlers/access/admin_caps.py). Своя маленькая группа, а не
     # переиспользование EditSetting -- та же причина, что у GameTaskEdit: у экранов свой экран
     # возврата, и каждое поле правится по одному за раз без общего wizard'а.
     logo = State()             # лого мероприятия (светлая тема), фото
@@ -265,7 +265,7 @@ class RejectRuleEdit(StatesGroup):
     # Phase 31 (31-08, D-09/D-21): экран карточки правила (handlers/applications/admin_reject_rules.py) —
     # правка имени и текста отказа. Правило id — в state.get_data() ("rre_rule_id"), тот же
     # приём, что FaqItem несёт item id. Право "settings" ("state:RejectRuleEdit:*" в
-    # handlers/admin_caps.py).
+    # handlers/access/admin_caps.py).
     name = State()
     text = State()
 
@@ -276,14 +276,14 @@ class RejectCond(StatesGroup):
     # оператора/значений — чистые callback'и без ожидания сообщения, id правила/группы/шаг/
     # оператор/отмеченные индексы живут в state.get_data() (arc_rule/arc_group/arc_step/
     # arc_op/arc_checked/arc_voff), тот же приём, что RejectRuleEdit несёт rre_rule_id. Право
-    # "settings" (state:RejectCond:* в handlers/admin_caps.py).
+    # "settings" (state:RejectCond:* в handlers/access/admin_caps.py).
     num = State()
 
 
 class WaveCreate(StatesGroup):
     # Phase 32 (32-10, D-06/D-10/D-11): визард создания волны (handlers/game/admin_game_waves.py)
     # — даты (одной строкой через «;» или по одной), необязательный вводный текст, карточка
-    # подтверждения. Право `moderate_game` ("state:WaveCreate:*" в handlers/admin_caps.py).
+    # подтверждения. Право `moderate_game` ("state:WaveCreate:*" в handlers/access/admin_caps.py).
     # Тот же визард переиспользует «📋 Скопировать эту волну» (даты запрашиваются тем же
     # шагом, дальше идёт copy_wave вместо create_wave) — различает флаг wc_copy_src в
     # state.get_data().
@@ -296,7 +296,7 @@ class WaveEdit(StatesGroup):
     # Phase 32 (32-10): точечная правка ОДНОГО поля существующей волны с карточки — даты/
     # вводный текст/число призовых мест, одно поле за раз (тот же приём, что GameTaskEdit).
     # Волна id — в state.get_data() ("we_wave_id"), право `moderate_game`
-    # ("state:WaveEdit:*" в handlers/admin_caps.py).
+    # ("state:WaveEdit:*" в handlers/access/admin_caps.py).
     dates = State()
     intro_text = State()
     prize_places = State()
@@ -448,7 +448,7 @@ class SosReport(StatesGroup):
 
 class SosChatBind(StatesGroup):
     # Экран менеджера «🆘 SOS» (handlers/admin_sos.py), право `settings` ("state:SosChatBind:*"
-    # в handlers/admin_caps.py — та же капа, что у остальной интеграционной привязки чата,
+    # в handlers/access/admin_caps.py — та же капа, что у остальной интеграционной привязки чата,
     # services/chat_tracking.py::is_bot_admin_user). Заявка (кто просил, для какого города)
     # живёт в `sos_chat_bind_pending` (services/sos.py), не в state.get_data() — вторая ветка
     # подтверждения (команда `/sos_id` в самой группе) физически не имеет доступа к этому FSM.
@@ -471,9 +471,9 @@ class VenueRevokeFind(StatesGroup):
 
 class RolesExpiryEdit(StatesGroup):
     # Идея №6 бэклога чек-ина (общая механика прав со сроком действия): «✏️ Ввести дату» на
-    # экране «⏳ Срок действия роли» (handlers/admin_roles.py) — ОДНО состояние ожидания
+    # экране «⏳ Срок действия роли» (handlers/access/admin_roles.py) — ОДНО состояние ожидания
     # «ДД.ММ.ГГГГ», (tid, role) несёт state.get_data() (rexp_tid/rexp_role). Право `settings`
-    # (state:RolesExpiryEdit:* в handlers/admin_caps.py — тот же экран, что «👥 Роли и доступы»).
+    # (state:RolesExpiryEdit:* в handlers/access/admin_caps.py — тот же экран, что «👥 Роли и доступы»).
     waiting_date = State()
 
 

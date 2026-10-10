@@ -204,7 +204,7 @@ async def pending_reminder_loop(bot):
     iteration and per recipient send.
 
     Lazy import (module docstring precedent — `reg_digest`/`game_digest`/`daily_digest` all do
-    the same): `handlers.admin_caps` imports back into `handlers`, and `main.py` imports this
+    the same): `handlers.access.admin_caps` imports back into `handlers`, and `main.py` imports this
     module at top level before `handlers` is guaranteed loaded.
 
     Квик 260923 (D-B): `_last_summary_at` инициализируется РОВНО ОДИН РАЗ, на первый вход в эту
@@ -214,7 +214,7 @@ async def pending_reminder_loop(bot):
     отрапортовал бы про ВСЕ живые автоотказы сразу)."""
     from datetime import timedelta
 
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
 
     global _last_summary_at
     if _last_summary_at is None:

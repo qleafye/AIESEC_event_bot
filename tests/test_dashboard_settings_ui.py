@@ -15,7 +15,7 @@ from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers import admin_settings
-from handlers.admin_caps import ADMIN_CAPS, required_capability
+from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 from tests._dbtpl import fast_init_db
 
 

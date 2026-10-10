@@ -5,7 +5,7 @@
   тестеров, deny-by-default, молча в обоих отказных случаях, резолв и по id, и по @нику из
   самого апдейта (D-3).
 - `database.db.purge_miniapp_outbox_for_user`: хвост, который `purge_user` не трогает.
-- Хендлеры (`handlers/uat_seed.py`): два пикера, карточка следа, исполнение (сброс+засев+роль).
+- Хендлеры (`handlers/access/uat_seed.py`): два пикера, карточка следа, исполнение (сброс+засев+роль).
 
 pytest-asyncio недоступен в этом окружении (см. tests/test_db_phase5.py) — каждый async-вызов
 обёрнут в `asyncio.run()`, `config.DB_PATH` указывает на файл в `tmp_path`. Фейки
@@ -44,7 +44,7 @@ def _open_gate(testers="@Qleafye; 900920"):
 
 
 def _import_handlers():
-    from handlers import uat_seed
+    from handlers.access import uat_seed
     return uat_seed
 
 
@@ -506,5 +506,5 @@ def test_cancel_erases_nothing(tmp_path):
 
 def test_seed_answers_keys_are_all_real_answer_columns():
     from domain.regform.engine import answer_columns
-    from handlers import uat_seed
+    from handlers.access import uat_seed
     assert set(uat_seed._SEED_ANSWERS) <= set(answer_columns())

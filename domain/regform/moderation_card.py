@@ -76,7 +76,7 @@ DEFAULT_CARD_STEPS: tuple[str, ...] = (
 
 # Реестр type:"list" отдаёт `default` на falsy raw (settings_schema._parse_setting) — пустая
 # строка молча вернула бы дефолтные 20 вопросов, противоположность тому, что нажал менеджер.
-# Пустой набор пишется этим сентинелом (тот же приём, что role_caps_* — handlers/admin_roles.py).
+# Пустой набор пишется этим сентинелом (тот же приём, что role_caps_* — handlers/access/admin_roles.py).
 EMPTY_SENTINEL = "—"
 
 ANSWER_LIMIT_DEFAULT = 300

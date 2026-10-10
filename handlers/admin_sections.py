@@ -24,7 +24,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
 from domain.cities import admin_selected_city, city_label, ALL_CITIES, ALL_CITIES_LABEL
-from handlers.admin_caps import required_capability, resolve_capabilities, _holds
+from handlers.access.admin_caps import required_capability, resolve_capabilities, _holds
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)

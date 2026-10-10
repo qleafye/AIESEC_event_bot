@@ -11,7 +11,7 @@
 проводит его из rejected через pending в approved и называет менеджера в журнале решений.
 
 «⏳ Не зашли» — делегаты ЦА без аккаунта в боте, по вузам. Ввод «кого привязать» — тот же,
-что у выдачи ролей (`handlers.admin_roles._resolve_staff_input`): пересланное сообщение,
+что у выдачи ролей (`handlers.access.admin_roles._resolve_staff_input`): пересланное сообщение,
 @ник или числовой id; поиска по имени нет — чужое имя стало бы чужим одобрением. После
 подтверждения делегат превращается с `link_how='manual'`, строка листа уходит на перезапись
 (колонка M покажет «✅ зашёл») — это делает сам `convert_to_delegate`.
@@ -364,7 +364,7 @@ async def dlg_link_person(message: types.Message, state: FSMContext):
     if _is_cancel(message):
         await _cancel_input(message, state)
         return
-    from handlers.admin_roles import _resolve_staff_input  # ленивый шов: тот же роутер
+    from handlers.access.admin_roles import _resolve_staff_input  # ленивый шов: тот же роутер
     tid, marker = _resolve_staff_input(message)
     if tid is None and marker and marker.startswith("@"):
         found = await search_people(marker, include_started=True)

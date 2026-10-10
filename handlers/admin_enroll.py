@@ -3,7 +3,7 @@
 
 Форма шва та же, что у `admin_program_halls.py`: своего `Router()` нет, `from handlers.admin
 import router`, каждый декоратор в одну строку; импортирован ХВОСТОМ `handlers/admin.py`. Право —
-`settings` по префиксу `prog_*` (handlers/admin_caps.py), состояния — `state:Program*:*`.
+`settings` по префиксу `prog_*` (handlers/access/admin_caps.py), состояния — `state:Program*:*`.
 Город экрана по id всегда берётся из строки БД (трека/компетенции/сессии), а не из callback'а,
 и сверяется с `_city_allowed`: подменить id в кнопке и править чужой город нельзя."""
 import html as html_module

@@ -93,7 +93,7 @@ def test_amb_group_reachable_with_module_on_and_off(tmp_path):
 
 
 def test_guide_entries_for_amb_keys_point_to_ambassador_section():
-    from handlers.admin_roles import SETTINGS_GUIDE_SECTIONS
+    from handlers.access.admin_roles import SETTINGS_GUIDE_SECTIONS
     seen = 0
     for _title, _hint, entries in SETTINGS_GUIDE_SECTIONS:
         for e in entries:
@@ -105,6 +105,6 @@ def test_guide_entries_for_amb_keys_point_to_ambassador_section():
 
 
 def test_guide_describes_new_phase_settings():
-    from handlers.admin_roles import SETTINGS_GUIDE_KEYS
+    from handlers.access.admin_roles import SETTINGS_GUIDE_KEYS
     for key in ("amb_join_mode", "amb_slots_limit", "amb_tiers_count", "amb_tiers_require_approved"):
         assert key in SETTINGS_GUIDE_KEYS, key

@@ -31,7 +31,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import amb_status_db
 from handlers.admin import router
-from handlers.admin_caps import has_capability
+from handlers.access.admin_caps import has_capability
 from handlers.states import AmbSlotsEdit
 from services import amb_status
 from services.settings.audit import set_setting_by_admin

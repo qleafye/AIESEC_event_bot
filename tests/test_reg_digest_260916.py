@@ -62,8 +62,8 @@ class _Bot:
 
 
 def _capture_notify(monkeypatch):
-    """Подменяет notify_by_capability в handlers.admin_caps (reg_digest импортирует его лениво)."""
-    from handlers import admin_caps
+    """Подменяет notify_by_capability в handlers.access.admin_caps (reg_digest импортирует его лениво)."""
+    from handlers.access import admin_caps
     calls = []
 
     async def fake(bot, cap, text, *, parse_mode=None, city=None):
@@ -134,7 +134,7 @@ def test_toggle_row_lives_in_the_applications_section_right_after_its_neighbour(
 
 
 def test_toggle_callback_registered_under_settings_capability():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     assert required_capability(callback_data="toggle_reg_submit_notify") == "settings"
 
 

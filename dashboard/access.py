@@ -1,15 +1,15 @@
 """Phase 15 Plan 04 (STAT-02, D-09/D-10): пересверка права `stats` и городской скоуп.
 
-Копия логики `handlers/admin_caps.py::resolve_capabilities` (СОЗНАТЕЛЬНОЕ дублирование, не
+Копия логики `handlers/access/admin_caps.py::resolve_capabilities` (СОЗНАТЕЛЬНОЕ дублирование, не
 импорт — оригинал тянет `aiogram`, дашборду недоступен, см. 15-CONTEXT.md `<interfaces>`).
 При изменении модели прав в боте (новая capability, новая роль, новый дефолт роли) — правь
 ОБА места; сторожевой тест в `tests/test_dashboard_auth.py` сравнивает `ALL_CAPABILITIES` и
-дефолты ролей этого модуля с `handlers.admin_caps`/`settings_schema.SETTINGS_SCHEMA` и падает
+дефолты ролей этого модуля с `handlers.access.admin_caps`/`settings_schema.SETTINGS_SCHEMA` и падает
 на дрейфе.
 
 D-09 (без кэша, RESEARCH Pitfall 4): каждый вызов читает `staff`/`bot_settings` заново из
 переданного `conn` (`dashboard.db.read_conn`) — то же правило "no-cache-by-design", что и в
-оригинале (`handlers/admin_caps.py:9-11`). НЕ добавлять сюда декоратор мемоизации, модульный
+оригинале (`handlers/access/admin_caps.py:9-11`). НЕ добавлять сюда декоратор мемоизации, модульный
 словарь-кэш прав или что-либо, переживающее один вызов (грепом это ловит
 tests/test_dashboard_auth.py — потому здесь нет и самого слова-триггера для этого грепа).
 
@@ -23,7 +23,7 @@ from __future__ import annotations
 from dashboard.queries import Scope
 from dashboard.timeutil import msk_now
 
-# D-06 в handlers/admin_caps.py: ровно семь capability, в этом порядке.
+# D-06 в handlers/access/admin_caps.py: ровно семь capability, в этом порядке.
 ALL_CAPABILITIES = [
     "moderate_reg",
     "moderate_receipts",
@@ -79,7 +79,7 @@ def _role_enabled(conn, role: str) -> bool:
 def _parse_caps_list(raw: str | None, default: list[str]) -> list[str]:
     """Тот же разбор, что `settings_schema._parse_setting` для `type: "list"`: перевод строки
     ИЛИ «;»-разделитель (mobile Enter=send trap — CLAUDE.md), пустое сырое значение — дефолт
-    роли. Сентинел пустого набора («—», `handlers/admin_roles.py::_CAPS_EMPTY_SENTINEL`) и
+    роли. Сентинел пустого набора («—», `handlers/access/admin_roles.py::_CAPS_EMPTY_SENTINEL`) и
     любой мусорный токен отдельно не обрабатываются — они просто не входят в
     `ALL_CAPABILITIES`, и вызывающий `resolve_capabilities` отфильтровывает их тем же
     `if cap in ALL_CAPABILITIES`, что и оригинал."""
@@ -110,7 +110,7 @@ def _get_staff_roles(conn, telegram_id: int) -> list[str]:
 
 
 def resolve_capabilities(conn, telegram_id: int, admin_ids) -> set[str]:
-    """Точная копия `handlers.admin_caps.resolve_capabilities` для синхронного read-only
+    """Точная копия `handlers.access.admin_caps.resolve_capabilities` для синхронного read-only
     `sqlite3`-подключения: bootstrap-суперадмин -> весь набор БЕЗ обращения к `staff` (пустая
     или битая `staff` не запирает администратора), иначе — объединение прав включённых ролей
     (D-08)."""

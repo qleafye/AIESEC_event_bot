@@ -453,7 +453,7 @@ def test_session_wizard_picking_deleted_session_alerts(tmp_path):
 # ── capability (deny-by-default, D-02) ───────────────────────────────────────────────────────
 
 def test_required_capability_checkin_entry_and_session_wizard_is_broadcast():
-    from handlers import admin_caps
+    from handlers.access import admin_caps
     assert admin_caps.required_capability(callback_data="filter_f_checkin_entry") == "broadcast"
     assert admin_caps.required_capability(callback_data="cksf_start:attended") == "broadcast"
     assert admin_caps.required_capability(callback_data="cksf_city:msk") == "broadcast"

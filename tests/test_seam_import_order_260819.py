@@ -34,7 +34,7 @@ SEAMS = [
     "handlers.comms.admin_broadcasts",
     "handlers.regform.admin_reg_config",
     "handlers.applications.admin_moderation",
-    "handlers.admin_roles",
+    "handlers.access.admin_roles",
     "handlers.game.admin_gamification",
     "handlers.game.admin_game_tasks",
     "handlers.comms.admin_polls",
@@ -58,7 +58,7 @@ SEAMS = [
     # Phase 27 (27-06, LANG-05/09): экран «🌐 Английские тексты».
     "handlers.i18n.admin_i18n",
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» (admin_purge).
-    "handlers.admin_purge",
+    "handlers.access.admin_purge",
 ]
 
 # Отпечаток: имя колбэка каждого хендлера каждого observer'а всех четырёх роутеров,

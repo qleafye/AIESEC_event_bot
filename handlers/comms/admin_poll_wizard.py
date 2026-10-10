@@ -2,7 +2,7 @@
 превью → отправить сейчас / запланировать.
 
 Шов на общий `admin.router`; импортируется из хвоста handlers/comms/admin_polls.py. Право —
-`broadcast` ("state:PollCreate:*" + poll_* ключи в handlers/admin_caps.py).
+`broadcast` ("state:PollCreate:*" + poll_* ключи в handlers/access/admin_caps.py).
 
 По правилу «бот для людей»: текстом вводятся только вопрос, варианты и дата; всё остальное —
 кнопки. Ошибка всегда говорит, что сделать. Лимиты Bot API (вопрос ≤300, вариант ≤100,

@@ -31,7 +31,7 @@ Mini App; режим `new` продолжает резолвиться само�
 
 Модуль без телеграм-фреймворка, кроме одного нетипизированного параметра `bot` у
 `post_finalize` (сам файл не импортирует этот фреймворк ни разу — грепается тестом плана).
-Вызовы `handlers.registration`/`handlers.reg_schema`/`handlers.admin_caps` внутри
+Вызовы `handlers.registration`/`handlers.reg_schema`/`handlers.access.admin_caps` внутри
 `post_finalize` — ЛОКАЛЬНЫЕ (внутри функции):
 `handlers/registration.py` импортирует `finalize_data`/`post_finalize` из ЭТОГО модуля на своём
 верхнем уровне, поэтому обратный импорт на уровне модуля дал бы цикл при загрузке пакета

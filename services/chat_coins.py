@@ -74,7 +74,7 @@ async def _react(bot, chat_id: int, message_id: int) -> None:
 
 
 async def is_game_manager(telegram_id: int) -> bool:
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     return "moderate_game" in await resolve_capabilities(telegram_id)
 

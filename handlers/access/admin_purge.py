@@ -6,7 +6,7 @@
 Форма шва — эталон `handlers/admin_faq.py`: своего `Router()` нет, `from handlers.admin import
 router`, каждый декоратор — в одну строку со строковым литералом (инвариант cap-теста
 `test_roles_phase8.py`). `admin_caps` импортируется на уровне модуля — цикла не образует
-(`handlers/admin_caps.py` сам не импортирует `handlers.admin`, см. его докстринг).
+(`handlers/access/admin_caps.py` сам не импортирует `handlers.admin`, см. его докстринг).
 
 Право `ADMIN_CAPS["cmd:delete_user"] = "settings"` необходимо, но НЕ достаточно — настоящий
 гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из трёх хендлеров ниже (тот же
@@ -24,7 +24,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from config import config
 from domain.cities import city_label, normalize_city
 from database.db import count_user_footprint, find_user_id_by_username, get_staff_roles, get_user, purge_user
-from handlers import admin_caps
+from handlers.access import admin_caps
 from handlers.admin import router
 from domain.regform.labels import STATUS_LABELS
 from services.scheduler import cancel_payment_reminders

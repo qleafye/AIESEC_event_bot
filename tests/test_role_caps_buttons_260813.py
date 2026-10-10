@@ -14,9 +14,9 @@ from database import db
 from database.db import set_setting
 from domain.settings.schema import get_setting_typed
 from handlers import admin as admin_mod
-from handlers import admin_roles
-from handlers import admin_caps
-from handlers.admin_caps import ALL_CAPABILITIES, role_caps_key
+from handlers.access import admin_roles
+from handlers.access import admin_caps
+from handlers.access.admin_caps import ALL_CAPABILITIES, role_caps_key
 from tests._dbtpl import fast_init_db
 
 ROLE = "reg_manager"
