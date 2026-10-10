@@ -105,7 +105,7 @@ class FakeBot:
 
     async def delete_message(self, chat_id, message_id):
         if (chat_id, message_id) in self.fail_pairs:
-            raise Exception("message to delete not found")
+            raise Exception("Bad Request: message can't be deleted for everyone")
         self.deleted.append((chat_id, message_id))
 
 
@@ -458,5 +458,95 @@ def test_broadcast_log_shows_revoked_as_one_line(tmp_path):
         assert text.startswith(f"🗑 #{bid} — ")
         assert "удалена у получателей" in text
         assert text.endswith("…")
+
+    asyncio.run(go())
+
+
+def test_bc_revgo_releases_claim_when_start_fails(tmp_path, monkeypatch):
+    """Ошибка между захватом и запуском (здесь — ответ на нажатие) не оставляет захват: иначе
+    «Удаление уже идёт.» висело бы до рестарта бота."""
+    _ready(tmp_path)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100)])
+        spawned = []
+        monkeypatch.setattr(admin_broadcasts, "_spawn", lambda coro: spawned.append(coro))
+
+        class BrokenCallback(FakeCallback):
+            async def answer(self, text=None, show_alert=False):
+                raise RuntimeError("query is too old")
+
+        try:
+            await admin_broadcasts.bc_revgo(BrokenCallback(f"bc_revgo:{bid}"), FakeBot())
+        except RuntimeError:
+            pass
+        assert spawned == []
+        assert bid not in br._revoking
+        second = FakeCallback(f"bc_revgo:{bid}")
+        await admin_broadcasts.bc_revgo(second, FakeBot())
+        assert len(spawned) == 1 and ("Удаление уже идёт.", True) not in second.answers
+        spawned[0].close()
+        br.release_revoke(bid)
+
+    asyncio.run(go())
+
+
+def test_old_stop_flag_does_not_kill_new_revoke(tmp_path, monkeypatch):
+    """⛔, нажатый когда-то по закончившейся рассылке, не гасит новое удаление на первом шаге."""
+    _ready(tmp_path)
+    _fast_sleep(monkeypatch)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100), (2, 200)])
+        br.request_stop(bid)  # залипший флаг
+        spawned = []
+        monkeypatch.setattr(admin_broadcasts, "_spawn", lambda coro: spawned.append(coro))
+        bot = FakeBot()
+        cb = FakeCallback(f"bc_revgo:{bid}")
+        await admin_broadcasts.bc_revgo(cb, bot)
+        await spawned[0]
+        assert sorted(bot.deleted) == [(1, 100), (2, 200)]
+        assert (await db.get_broadcast(bid))["status"] == "revoked"
+
+    asyncio.run(go())
+
+
+def test_direct_run_revoke_twice_runs_once(tmp_path, monkeypatch):
+    """Прямой вызов run_revoke мимо хендлера тоже берёт захват: второй параллельный прогон
+    по той же рассылке не начинается."""
+    _ready(tmp_path)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100), (2, 200)])
+        bot = FakeBot()
+        await asyncio.gather(br.run_revoke(bot, bid), br.run_revoke(bot, bid))
+        assert sorted(bot.deleted) == [(1, 100), (2, 200)]
+        assert bid not in br._revoking
+
+    asyncio.run(go())
+
+
+def test_already_deleted_message_counts_as_deleted(tmp_path, monkeypatch):
+    """Повтор после рестарта посреди удаления: «message to delete not found» — уже удалено,
+    в итоге не «не удалось»."""
+    _ready(tmp_path)
+    _fast_sleep(monkeypatch)
+
+    async def go():
+        bid = await _seed_broadcast(ADMIN_ID, "hi", [(1, 100), (2, 200)])
+        class GoneBot(FakeBot):
+            async def delete_message(self, chat_id, message_id):
+                if (chat_id, message_id) == (2, 200):
+                    raise Exception("Telegram server says - Bad Request: message to delete not found")
+                await super().delete_message(chat_id, message_id)
+
+        bot = GoneBot()
+        finishes = []
+
+        async def on_finish(deleted, failed, stopped):
+            finishes.append((deleted, failed, stopped))
+
+        await br.run_revoke(bot, bid, on_finish=on_finish)
+        assert finishes == [(2, 0, False)]
 
     asyncio.run(go())
