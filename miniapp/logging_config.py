@@ -28,7 +28,7 @@ import logging
 import re
 import sys
 
-from secret_redact import install_log_redaction
+from shared.secret_redact import install_log_redaction
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
@@ -88,7 +88,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     for name in _QUIET_LOGGERS:
         logging.getLogger(name).setLevel(logging.WARNING)
     # Second line of defence behind T-19-19: any exception text that still reaches a log
-    # (form.py logs `%s` of arbitrary errors) is scrubbed of the bot token -- secret_redact.py.
+    # (form.py logs `%s` of arbitrary errors) is scrubbed of the bot token -- shared/secret_redact.py.
     install_log_redaction()
     _install_hook_secret_filter()
 

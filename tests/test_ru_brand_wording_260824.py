@@ -29,7 +29,7 @@ from pathlib import Path
 from handlers.admin_miniapp_theme import _PRESET_BLURBS, _PRESET_LABELS
 import reg_labels
 import reg_options
-import web_theme
+import shared.web_theme as web_theme
 from settings_schema import SETTINGS_SCHEMA
 
 LATIN_BRAND_SUBSTRINGS = ("aiesec", "youlead", "bluebook", "realtalk")

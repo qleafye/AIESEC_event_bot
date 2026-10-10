@@ -1,4 +1,4 @@
-"""Бэклог чек-ина п.10: «📊 Статистика прихода» — общий модуль `arrival_stats.py`, экран бота
+"""Бэклог чек-ина п.10: «📊 Статистика прихода» — общий модуль `shared/arrival_stats.py`, экран бота
 (`handlers/admin_checkin_stats.py`) и блок дашборда «Приход» (`dashboard.queries.arrival_block`)
 считают одно и то же одними запросами.
 
@@ -10,7 +10,7 @@ import csv
 import io
 import sqlite3
 
-import arrival_stats
+import shared.arrival_stats as arrival_stats
 import cities
 from config import config
 from database import db

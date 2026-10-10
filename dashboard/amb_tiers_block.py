@@ -10,7 +10,7 @@
 
 Ступеней 1–5 (`amb_tiers_count`), у любой может быть квота (`amb_tier{N}_quota_on`). Имена
 ключей даёт корневой чистый модуль `amb_tier_keys` (в образе дашборда лежит рядом с
-`chat_score.py`), дефолты ниже повторяют реестр бота.
+`shared/chat_score.py`), дефолты ниже повторяют реестр бота.
 
 Скоуп страницы: город сужает круг АМБАССАДОРОВ (по их `event_city`); сезон задаёт сезон
 приглашённых (по умолчанию — текущий). Выданные места квот и лист ожидания — общие на всё
@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from amb_tier_keys import MAX_TIERS, tier_key
+from shared.amb_tier_keys import MAX_TIERS, tier_key
 
 _QUOTA_DEFAULT = 15
 _DEFAULT_THRESHOLDS = {1: 1, 2: 3, 3: 7, 4: 10, 5: 15}

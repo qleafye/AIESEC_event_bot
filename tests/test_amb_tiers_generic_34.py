@@ -16,7 +16,7 @@ import aiosqlite
 import pytest
 
 import reg_presets
-from amb_tier_keys import MAX_TIERS, _LEGACY_TIER_KEYS, tier_key
+from shared.amb_tier_keys import MAX_TIERS, _LEGACY_TIER_KEYS, tier_key
 from config import config
 from database import amb_tiers_db
 from database import db
@@ -80,7 +80,7 @@ def test_every_tier_key_is_in_registry():
 
 
 def test_keys_module_has_no_project_imports():
-    source = (ROOT / "amb_tier_keys.py").read_text(encoding="utf-8")
+    source = (ROOT / "shared/amb_tier_keys.py").read_text(encoding="utf-8")
     imports = re.findall(r"^\s*(?:from|import)\s+(\S+)", source, re.M)
     assert set(imports) <= {"__future__"}, imports
 

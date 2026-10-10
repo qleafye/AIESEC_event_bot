@@ -1,4 +1,4 @@
-"""Общий модуль `chat_score.py`: формула рейтинга чата на нормализованных записях.
+"""Общий модуль `shared/chat_score.py`: формула рейтинга чата на нормализованных записях.
 
 Одна формула на всех — тул по экспорту, реестр настроек и дашборд берут веса и расчёт отсюда.
 Записи собираются в тесте руками: текста сообщений в ChatRecord нет вовсе, только длина.
@@ -6,7 +6,7 @@
 import dataclasses
 from datetime import date, datetime, timedelta
 
-import chat_score as cs
+import shared.chat_score as cs
 
 A, B, C = 101, 102, 103
 T0 = datetime(2026, 9, 1, 10, 0, 0)

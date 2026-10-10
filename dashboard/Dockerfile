@@ -19,19 +19,13 @@ RUN groupadd --gid 1000 appuser \
     && useradd --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin appuser
 
 COPY --chown=appuser:appuser dashboard/ /app/dashboard/
-# Корневой модуль темы веб-слоя (19.1): чистый Python без зависимостей, общий с ботом и Mini App.
-COPY --chown=appuser:appuser web_theme.py /app/web_theme.py
-# Корневой резолвер типов медиа (08.09): чистая stdlib, общий с ботом — без него образ падает
-# на старте `ModuleNotFoundError: tg_media` (прод 10.09). Сторож: tests/test_dashboard_docker.py.
-COPY --chown=appuser:appuser tg_media.py /app/tg_media.py
-# Статистика прихода (бэклог чек-ина п.10): общие с ботом запросы блока «Приход», чистая stdlib.
-COPY --chown=appuser:appuser arrival_stats.py /app/arrival_stats.py
-# Корневой санитайзер секретов (25.09): чистая stdlib, маскирует токен бота в логах.
-COPY --chown=appuser:appuser secret_redact.py /app/secret_redact.py
-# Формула рейтинга чата (квик 260927): чистая stdlib, общая с ботом и тулом по экспорту.
-COPY --chown=appuser:appuser chat_score.py /app/chat_score.py
-# Карта ключей ступеней амбассадоров (чистая stdlib): имена настроек для блока «Ступени».
-COPY --chown=appuser:appuser amb_tier_keys.py /app/amb_tier_keys.py
+# Общие с ботом модули на чистой stdlib (тема веб-слоя, типы медиа, приход, санитайзер
+# секретов, формула рейтинга чата, ключи ступеней, фавикон) — весь пакет shared/ одной
+# строкой. Раньше каждый корневой модуль копировался отдельно, и прод дважды падал на
+# пропущенном COPY (web_theme 31.08, tg_media 10.09). Что shared/ тянет только stdlib,
+# сторожит tests/test_layout_guard.py; что дашборд импортирует только dashboard/ и
+# shared/ — tests/test_dashboard_docker.py.
+COPY --chown=appuser:appuser shared/ /app/shared/
 # Фаза 26-01 (RT-01): в образ едут ТОЛЬКО растры орнамента, ни одного `.py` Mini App —
 # раскладка каталогов в образе совпадает с репозиторием, поэтому `dashboard.main.PATTERN_DIR`
 # (`BASE_DIR.parent / "miniapp" / "static" / "pattern"`) резолвится одинаково и локально, и

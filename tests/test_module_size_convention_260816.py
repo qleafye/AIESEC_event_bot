@@ -350,7 +350,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "`toggle_wave_rating_show_names`; 2495 -> 2537, потолок 2545 с небольшим запасом. "
         "Квик 260921 (дашборд, иконка вкладки): +21 строка — раздел `dashboard_favicon` в "
         "settings_receive_file_photo/settings_receive_file_doc (raw_file_key-ветка по образцу "
-        "consent PDF, проверка mime/размера через dashboard_favicon.py, возврат на экран "
+        "consent PDF, проверка mime/размера через shared/favicon.py, возврат на экран "
         "«🎭 Пресеты и ручки» тем же приёмом, что у остальных фото-ручек) + импорт "
         "dashboard_favicon; сам экран/кнопка живут в handlers/admin_miniapp_theme.py; "
         "2461 -> 2491, потолок 2495 с небольшим запасом. "

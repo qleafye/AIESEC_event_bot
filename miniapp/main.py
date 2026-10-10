@@ -64,7 +64,7 @@ from miniapp.auth import verify_init_data
 from miniapp.deps import BOT_ONLY_CAPS, read_setting
 from miniapp.file_tokens import verify_file_token
 from miniapp.logging_config import configure_logging
-from secret_redact import register_secret
+from shared.secret_redact import register_secret
 from miniapp.routers import ALL_ROUTERS
 from miniapp.routers.page import STATIC_PREFIX
 from miniapp.routers.page import render_disabled_page

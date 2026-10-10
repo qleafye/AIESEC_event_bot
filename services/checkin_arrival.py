@@ -1,12 +1,12 @@
-"""Статистика прихода для бота — исполнение общих запросов `arrival_stats.py` через aiosqlite.
+"""Статистика прихода для бота — исполнение общих запросов `shared/arrival_stats.py` через aiosqlite.
 
-SQL и сборка отчёта живут в корневом `arrival_stats.py` (его же исполняет дашборд своим
+SQL и сборка отчёта живут в корневом `shared/arrival_stats.py` (его же исполняет дашборд своим
 синхронным подключением), здесь — только городской/сезонный фрагмент по правилам бота
 (`database.db._city_clause` + `event_season`, тот же признак текущего сезона, что у
 `count_approved_current_season`) и поход в базу."""
 from __future__ import annotations
 
-import arrival_stats
+import shared.arrival_stats as arrival_stats
 from database.db import _city_clause, _connect, get_setting
 
 

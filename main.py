@@ -6,7 +6,7 @@ from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
-from secret_redact import install_log_redaction, register_secret
+from shared.secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
 from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback, onsite_reg, admin_no_access
 from services.reminders import pending_reminder_loop
@@ -73,7 +73,7 @@ def _configure_logging():
         logging.getLogger(noisy).setLevel(logging.WARNING)
 
     # Текст исключений aiogram/aiohttp несёт URL Bot API с токеном в пути — ни в файл,
-    # ни в docker logs он попадать не должен (secret_redact.py).
+    # ни в docker logs он попадать не должен (shared/secret_redact.py).
     register_secret(config.BOT_TOKEN)
     install_log_redaction()
 

@@ -20,8 +20,8 @@ import httpx
 
 from dashboard.db import read_conn
 
-import tg_media
-import web_theme
+import shared.tg_media as tg_media
+import shared.web_theme as web_theme
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # `web_theme.ASSET_KEYS`, второй раз ключи здесь не заводятся (`miniapp_logo` — не ключ
 # `web_theme`, это ключ реестра лого приложения, тот же, что в `miniapp/routers/files.py`).
 # `dashboard_favicon` (квик 260921) — своя иконка вкладки БРАУЗЕРА дашборда, не относится к
-# Mini App вовсе (`dashboard_favicon.py`), добавлена сюда напрямую тем же приёмом, что
+# Mini App вовсе (`shared/favicon.py`), добавлена сюда напрямую тем же приёмом, что
 # `miniapp_logo` — второго ASSET_KEYS для дашборда заводить не стали ради одного ключа.
 ASSET_SETTING_KEYS: tuple[str, ...] = tuple(dict.fromkeys(
     ("miniapp_logo", "dashboard_favicon", *web_theme.ASSET_KEYS.values())

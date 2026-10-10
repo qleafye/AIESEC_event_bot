@@ -2,7 +2,7 @@ import asyncio
 import logging
 import sqlite3
 import threading
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 
 import gspread
 from config import config

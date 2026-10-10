@@ -65,35 +65,37 @@ def test_dashboard_dockerfile_copies_whole_package_with_static():
     )
 
 
-def test_dashboard_dockerfile_copies_web_theme_module():
-    """`dashboard.main` импортирует корневой `web_theme` (19.1) — без COPY образ падает на старте
-    `ModuleNotFoundError: web_theme` (прод 31.08). Тест-стенд этого не ловил: стоял на коммите до 19.1."""
-    body = DOCKERFILE.read_text(encoding="utf-8").splitlines()
-    assert any(ln.startswith("COPY --chown=appuser:appuser web_theme.py /app/web_theme.py") for ln in body)
-
-
-def test_dashboard_dockerfile_copies_every_root_module_the_package_imports():
-    """Каждый корневой модуль репозитория (`<name>.py` в корне), который импортирует пакет
-    dashboard/, должен быть скопирован в образ явной строкой COPY. Прод падал дважды на одном и
-    том же: web_theme (31.08) и tg_media (10.09) — импорт добавили, Dockerfile не тронули, pytest
-    образ не собирает. Сторож ловит это статически, без docker."""
-    import re
-    root = ROOT
-    root_modules = {p.stem for p in root.glob("*.py")}
-    imported = set()
-    for src in (root / "dashboard").glob("*.py"):
-        for m in re.finditer(r"^\s*(?:from\s+([A-Za-z_][\w]*)\s+import|import\s+([A-Za-z_][\w]*))",
-                             src.read_text(encoding="utf-8"), re.M):
-            name = m.group(1) or m.group(2)
-            if name in root_modules:
-                imported.add(name)
-    assert imported, "ожидались корневые импорты (web_theme, tg_media) — регэксп сломан?"
+def test_dashboard_dockerfile_copies_shared_package():
+    """Общие с ботом модули на чистой stdlib живут в `shared/`, и образ берёт пакет целиком одной
+    строкой. Раньше корневые модули копировались по одному, и прод дважды падал на пропущенном
+    COPY: web_theme (31.08) и tg_media (10.09)."""
     body = _body(DOCKERFILE)
-    missing = [
-        name for name in sorted(imported)
-        if not any(ln.startswith(f"COPY --chown=appuser:appuser {name}.py /app/{name}.py") for ln in body)
-    ]
-    assert not missing, f"в dashboard/Dockerfile нет COPY для корневых модулей: {missing}"
+    assert "COPY --chown=appuser:appuser shared/ /app/shared/" in body
+
+
+def test_dashboard_imports_only_dashboard_and_shared_from_repo():
+    """В образе дашборда из кода репозитория есть только `dashboard/` и `shared/`. Импорт любого
+    другого пакета бота (`services`, `domain`, `database`…) уронит контейнер на старте —
+    pytest образ не собирает, поэтому сторожим статически."""
+    import ast
+    first_party = {p.stem for p in ROOT.glob("*.py")} | {
+        p.name for p in ROOT.iterdir() if p.is_dir() and (p / "__init__.py").exists() or p.name == "services"
+    }
+    allowed = {"dashboard", "shared"}
+    bad = []
+    for src in sorted((ROOT / "dashboard").rglob("*.py")):
+        tree = ast.parse(src.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            names = []
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                names = [node.module]
+            for name in names:
+                top = name.split(".")[0]
+                if top in first_party and top not in allowed:
+                    bad.append(f"{src.relative_to(ROOT).as_posix()}: {name}")
+    assert not bad, f"дашборд импортирует код бота, которого нет в его образе: {bad}"
 
 
 def test_dashboard_dockerfile_copies_only_pattern_assets_from_miniapp():

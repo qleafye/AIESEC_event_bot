@@ -621,7 +621,7 @@ async def _brand_colors() -> str:
     """Акцент активного пресета Mini App (`web_theme.PRESETS`) — читаем РЕАЛЬНО сохранённые
     ручки темы, не хардкодим пресет "youlead": бот универсальный (CLAUDE.md), карточка обязана
     красить фон в цвет ТЕКУЩЕГО события, не только YouLead."""
-    import web_theme
+    import shared.web_theme as web_theme
 
     settings = {}
     for key in web_theme.THEME_KEYS.values():

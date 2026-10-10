@@ -245,7 +245,7 @@ AIESEC_event_bot/
 ├── reg_options.py              # Списки вариантов ответа анкеты
 ├── game_labels.py              # RU-подписи геймификации, корневой модуль без aiogram
 ├── moderation_card.py          # Карточка заявки для модератора: что показывать, как обрезать
-├── web_theme.py                # Пресеты оформления Mini App и дашборда
+├── shared/web_theme.py                # Пресеты оформления Mini App и дашборда
 │
 ├── handlers/                   # Модули ~800 строк, общий Router на группу (admin_*, reg_*)
 │   ├── admin.py                # Агрегатор админки: импортирует admin_* «швы» в один router

@@ -509,7 +509,7 @@ def run_full_pass(delegate_only: bool = False) -> int:
 
     SHOTS_DIR.mkdir(parents=True, exist_ok=True)
     ensure_repo_on_path()
-    import web_theme  # noqa: F401 -- прогрев импорта (fail fast)
+    import shared.web_theme as web_theme  # noqa: F401 -- прогрев импорта (fail fast)
 
     try:
         make_chrome_driver((100, 100)).quit()  # прогрев/проверка headless-браузера отдельно от съёмки

@@ -1,7 +1,7 @@
 """Живой рейтинг чата делегатов для страницы «Чат» (квик 260927).
 
 Источник — таблицы живого учёта бота: chat_messages (без текста, только длина), chat_reactions,
-chat_usernames, chat_admins, chat_bot_state. Формула — общий корневой модуль chat_score.py
+chat_usernames, chat_admins, chat_bot_state. Формула — общий корневой модуль shared/chat_score.py
 (тот же, что у тула по экспорту tools/chat_export_stats.py), поэтому балл по экспорту и балл
 на дашборде считаются одинаково — это держит тест паритета tests/test_chat_rating_parity_260927.py.
 
@@ -22,8 +22,8 @@ import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 
-import chat_score
-from chat_score import ChatRecord
+import shared.chat_score as chat_score
+from shared.chat_score import ChatRecord
 
 log = logging.getLogger(__name__)
 

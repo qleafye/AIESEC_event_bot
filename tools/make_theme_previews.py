@@ -87,7 +87,7 @@ def main() -> int:
 
     PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
     ensure_repo_on_path()
-    import web_theme  # noqa: F401 -- прогрев импорта до попытки поднять браузер (fail fast)
+    import shared.web_theme as web_theme  # noqa: F401 -- прогрев импорта до попытки поднять браузер (fail fast)
 
     reset_demo_db()  # идемпотентность повторного запуска (Rule 1 — см. _shoot_common.py)
     proc = start_demo_server_process()

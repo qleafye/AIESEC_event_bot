@@ -21,7 +21,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-import arrival_stats
+import shared.arrival_stats as arrival_stats
 from dashboard.amb_tiers_block import amb_tiers_block as _amb_tiers_block
 from dashboard.timeutil import msk_now
 
@@ -1301,8 +1301,8 @@ _QUESTIONS_TOP_MANAGERS_LIMIT = 3
 # Зеркало `services/questions.py::question_status` — ТРИ состояния, порядок веток ФИКСИРОВАН
 # (сначала `delivered_at`, потом `answered_by`): легаси-строка, которой каким-то образом
 # проставили доставку без захвата, обязана читаться как «отвечен», а не «в работе». Копия, а
-# не импорт — по D-3 (`dashboard/Dockerfile` копирует только `dashboard/`, `web_theme.py`,
-# `tg_media.py`; импорт `services.questions` дал бы `ModuleNotFoundError` на старте
+# не импорт — по D-3 (`dashboard/Dockerfile` копирует только `dashboard/`, `shared/web_theme.py`,
+# `shared/tg_media.py`; импорт `services.questions` дал бы `ModuleNotFoundError` на старте
 # контейнера, тот же класс аварии, что был с `tg_media` 10.09). Паритет с оригиналом закрыт
 # `test_question_status_case_matches_services_question_status`. В отличие от трёх независимых
 # предикатов (см. `database.db._QUESTION_STATUS_SQL`), ветки CASE взаимоисключающие — три
@@ -1396,7 +1396,7 @@ def delegations_block(conn, scope: Scope) -> dict | None:
 
 def arrival_block(conn, scope: Scope) -> dict | None:
     """Блок «Приход» (бэклог чек-ина п.10): одобрено / пришли / не пришли, по дням, по
-    сессиям. SQL и сборка отчёта — общий корневой `arrival_stats.py`, те же запросы исполняет
+    сессиям. SQL и сборка отчёта — общий корневой `shared/arrival_stats.py`, те же запросы исполняет
     бот (экран «📊 Статистика прихода»); здесь только городской/сезонный фрагмент дашборда.
 
     `None`, пока на форуме нет ни одной отметки (как `questions_block`: гейт по данным, без
@@ -2348,8 +2348,8 @@ def ambassador_block(conn, scope: Scope) -> "dict | None":
 
 
 # ── Страница «Форум» (25.09): сессии/оценки, SOS, доставка решений, опросы после форума.
-# Приход/стойки уже посчитаны arrival_block/arrival_floor выше (общий с ботом arrival_stats.py,
-# не дублируем). Здесь — агрегаты, которых в arrival_stats.py нет. SOS/доставка решений — ТОЛЬКО
+# Приход/стойки уже посчитаны arrival_block/arrival_floor выше (общий с ботом shared/arrival_stats.py,
+# не дублируем). Здесь — агрегаты, которых в shared/arrival_stats.py нет. SOS/доставка решений — ТОЛЬКО
 # счётчики, без текстов/имён (D-17: дашборд без ПД).
 
 def session_ratings(conn) -> dict[int, dict]:

@@ -37,7 +37,7 @@ from database.db import (
     get_user,
     list_due_sheet_arrivals,
 )
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 from services.timeutil import city_offset_hours, msk_now
 
 logger = logging.getLogger(__name__)

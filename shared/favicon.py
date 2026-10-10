@@ -1,5 +1,5 @@
 """Квик 260921: своя иконка вкладки браузера ДАШБОРДА статистики — корневой aiogram-free
-модуль (тот же приём, что `tg_media.py`/`web_theme.py`): и `handlers/admin_settings.py`
+модуль (тот же приём, что `shared/tg_media.py`/`shared/web_theme.py`): и `handlers/admin_settings.py`
 (приём документа в чате), и `handlers/admin_miniapp_theme.py` (кнопка/подсказка на экране
 «🎭 Пресеты и ручки») читают отсюда одни и те же тексты и правила, второй копии нет.
 

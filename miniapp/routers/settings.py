@@ -36,7 +36,7 @@ from pydantic import BaseModel
 
 import reg_engine
 import settings_ops
-import web_theme
+import shared.web_theme as web_theme
 from cities import (
     ALL_CITIES,
     ALL_CITIES_LABEL,

@@ -28,7 +28,7 @@
 from __future__ import annotations
 
 import logging
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 from datetime import datetime, time, timedelta
 
 from settings_schema import get_setting_typed
