@@ -26,7 +26,7 @@ from aiogram.types import (
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import group_chat
+from handlers.chat import group_chat
 from services import chat_tracking
 from tests._dbtpl import fast_init_db
 

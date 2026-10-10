@@ -13,7 +13,7 @@ from aiogram.types import Chat, ChatMemberMember, ChatMemberOwner, ChatMemberUpd
 
 from config import config
 from database import db
-from handlers import group_chat
+from handlers.chat import group_chat
 from services import chat_tracking
 from tests._dbtpl import fast_init_db
 
@@ -62,7 +62,7 @@ def test_bot_state_write_failure_does_not_block_binding(tmp_path, monkeypatch, c
     from tests.test_chat_cleanup_260927 import _admin
     event = event.model_copy(update={"new_chat_member": _admin(bot_user, True)})
     bot = _Bot()
-    with caplog.at_level(logging.WARNING, logger="handlers.group_chat"):
+    with caplog.at_level(logging.WARNING, logger="handlers.chat.group_chat"):
         _run(group_chat.on_bot_membership_changed(event, bot))
     assert _run(db.get_setting("delegate_chat_id")) == str(CHAT)
     assert ADMIN in bot.sent

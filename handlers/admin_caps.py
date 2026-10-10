@@ -439,7 +439,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:ExtFormAppKeys:*": "settings",
     # Форум-ночь п.8 (идея №19, SOS): экран менеджера «🆘 SOS» — та же капа, что журнал
     # вопросов выше. «Беру»/«✅ Решено» на ЛИЧНОЙ копии карточки — `moderate_reg`; в чате SOS
-    # их (и реплай) разбирает handlers/group_chat.py — там жмёт любой участник чата SOS.
+    # их (и реплай) разбирает handlers/chat/group_chat.py — там жмёт любой участник чата SOS.
     "admin_sos": "moderate_reg",
     "asos:*": "moderate_reg",
     "asos_city:*": "moderate_reg",  # вход из «🎪 Форум: функции» с городом хаба
@@ -711,7 +711,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # `moderate_reg` продолжает видеть раздел «📋 Заявки» набором операций.
     "admin_quiet_hours": "settings",
     # Правка 15.09 (владелец, «привязка через личку админа»): экран «💬 Чат» снесён целиком —
-    # привязка теперь идёт через личку (see handlers/group_chat.py), без единого callback на
+    # привязка теперь идёт через личку (see handlers/chat/group_chat.py), без единого callback на
     # `admin.router`, а значит и без записи в этом реестре. Тумблер учёта переехал в общий
     # список тумблеров раздела «🔧 Управление» — та же капа, что у «🌙 Тихие часы» выше.
     "toggle_chat_tracking_enabled": "settings",

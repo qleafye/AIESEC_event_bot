@@ -145,7 +145,7 @@ from aiogram.types import (  # noqa: E402
     PhotoSize, ReactionTypeCustomEmoji, ReactionTypeEmoji, ReactionTypePaid, Sticker, User,
 )
 
-from handlers import group_chat  # noqa: E402
+from handlers.chat import group_chat  # noqa: E402
 from services import chat_tracking  # noqa: E402
 
 UTC_DATE = datetime(2026, 9, 27, 7, 30, 0, tzinfo=timezone.utc)  # 10:30 по Москве

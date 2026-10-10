@@ -177,9 +177,9 @@ async def render_chat_rating_screen(admin_id: int) -> tuple[str, InlineKeyboardM
         rows.append([InlineKeyboardButton(
             text="📋 Задания для «упоминаний»", callback_data=f"chrate:tasks:{token}",
         )])
-    # Еженедельный пост рейтинга в чат города (handlers/admin_chat_rating_post.py) — ленивый
+    # Еженедельный пост рейтинга в чат города (handlers/chat/admin_chat_rating_post.py) — ленивый
     # импорт: тот модуль сам импортирует этот.
-    from handlers.admin_chat_rating_post import toggle_row
+    from handlers.chat.admin_chat_rating_post import toggle_row
     rows.extend(await toggle_row(code, header))
     rows.append([InlineKeyboardButton(text="📥 Загрузить историю чата", callback_data="chimp:open")])
     rows.append([InlineKeyboardButton(text="⚖️ Веса формулы", callback_data="settings_group:chat")])
@@ -427,4 +427,4 @@ async def chrate_task_toggle(callback: types.CallbackQuery):
 
 
 # «📥 Загрузить историю чата» (chimp:*, ввод ChatExportImport) — хвост admin.router после хендлеров этого файла.
-from handlers import admin_chat_import  # noqa: E402,F401
+from handlers.chat import admin_chat_import  # noqa: E402,F401

@@ -208,7 +208,7 @@ from aiogram.types import (  # noqa: E402
     Message, User,
 )
 
-from handlers import group_chat  # noqa: E402
+from handlers.chat import group_chat  # noqa: E402
 from services import chat_tracking  # noqa: E402
 
 BOT_ID = 777927
@@ -387,7 +387,7 @@ from aiogram.fsm.context import FSMContext  # noqa: E402
 from aiogram.fsm.storage.base import StorageKey  # noqa: E402
 from aiogram.fsm.storage.memory import MemoryStorage  # noqa: E402
 
-from handlers import admin_chat_cleanup as scr  # noqa: E402
+from handlers.chat import admin_chat_cleanup as scr  # noqa: E402
 from handlers.admin_caps import required_capability  # noqa: E402
 from handlers.states import ChatCleanupEdit  # noqa: E402
 
