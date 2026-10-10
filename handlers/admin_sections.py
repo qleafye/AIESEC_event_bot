@@ -706,7 +706,7 @@ async def show_admin_section(callback: types.CallbackQuery):
     # сообщение пользовательская строка не форматируется никогда.
     token = callback.data.split(":", 1)[1]
     if token == "amb" and not await _amb_section_on():
-        from handlers.admin_amb_section import SECTION_OFF_ALERT  # ленивый шов
+        from handlers.amb.admin_amb_section import SECTION_OFF_ALERT  # ленивый шов
         await callback.answer(SECTION_OFF_ALERT, show_alert=True)
         return
     screen = await section_screen(callback.from_user.id, token)

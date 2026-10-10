@@ -369,7 +369,7 @@ def test_admin_root_hides_amb_section_until_toggle_on(tmp_path):
 
 
 def test_stale_section_buttons_explain_how_to_turn_on(tmp_path):
-    from handlers import admin_amb_section as s
+    from handlers.amb import admin_amb_section as s
     from handlers import admin_sections
     from tests.test_amb_candidates_34 import _cb
     _admin_ready(tmp_path)
@@ -391,7 +391,7 @@ def test_stale_section_buttons_explain_how_to_turn_on(tmp_path):
 
 
 def test_toggle_button_in_game_settings_flips_key(tmp_path):
-    from handlers import admin_amb_section as s
+    from handlers.amb import admin_amb_section as s
     from handlers import admin_settings
     from tests.test_amb_candidates_34 import ADMIN_ID, _buttons, _cb
     _admin_ready(tmp_path)

@@ -1226,7 +1226,7 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
         buttons.extend([[b] for b in unconfigured])
     if token == "game":  # Quick 260822: режим уведомлений о сдачах — тумблер, не ввод кода
         buttons.append([InlineKeyboardButton(text=await game_submit_notify_button_text(), callback_data="toggle_game_submit_notify")])
-        from handlers.admin_amb_section import selection_toggle_button  # тумблер «🤝 Отбор амбассадоров»
+        from handlers.amb.admin_amb_section import selection_toggle_button  # тумблер «🤝 Отбор амбассадоров»
         buttons.append([await selection_toggle_button()])
     if token == "amb":
         # Phase 32 (32-02, D-29): «Показывать имена в рейтинге волны» — тумблер, тот же приём.
