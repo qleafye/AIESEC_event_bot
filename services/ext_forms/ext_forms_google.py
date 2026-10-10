@@ -16,7 +16,7 @@ import gspread
 
 from config import config
 from database import ext_forms_db as ef
-from services.ext_forms_ingest import ingest_answer
+from services.ext_forms.ext_forms_ingest import ingest_answer
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

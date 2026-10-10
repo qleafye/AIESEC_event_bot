@@ -7,7 +7,7 @@ import os
 import httpx
 import pytest
 
-from services import ext_forms_parse as P
+from services.ext_forms import ext_forms_parse as P
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "ext_forms")
 
@@ -63,7 +63,7 @@ def test_parse_unknown_value_json():
 
 # ---------------- клиент ----------------
 
-from services import ext_forms_yandex as Y  # noqa: E402
+from services.ext_forms import ext_forms_yandex as Y  # noqa: E402
 
 CONN = {"access_token": "tok-" + "a" * 20, "org_id": None, "org_header": None}
 

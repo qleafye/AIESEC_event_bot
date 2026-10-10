@@ -731,7 +731,7 @@ def test_try_delegate_start_rejected_goes_check(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def _ingest(fid, aid, items=None, answered_at="2026-10-01 12:00:00"):
-    from services.ext_forms_ingest import ingest_answer
+    from services.ext_forms.ext_forms_ingest import ingest_answer
 
     async def go():
         form = await ef.get_form(fid)
@@ -768,7 +768,7 @@ def test_hook_survives_delegation_error(tmp_path, monkeypatch):
 
 
 def test_rematch_hook(tmp_path):
-    from services.ext_forms_match import rematch_unmatched
+    from services.ext_forms.ext_forms_match import rematch_unmatched
     bot, _ = _env(tmp_path)
     fid = _delegation_form()
     _answer_from_fixture(fid, "a1", course="3 бакалавриат")
@@ -831,7 +831,7 @@ def test_cmd_start_order_guard():
 
 
 def test_reconcile_all_calls_sweep(tmp_path, monkeypatch):
-    from services import ext_forms_yandex_sync as sync
+    from services.ext_forms import ext_forms_yandex_sync as sync
     bot, _ = _env(tmp_path)
     fid = _delegation_form()
     _answer_from_fixture(fid, "a1", course="3 бакалавриат")

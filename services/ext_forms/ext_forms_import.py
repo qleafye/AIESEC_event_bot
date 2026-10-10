@@ -18,8 +18,8 @@ from decimal import Decimal, InvalidOperation
 from xml.etree import ElementTree as ET
 
 from database import ext_forms_db as ef
-from services.ext_forms_google import _parse_ts
-from services.ext_forms_ingest import ingest_answer
+from services.ext_forms.ext_forms_google import _parse_ts
+from services.ext_forms.ext_forms_ingest import ingest_answer
 
 logger = logging.getLogger(__name__)
 
