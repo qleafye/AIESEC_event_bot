@@ -33,7 +33,7 @@ _JOBSTORE_URL = "sqlite:///data/jobs.sqlite"
 # MOSCOW_TZ constant, so they structurally cannot drift apart — that drift (pin=Moscow,
 # checks=container clock/UTC) was exactly the bug this fix closes. See .planning/TZFIX-260816.md.
 # Quick 260904-kk6 (Q1): the literal itself now lives in `services/infra/timeutil.py` (leaf module,
-# no aiogram import) — `services/questions.py::format_stamp` needs it too and cannot import
+# no aiogram import) — `services/comms/questions.py::format_stamp` needs it too and cannot import
 # this module (aiogram + APScheduler), and the "exactly one literal" guard
 # (tests/test_timezone_fix_260816.py::test_moscow_literal_declared_exactly_once) forbids a
 # second copy. This is a re-export, not a second source of truth.
@@ -880,7 +880,7 @@ async def send_scheduled_broadcast(broadcast_id: int):
             target_ids = await get_all_users_ids()
 
         # Менеджер, привязанный к городу, рассылает только своему городу (автор строки).
-        from services.broadcast_scope import restrict_to_sender_city
+        from services.comms.broadcast_scope import restrict_to_sender_city
         target_ids = await restrict_to_sender_city(row.get("created_by"), target_ids)
 
         # Форум-ночь п.7: важная рассылка идёт ВСЕМ независимо от «🔕» (D-XX); неважная —
@@ -1011,7 +1011,7 @@ async def send_scheduled_poll(poll_id: int):
     """Date-job target: рассылает опрос его аудитории. Аргумент — только int (picklable),
     бот — из модульного глобала. Клейм/чекпоинт/идемпотентность — внутри deliver_poll."""
     try:
-        from services.polls import deliver_poll
+        from services.comms.polls import deliver_poll
         await deliver_poll(_bot, poll_id)
     except Exception as e:
         logger.error(f"send_scheduled_poll({poll_id}) failed: {e}")
@@ -1119,7 +1119,7 @@ async def send_payment_reminder(user_id: int):
             return
         if user.get("delegation_answer_id"):
             return  # делегату вуза оплата не нужна — напоминание ему не уходит
-        from services import quiet_hours
+        from services.comms import quiet_hours
         now = _now_moscow_naive()
         due = await quiet_hours.defer_until(now, user_id)
         if due is not None:
@@ -1189,7 +1189,7 @@ async def sweep_payment_overdue():
                 "Если ты ещё планируешь участвовать — загрузи чек через бота "
                 "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
             )
-            from services import quiet_hours
+            from services.comms import quiet_hours
             for tid in overdue_ids:
                 await quiet_hours.send_or_queue_text(
                     _now_moscow_naive(), tid, text,
@@ -1408,13 +1408,13 @@ async def resume_upload_retry_job():
 
 async def quiet_hours_flush_job():
     """Interval-job target (no args, picklable — Pitfall 3), ровно по образцу
-    `miniapp_outbox_drain_job` выше. Ленивый импорт `services.quiet_hours` (aiogram-free
+    `miniapp_outbox_drain_job` выше. Ленивый импорт `services.comms.quiet_hours` (aiogram-free
     модуль, его же импортирует веб-процесс — не тащить его собственный импорт в верхний
     уровень этого файла было бы поводом для цикла, если бы quiet_hours когда-нибудь захотел
     что-то отсюда). Ре-арм на старте не нужен: interval-джоба взводится каждым бутом, а
     просроченные строки разбираются первым же тиком по `due_at <= now`."""
     try:
-        from services import quiet_hours
+        from services.comms import quiet_hours
         await quiet_hours.flush_due(_now_moscow_naive())
     except Exception as e:
         logger.error(f"quiet_hours_flush_job failed: {e}")
@@ -1498,7 +1498,7 @@ async def nudge_incomplete_registrations():
         # database.db.get_nudge_candidates (план 21-05) — второй копии этого условия здесь
         # быть не должно.
         kb = await _nudge_keyboard()
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.i18n import i18n as i18n_service
         now = _now_moscow_naive()
         tr_maps: dict[str, dict] = {}
@@ -1801,7 +1801,7 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
     try:
         from database.db import get_wave, get_user, list_wave_tasks, task_title
         from services.amb.ambassador_waves import wave_eligible
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.i18n import i18n
         import domain.game.labels as game_labels
 
@@ -2012,7 +2012,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
             get_task, get_active_submission, get_user, list_ambassadors, get_wave, task_title,
         )
         from services.amb.ambassador_waves import wave_eligible, wave_open
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.i18n import i18n
         import domain.game.labels as game_labels
 
@@ -2125,7 +2125,7 @@ async def send_wave_end_ping(wave_id: int) -> None:
     часов менеджера."""
     try:
         import domain.game.labels as game_labels
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.amb.ambassador_waves import close_wave, wave_end_summary
         from handlers.access.admin_caps import capability_holders
 
@@ -2210,7 +2210,7 @@ async def send_wave_results(wave_id: int) -> None:
     try:
         from database.db import get_wave, get_wave_results, get_display_names, mark_wave_result_notified
         import domain.game.labels as game_labels
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.i18n import i18n
 
         wave = await get_wave(wave_id)

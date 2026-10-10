@@ -14,7 +14,7 @@
 2. Сразу после ПЕРВОЙ успешной отправки (у не-текстового ответа — заголовка) ставится
    `dispatched_at`: с ней попытку не снимает ни ошибка, ни перехват по давности — иначе повтор
    продублировал бы уже дошедшее.
-3. Ответ записывается (`services.questions.record_answer`, с повтором) СРАЗУ после отправки или
+3. Ответ записывается (`services.comms.questions.record_answer`, с повтором) СРАЗУ после отправки или
    постановки в очередь, до подтверждения менеджеру и рассылки «кто ответил». Не записалось и
    после повторов — ERROR в лог, вопрос остаётся «отправляется», повтора не будет.
 4. Ошибка ДО первой отправки снимает отметку — повтор того же менеджера снова возможен
@@ -41,7 +41,7 @@ async def _attempt_question_delivery(message: types.Message, bot: Bot, user_id: 
     """Deliver + record, shared by the first-claim path and the C-variant same-person retry
     path -- both need identical delivery/error-handling behaviour."""
     from handlers.admin import _deliver_question_reply, _reply_with_delivery_error
-    from services.questions import record_answer
+    from services.comms.questions import record_answer
 
     token = await begin_question_delivery(qid, message.from_user.id)
     if token is None:

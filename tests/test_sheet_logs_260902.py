@@ -196,7 +196,7 @@ def test_questions_rows_recipient_city_on(tmp_path):
 
 
 # Quick 260904-2cj: две новые колонки в хвосте («Статус», «Ответ») — статус берётся из
-# services.questions.status_label, не второй копией правила.
+# services.comms.questions.status_label, не второй копией правила.
 def test_questions_rows_status_and_answer_columns(tmp_path):
     _ready(tmp_path)
 

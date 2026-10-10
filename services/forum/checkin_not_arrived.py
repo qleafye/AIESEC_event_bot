@@ -11,7 +11,7 @@
 `checkin_not_arrived_mark_sent` пишет строку ПЕРЕД отправкой (не после): повторный тап «в
 процессе» не берёт того же человека дважды.
 
-Тихие часы делегата — `services.quiet_hours.send_or_queue_text` НА КАЖДОГО, не рассылка города
+Тихие часы делегата — `services.comms.quiet_hours.send_or_queue_text` НА КАЖДОГО, не рассылка города
 целиком (в отличие от `services/checkin_broadcast.py`, где QR — фото и не умещается в очередь
 тихих часов по `file_id`): это простой текст + три кнопки, ровно то, что очередь несёт как
 есть."""
@@ -105,7 +105,7 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     зарегистрировался на форум, который идёт прямо сейчас, — это служебное сообщение (как QR,
     D-35), а не рассылка. В остальные дни тихие часы соблюдаются, как раньше."""
     from domain.cities import get_setting_typed_for_city
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     ids = await checkin_not_arrived_pending_ids(city_scope=city_scope)
     base_text = await get_setting_typed_for_city("checkin_not_arrived_text", city)

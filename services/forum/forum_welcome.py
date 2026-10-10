@@ -18,7 +18,7 @@
   тумблера выше).
 
 Приветствие — служебное сообщение о только что случившемся факте (делегат физически стоит на
-стойке), не рассылка: `services.quiet_hours` НЕ участвует (тот же довод, что у служебного QR
+стойке), не рассылка: `services.comms.quiet_hours` НЕ участвует (тот же довод, что у служебного QR
 накануне форума, D-35, — здесь тишина ещё неуместнее: отложенное на весь вечер «ты отмечен»
 не несёт смысла).
 
@@ -112,7 +112,7 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
         from handlers.i18n import reg_i18n
 
         lang, tr_map = await i18n_service.context(user_id)
-        from services.text_fill import event_name, fill_event
+        from services.comms.text_fill import event_name, fill_event
 
         text = reg_i18n.tr_fmt(
             template, lang, tr_map, time=_format_time(scanned_at, await city_offset_hours(city)),

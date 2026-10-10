@@ -49,7 +49,7 @@ from database.db import (
     task_title,
 )
 from domain.game.labels import category_label, penalized_coins, proof_types_label
-from services import quiet_hours
+from services.comms import quiet_hours
 from services.game.game_award import award_for
 from domain.settings.schema import get_setting_typed
 

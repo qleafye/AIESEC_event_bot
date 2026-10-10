@@ -294,7 +294,7 @@ def test_apply_decision_effects_quiet_hours_records_queued(tmp_path, monkeypatch
 
     monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
 
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     async def fake_defer_until(now, uid):
         from datetime import timedelta

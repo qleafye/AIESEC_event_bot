@@ -17,7 +17,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from config import config
 from database import db
 import services.scheduler as sched
-from services import quiet_hours
+from services.comms import quiet_hours
 from tests._dbtpl import fast_init_db
 
 

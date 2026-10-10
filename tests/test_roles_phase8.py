@@ -984,7 +984,7 @@ def test_notify_skips_disabled_role(tmp_path):
 
 
 def test_technical_alert_sites_still_use_admin_ids():
-    """Квик 260919 (P3): `services/reminders.py` вышел из этого списка — пачка «Заявок в
+    """Квик 260919 (P3): `services/comms/reminders.py` вышел из этого списка — пачка «Заявок в
     ожидании» больше не технический алерт (квота Google Sheets/сеть), это уведомление
     менеджерам о ЗАЯВКАХ, той же природы, что registration.py/payment.py ниже — поэтому
     теперь оно тоже маршрутизируется через `capability_holders`, см.
@@ -1009,7 +1009,7 @@ def test_pending_reminder_routes_via_capability():
     «Заявок в ожидании», потому что рассылка шла только `config.ADMIN_IDS`. Теперь —
     `capability_holders("moderate_reg")`, тот же D-13 примитив, что у registration.py/payment.py."""
     repo_root = REPO_ROOT
-    source = (repo_root / "services/reminders.py").read_text(encoding="utf-8")
+    source = (repo_root / "services/comms/reminders.py").read_text(encoding="utf-8")
     assert "capability_holders(" in source
     assert "for admin_id in config.ADMIN_IDS" not in source
 
@@ -1478,7 +1478,7 @@ def test_gate_technical_alerts_stay_on_admin_ids():
     named final gates (08-07-PLAN.md Task 2 <behavior>), with the comment-line filter applied
     per T-08-35.
 
-    Квик 260919 (P3): `services/reminders.py` dropped OUT of this list -- see
+    Квик 260919 (P3): `services/comms/reminders.py` dropped OUT of this list -- see
     `test_technical_alert_sites_still_use_admin_ids`'s updated docstring above."""
     repo_root = REPO_ROOT
     for rel_path in ("services/sheets/sheets.py", "services/scheduler.py"):

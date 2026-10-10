@@ -693,7 +693,7 @@ async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineK
     # при непустой очереди. render_section_text — синхронная (снапшот-тесты), БД сюда не
     # трогает; счётчик дописывается здесь, после неё.
     if token == "apps":
-        from services import quiet_hours
+        from services.comms import quiet_hours
         pending = await quiet_hours.queued_count()
         if pending > 0:
             text += f"\n\n🌙 Тихие часы: в очереди {pending}"

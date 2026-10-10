@@ -32,7 +32,7 @@ _STATUS_ORDER = ("approved", "rejected", "pending")
 
 
 def _short_stamp(raw) -> str:
-    """`ДД.ММ ЧЧ:ММ` из метки, которая УЖЕ московская (нет сдвига — `services.questions.
+    """`ДД.ММ ЧЧ:ММ` из метки, которая УЖЕ московская (нет сдвига — `services.comms.questions.
     format_stamp` здесь неприменима, она двигает UTC -> МСК, а `decided_at`/`registration_date`
     в этой семье пишутся `timeutil.msk_now`, второй сдвиг дал бы «будущее»). Фейл-софт: пустая
     или нераспознанная метка — «—», а не исключение."""

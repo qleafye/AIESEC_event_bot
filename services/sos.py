@@ -5,7 +5,7 @@
 
 Домен вынесен из `handlers/forum/sos.py` (делегатская сторона) и `handlers/forum/admin_sos.py`
 (менеджерская сторона) в этот модуль по правилу проекта «своего Router() нет — домен в
-services/, хендлеры — тонкий шов» (та же форма, что `services/questions.py` для «❓ Задать
+services/, хендлеры — тонкий шов» (та же форма, что `services/comms/questions.py` для «❓ Задать
 вопрос», `services/chat_tracking.py` для привязки чата делегатов).
 
 Решение владельца D-31 (24.09, `.planning/FORUM-CHECKIN.md`): **SOS без категорий.** Кнопки
@@ -39,7 +39,7 @@ from datetime import date, datetime, timedelta
 
 from domain.cities import cities_module_on, get_setting_typed_for_city, per_city_key
 from database.db import advance_sos_claimed_remind, get_sos_report, set_sos_escalated
-from services.questions import format_stamp
+from services.comms.questions import format_stamp
 from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
@@ -47,7 +47,7 @@ from domain.settings.schema import get_setting_typed
 logger = logging.getLogger(__name__)
 
 # ── Статус строки (зеркало database.db._SOS_STATUS_SQL — то же правило "чистой" функцией,
-# тот же приём, что services/questions.py::question_status рядом со своим SQL-зеркалом).
+# тот же приём, что services/comms/questions.py::question_status рядом со своим SQL-зеркалом).
 STATUS_OPEN = "open"
 STATUS_CLAIMED = "claimed"
 STATUS_RESOLVED = "resolved"
@@ -637,7 +637,7 @@ async def _record_relay(report_id: int, chat_id: int, sent) -> None:
 
 async def deliver_org_reply(bot, message, report: dict) -> bool:
     """Захватывает заявку за ответившим (если её ещё никто не взял) и доставляет ответ
-    делегату немедленно — тихие часы к SOS не применяются (`services/quiet_hours.py` здесь не
+    делегату немедленно — тихие часы к SOS не применяются (`services/comms/quiet_hours.py` здесь не
     зовётся, в отличие от «❓ Задать вопрос»). Получатель — `report["telegram_id"]`, не 🆔 из
     текста карточки: номер заявки — единственное, что читается из сообщения. True — ответ
     дошёл до делегата."""
@@ -1044,7 +1044,7 @@ async def claimed_reminder_job(report_id: int, _legacy_minutes: int | None = Non
     джоб, поставленных до лесенки (они лежат в персистентном хранилище APScheduler) — не
     используется: пауза следующей ступени берётся из `CLAIMED_REMIND_DELAYS_MINUTES`."""
     try:
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.scheduler import _now_moscow_naive
 
         report = await get_sos_report(report_id)

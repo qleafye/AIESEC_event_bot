@@ -1,5 +1,5 @@
 """Координатор 25.09 (учёт доставки решения) — общий 429-ретрай для ОДИНОЧНОЙ отправки, тот же
-паттерн, что уже даёт результат в `services/broadcast_run.py::run_broadcast`/`run_revoke`
+паттерн, что уже даёт результат в `services/comms/broadcast_run.py::run_broadcast`/`run_revoke`
 (один повтор после `TelegramRetryAfter`, `sleep(retry_after + 1)`), но без пакетного цикла —
 здесь ровно одна логическая отправка на вызов.
 

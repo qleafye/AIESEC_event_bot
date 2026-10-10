@@ -16,7 +16,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from services import polls as polls_svc
+from services.comms import polls as polls_svc
 from services import scheduler as sched
 from handlers import admin as admin_mod
 from handlers.settings import admin_core

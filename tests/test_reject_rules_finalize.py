@@ -499,7 +499,7 @@ def test_auto_reject_admin_notification_sent_when_admins_configured(tmp_path, mo
 
 def test_auto_reject_goes_to_pending_summary_when_applications_are_batched(tmp_path, monkeypatch):
     """Владелец 23.09: заявки приходят сводкой раз в N -> автоотказ отдельно не шлётся, его
-    имя попадает в ту же сводку ожидания (services/reminders.py)."""
+    имя попадает в ту же сводку ожидания (services/comms/reminders.py)."""
     _ready(tmp_path)
     _offline(monkeypatch)
     _patch_sheet_calls(monkeypatch)

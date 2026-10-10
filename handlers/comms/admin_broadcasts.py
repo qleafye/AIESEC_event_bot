@@ -92,8 +92,8 @@ from services.scheduler import (
 )
 from services.access.allowlist import refresh_allowlist, allowlist_size
 from services.infra.background import spawn as _spawn
-from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
-from services.broadcast_scope import (
+from services.comms.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
+from services.comms.broadcast_scope import (
     past_season_note, restrict_to_sender_city, season_default_filter, sender_city_note, split_by_sender_city,
 )
 from services.forum.forum_days import day_cities_suffix  # «не пришли 25.09 — Москва»
@@ -381,7 +381,7 @@ async def _send_confirm_prompt(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
         callback_data="bc_important_toggle",
     )
-    from services import quiet_hours
+    from services.comms import quiet_hours
     now = _now_moscow_naive()
     window = await quiet_hours.window_for_city(None)
     if window is not None and quiet_hours.is_quiet(now, *window):
@@ -936,7 +936,7 @@ async def broadcast_schedule_when(message: types.Message, state: FSMContext):
     # Quick 260904-dq1: рассылка не привязана к одному городу — окно ГЛОБАЛЬНОЕ
     # (window_for_city(None)). Тумблер выключен / окна нет / время вне окна — шаг работает
     # БЕЗ единого лишнего сообщения, байт-в-байт как раньше.
-    from services import quiet_hours
+    from services.comms import quiet_hours
     window = await quiet_hours.window_for_city(None)
     if window is not None and quiet_hours.is_quiet(when, *window):
         start, end = window

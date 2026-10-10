@@ -85,7 +85,7 @@ def test_question_reply_header_in_english(monkeypatch):
     import asyncio
 
     from handlers import admin
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     _english(monkeypatch)
     captured = []

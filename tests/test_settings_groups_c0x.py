@@ -306,13 +306,13 @@ def test_event_render_snapshot(tmp_path):
 # generation drifts from it (D-16).
 
 def test_parse_equivalence_int():
-    from services.reminders import _reminder_interval
+    from services.comms.reminders import _reminder_interval
 
     for raw in [None, "", "abc", "0", "-5", "900", "1800"]:
         assert _parse_setting("pending_reminder_interval", raw) == _reminder_interval(raw), (
             f"mismatch for raw={raw!r}"
         )
-    # Registry default MUST be 1800 (matches services.reminders.DEFAULT_INTERVAL).
+    # Registry default MUST be 1800 (matches services.comms.reminders.DEFAULT_INTERVAL).
     assert SETTINGS_SCHEMA["pending_reminder_interval"]["default"] == 1800
 
 
@@ -1069,7 +1069,7 @@ def test_toggle_preselect_enabled_flips_and_rerenders_landing(tmp_path):
 
 
 def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
-    """Quick 260819: ключи services/scheduler.py / services/reminders.py объявлены в реестре,
+    """Quick 260819: ключи services/scheduler.py / services/comms/reminders.py объявлены в реестре,
     дефолты байт-в-байт равны прежним литералам кода (`_int_or_default(..., N)`,
     `!= "off"`, DEFAULT_NUDGE_TEXT), генерический UI рендерит int/text как у соседей, а
     on/off — тумблеры на лендинге (дефолт ON: тап выключает)."""
@@ -1167,7 +1167,7 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     kb = asyncio.run(admin_settings.build_settings_group_keyboard("system"))
     assert "settings_edit:incomplete_sync_hours" in _flat_callback_data(kb)
     # тумблеры: дефолт ON -> первый тап выключает; чтение консьюмеров (`!= "off"`) не меняется
-    from services import reminders
+    from services.comms import reminders
     cb = FakeCallback("toggle_pending_reminder")
     asyncio.run(admin_settings.toggle_pending_reminder(cb))
     assert asyncio.run(db.get_setting("pending_reminder_enabled")) == "off"

@@ -416,7 +416,7 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
             )
         except Exception as e:
             logger.error(f"admin={callback.from_user.id} action=approve user={tid}: не удалось записать журнал решения: {e}")
-        from services import quiet_hours
+        from services.comms import quiet_hours
         notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
         await callback.answer(f"Одобрено · {notice}" if notice else "Одобрено")
     else:
@@ -489,7 +489,7 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
             )
         except Exception as e:
             logger.error(f"admin={message.from_user.id} action=reject user={tid}: не удалось записать журнал решения: {e}")
-        from services import quiet_hours
+        from services.comms import quiet_hours
         notice = await quiet_hours.manager_notice(_now_moscow_naive(), tid)
         reject_text = f"Заявка отклонена. {notice}" if notice else "Заявка отклонена."
         await message.answer(reject_text, reply_markup=ReplyKeyboardRemove())
@@ -609,7 +609,7 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     # Приписка о тихих часах — по ПЕРВОМУ делегату списка, тем же текстом реестра, что и
     # одиночное одобрение (второй ключ ради формулировки во множественном числе не заводим —
     # план явно это оговаривает).
-    from services import quiet_hours
+    from services.comms import quiet_hours
     from services.scheduler import _now_moscow_naive
     notice = await quiet_hours.manager_notice(_now_moscow_naive(), ids[0])
     confirm_text = f"✅ Одобрено: {len(ids)}. Рассылаю приветствия…"
@@ -747,7 +747,7 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
     # 16.09: подтверждение оплаты — такое же уведомление делегату, как решение по заявке, и
     # ночью будить им нельзя. Клавиатуру главного меню несёт САМА строка очереди (kind
     # text_html, поле reply_markup) — иначе утром приехал бы текст без меню.
-    from services import quiet_hours
+    from services.comms import quiet_hours
     from services.scheduler import _now_moscow_naive
     quiet_now = _now_moscow_naive()
     paid_text = "✅ <b>Оплата подтверждена!</b>\n\nСпасибо, ваш взнос получен."
@@ -827,7 +827,7 @@ async def rcpt_reject_reason(message: types.Message, state: FSMContext):
             user_msg += f" Причина: {html_module.escape(reason_text)}"
         user_msg += "\n\nЗагрузи чек повторно через бота."
         # 16.09: отказ по чеку — уведомление делегату, ночью не будим (см. rcpt_confirm).
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.scheduler import _now_moscow_naive
         quiet_now = _now_moscow_naive()
         try:

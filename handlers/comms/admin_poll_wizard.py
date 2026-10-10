@@ -19,7 +19,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from database.db import create_poll, count_and_list_filtered, get_distinct_filter_values
-from services.polls import (
+from services.comms.polls import (
     POLL_QUESTION_MAX,
     POLL_OPTION_MAX,
     POLL_OPTIONS_MIN,
@@ -287,7 +287,7 @@ async def _quiet_hours_warning() -> str:
     получателей), а опрос — ждёт: каждый делегат получает свой `send_poll`, и попавший в
     СВОЁ окно ложится в очередь до утра. Поэтому здесь не «получат ночью», а «получат утром».
     Тумблер выключен / окна нет / время вне окна -> «» и экран байт-в-байт прежний."""
-    from services import quiet_hours
+    from services.comms import quiet_hours
     from services.scheduler import _now_moscow_naive
 
     now = _now_moscow_naive()
