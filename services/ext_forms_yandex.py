@@ -17,7 +17,7 @@ import httpx
 
 from config import config
 from database import ext_forms_db as ef_db
-from secret_redact import register_secret
+from shared.secret_redact import register_secret
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

@@ -26,7 +26,7 @@ from datetime import timedelta
 from config import config
 from services import sheet_target as _sheet_target
 from database.db import drop_sheet_chat, fail_sheet_chat, list_due_sheet_chat
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 from services.sheet_arrival_sync import backoff_seconds
 from services.timeutil import msk_now
 

@@ -29,7 +29,7 @@ from config import config as bot_config
 from database import db as bot_db
 from database import db
 
-import dashboard_favicon
+import shared.favicon as dashboard_favicon
 from dashboard import files as dashboard_files
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app
@@ -50,7 +50,7 @@ LOGO_FILE_ID = "BgACAgIAAxkBAAI" + "l" * 15
 
 # ── Сюжет (A): раздача дашбордом ──────────────────────────────────────────────────────────
 
-def _use_tmp_db(tmp_path, name: str = "dashboard_favicon.db") -> str:
+def _use_tmp_db(tmp_path, name: str = "shared.favicon.db") -> str:
     path = str(tmp_path / name)
     bot_config.DB_PATH = path
     fast_init_db()

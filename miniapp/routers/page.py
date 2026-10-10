@@ -36,7 +36,7 @@ from settings_schema import SETTINGS_SCHEMA
 
 from services import i18n
 
-import web_theme
+import shared.web_theme as web_theme
 from miniapp.deps import (
     SECTIONS, Principal, delegate_denial, form_access_denial, form_status, game_denial, principal,
     read_setting,

@@ -21,11 +21,7 @@ from tests._paths import REPO_ROOT
 ALLOWED_ROOT_MODULES = {"main.py", "config.py"}
 # Модули, которые ещё ждут переноса из корня. Список только сокращается.
 PENDING_ROOT_MODULES = {
-    "amb_tier_keys.py",
-    "arrival_stats.py",
-    "chat_score.py",
     "cities.py",
-    "dashboard_favicon.py",
     "game_labels.py",
     "i18n_ui_en.py",
     "moderation_card.py",
@@ -34,7 +30,6 @@ PENDING_ROOT_MODULES = {
     "reg_labels.py",
     "reg_options.py",
     "reg_presets.py",
-    "secret_redact.py",
     "settings_amb_fields.py",
     "settings_audit.py",
     "settings_chat_fields.py",
@@ -46,8 +41,6 @@ PENDING_ROOT_MODULES = {
     "settings_synonyms.py",
     "settings_ui_text_fields.py",
     "settings_validation.py",
-    "tg_media.py",
-    "web_theme.py",
 }
 
 # Нарушения, которые пока терпим: (файл относительно корня, импортируемый модуль).

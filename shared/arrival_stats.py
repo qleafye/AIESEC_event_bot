@@ -1,6 +1,6 @@
 """Статистика прихода на форум — корневой aiogram-free модуль, ОДИН источник правды для бота
 (`services/checkin_arrival.py`, aiosqlite) и дашборда (`dashboard/queries.py`, синхронный
-sqlite3 read-only). Прецедент — `tg_media.py`/`web_theme.py`: только stdlib, в образ дашборда
+sqlite3 read-only). Прецедент — `shared/tg_media.py`/`shared/web_theme.py`: только stdlib, в образ дашборда
 копируется отдельной строкой COPY (сторож `tests/test_dashboard_docker.py`).
 
 Здесь нет подключения к базе: модуль отдаёт SQL с параметрами (`arrival_queries`) и чистую

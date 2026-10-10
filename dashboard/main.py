@@ -34,8 +34,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-import web_theme
-from secret_redact import install_log_redaction, register_secret
+import shared.web_theme as web_theme
+from shared.secret_redact import install_log_redaction, register_secret
 from dashboard import chat_rating
 from dashboard import queries
 from dashboard import sources_daily
@@ -138,7 +138,7 @@ def _favicon_url(conn) -> "str | None":
     """Квик 260921: своя иконка вкладки браузера дашборда — `dashboard_favicon`, отдельный
     ключ реестра от лого мероприятия (`miniapp_logo`), загружается ДОКУМЕНТОМ (не фото) с
     экрана «🎭 Пресеты и ручки оформления» (handlers/admin_miniapp_theme.py,
-    dashboard_favicon.py). Порядок отката: своя иконка -> лого мероприятия -> ничего (пустой
+    shared/favicon.py). Порядок отката: своя иконка -> лого мероприятия -> ничего (пустой
     `favicon_url` в `base.html` уходит на статичную иконку АЙСЕК, тот же приём, что раньше
     был завязан на `event_logo_url`) — менеджер, ничего не загрузивший отдельно, видит во
     вкладке браузера то же лого, что видел до этого квика."""
@@ -571,8 +571,8 @@ def build_forum_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, arrival_day: str | None = None,
 ) -> dict:
     """Задача 25.09: страница «🎪 Форум» — приход/стойки (переехали сюда с главной, тот же
-    `arrival_block`/`arrival_floor`, общий с ботом `arrival_stats.py` — не дублируем), сессии
-    с оценками (`session_feedback`, дашборд-only — в arrival_stats.py их нет), SOS, доставка
+    `arrival_block`/`arrival_floor`, общий с ботом `shared/arrival_stats.py` — не дублируем), сессии
+    с оценками (`session_feedback`, дашборд-only — в shared/arrival_stats.py их нет), SOS, доставка
     решений, опросы после форума. Каждый блок — `None`/пустой список, пока данных нет; шаблон
     сам решает, показывать ли раздел ("нет данных" вместо пустой карточки)."""
     flags = queries.dashboard_flags(conn)

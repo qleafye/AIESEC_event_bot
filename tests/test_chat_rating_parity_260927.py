@@ -18,7 +18,7 @@ from dashboard import db as dash_db
 from tests._dbtpl import fast_init_db
 from tools import chat_export_stats as ces
 
-import chat_score
+import shared.chat_score as chat_score
 
 CHAT_ID = -1003333333333
 ROOT_ID = 1          # корень топика (topic_created)

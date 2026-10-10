@@ -49,7 +49,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 
 import reg_engine
-import tg_media
+import shared.tg_media as tg_media
 from cities import cities_module_on, city_codes, normalize_city, per_city_key
 from dashboard.access import resolve_capabilities, staff_city
 from dashboard.db import read_conn
@@ -63,7 +63,7 @@ from database.db import (
 from settings_schema import get_setting_typed
 
 import settings_ops
-import web_theme
+import shared.web_theme as web_theme
 from miniapp import telegram_api
 from miniapp.deps import Principal, principal
 from miniapp.file_tokens import verify_file_token

@@ -30,7 +30,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from amb_tier_keys import MAX_TIERS, tier_key
+from shared.amb_tier_keys import MAX_TIERS, tier_key
 from database import amb_tiers_db
 from database import db
 from handlers.admin import router

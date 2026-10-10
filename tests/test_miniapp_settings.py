@@ -25,7 +25,7 @@ from handlers import admin_miniapp
 from handlers import admin_miniapp_theme
 from handlers.states import MiniAppTheme
 from handlers.admin_caps import ADMIN_CAPS, required_capability
-import web_theme
+import shared.web_theme as web_theme
 from tests._dbtpl import fast_init_db
 
 

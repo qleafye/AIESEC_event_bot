@@ -5,7 +5,7 @@
 """
 import re
 
-import chat_score as cs
+import shared.chat_score as cs
 from settings_schema import SETTINGS_SCHEMA, _parse_setting
 from settings_validation import validate_setting_value
 

@@ -33,7 +33,7 @@ def _ready(tmp_path, name="test_amb_tier_ladder_34.db"):
 
 
 def _quota(n, quota, on="on"):
-    from amb_tier_keys import tier_key
+    from shared.amb_tier_keys import tier_key
     _run(db.set_setting(tier_key(n, "quota_on"), on))
     _run(db.set_setting(tier_key(n, "quota"), str(quota)))
 

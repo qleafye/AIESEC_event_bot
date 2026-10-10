@@ -2,7 +2,7 @@
 в проекте (после `services/timeutil.py` и `miniapp/timeutil.py`).
 
 Образ дашборда собирается СВОИМ `dashboard/Dockerfile` (контекст сборки — корень репозитория,
-но в образ явно копируется только `dashboard/` целиком + корневые `web_theme.py`/`tg_media.py`
+но в образ явно копируется только `dashboard/` целиком + корневые `shared/web_theme.py`/`shared/tg_media.py`
 + растры `miniapp/static/pattern/`, см. докстринг Dockerfile). `from services.timeutil import
 msk_now` уронил бы контейнер на старте `ModuleNotFoundError` — так прод падал дважды на похожей
 ошибке (`web_theme` 31.08, `tg_media` 10.09). Сторожа «один литерал часового пояса»

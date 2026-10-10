@@ -25,8 +25,8 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 # not a hack: raising it inside a handler makes that handler's match count as UNHANDLED.
 from aiogram.dispatcher.event.bases import SkipHandler
 
-import chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
-import dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
+import shared.chat_score as chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
+import shared.favicon as dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
 import settings_ui_text_fields as _UI  # подписи, вынесенные из кода: хвосты экранов групп
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
@@ -2423,7 +2423,7 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
     data = await state.get_data()
 
     # Квик 260921: иконка вкладки дашборда — тот же raw_file_key-путь, что у PDF согласия
-    # ниже, но со своей проверкой mime/размера (dashboard_favicon.py, D-2 брифа: фото на этот
+    # ниже, но со своей проверкой mime/размера (shared/favicon.py, D-2 брифа: фото на этот
     # же ключ уже отбито в settings_receive_file_photo выше).
     raw_key = data.get("raw_file_key")
     if raw_key == dashboard_favicon.SETTING_KEY:

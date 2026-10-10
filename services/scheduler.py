@@ -1645,7 +1645,7 @@ async def chat_history_prune_job():
     про приватность, а не про учёт; выключенный учёт не должен оставлять старую историю
     навсегда."""
     try:
-        import chat_score
+        import shared.chat_score as chat_score
         from database.db import prune_chat_history
         from settings_schema import get_setting_typed
 

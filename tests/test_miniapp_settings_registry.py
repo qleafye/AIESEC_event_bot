@@ -426,7 +426,7 @@ def _group_for_key(body, key):
 def test_theme_keys_group_carries_theme_preview_flag(tmp_path):
     """Решение «где рисовать превью» — сервер (row["theme_preview"], тот же приём, что
     row["matrix"] у reg_questions): группа, несущая ключи web_theme.THEME_KEYS, помечена."""
-    import web_theme
+    import shared.web_theme as web_theme
 
     client = _setup(tmp_path)
     body = _all(client).json()
@@ -444,7 +444,7 @@ def test_theme_key_flag_distinguishes_theme_items_within_shared_group(tmp_path):
     """Группа "miniapp" несёт ключи оформления вперемешку с обычными текстами (D-контекст
     плана) — `item.theme_key` не даёт фронту случайно отправить неродственную правку в
     theme/preview (и получить 403, роняющий весь экран, см. api.js::authErrorHandler)."""
-    import web_theme
+    import shared.web_theme as web_theme
 
     client = _setup(tmp_path)
     body = _all(client).json()

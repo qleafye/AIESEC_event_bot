@@ -31,7 +31,7 @@ from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 
-from arrival_stats import _sheet_safe
+from shared.arrival_stats import _sheet_safe
 from dashboard import queries
 from dashboard.timeutil import msk_now
 

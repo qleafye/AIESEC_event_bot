@@ -1,7 +1,7 @@
 """«📍 Сейчас на площадке» (бэклог чек-ина №12): живая картина дня форума для DXP/ОК —
 сколько одобренных пришли сегодня и сколько за последние 15 минут, какие сессии идут сейчас
 и сколько на них отметилось, сколько отметила каждая стойка входа. Всё за СЕГОДНЯ (МСК): вход
-отмечается каждый день форума. Числа — общие запросы `arrival_stats.py` (их же рисует дашборд
+отмечается каждый день форума. Числа — общие запросы `shared/arrival_stats.py` (их же рисует дашборд
 в разделе «Приход»), исполняет `services/checkin_arrival.py`.
 
 Город — из шапки, та же развилка, что у «📊 Статистика прихода» (`handlers/admin_checkin_stats.py`):
@@ -16,7 +16,7 @@ from aiogram import F, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import arrival_stats
+import shared.arrival_stats as arrival_stats
 from cities import cities_module_on, city_label, city_scope, enabled_cities
 from handlers.admin import router
 from handlers.admin_core import _admin_city_scope

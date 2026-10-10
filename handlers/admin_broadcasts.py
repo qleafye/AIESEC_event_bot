@@ -13,7 +13,7 @@ import asyncio
 import csv
 import html as html_module
 import io
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 import json
 import logging
 import os

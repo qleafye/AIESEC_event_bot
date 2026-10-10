@@ -52,7 +52,7 @@ import aiohttp_socks
 import python_socks
 
 from config import config
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 from services.background import spawn
 from services.ru_plural import ru_plural
 from services.timeutil import msk_now

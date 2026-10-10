@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 
 from database.db import (
     bump_translation_attempt,

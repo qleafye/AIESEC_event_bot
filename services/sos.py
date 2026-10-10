@@ -642,7 +642,7 @@ async def deliver_org_reply(bot, message, report: dict) -> bool:
     текста карточки: номер заявки — единственное, что читается из сообщения. True — ответ
     дошёл до делегата."""
     from database.db import claim_sos_report, mark_sos_post_resolve_reply
-    from secret_redact import redact_secrets
+    from shared.secret_redact import redact_secrets
 
     report_id = report["id"]
     admin_name = message.from_user.full_name or message.from_user.username or "Орг"
