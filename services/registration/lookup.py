@@ -18,6 +18,7 @@ Getgeo не используем ни в каком виде — эти данн
 from __future__ import annotations
 
 import re
+import time
 
 from services.infra.timeutil import msk_now
 
@@ -58,17 +59,43 @@ def _escape_like(raw: str) -> str:
 
 
 # Сколько строк забирает каждый ярус до сортировки — потолок скана вместо прежнего `LIMIT limit`
-# (T-30-04): сортировка по частоте сезона должна видеть больше кандидатов, чем показывает.
+# (T-30-04). Скан без ORDER BY берёт первые строки по rowid, поэтому закреплённые и частые вузы
+# дочитываются отдельным запросом по их `canonical` (до `_BOOST_CAP` имён) — иначе на коротком
+# запросе («мо») они не доходили бы до сортировки.
 _TIER_SCAN_CAP = 300
+_BOOST_CAP = 200
+
+# Закреплённые и частота сезона — на каждое нажатие в поиске это GROUP BY по users и чтение
+# всего справочника. Кэш на процесс, ключ — (файл БД, kind); закрепление и слияние сбрасывают
+# его сразу (`invalidate_rank_cache`), новые ответы делегатов подтянутся за TTL.
+_RANK_TTL_S = 60.0
+_rank_cache: dict[tuple[str, str], tuple[float, set[str], dict[str, int]]] = {}
+
+
+def invalidate_rank_cache() -> None:
+    _rank_cache.clear()
+
+
+async def _rank_inputs(conn, kind: str) -> tuple[set[str], dict[str, int]]:
+    from config import config
+
+    key = (str(config.DB_PATH), kind)
+    hit = _rank_cache.get(key)
+    now = time.monotonic()
+    if hit and now - hit[0] < _RANK_TTL_S:
+        return hit[1], hit[2]
+    pinned = await _pinned_canonicals(conn, kind)
+    freq = await _season_counts(conn, kind)
+    _rank_cache[key] = (now, pinned, freq)
+    return pinned, freq
 
 
 async def search_lookup(kind: str, q: str, limit: int = 10) -> list[dict]:
-    """Ранжирование ТРЕМЯ отдельными параметризованными запросами (30-RESEARCH.md Pattern 2 —
-    читаемый стиль `database/db.py`, не одна `CASE WHEN`-эквилибристика): точное совпадение
-    `alias_norm` → префикс → подстрока. Каждый следующий запрос добирает результат только до
-    `limit`; скан яруса ограничен `_TIER_SCAN_CAP` (T-30-04). Дубли по `canonical`
-    схлопываются с сохранением порядка первого попадания — точное совпадение важнее, каким бы
-    конкретным псевдонимом оно ни пришло.
+    """Ранжирование ТРЕМЯ ярусами (30-RESEARCH.md Pattern 2 — читаемый стиль `database/db.py`,
+    не одна `CASE WHEN`-эквилибристика): точное совпадение `alias_norm` → префикс → подстрока.
+    Каждый следующий ярус добирает результат только до `limit`; скан яруса ограничен
+    `_TIER_SCAN_CAP` (T-30-04). Дубли по `canonical` схлопываются с сохранением порядка первого
+    попадания — точное совпадение важнее, каким бы конкретным псевдонимом оно ни пришло.
 
     Внутри яруса (приёмка 11.10: «политех» не находил Московский политех — по алфавиту его
     вытесняли редкие вузы): закреплённые менеджером → частые ответы сезона (та же свёртка
@@ -83,47 +110,47 @@ async def search_lookup(kind: str, q: str, limit: int = 10) -> list[dict]:
 
     seen: set[str] = set()
     result: list[dict] = []
-
-    queries = [
-        (
-            "SELECT canonical, alias, alias_norm FROM lookup_entries "
-            "WHERE kind = ? AND alias_norm = ? LIMIT ?",
-            (kind, norm, _TIER_SCAN_CAP),
-        ),
-        (
-            "SELECT canonical, alias, alias_norm FROM lookup_entries "
-            "WHERE kind = ? AND alias_norm LIKE ? ESCAPE '\\' LIMIT ?",
-            (kind, escaped + "%", _TIER_SCAN_CAP),
-        ),
-        (
-            "SELECT canonical, alias, alias_norm FROM lookup_entries "
-            "WHERE kind = ? AND alias_norm LIKE ? ESCAPE '\\' LIMIT ?",
-            (kind, "%" + escaped + "%", _TIER_SCAN_CAP),
-        ),
+    tiers = [
+        ("alias_norm = ?", norm),
+        ("alias_norm LIKE ? ESCAPE '\\'", escaped + "%"),
+        ("alias_norm LIKE ? ESCAPE '\\'", "%" + escaped + "%"),
     ]
 
     async with _connect() as conn:
-        rank = None
-        for sql, params in queries:
+        pinned, freq = await _rank_inputs(conn, kind)
+        boost = list(pinned) + [c for c in sorted(freq, key=freq.get, reverse=True) if c not in pinned]
+        boost = boost[:_BOOST_CAP]
+        canon_norm: dict[str, str] = {}
+
+        def rank(row):
+            canonical, _alias, alias_norm = row
+            if canonical not in canon_norm:
+                canon_norm[canonical] = normalize_alias(canonical)
+            return (
+                canonical not in pinned,
+                -freq.get(canonical, 0),
+                alias_norm != canon_norm[canonical],
+                len(alias_norm),
+                canonical,
+            )
+
+        for where, pattern in tiers:
             if len(result) >= limit:
                 break
-            cursor = await conn.execute(sql, params)
-            rows = await cursor.fetchall()
-            if not rows:
-                continue
-            if rank is None:
-                pinned = await _pinned_canonicals(conn, kind)
-                freq = await _season_counts(conn, kind)
-
-                def rank(row, pinned=pinned, freq=freq):
-                    canonical, _alias, alias_norm = row
-                    return (
-                        canonical not in pinned,
-                        -freq.get(canonical, 0),
-                        alias_norm != normalize_alias(canonical),
-                        len(alias_norm),
-                        canonical,
-                    )
+            # Условие яруса — из закрытого списка выше, значения — только параметрами (T-30-03).
+            cursor = await conn.execute(
+                f"SELECT canonical, alias, alias_norm FROM lookup_entries WHERE kind = ? AND {where} LIMIT ?",
+                (kind, pattern, _TIER_SCAN_CAP),
+            )
+            rows = set(await cursor.fetchall())
+            if boost:
+                marks = ",".join("?" * len(boost))
+                cursor = await conn.execute(
+                    "SELECT canonical, alias, alias_norm FROM lookup_entries "
+                    f"WHERE kind = ? AND {where} AND canonical IN ({marks}) LIMIT ?",
+                    (kind, pattern, *boost, _TIER_SCAN_CAP),
+                )
+                rows.update(await cursor.fetchall())
             for canonical, alias, _alias_norm in sorted(rows, key=rank):
                 if canonical in seen:
                     continue
@@ -322,6 +349,7 @@ async def pin_chip(kind: str, canonical: str, on: bool) -> None:
             (1 if on else 0, kind, canonical),
         )
         await conn.commit()
+    invalidate_rank_cache()  # Mini App — отдельный процесс, там подтянется за TTL
 
 
 async def merge_queue_items(kind: str, status: str = "new") -> list[dict]:
@@ -375,6 +403,7 @@ async def merge_apply(item_id: int, canonical: str, admin_id: int) -> bool:
             (admin_id, now, item_id),
         )
         await conn.commit()
+    invalidate_rank_cache()
     return True
 
 
