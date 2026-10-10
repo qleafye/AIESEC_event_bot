@@ -677,6 +677,15 @@ _ENGINE_DYNAMIC_EN = {
     "Перенести заявку в другой город: {target_city}? Анкету заново заполнять не нужно.":
         "Move your application to another city: {target_city}? No need to fill out the form again.",
     "Да, перенести": "Yes, move it",
+    # 10.10: подписи кнопок фоновых сообщений стали настройками — дефолты целиком, с эмодзи
+    # (сторож покрытия корпуса сверяет дефолт реестра как есть).
+    "🔕 Не присылать сегодня": "🔕 Don't send today",
+    "🔔 Присылать всё": "🔔 Send everything",
+    "🚶 Уже еду": "🚶 On my way",
+    "😔 Не смогу прийти": "😔 Can't make it",
+    "📍 Я на месте": "📍 I'm here",
+    "✅ Перенести заявку: {target_city}": "✅ Move application: {target_city}",
+    "✅ Да, перенести": "✅ Yes, move it",
     "Готово, твоя заявка теперь здесь: {target_city}. Даты и место — в меню.":
         "Done, your application is now here: {target_city}. Dates and venue — in the menu.",
     "Заявку посмотрят ещё раз.": "Your application will be reviewed again.",

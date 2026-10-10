@@ -292,16 +292,29 @@ async def reconcile() -> list[str | None]:
 
 # ── Рассылка предложения ────────────────────────────────────────────────────────────────────
 
-def offer_keyboard():
-    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+OFFER_BUTTON_KEYS = ("regional_noshow_accept_button_text", "regional_noshow_decline_button_text")
 
+
+async def offer_button_labels() -> tuple[str, str]:
+    """Подписи «Перенести»/«Нет, спасибо» из настроек — один раз на рассылку."""
+    from settings_ui_text_fields import ui_text
+
+    return await ui_text(OFFER_BUTTON_KEYS[0]), await ui_text(OFFER_BUTTON_KEYS[1])
+
+
+def offer_keyboard(labels: tuple[str, str] | None = None):
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+    from settings_ui_text_fields import UI_TEXT_SCHEMA
+
+    accept, decline = labels or tuple(UI_TEXT_SCHEMA[key]["default"] for key in OFFER_BUTTON_KEYS)
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Перенести заявку: {target_city}", callback_data="rnm_accept")],
-        [InlineKeyboardButton(text="Нет, спасибо", callback_data="rnm_decline")],
+        [InlineKeyboardButton(text=accept, callback_data="rnm_accept")],
+        [InlineKeyboardButton(text=decline, callback_data="rnm_decline")],
     ])
 
 
-def _localized_offer_keyboard(lang: str, tr_map: dict, target_label: str):
+def _localized_offer_keyboard(lang: str, tr_map: dict, target_label: str,
+                              labels: tuple[str, str] | None = None):
     """Перевод клавиатуры СНАЧАЛА, подстановка `{target_city}` в подпись кнопки ПОСЛЕ
     (RULES.md) — `offer_keyboard()` независимый шаблон на каждый вызов, ни он, ни результат
     `reg_i18n.tr_kb` (при `lang == "ru"` это ТОТ ЖЕ объект) не мутируются, чтобы общий для всех
@@ -309,7 +322,7 @@ def _localized_offer_keyboard(lang: str, tr_map: dict, target_label: str):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     from handlers import reg_i18n
 
-    kb = reg_i18n.tr_kb(offer_keyboard(), lang, tr_map)
+    kb = reg_i18n.tr_kb(offer_keyboard(labels), lang, tr_map)
     rows = [
         [
             InlineKeyboardButton(
@@ -347,6 +360,7 @@ async def send_offers(city: str | None) -> dict:
     from services.text_fill import event_name, fill_event
 
     event_title = await event_name()
+    button_labels = await offer_button_labels()
     now = msk_now()
     muted = await get_muted_today_ids(now.strftime("%Y-%m-%d"))
 
@@ -380,7 +394,7 @@ async def send_offers(city: str | None) -> dict:
             .replace("{dates}", dates_label)
         )
         text = fill_event(text, event_title, lang, escape=True)
-        tr_kb = _localized_offer_keyboard(lang, tr_map, target_label)
+        tr_kb = _localized_offer_keyboard(lang, tr_map, target_label, button_labels)
         try:
             delivered_now = await quiet_hours.send_or_queue_text(
                 now, tid, text,

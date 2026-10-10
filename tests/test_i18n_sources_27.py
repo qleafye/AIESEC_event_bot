@@ -153,7 +153,9 @@ def test_corpus_empty_db_does_not_crash_and_is_in_expected_range(tmp_path):
     # 718 -> 722, потолок 760.
     # 09.10: 44 делегатских текста записи на сессии (session_enroll_*) и теста по компетенциям
     # (quiz_*) — 801 строка, потолок 840.
-    assert 150 <= len(result) <= 840, len(result)
+    # 10.10: подписи кнопок фоновых сообщений стали настройками (дефолты с эмодзи) — 843,
+    # потолок 860.
+    assert 150 <= len(result) <= 860, len(result)
 
     texts = [text for _origin, text in result]
     assert len(texts) == len(set(texts)), "дедупликация по strip()-нутому тексту не сработала"
