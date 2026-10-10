@@ -53,11 +53,25 @@ _revoking: set[int] = set()
 
 
 def claim_revoke(broadcast_id: int) -> bool:
-    """True — отзыв захвачен этим вызовом; False — по этой рассылке отзыв уже идёт."""
+    """True — отзыв захвачен этим вызовом; False — по этой рассылке отзыв уже идёт.
+
+    Захват сбрасывает стоп-флаг: ⛔, нажатый когда-то по уже закончившейся рассылке, иначе
+    погасил бы новое удаление на первом же шаге."""
     if broadcast_id in _revoking:
         return False
     _revoking.add(broadcast_id)
+    clear_stop(broadcast_id)
     return True
+
+
+def release_revoke(broadcast_id: int) -> None:
+    """Отпустить захват, если прогон так и не стартовал (ошибка между claim и запуском)."""
+    _revoking.discard(broadcast_id)
+
+
+# Уже удалённое сообщение (повтор после рестарта посреди удаления, делегат удалил сам) — цель
+# достигнута, в итоге не «не удалось».
+_ALREADY_GONE = "message to delete not found"
 
 
 def request_stop(broadcast_id: int) -> None:
@@ -222,11 +236,17 @@ async def run_broadcast(
         await on_finish(status, delivered, blocked)
 
 
-async def run_revoke(bot, broadcast_id, on_progress=None, on_finish=None):
+async def run_revoke(bot, broadcast_id, on_progress=None, on_finish=None, *, claimed=False):
     """Удаляет у получателей всё, что записано в broadcast_deliveries для этой рассылки.
     Любая ошибка удаления — «не удалось», цикл не падает. Тот же стоп-флаг/троттлинг/сон, что
-    у run_broadcast."""
-    _revoking.add(broadcast_id)  # и при прямом вызове, мимо claim_revoke
+    у run_broadcast.
+
+    `claimed=True` — захват уже взял вызывающий (`claim_revoke` в хендлере до `_spawn`, чтобы
+    второй тап не прошёл, пока задача не стартовала). Иначе захват берётся здесь, и если отзыв
+    по этой рассылке уже идёт — второй прогон не начинается."""
+    if not claimed and not claim_revoke(broadcast_id):
+        logger.warning("broadcast %s: revoke already running, second run skipped", broadcast_id)
+        return
     try:
         await _run_revoke(bot, broadcast_id, on_progress, on_finish)
     finally:
@@ -255,10 +275,10 @@ async def _run_revoke(bot, broadcast_id, on_progress, on_finish):
             try:
                 await bot.delete_message(chat_id, message_id)
                 ok = True
-            except Exception:
-                ok = False
-        except Exception:
-            ok = False
+            except Exception as e2:
+                ok = _ALREADY_GONE in str(e2).lower()
+        except Exception as e:
+            ok = _ALREADY_GONE in str(e).lower()
 
         if ok:
             deleted += 1
