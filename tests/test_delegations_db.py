@@ -130,7 +130,7 @@ def test_purge_tables_entry():
 
 
 def test_entry_point_literal_matches_checkin():
-    from services.checkin import ENTRY_POINT
+    from services.forum.checkin import ENTRY_POINT
     assert ddb.ENTRY_POINT == ENTRY_POINT
 
 

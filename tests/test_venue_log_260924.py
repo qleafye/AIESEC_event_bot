@@ -1,5 +1,5 @@
 """Идеи №31/№32 бэклога чек-ина: журнал площадки (`venue_log`) и снятие ошибочной отметки —
-слой БД + сервис (`database/db.py`, `services/venue_log.py`, врезка в
+слой БД + сервис (`database/db.py`, `services/forum/venue_log.py`, врезка в
 `services/checkin.record_arrival`).
 
 БД — шаблонная копия `tests/_dbtpl.py::fast_init_db`, `asyncio.run()` (pytest-asyncio в этом
@@ -11,8 +11,8 @@ from datetime import datetime, timedelta
 
 from config import config
 from database import db
-from services import venue_log
-from services.checkin import ENTRY_POINT, record_arrival
+from services.forum import venue_log
+from services.forum.checkin import ENTRY_POINT, record_arrival
 from tests._dbtpl import fast_init_db
 
 UID = 260925101

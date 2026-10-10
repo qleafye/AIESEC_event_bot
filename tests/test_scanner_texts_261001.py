@@ -6,7 +6,7 @@ from tests._paths import REPO_ROOT
 
 from pathlib import Path
 
-from services.checkin import DENIAL_REASON_TEXT, foreign_qr_code
+from services.forum.checkin import DENIAL_REASON_TEXT, foreign_qr_code
 from tests.test_miniapp_checkin_260924 import (
     BASE, _grant_checkin_to_game_manager, _insert_user, _qr, _run, client_with,
 )
@@ -45,7 +45,7 @@ def test_scan_other_event_tag_still_other_event(tmp_path):
 
 
 def test_wrong_city_texts_have_no_broken_case():
-    for rel in ("miniapp/routers/checkin.py", "services/checkin.py", "services/checkin_forum_day.py", "domain/settings/schema.py"):
+    for rel in ("miniapp/routers/checkin.py", "services/forum/checkin.py", "services/forum/checkin_forum_day.py", "domain/settings/schema.py"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert "Делегат с форума в {" not in text, rel
 

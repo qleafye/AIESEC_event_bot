@@ -19,7 +19,7 @@ from domain.cities import cities_module_on, city_label, per_city_key
 from database.db import get_staff_city
 from handlers.admin import router
 from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
-from services.onsite_reg import onsite_enabled, walkin_link, walkin_qr_png
+from services.forum.onsite_reg import onsite_enabled, walkin_link, walkin_qr_png
 from services.settings.audit import set_setting_by_admin
 
 logger = logging.getLogger(__name__)

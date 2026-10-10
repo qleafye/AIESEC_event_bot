@@ -42,7 +42,7 @@ def msk_from_timestamp(ts: float) -> datetime:
     """Unix-эпоха (секунды) -> naive московский datetime, НЕЗАВИСИМО от часового пояса процесса.
 
     Голый `datetime.fromtimestamp(ts)` берёт зону процесса: в UTC-контейнере бота метка
-    выходит на 3 часа раньше московской (выгрузка офлайн-сканера, `services/checkin.py`).
+    выходит на 3 часа раньше московской (выгрузка офлайн-сканера, `services/forum/checkin.py`).
     """
     return datetime.fromtimestamp(ts, tz=MOSCOW_TZ).replace(tzinfo=None)
 

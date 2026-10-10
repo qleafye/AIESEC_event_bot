@@ -527,7 +527,7 @@ def test_auto_approval_on_finalize_gives_tier(tmp_path, monkeypatch):
 
 def test_onsite_approval_path_gives_tier(tmp_path):
     """Вход на площадке: approve_onsite + record_decision(effects_already_sent=True) — та же
-    пара вызовов, что services.onsite_reg.approve_at_door."""
+    пара вызовов, что services.forum.onsite_reg.approve_at_door."""
     _ready(tmp_path)
     _on()
     _make_ambassador(100)

@@ -4,7 +4,7 @@
 Что журналится (таблица `venue_log`, `database/db.py`):
 - `checkin` — живая отметка волонтёра (сканер Mini App, поиск по фамилии) со статусом
   `new`/`moved`. Повторный скан (`duplicate`) не пишется — он ничего не меняет.
-  Пишет `services.checkin.record_arrival`, одна строка на скан; id строки уходит во фронт
+  Пишет `services.forum.checkin.record_arrival`, одна строка на скан; id строки уходит во фронт
   сканера как ключ кнопки «↩️ Отменить».
 - `csv_upload` — загрузка выгрузки офлайн-сканера, ОДНОЙ строкой со счётчиками: отметки из
   файла построчно и так лежат в `checkins` (`by_staff_id`, `source="csv"`), сотни строк
@@ -68,7 +68,7 @@ ACTION_LABELS = {
 }
 
 # Код причины отказа -> короткая подпись для строки журнала. Коды — те же, что отдают
-# `services.checkin.checkin_denial`/`resolve_scanned_user`, `record_arrival` и городские
+# `services.forum.checkin.checkin_denial`/`resolve_scanned_user`, `record_arrival` и городские
 # проверки сканера (`miniapp/routers/checkin.py`). Неизвестный код показывается как есть.
 DENIAL_LABELS = {
     "no_user": "QR не найден",
@@ -102,7 +102,7 @@ SOURCE_LABELS = {
 UNDO_WINDOW_SECONDS = 10
 UNDO_ACCEPT_SECONDS = 120
 
-ENTRY_POINT = "entry"  # тот же литерал, что services.checkin.ENTRY_POINT (импорт дал бы цикл)
+ENTRY_POINT = "entry"  # тот же литерал, что services.forum.checkin.ENTRY_POINT (импорт дал бы цикл)
 ENTRY_LABEL = "🚪 Вход"
 
 
@@ -158,14 +158,14 @@ async def point_label(point: str | None) -> str:
         except ValueError:
             session = None
         if session:
-            from services.program import session_point_label  # ленивый: program тянет timeutil и т.п.
+            from services.forum.program import session_point_label  # ленивый: program тянет timeutil и т.п.
             return f"🎤 {session_point_label(session)}"
         return "🎤 сессия (удалена из программы)"
     return point
 
 
 def _city_of(user: dict | None) -> str | None:
-    import domain.cities as _cities  # ленивый импорт — тот же приём, что services.checkin
+    import domain.cities as _cities  # ленивый импорт — тот же приём, что services.forum.checkin
 
     return _cities.normalize_city((user or {}).get("event_city"))
 

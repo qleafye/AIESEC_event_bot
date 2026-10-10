@@ -174,7 +174,7 @@ def test_go_without_city_for_forum_state_changes_nothing():
 
 def test_superadmin_seeds_approved_spb_keeps_admin_and_gets_qr_token():
     from handlers.access.admin_caps import ALL_CAPABILITIES, resolve_capabilities
-    from services.checkin import checkin_denial
+    from services.forum.checkin import checkin_denial
 
     uat = _h()
     _cb(uat.uat_execute, "uat_go:fappr:none:spb", user_id=SUPERADMIN_ID)
@@ -190,7 +190,7 @@ def test_superadmin_seeds_approved_spb_keeps_admin_and_gets_qr_token():
 
 
 def test_arrived_tyumen_has_entry_mark_today():
-    from services.checkin import ENTRY_POINT
+    from services.forum.checkin import ENTRY_POINT
 
     uat = _h()
     callback = _cb(uat.uat_execute, "uat_go:farr:none:tyumen")

@@ -11,7 +11,7 @@ import io
 from dataclasses import dataclass, field
 
 from database import quiz_db, session_enroll_db
-from services.checkin import _sniff_dialect, decode_scan_export
+from services.forum.checkin import _sniff_dialect, decode_scan_export
 from services.infra.ru_plural import ru_plural
 
 TEMPLATE_HEADERS = ("вопрос", "вариант", "компетенция", "баллы")

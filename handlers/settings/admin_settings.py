@@ -55,7 +55,7 @@ from domain.settings.ops import (
     tab_check_failed_warning as _tab_check_failed_warning, cross_setting_error,
 )
 from services.game_digest import game_submit_notify_button_text  # Quick 260822: тумблер дайджеста сдач
-from services.program import own_program_photo  # строка «📅 Программа» при городе в шапке
+from services.forum.program import own_program_photo  # строка «📅 Программа» при городе в шапке
 from services import chat_tracking  # Правка 15.09: тумблер учёта чата + строка статуса в «🔧 Система»
 from keyboards.builders import MENU_BUTTONS, all_menu_button_texts, ADMIN_MISC_BUTTON_TEXTS
 from keyboards.menu_dynamic import MENU_LABEL_FIELDS, is_dynamic_menu_text

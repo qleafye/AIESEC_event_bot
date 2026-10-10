@@ -277,7 +277,7 @@ def test_delete_confirm_mentions_enrollments(tmp_path):
 
 def test_copy_day_maps_tracks(tmp_path):
     ready(tmp_path)
-    from services.program import copy_program_day
+    from services.forum.program import copy_program_day
     from tests._enroll38 import DAY
     ids = run(seed_msk_program())
     spb_career = run(edb.create_track("spb", "Карьера"))

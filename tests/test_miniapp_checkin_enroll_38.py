@@ -5,8 +5,8 @@ from datetime import datetime
 
 from domain.cities import per_city_key
 from database import db as bot_db, session_enroll_db
-from services import session_enroll as se
-from services.checkin import current_event_tag
+from services.forum import session_enroll as se
+from services.forum.checkin import current_event_tag
 from tests._enroll38 import CITY, seed_delegates, seed_msk_program
 from tests.test_miniapp_checkin_260924 import (
     BASE, GAME_MANAGER_ID, _freeze_now, _grant_checkin_to_bound_manager,
