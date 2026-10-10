@@ -34,7 +34,7 @@ async def _forum_window_dates(city: str | None) -> tuple[date, date] | None:
     задана или не парсится. Дата окончания = `forum_date + sos_active_days - 1`, тот же расчёт
     длительности, что `services.sos.is_sos_active_for_city` (импорт константы фолбэка оттуда,
     сам ключ реестра — общий `sos_active_days`, отдельного ключа для меню не заводим)."""
-    from services.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
+    from services.applications.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
     # что уже документирован в services/sos.py/services/checkin_broadcast.py.
 
     raw = await forum_date_for(city)

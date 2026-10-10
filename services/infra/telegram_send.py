@@ -3,10 +3,10 @@
 (один повтор после `TelegramRetryAfter`, `sleep(retry_after + 1)`), но без пакетного цикла —
 здесь ровно одна логическая отправка на вызов.
 
-Нужен отдельным модулем, а не дублируется в `services/application_effects.py`/
+Нужен отдельным модулем, а не дублируется в `services/applications/application_effects.py`/
 `handlers/reg/reg_schema.py`, потому что ОБА места — одобрение (send_completion_and_bonus) и отказ
 (apply_decision_effects) — обязаны ретраить одинаково: «📨 Переотправить решения»
-(services/decision_delivery.py) зовёт ТОТ ЖЕ код формирования письма, что и обычное решение
+(services/applications/decision_delivery.py) зовёт ТОТ ЖЕ код формирования письма, что и обычное решение
 (задача координатора, п.4: «не дублируй тексты») — если бы ретрай жил в двух местах, поведение
 неизбежно разъехалось бы при следующей правке одного из них."""
 from __future__ import annotations

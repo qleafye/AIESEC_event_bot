@@ -9,7 +9,7 @@ date-джоб НА ГОРОД (`checkin_qr_evening:{city}`/`checkin_qr_morning:{
 `replace_existing=True`, джоба перечитывает состояние (аудиторию, тексты, тумблер) НА
 СРАБАТЫВАНИИ, а не то, что было верно на постановке.
 
-Дата форума города — `services.reject_rules.forum_date_for` (уже существующий резолвер
+Дата форума города — `services.applications.reject_rules.forum_date_for` (уже существующий резолвер
 per_city `forum_date`, Phase 31/D-30) — второй копии чтения этой настройки не заводим. Нет
 даты форума у города -> джобы не ставятся вовсе (`schedule_city_jobs` снимает обе, если были).
 
@@ -48,7 +48,7 @@ from database.db import (
 from services import scheduler as _sched
 from services.forum.checkin import build_checkin_qr, checkin_denial
 from services.daily_digest import parse_time
-from services.reject_rules import forum_date_for
+from services.applications.reject_rules import forum_date_for
 from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 from domain.settings.schema import get_setting_typed
 
@@ -110,7 +110,7 @@ def morning_job_id(city: str | None) -> str:
 
 
 def _combine(forum_date_ddmmyyyy: str, hhmm: str, *, days_offset: int) -> datetime | None:
-    """«ДД.ММ.ГГГГ» (`services.reject_rules.forum_date_for`) + «ЧЧ:ММ» (`parse_time`, тот же
+    """«ДД.ММ.ГГГГ» (`services.applications.reject_rules.forum_date_for`) + «ЧЧ:ММ» (`parse_time`, тот же
     парсер, что у `daily_digest_time`) -> datetime, сдвинутый на `days_offset` дней (-1 для
     вечерней рассылки накануне, 0 для утреннего повтора в день форума). `None` — дата не
     парсится (защита от кривого значения; в норме `forum_date_for` уже вернула валидную строку

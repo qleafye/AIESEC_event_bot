@@ -17,7 +17,7 @@ admin_volunteer_invite.py`). Единая точка:
   `dashboard/access.py`).
 
 aiogram-free (голая stdlib + `cities`/`services.infra.timeutil`), тот же класс модуля, что
-`services/sos.py`/`services/reject_rules.py`."""
+`services/sos.py`/`services/applications/reject_rules.py`."""
 from __future__ import annotations
 
 from datetime import datetime, timedelta
@@ -60,7 +60,7 @@ async def forum_end_date_iso(city: str | None) -> str | None:
     """«Последний день форума этого города + 1» — ISO. Даты не заданы/не парсятся -> None
     (fail-soft: вызывающий экран прячет кнопку — CLAUDE.md, не предлагать то, что заведомо
     откажет)."""
-    from services.reject_rules import forum_date_for  # ленивый импорт, разрыв цикла (тот же
+    from services.applications.reject_rules import forum_date_for  # ленивый импорт, разрыв цикла (тот же
     # приём, что уже задокументирован в services/sos.py::is_sos_active_for_city).
 
     raw = await forum_date_for(city)

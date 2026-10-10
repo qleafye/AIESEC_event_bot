@@ -29,7 +29,7 @@ from database.db import get_checkin_status, get_referrals, get_setting, get_user
 from domain.payment import parse_options
 import domain.regform.engine as reg_engine
 from services.amb import amb_progress, amb_screen
-from services import applications
+from services.applications import applications
 from services.i18n import i18n
 from services import reg_edit_policy
 from domain.settings.schema import get_setting_typed

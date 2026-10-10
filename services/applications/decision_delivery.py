@@ -1,5 +1,5 @@
 """Координатор 25.09 — учёт доставки решения по заявке: разбор `users.decision_delivery_*`
-(колонки завёл `database.db`, пишет `services.application_effects`) на категории для «🔍 Сверить
+(колонки завёл `database.db`, пишет `services.applications.application_effects`) на категории для «🔍 Сверить
 с БД» и «📨 Переотправить решения» (оба — `services/sheets/sheet_reconcile.py`/
 `handlers/sheets/admin_sheet_reconcile.py`, Phase 33).
 
@@ -12,7 +12,7 @@
 раскладки по вкладкам) — модуль остаётся БЕЗ импорта aiogram на верхнем уровне, тот же разрез,
 что у `services/sheets/sheet_reconcile.py` (его собственный докстринг: «aiogram-free, вызывающий
 хендлер строит текст/клавиатуры сам»). `resend_undelivered_decisions` физически требует `bot` —
-её собственный импорт `services.application_effects`/`services.applications` ЛЕНИВЫЙ (внутри
+её собственный импорт `services.applications.application_effects`/`services.applications.applications` ЛЕНИВЫЙ (внутри
 функции), чтобы модуль, импортированный ТОЛЬКО ради `summarize_deliveries` (как это делает
 `sheet_reconcile.py`), не тянул aiogram транзитивно."""
 from __future__ import annotations
@@ -23,7 +23,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Три человеческие причины сбоя, которые классифицирует
-# `services.application_effects._classify_decision_delivery_error` — константы здесь, единая
+# `services.applications.application_effects._classify_decision_delivery_error` — константы здесь, единая
 # точка правды: application_effects.py импортирует их ОТСЮДА (а не задаёт своими литералами),
 # чтобы отчёт/переотправка и сама запись учёта не разъехались по написанию строки.
 ERROR_BLOCKED = "бот заблокирован делегатом"
@@ -79,7 +79,7 @@ def summarize_deliveries(users: list[dict]) -> dict:
     - `unknown` — решение уже принято (`status` in approved/rejected), но
       `decision_delivery_status` пуст: либо решение ДО миграции (признака не было), либо
       какой-то путь решения ещё не проведён через `apply_decision_effects`/`mass_approve_effects`
-      (см. докстринг применения в `services/application_effects.py`) — честно «неизвестно»,
+      (см. докстринг применения в `services/applications/application_effects.py`) — честно «неизвестно»,
       НЕ «не доставлено»."""
     decided = [u for u in users if u.get("status") in DECIDED_STATUSES]
     failed = [_item(u) for u in decided if u.get("decision_delivery_status") == "failed"]
@@ -101,14 +101,14 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
     отдельной проверки. Заблокировавшим бота НЕ шлём (`blocked` — отдельный список «написать
     вручную», возвращается вызывающему для рендера).
 
-    Отправка — ТЕМ ЖЕ кодом, что при модерации: `services.application_effects.
+    Отправка — ТЕМ ЖЕ кодом, что при модерации: `services.applications.application_effects.
     apply_decision_effects(bot, tid, decision, reason, sheet=False, resend=True)` — текст решения
     строится там же, где всегда (не дублируем), лист сверка правит отдельной кнопкой «Выправить
     статусы», переотправка её не трогает. `resend=True` — координатор 25.09: для `approved` это
     шлёт ТОЛЬКО текст решения (`handlers.reg.reg_schema.resend_approve_text`), шаг оплаты НЕ
     открывается никогда (при `payment_enabled=on` обычный `approve_user` заново нарисовал бы
     пикер тарифов уже одобренному делегату и сбросил его FSM) и бонус-файл повторно не шлётся.
-    `reason` для отказа — `services.applications.last_rejection_reason` (единая точка правды
+    `reason` для отказа — `services.applications.applications.last_rejection_reason` (единая точка правды
     причины ПОСЛЕДНЕГО отказа, та же, что читает делегатский экран статуса/карточка менеджера).
     429 — уже обработан ВНУТРИ `apply_decision_effects` (один ретрай,
     `services.infra.telegram_send.send_with_retry`); здесь — только пауза между итерациями (антифлуд,
@@ -122,8 +122,8 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
         return {"ok": False, "error": "уже выполняется — подождите завершения предыдущего запуска"}
     try:
         from database.db import get_user
-        from services.application_effects import apply_decision_effects
-        from services.applications import last_rejection_reason
+        from services.applications.application_effects import apply_decision_effects
+        from services.applications.applications import last_rejection_reason
         from services.sheets.sheet_reconcile import _current_season_users  # ленивый импорт против цикла
 
         users = await _current_season_users(city_scope=city_scope)
@@ -187,14 +187,14 @@ _PREVIEW_LEN = 80
 async def preview_decision_text(user: dict) -> str:
     """Начало текста, который получит делегат (для экрана подтверждения). Те же функции, что
     собирают реальное письмо: одобрение — `handlers.reg.reg_schema._approve_text_for` (трек/город),
-    отказ — `services.applications.reject_message_text` с последней причиной. Теги убираются,
+    отказ — `services.applications.applications.reject_message_text` с последней причиной. Теги убираются,
     чтобы обрезка не оставила незакрытый тег."""
     import html as _html
     import re
 
     tid = user["telegram_id"]
     if user.get("status") == "rejected":
-        from services.applications import last_rejection_reason, reject_message_text
+        from services.applications.applications import last_rejection_reason, reject_message_text
         from services.i18n.i18n import context as _i18n_context
         lang, tr_map = await _i18n_context(tid)
         raw = await reject_message_text(await last_rejection_reason(tid), lang, tr_map)
@@ -223,8 +223,8 @@ async def resend_one_decision(bot, telegram_id: int) -> dict:
         return {"ok": False, "error": "уже отправляется — подождите несколько секунд"}
     try:
         from database.db import get_user
-        from services.application_effects import apply_decision_effects
-        from services.applications import last_rejection_reason
+        from services.applications.application_effects import apply_decision_effects
+        from services.applications.applications import last_rejection_reason
 
         user = await get_user(telegram_id)
         decision = (user or {}).get("status")

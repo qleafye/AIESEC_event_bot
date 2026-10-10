@@ -100,7 +100,7 @@ def test_reconcile_never_raises(tmp_path, monkeypatch):
 
 
 def test_revert_to_pending_hook_marks_revoked(tmp_path):
-    from services import revert_pending
+    from services.applications import revert_pending
     _credited_setup(tmp_path)
     report = _run(revert_pending.revert_to_pending(2, by_admin=1, notify=False))
     assert report["ok"]

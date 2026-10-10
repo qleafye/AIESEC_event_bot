@@ -12,7 +12,7 @@ from config import config
 from database import db
 import services.checkin_broadcast as cb
 import services.scheduler as sched
-from services.reject_rules import forum_date_for
+from services.applications.reject_rules import forum_date_for
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import FakeCallback, _fresh_state
 

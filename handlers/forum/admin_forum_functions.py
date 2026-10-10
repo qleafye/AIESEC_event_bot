@@ -60,7 +60,7 @@ from services import forum_noshow_poll as fnsp
 from services import regional_noshow_move as rgnm
 from services.forum_day_report import schedule_city_job as schedule_day_report_job
 from services.forum_noshow_poll import schedule_city_job as schedule_noshow_poll_job
-from services.reject_rules import forum_date_for
+from services.applications.reject_rules import forum_date_for
 from services.sos import is_sos_active_for_city
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed

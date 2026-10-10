@@ -10,7 +10,7 @@
 Конструктор условий и счётчик dry-run — ОТДЕЛЬНЫЙ шов (потолок размера модуля, не архитектурная
 граница): кнопки карточки ведут в `handlers/applications/admin_reject_cond.py` (импорт хвостом, конец файла).
 
-Запись правила — ТОЛЬКО через `services.reject_rules.save_rule`/`delete_rule` (план 31-04),
+Запись правила — ТОЛЬКО через `services.applications.reject_rules.save_rule`/`delete_rule` (план 31-04),
 второй двери в `reject_rules` здесь нет. Право по городу (`can_edit_city`, D-16) перепроверяется
 в КАЖДОМ мутирующем хендлере ПЕРЕД действием — клавиатуры в чате не истекают (T-31-08-01, тот же
 приём, что `handlers/forum/admin_faq.py::_card_out_of_scope`). Копия правила (D-12) ВСЕГДА выключена;
@@ -30,7 +30,7 @@ from handlers.settings.admin_core import _admin_city_view
 from handlers.states import RejectRuleEdit
 from keyboards.builders import get_cancel_kb
 from domain.regform.engine import label_for
-from services.reject_rules import (
+from services.applications.reject_rules import (
     RULE_PRESETS,
     can_edit_city,
     delete_rule,
@@ -43,7 +43,7 @@ from domain.settings.schema import get_setting_typed
 
 RULES_PAGE = 8
 
-# Человеческие подписи операторов (D-01/D-09) — своя копия таблицы `services.reject_rules.
+# Человеческие подписи операторов (D-01/D-09) — своя копия таблицы `services.applications.reject_rules.
 # rule_summary` (не импорт приватного имени соседнего): карточка печатает условия bullet-списком.
 _OPERATOR_LABELS = {
     "in": "один из", "not_in": "ни один из",
@@ -56,7 +56,7 @@ _OPERATOR_LABELS = {
 _NO_VALUE_OPERATORS = ("filled", "empty", "has_file", "no_file")
 
 # D-05: три чекбокса «Полная / Краткая / Вечеринка» — «Вечеринка» покрывает ОБА внутренних кода
-# сразу (`services.applications.TRACK_FILTERS`); коды менеджеру не показываются нигде (T-31-08-03).
+# сразу (`services.applications.applications.TRACK_FILTERS`); коды менеджеру не показываются нигде (T-31-08-03).
 _TRACK_UI = (("full", "Полная"), ("short", "Краткая"), ("party", "Вечеринка"))
 _TRACK_CODES = {
     "full": ("full",),

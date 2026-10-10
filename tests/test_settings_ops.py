@@ -301,7 +301,7 @@ def test_reg_preset_returns_every_written_key_with_author(tmp_path, caplog):
 
 def test_batch_hooks_run_per_key_but_reject_rules_once(monkeypatch):
     import services.settings.audit as settings_audit
-    from services import reject_rules_notify
+    from services.applications import reject_rules_notify
 
     seen, per_key, batch = [], [], []
 

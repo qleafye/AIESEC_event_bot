@@ -21,7 +21,7 @@ DEFAULT_DAYS = 2  # тот же дефолт, что у `sos_active_days` в р�
 async def forum_window(city: str | None) -> tuple[date, date] | None:
     """`[первый, последний]` день форума города по его СВОЕЙ дате; `None` — даты нет."""
     from domain.cities import get_setting_typed_for_city
-    from services.reject_rules import forum_date_for
+    from services.applications.reject_rules import forum_date_for
 
     raw = await forum_date_for(city)
     if not raw:

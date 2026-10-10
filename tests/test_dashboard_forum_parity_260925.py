@@ -1,5 +1,5 @@
 """Задача координатора 25.09 (дашборд `/forum`): часть агрегатов дашборд считает СВОИМИ SQL
-в `dashboard/queries.py`, зеркалом функций бота (`database/db.py`/`services/decision_delivery.py`).
+в `dashboard/queries.py`, зеркалом функций бота (`database/db.py`/`services/applications/decision_delivery.py`).
 Этот файл — ПАРИТЕТ-тесты: одна фикстурная БД с разнообразными данными (несколько городов,
 прошлый И текущий сезон, одобренные/неодобренные, пустые ответы) → функция бота и запрос
 дашборда дают ОДИНАКОВЫЕ числа.
@@ -9,7 +9,7 @@
 - `queries.regional_move_block` ↔ `database.db.regional_noshow_move_summary`;
 - `queries.stats_card_block` ↔ `database.db.forum_stats_card_summary`;
 - `queries.sos_block` (`by_day`) ↔ `database.db.sos_day_stats` (по дням);
-- `queries.decision_delivery_block` ↔ `services.decision_delivery.summarize_deliveries` над
+- `queries.decision_delivery_block` ↔ `services.applications.decision_delivery.summarize_deliveries` над
   тем же списком пользователей, что читает `services.sheets.sheet_reconcile._current_season_users`.
 
 Фикстура — прямые INSERT через `database.db._connect()` (aiosqlite), дашборд читает через
@@ -23,7 +23,7 @@ import asyncio
 import sqlite3
 
 import domain.cities as cities
-import services.decision_delivery as decision_delivery_service
+import services.applications.decision_delivery as decision_delivery_service
 from config import config
 from database import db
 from database.db import _connect
@@ -314,7 +314,7 @@ def test_sos_day_parity_empty_db(tmp_path):
         conn.close()
 
 
-# ── доставка решений: decision_delivery_block ↔ services.decision_delivery.summarize_deliveries
+# ── доставка решений: decision_delivery_block ↔ services.applications.decision_delivery.summarize_deliveries
 
 def test_decision_delivery_parity_matches_bot_with_and_without_city(tmp_path):
     _ready(tmp_path)

@@ -1,7 +1,7 @@
 """Раздел «🚫 Правила автоотказа» -> «🕘 Применить к уже поданным»: ретро-применение действующих
 правил к заявкам, поданным раньше, чем правило появилось. Период выбирается кнопками, дальше
 предпросмотр (сколько отклонится с письмом, сколько получит пометку, сколько одобренных не тронем)
-и отдельная кнопка «применить». Логика — `services/reject_retro.py`.
+и отдельная кнопка «применить». Логика — `services/applications/reject_retro.py`.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; импортируется хвостом
 `handlers/settings/admin_sections.py`. Право — как у экрана правил (`settings`); применять может только
@@ -18,8 +18,8 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.admin import router
-from services import reject_retro
-from services.reject_rules import can_edit_city
+from services.applications import reject_retro
+from services.applications.reject_rules import can_edit_city
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

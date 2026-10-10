@@ -149,7 +149,7 @@ async def _auto_reject_patch(telegram_id: int, answers: dict) -> dict:
     `auto_rule_note`, и `rejected_at` — только когда сработал отказ) плюс хвостовые ключи для
     вызывающего (`status_override`, `reject_rule_ids`, `reject_texts`), которые в narrow UPDATE
     не идут."""
-    from services.reject_rules import active_rules, forum_date_for
+    from services.applications.reject_rules import active_rules, forum_date_for
 
     try:
         rules = await active_rules(
@@ -374,7 +374,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 # — не только когда именно оно разрешило эту правку (обычная правка pending-
                 # делегата без исключения гасит несуществующее активное = безвредный no-op).
                 try:
-                    from services import delegate_overrides
+                    from services.applications import delegate_overrides
                     await delegate_overrides.consume_override(telegram_id, delegate_overrides.KIND_EDIT)
                 except Exception as e:
                     logger.error(f"сбой погашения исключения edit для {telegram_id}: {e}")
@@ -398,7 +398,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     # только смотрит, см. его докстринг). У делегата без исключения (общая
                     # политика и так разрешала) — безвредный no-op.
                     try:
-                        from services import delegate_overrides
+                        from services.applications import delegate_overrides
                         await delegate_overrides.consume_override(telegram_id, delegate_overrides.KIND_RESUBMIT)
                     except Exception as e:
                         logger.error(f"сбой погашения исключения resubmit для {telegram_id}: {e}")
@@ -473,7 +473,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 status = "rejected"
                 auto_rejected = True
                 await set_user_status(telegram_id, status)
-                from services.reject_journal import record_auto_reject
+                from services.applications.reject_journal import record_auto_reject
                 await record_auto_reject(
                     telegram_id, auto_patch["reject_rule_ids"], auto_patch["reject_texts"],
                 )
@@ -551,7 +551,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 # `_from_confirm` — это ТЕКУЩИЕ ответы этой же анкеты, а не прошлый сезон.
                 # Без этой проверки делегат, просто поправивший поле на сводке, получал
                 # «🔁 Повторный: был(а) на прошлом событии» в карточке модерации
-                # (handlers/applications/admin_moderation.py, services/applications.py) — настоящий
+                # (handlers/applications/admin_moderation.py, services/applications/applications.py) — настоящий
                 # возвращенец (rereg_start / ?start=edit / admin_rereg) маркера не несёт,
                 # для него ветка не меняется.
                 if prior and not prior.get("_from_confirm"):
@@ -659,7 +659,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     status = "rejected"
                     auto_rejected = True
                     await set_user_status(telegram_id, status)
-                    from services.reject_journal import record_auto_reject
+                    from services.applications.reject_journal import record_auto_reject
                     await record_auto_reject(
                         telegram_id, auto_patch["reject_rule_ids"], auto_patch["reject_texts"],
                     )
@@ -816,7 +816,7 @@ def _edit_admin_text(full: dict, resubmitted: bool) -> str:
 def _auto_reject_admin_text(full: dict, reject_texts: list) -> str:
     """D-17: короткое уведомление менеджерам об автоотказе — «🤖 Автоотказ: ФИО (ник) —
     правило «...»». Правило-подпись — первое предложение первого сработавшего текста, обрезка
-    до 60 символов, тот же приём, что `services.reject_journal._rule_label` (журнал не хранит
+    до 60 символов, тот же приём, что `services.applications.reject_journal._rule_label` (журнал не хранит
     отдельного поля «имя правила» в снимке — своя копия здесь, тот модуль aiogram-free и не
     импортирует приватные имена соседа)."""
     safe_name = html.escape(str(full.get("full_name") or "-"))
@@ -1006,7 +1006,7 @@ async def post_finalize(
     auto_reject_texts: list = []
     if full.get("auto_reject_rule_ids"):
         from database.db import get_last_application_decision, get_live_auto_reject_log_entry
-        from services.reject_journal import AUTO_DECIDED_BY
+        from services.applications.reject_journal import AUTO_DECIDED_BY
 
         auto_rejected_at = full.get("auto_rejected_at")
         last_decision = await get_last_application_decision(telegram_id)
@@ -1034,9 +1034,9 @@ async def post_finalize(
     if is_new_auto_reject:
         try:
             from services.i18n.i18n import context as _i18n_context, tr as _i18n_tr
-            from services.application_effects import apply_decision_effects
-            from services.applications import record_decision
-            from services.reject_journal import AUTO_DECIDED_BY
+            from services.applications.application_effects import apply_decision_effects
+            from services.applications.applications import record_decision
+            from services.applications.reject_journal import AUTO_DECIDED_BY
 
             lang, tr_map = await _i18n_context(telegram_id)
             # D-25/Pitfall 5: перевод ЗДЕСЬ, а не в reject_message_text — та функция уже имеет
@@ -1106,13 +1106,13 @@ async def post_finalize(
     if mode == "new" and status == "approved":
         # Quick 260904-3vm (E2): статус решён ЗДЕСЬ, сразу на подаче — значит модерации не
         # было (иначе status был бы "pending", а approve_user на одобрение позвал бы отдельный
-        # путь менеджера — services/applications.py/admin_moderation.py). Делегат читает
+        # путь менеджера — services/applications/applications.py/admin_moderation.py). Делегат читает
         # «заявка принята», а не «прошёл отбор» — отбора не было. Покрывает и чат, и Mini App
         # (submit из приложения приходит сюда же через outbox reg_finalized).
         send_err = await approve_user(bot, telegram_id, auto_approved=True)
         # Учёт доставки и для автоодобрения на подаче — мимо apply_decision_effects: именно
         # этот путь дал 38 одобренных без письма (инцидент 06.09), «Сверить с БД» должна их видеть.
-        from services.application_effects import _record_delivery_fail_soft
+        from services.applications.application_effects import _record_delivery_fail_soft
         await _record_delivery_fail_soft(
             telegram_id, "approved", "failed" if send_err else "delivered", send_err,
         )

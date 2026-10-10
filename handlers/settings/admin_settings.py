@@ -2033,7 +2033,7 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     admin_id = callback.from_user.id
     if key == "reject_rules_enabled":  # общий рубильник автоотказа — только без привязки к городу
         from handlers.applications.admin_reject_rules import MASTER_DENIED_TEXT
-        from services.reject_rules import can_edit_city
+        from services.applications.reject_rules import can_edit_city
         if not await can_edit_city(admin_id, None):
             return await callback.answer(MASTER_DENIED_TEXT, show_alert=True)
     # Phase 09.3 (06, CITY-09): WR-05 — single header read for this handler, passed into the
@@ -2516,7 +2516,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         return await state.clear()
     if key == "reject_rules_enabled":  # то же правило, что в settings_edit_start
         from handlers.applications.admin_reject_rules import MASTER_DENIED_TEXT
-        from services.reject_rules import can_edit_city
+        from services.applications.reject_rules import can_edit_city
         if not await can_edit_city(message.from_user.id, None):
             await state.clear()
             return await message.answer(MASTER_DENIED_TEXT)

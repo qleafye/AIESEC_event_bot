@@ -25,7 +25,7 @@ is_past_season_row` — те же 482 импортированных делег�
 отчёта и тапом кнопки; повторный тап поймает in-memory замок (`_claim`/`_release`) и не
 задвоит работу.
 
-aiogram-free (тот же разрез, что `services/cities/city_move.py`/`services/reject_journal.py`) — вызывающий
+aiogram-free (тот же разрез, что `services/cities/city_move.py`/`services/applications/reject_journal.py`) — вызывающий
 хендлер (`handlers/sheets/admin_sheet_reconcile.py`) строит текст/клавиатуры сам."""
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_s
 from domain.settings.schema import get_setting_typed
 from domain.regform.engine import is_past_season_row
 from domain.regform.labels import STATUS_LABELS
-from services.decision_delivery import summarize_deliveries
+from services.applications.decision_delivery import summarize_deliveries
 import services.sheets.sheets as sheets_service
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ STATUS_HEADER = sheets_service.STATUS_HEADER  # "Статус" — общий с
 _TRACK_LABEL = {"main": "полная анкета", "short": "короткая анкета", "party": "party"}
 
 # Пауза между единичными пишущими вызовами массовых исправлений — не бьём Google API квотой
-# (тот же посыл, что `services/application_effects.py::mass_approve_effects`'s 0.05с, здесь
+# (тот же посыл, что `services/applications/application_effects.py::mass_approve_effects`'s 0.05с, здесь
 # чуть щедрее — reconcile трогает МЕНЬШЕ строк за раз, но каждая может уйти на именованную
 # вкладку с отдельным сетевым вызовом).
 _APPEND_PAUSE_S = 0.3
@@ -63,8 +63,8 @@ _SHEET_RESULT_TEXT = {
 }
 
 # Координатор 25.09: недоставленные решения (одобрение/отказ) теперь читаются из БД —
-# `users.decision_delivery_*` (database/db.py, пишет services/application_effects.py),
-# раскладка на категории — `services.decision_delivery.summarize_deliveries` (общая точка с
+# `users.decision_delivery_*` (database/db.py, пишет services/applications/application_effects.py),
+# раскладка на категории — `services.applications.decision_delivery.summarize_deliveries` (общая точка с
 # «📨 Переотправить решения», handlers/sheets/admin_sheet_reconcile.py). Решения ДО этой миграции
 # остаются NULL и попадают в отдельную категорию «неизвестно», не смешиваются с «не доставлено».
 

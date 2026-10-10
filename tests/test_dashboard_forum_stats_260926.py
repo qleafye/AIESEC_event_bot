@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
-import services.decision_delivery as decision_delivery_service
+import services.applications.decision_delivery as decision_delivery_service
 from config import config
 from database import db
 from database.db import _connect
@@ -239,7 +239,7 @@ def test_decision_delivery_block_counts_by_status(tmp_path):
 def test_decision_delivery_error_blocked_constant_matches_bot_service(tmp_path):
     """Сторож дрейфа: строка причины «заблокировал бота» в `dashboard/queries.py`
     (`_DECISION_ERROR_BLOCKED`, дашборд не импортирует `services/*` целиком) должна дословно
-    совпадать с `services.decision_delivery.ERROR_BLOCKED` — иначе счётчик «blocked» тихо
+    совпадать с `services.applications.decision_delivery.ERROR_BLOCKED` — иначе счётчик «blocked» тихо
     съедет в «resendable»."""
     assert queries._DECISION_ERROR_BLOCKED == decision_delivery_service.ERROR_BLOCKED
 

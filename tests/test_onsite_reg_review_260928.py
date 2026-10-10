@@ -390,7 +390,7 @@ def test_endpoint_repeat_press_keeps_single_event(tmp_path):
 
 def test_record_decision_writes_journal_even_if_referral_credit_fails(tmp_path, monkeypatch):
     from datetime import datetime
-    from services import applications
+    from services.applications import applications
     from services.game import referrals
     _seed_ready(tmp_path)
     _run(_insert_user(953301, status="approved", city="spb"))
@@ -408,7 +408,7 @@ def test_record_decision_writes_journal_even_if_referral_credit_fails(tmp_path, 
 
 def test_journal_failure_at_door_is_marked_in_venue_log_and_logged(tmp_path, monkeypatch, caplog):
     import logging
-    from services import applications
+    from services.applications import applications
     _seed_ready(tmp_path)
     _onsite_on()
     _run(_insert_user(953302, status="pending", city="spb"))
@@ -449,7 +449,7 @@ def _fake_bot():
 
 
 def test_bot_tail_alerts_admins_when_journal_row_missing(tmp_path, monkeypatch):
-    from services import applications
+    from services.applications import applications
     _seed_ready(tmp_path)
     _onsite_on()
     _run(_insert_user(953303, full_name="Петрова Анна", status="pending", city="spb"))

@@ -6,7 +6,7 @@
 - Задача 2: запись балла на финале (`services/reg_finalize.py`) и столбцы листа
   (`handlers/reg/reg_schema.py`).
 - Задача 3: балл в карточке модерации — бот (`handlers/applications/admin_moderation.py`) и приложение
-  (`services/applications.py`) одинаково; делегатские поверхности его не видят никогда.
+  (`services/applications/applications.py`) одинаково; делегатские поверхности его не видят никогда.
 
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, фикстура временной
 БД — тот же приём, что `tests/test_skillup_core_28.py::_ready(tmp_path)`.
@@ -19,7 +19,7 @@ from config import config
 from database import db
 import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
-import services.applications as applications
+import services.applications.applications as applications
 from handlers.applications import admin_moderation as am
 from handlers.reg import reg_schema as rs
 from tests._dbtpl import fast_init_db
@@ -454,7 +454,7 @@ def test_web_card_no_score_badge_when_disabled(tmp_path):
 
 def test_cards_texts_identical_between_surfaces():
     """Байт-в-байт паритет текста балла между ботом и приложением (D-09) — общая
-    константа-шаблон `services.applications.score_badge_text`, не две копии."""
+    константа-шаблон `services.applications.applications.score_badge_text`, не две копии."""
     score = 4
     web_text = applications.score_badge_text(score)
     assert web_text == "Балл: 4/7"
