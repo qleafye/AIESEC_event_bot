@@ -39,7 +39,8 @@ logger = logging.getLogger(__name__)
 # INVARIANT (13-01 cap-test): every `@router.*` decorator below MUST fit on ONE line.
 
 _MAX_BYTES = 20 * 1024 * 1024  # потолок скачивания файлов ботом (Bot API)
-_lock = asyncio.Lock()
+_lock = asyncio.Lock()  # запись в базу
+_parse_lock = asyncio.Lock()  # разбор файла: один за раз, сервер с памятью впритык
 _STALE = "Кнопка устарела — откройте «🏆 Рейтинг чата» заново."
 _BACK = [InlineKeyboardButton(text="⬅️ К рейтингу чата", callback_data="chrate:back")]
 
@@ -182,14 +183,16 @@ def _range(span) -> str:
     return f"{span[0]} — {span[1]}" if span else "—"
 
 
-def _export_chat_matches(plan: dict) -> bool:
+def _export_chat_matches(plan: dict) -> bool | None:
+    """True — id чата в файле совпал с выбранным; False — не совпал; None — id в файле нет
+    или он нечитаемый, проверить нельзя."""
     export_id = plan.get("export_id")
     if export_id is None:
-        return True
+        return None
     try:
         n = int(export_id)
     except (TypeError, ValueError):
-        return True
+        return None
     return plan["chat_id"] in (int(f"-100{n}"), -n)
 
 
@@ -224,20 +227,51 @@ def render_preview(plan: dict, chat_name: str) -> tuple[str, InlineKeyboardMarku
     ]
     back = [InlineKeyboardButton(text="❌ Отмена", callback_data="chimp:cancel")]
     rows = []
-    if not _export_chat_matches(plan):
+    match = _export_chat_matches(plan)
+    if match is False:
         lines += [
             "",
             f"⚠️ В файле история чата «{html.escape(str(plan['export_name'] or '?'))}», а вы "
             f"выбрали «{html.escape(chat_name)}». Если это тот же чат — продолжайте, если нет — "
             "отмените и пришлите другой файл.",
         ]
+    elif match is None:
+        lines += [
+            "",
+            f"⚠️ В файле нет номера чата, поэтому сверить его с выбранным я не могу. В файле "
+            f"«{html.escape(str(plan['export_name'] or 'без названия'))}», вы выбрали "
+            f"«{html.escape(chat_name)}». Если это тот же чат — продолжайте, если нет — отмените "
+            "и пришлите другой файл.",
+        ]
     if plan["to_add"]:
-        label = "✅ Загрузить" if _export_chat_matches(plan) else "⚠️ Это тот же чат — загрузить"
+        label = "✅ Загрузить" if match else "⚠️ Это тот же чат — загрузить"
         rows.append([InlineKeyboardButton(text=f"{label} ({plan['to_add']})", callback_data="chimp:go")])
     else:
         lines += ["", "Добавлять нечего: всё из файла уже есть в базе или старше срока хранения."]
     rows.append(back)
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+class _DownloadFailed(Exception):
+    """Файл не скачался (лимит Bot API, сеть)."""
+
+
+async def _fetch_plan(bot: Bot, file_id: str, name: str, chat_id: int) -> dict:
+    """Скачивает файл и разбирает его в плане. Буферы освобождаются сразу после разбора: сервер
+    общий и памяти в обрез, поэтому звать под `_parse_lock`."""
+    buf = io.BytesIO()
+    try:
+        await bot.download(file_id, destination=buf)
+    except Exception as e:  # лимит Bot API и сетевые сбои
+        logger.warning("chat_import: не скачал файл: %s", e)
+        raise _DownloadFailed from e
+    raw = buf.getvalue()
+    buf.close()
+    del buf
+    try:
+        return await asyncio.to_thread(_db_plan, raw, name, chat_id)
+    finally:
+        del raw
 
 
 @router.message(ChatExportImport.waiting_file, F.document)
@@ -265,33 +299,46 @@ async def chat_import_file(message: types.Message, state: FSMContext, bot: Bot):
             reply_markup=ReplyKeyboardRemove(),
         )
         return
-    buf = io.BytesIO()
     try:
-        await bot.download(doc.file_id, destination=buf)
-    except Exception as e:  # лимит Bot API и сетевые сбои
-        logger.warning("chat_import: не скачал файл: %s", e)
+        async with _parse_lock:
+            plan = await _fetch_plan(bot, doc.file_id, name, chat_id)
+    except _DownloadFailed:
         await message.answer(
             "Не получилось скачать файл. Если он больше 20 МБ, выгрузите историю частями по датам. "
             "Иначе пришлите файл ещё раз.\n\n" + TOO_BIG,
-            reply_markup=get_cancel_kb(),
+            parse_mode="HTML", reply_markup=get_cancel_kb(),
         )
         return
-    try:
-        plan = await asyncio.to_thread(_db_plan, buf.getvalue(), name, chat_id)
     except svc.ExportError as e:
         await message.answer(f"{e}\n\nПришлите правильный файл или нажмите «Отмена».",
                              reply_markup=get_cancel_kb())
         return
     except UnicodeDecodeError:
         await message.answer(
-            f"Файл «{name}» не читается как текст. Нужен JSON из экспорта Telegram Desktop.\n\n"
-            + svc_howto_plain(),
-            reply_markup=get_cancel_kb(),
+            f"Файл «{html.escape(name)}» не читается как текст. Нужен JSON из экспорта Telegram "
+            f"Desktop.\n\n{HOWTO}",
+            parse_mode="HTML", reply_markup=get_cancel_kb(),
         )
         return
-    await state.update_data(plan=plan, chat_name=await _chat_name(entry))
+    except Exception:
+        logger.exception("chat_import: разбор файла упал, chat=%s", chat_id)
+        await state.clear()
+        await message.answer(
+            "Не получилось разобрать файл — ничего не загружено. Откройте «🏆 Рейтинг чата» → "
+            "«📥 Загрузить историю чата» и пришлите файл ещё раз; если повторится, пришлите файл "
+            "по частям (по датам) или напишите @qleafye.",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return
+    chat_name = await _chat_name(entry)
+    text, kb = render_preview(plan, chat_name)
+    # В состоянии только сводка и file_id: сами строки плана (десятки тысяч сообщений) в
+    # MemoryStorage без срока жизни не держим — при подтверждении файл разбирается заново.
+    await state.update_data(
+        file_id=doc.file_id, file_name=name, chat_name=chat_name, to_add=plan["to_add"],
+    )
+    del plan
     await state.set_state(ChatExportImport.confirm)
-    text, kb = render_preview(plan, await _chat_name(entry))
     await message.answer("Файл разобран.", reply_markup=ReplyKeyboardRemove())
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
@@ -304,6 +351,13 @@ async def chat_import_not_document(message: types.Message):
     )
 
 
+_NOT_WRITTEN = (
+    "Ничего не записано — загрузка прервалась. Откройте «🏆 Рейтинг чата» → «📥 Загрузить историю "
+    "чата» и пришлите файл заново. Часть сообщений могла успеть записаться: повторная загрузка "
+    "их не задвоит."
+)
+
+
 @router.callback_query(F.data == "chimp:go")
 async def chat_import_go(callback: types.CallbackQuery, state: FSMContext):
     if _lock.locked():
@@ -311,20 +365,40 @@ async def chat_import_go(callback: types.CallbackQuery, state: FSMContext):
         return
     async with _lock:
         data = await state.get_data()
-        plan = data.get("plan")
-        if (await state.get_state()) != ChatExportImport.confirm.state or not plan:
+        file_id, chat_id = data.get("file_id"), data.get("chat_id")
+        if (await state.get_state()) != ChatExportImport.confirm.state or not file_id or chat_id is None:
             await callback.answer(_STALE, show_alert=True)
             return
-        await state.clear()
         await callback.answer()
-        await callback.message.edit_reply_markup(reply_markup=None)
-        added_messages, added_reactions = await asyncio.to_thread(_db_apply, plan)
+        entry = next((c for c in await _bound_for_screen(callback.from_user.id)
+                      if c["chat_id"] == chat_id), None)
+        if entry is None:
+            await state.clear()
+            await callback.message.answer(
+                "Чат больше не привязан к городу — откройте «🏆 Рейтинг чата» и начните заново."
+            )
+            return
+        try:
+            async with _parse_lock:
+                plan = await _fetch_plan(callback.bot, file_id, data.get("file_name") or "result.json", chat_id)
+            to_add = plan["to_add"]
+            added_messages, added_reactions = await asyncio.to_thread(_db_apply, plan)
+            del plan
+        except Exception:
+            logger.exception("chat_import: запись не удалась, chat=%s", chat_id)
+            await callback.message.answer(_NOT_WRITTEN)
+            return
+        await state.clear()
+        try:
+            await callback.message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
     logger.info(
         "chat_import: by=%s chat=%s сообщений=%s реакций=%s",
-        callback.from_user.id, plan["chat_id"], added_messages, added_reactions,
+        callback.from_user.id, chat_id, added_messages, added_reactions,
     )
     lines = [f"Готово. Добавлено сообщений: {added_messages}, реакций: {added_reactions}."]
-    if added_messages < plan["to_add"]:
+    if added_messages < to_add:
         lines.append("Часть сообщений уже появилась в базе, пока вы смотрели предпросмотр — их пропустил.")
     lines.append("Рейтинг на дашборде пересчитается сам. Повторная загрузка того же файла ничего не задвоит.")
     await callback.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=[_BACK]))
