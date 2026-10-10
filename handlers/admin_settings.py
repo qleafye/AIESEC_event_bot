@@ -2004,6 +2004,8 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
         from handlers.admin_forum_date import show_forum_date_city_picker
         return await show_forum_date_city_picker(callback, state)
     text, cancel_kb = await _settings_edit_screen(key, header_code)
+    if all_cities := await gscope.is_global_in_city_context(key, header_code):  # город в шапке, настройка общая
+        text, cancel_kb = await gscope.warn_screen(key, header_code, text, cancel_kb)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
 
     # Branch (1) (header = real city AND key is per_city) never starts the FSM from here —
@@ -2017,7 +2019,7 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     own_city_context = bool(header_code and header_code != ALL_CITIES and is_per_city(key))
     is_list = SETTINGS_SCHEMA.get(key, {}).get("type") == "list"
     await state.clear()
-    if not own_city_context and not is_list:
+    if not own_city_context and not is_list and not (all_cities and gscope.needs_confirm(key)):
         await state.set_state(EditSetting.waiting_for_value)
         await state.update_data(setting_key=key)
     await callback.answer()
@@ -2828,3 +2830,4 @@ from handlers import admin_miniapp_theme  # noqa: E402,F401
 # module import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
 from handlers import admin_sections  # noqa: E402,F401
 from handlers import admin_settings_placeholders as ph  # noqa: E402  -- проверка {подстановок} при сохранении текста + превью
+from handlers import admin_settings_global as gscope  # noqa: E402  -- общая настройка при городе в шапке: ввод только после кнопки

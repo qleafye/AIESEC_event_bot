@@ -849,7 +849,7 @@ async def asos_settings_edit_start(callback: types.CallbackQuery, state: FSMCont
         text += f"Сейчас: <b>{html_module.escape(str(current))}</b>\n\n"
     else:
         text += "Сейчас: <i>не задано</i>\n\n" if is_percity else "Сейчас: <i>стандартный</i>\n\n"
-    text += "Пришли новый текст одним сообщением."
+    text += "Пришли новый текст одним сообщением." + ("" if is_percity else " Текст общий для всех городов.")
     if is_percity:
         text += "\n\n<i>«-» — очистить (без контакта).</i>"
     else:
