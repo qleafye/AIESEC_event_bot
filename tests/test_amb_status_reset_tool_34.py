@@ -16,6 +16,7 @@ from config import config
 from database import amb_status_db as sdb
 from database import db
 from tests._dbtpl import fast_init_db
+from services import amb_status_reset as svc
 from tools import amb_status_reset as tool
 
 SEASON = "RT 26"
@@ -124,14 +125,14 @@ def test_status_changed_between_preview_and_apply_is_skipped(tmp_path, monkeypat
     """Статус сменился после выборки (менеджер нажал «Взять») — expect не совпал, строка не
     трогается и считается отдельно."""
     _world(tmp_path)
-    real_collect = tool.collect
+    real_collect = svc.collect
 
     async def collect_then_take(scope):
         plan = await real_collect(scope)
         assert await sdb.set_status(1, "active", at=AT)
         return plan
 
-    monkeypatch.setattr(tool, "collect", collect_then_take)
+    monkeypatch.setattr(svc, "collect", collect_then_take)
     code, text = _report("candidates-all", apply=True)
     assert code == 0
     assert "Сброшено: 1" in text
@@ -162,7 +163,7 @@ def test_flags_are_mutually_exclusive():
 
 
 def test_tool_sends_nothing_and_writes_only_through_set_status():
-    src = (REPO / "tools" / "amb_status_reset.py").read_text(encoding="utf-8")
+    src = (REPO / "services" / "amb_status_reset.py").read_text(encoding="utf-8")
     for marker in ("send_message", "aiogram", "send_or_queue", "coins"):
         assert marker not in src, marker
     assert "set_status(" in src
