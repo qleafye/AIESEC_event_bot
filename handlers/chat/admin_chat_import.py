@@ -10,7 +10,7 @@
 синхронные и идут в потоке (`asyncio.to_thread`), чтобы большой файл не вешал бота.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
-импортом `handlers/admin_chat_rating.py`. Право — `settings`, как у экрана рейтинга чата.
+импортом `handlers/chat/admin_chat_rating.py`. Право — `settings`, как у экрана рейтинга чата.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from domain.cities import city_label
 from config import config
 from handlers.admin import router
-from handlers.admin_chat_rating import _screen_city
+from handlers.chat.admin_chat_rating import _screen_city
 from handlers.states import ChatExportImport
 from keyboards.builders import get_cancel_kb
 from services import chat_export_import as svc

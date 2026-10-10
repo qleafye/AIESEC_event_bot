@@ -1,5 +1,5 @@
 """Еженедельный пост рейтинга в чат делегатов города (services/chat_rating_post.py +
-handlers/admin_chat_rating_post.py).
+handlers/chat/admin_chat_rating_post.py).
 
 Организатор СПб обещал делегатам «каждую неделю таблица самых богатых участников форума» —
 бот публикует её сам. Расчёт общий с дашбордом (dashboard/chat_rating.py), команда исключена,
@@ -467,7 +467,7 @@ def _texts(kb):
 
 
 def test_rating_screen_has_publish_toggle_off_by_default(tmp_path):
-    from handlers import admin_chat_rating as scr
+    from handlers.chat import admin_chat_rating as scr
     _ready(tmp_path)
     text, kb = _run(scr.render_chat_rating_screen(ADMIN))
     toggle = [t for t in _texts(kb) if "Публиковать рейтинг в чат" in t]
@@ -477,7 +477,7 @@ def test_rating_screen_has_publish_toggle_off_by_default(tmp_path):
 
 
 def test_toggle_writes_city_key_and_schedules(tmp_path, monkeypatch):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     _ready(tmp_path)
 
     async def body(s):
@@ -494,7 +494,7 @@ def test_toggle_writes_city_key_and_schedules(tmp_path, monkeypatch):
 
 
 def test_post_screen_day_buttons_and_human_text(tmp_path, monkeypatch):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     _ready(tmp_path)
 
     async def body(s):
@@ -512,7 +512,7 @@ def test_post_screen_day_buttons_and_human_text(tmp_path, monkeypatch):
 
 
 def test_time_input_validated_with_example(tmp_path, monkeypatch):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     _ready(tmp_path)
 
     async def body(s):
@@ -531,7 +531,7 @@ def test_time_input_validated_with_example(tmp_path, monkeypatch):
 
 
 def test_top_input_bounds(tmp_path, monkeypatch):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     _ready(tmp_path)
 
     async def body(s):
@@ -547,7 +547,7 @@ def test_top_input_bounds(tmp_path, monkeypatch):
 
 
 def test_preview_goes_to_admin_dm_then_confirm_then_publish(tmp_path):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     path = _ready(tmp_path)
     _rules_mode(path)
     _seed_comments(path)
@@ -574,7 +574,7 @@ def test_preview_goes_to_admin_dm_then_confirm_then_publish(tmp_path):
 
 
 def test_preview_nothing_to_post_explains(tmp_path):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     _ready(tmp_path)
     cb = _Callback("chpost:preview:spb")
     _run(post.chpost_preview(cb, now=NOW))
@@ -583,7 +583,7 @@ def test_preview_nothing_to_post_explains(tmp_path):
 
 
 def test_publish_to_unbound_chat_explains(tmp_path):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     _ready(tmp_path, bind=False)
     go = _Callback("chpost:go:spb")
     bot = _Bot()

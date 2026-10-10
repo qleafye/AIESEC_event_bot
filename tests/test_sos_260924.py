@@ -24,7 +24,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin_sos, sos as sos_handlers
-from handlers import group_chat
+from handlers.chat import group_chat
 from handlers.states import SosChatBind, SosReport
 from services import sos as sos_service
 from services.timeutil import msk_now
