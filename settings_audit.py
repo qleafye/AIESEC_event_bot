@@ -42,10 +42,11 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
     """Реакции бота на правку ключа. Зовётся и после записи из бота, и разборщиком очереди
     приложения (`settings_changed`): правка в приложении должна действовать так же сразу.
     Каждая реакция в своём try — сбой одной не отменяет остальные и не роняет запись."""
-    from services import bot_profile, daily_digest, menu_labels, reject_rules_notify, scheduler
+    from services import bot_commands, bot_profile, daily_digest, menu_labels, reject_rules_notify, scheduler
     from settings_reschedule import reschedule_for_setting
 
-    hooks = [bot_profile.on_setting_written, daily_digest.on_setting_written,
+    hooks = [bot_profile.on_setting_written, bot_commands.on_setting_written,
+             daily_digest.on_setting_written,
              scheduler.on_setting_written, menu_labels.on_setting_written]
     if reschedule:
         hooks.append(reschedule_for_setting)

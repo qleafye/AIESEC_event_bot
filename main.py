@@ -557,6 +557,9 @@ async def main():
         await sync_bot_name(bot)
     except Exception:
         logger.warning("sync_bot_name failed at startup", exc_info=True)
+    # Команды кнопки «Меню»: личные списки организаторов — десятки запросов, не держим поллинг.
+    from services.bot_commands import sync_bot_commands_safe
+    _spawn(sync_bot_commands_safe(bot))
 
     try:
         await dp.start_polling(bot)

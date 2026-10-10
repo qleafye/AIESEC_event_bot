@@ -27,6 +27,7 @@ from aiogram.dispatcher.event.bases import SkipHandler
 
 import chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
 import dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
+import settings_ui_text_fields as _UI  # подписи, вынесенные из кода: хвосты экранов групп
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
     export_users_csv,
@@ -111,7 +112,7 @@ _EVENT_FIELD_ORDER = [
     # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
     "poll_intro_text",
     "event_name", "event_name_genitive", "event_season", "event_type", "bot_name",
-    "bot_description", "bot_short_description"]
+    "bot_description", "bot_short_description", *_UI.BOT_COMMAND_FIELD_ORDER]
 _EVENT_FIELDS = [
     (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
     for k in _EVENT_FIELD_ORDER
