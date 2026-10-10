@@ -1154,17 +1154,11 @@ async def show_info_menu(message: types.Message):
     lang, tr_map = await reg_i18n.ctx_for(message)
     tr = lambda s: reg_i18n.tr_text(s, lang, tr_map)  # noqa: E731
 
-    code = await _delegate_city(message.from_user.id)
-    event_date = await get_setting_for_city("event_date", code)
-    event_time = await get_setting_for_city("event_time", code)
-    place_name = await get_setting_for_city("event_place_name", code)
-
-    if event_date and place_name:
-        text = f"<b>{await ui_tr('info_screen_title_text', tr)}</b>\n\n"
-        text += f"🗓 <b>{await ui_tr('info_date_label_text', tr)}:</b> {html.escape(tr(event_date))}\n"
-        if event_time:
-            text += f"⌚ <b>{await ui_tr('info_time_label_text', tr)}:</b> {html.escape(tr(event_time))}\n"
-        text += f"📍 <b>{await ui_tr('info_place_label_text', tr)}:</b> {html.escape(tr(place_name))}"
+    # Всё, что известно (дата или «Дата начала форума», время, место, город) — services/event_info.
+    from services.event_info import info_lines
+    lines = await info_lines(await _delegate_city(message.from_user.id), tr)
+    if lines:
+        text = f"<b>{await ui_tr('info_screen_title_text', tr)}</b>\n\n" + "\n".join(lines)
     else:
         text = (
             f"{await ui_tr('info_pending_text', tr)}\n\n"

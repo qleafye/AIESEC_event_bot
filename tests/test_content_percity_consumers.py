@@ -336,8 +336,13 @@ def test_each_screen_resolves_city_exactly_once():
 
 
 def test_consumer_screens_use_resolver():
-    for fn in (ua_mod.show_contacts, ua_mod.show_info_menu, ua_mod.info_date, ua_mod.info_place):
+    from services import event_info
+
+    for fn in (ua_mod.show_contacts, ua_mod.info_date, ua_mod.info_place):
         assert "get_setting_for_city" in inspect.getsource(fn)
+    # 10.10: строки «ℹ️ Информация» собирает services/event_info.info_lines — резолвер города там.
+    assert "info_lines" in inspect.getsource(ua_mod.show_info_menu)
+    assert "get_setting_for_city" in inspect.getsource(event_info.info_lines)
 
 
 def test_city_resolve_failure_falls_back_to_global_for_contacts(tmp_path, monkeypatch):
