@@ -15,7 +15,7 @@ tests/test_timezone_fix_260816.py, tests/test_polls_260822.py) продолжа�
 
 `miniapp/timeutil.py` СОХРАНЯЕТ свою собственную копию `MOSCOW_TZ` — её докстринг уже
 объясняет, почему это третий (и с `miniapp/routers/admin_tasks.py` — четвёртый) осознанный
-литерал, а не второй случайно разошедшийся. Объединение leaf-модулей `services/timeutil.py`
+литерал, а не второй случайно разошедшийся. Объединение leaf-модулей `services/infra/timeutil.py`
 и `miniapp/timeutil.py` в один — отдельный тикет, не этот квик.
 """
 from __future__ import annotations

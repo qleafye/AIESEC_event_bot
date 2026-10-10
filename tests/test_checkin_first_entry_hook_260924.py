@@ -136,6 +136,6 @@ def test_without_bot_listeners_wait_for_outbox(tmp_path):
     assert calls == []
     event = result["first_entry"]
 
-    from services.miniapp_outbox import _handle_row
+    from services.infra.miniapp_outbox import _handle_row
     _run(_handle_row(BOT, "checkin_first_entry", event))
     assert calls == [(BOT, UID, "msk", event["day"], "miniapp")]

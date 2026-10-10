@@ -33,7 +33,7 @@ from database.db import (
     get_user,
 )
 from services import scheduler as _sched
-from services.timeutil import city_offset_hours, msk_now, shift_hours
+from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 from domain.settings.ui_text_fields import UI_TEXT_SCHEMA, ui_text
 
 logger = logging.getLogger(__name__)

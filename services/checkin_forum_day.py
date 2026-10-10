@@ -38,7 +38,7 @@ async def forum_window(city: str | None) -> tuple[date, date] | None:
 
 
 def _today() -> date:
-    from services import timeutil  # через модуль: тесты замораживают «сейчас»
+    from services.infra import timeutil  # через модуль: тесты замораживают «сейчас»
     return timeutil.msk_now().date()
 
 

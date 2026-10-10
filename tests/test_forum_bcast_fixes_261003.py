@@ -11,7 +11,7 @@ from config import config
 from database import db
 import services.checkin_broadcast as cb
 import services.scheduler as sched
-from services.timeutil import msk_now as real_msk_now
+from services.infra.timeutil import msk_now as real_msk_now
 from tests._dbtpl import fast_init_db
 
 
@@ -623,7 +623,7 @@ def test_forum_day_qr_without_collecting_check_still_sends_menu(tmp_path, monkey
 
 def test_checkin_day_filter_label_names_forum_city(tmp_path, monkeypatch):
     """«не пришли 25.09» при форумах в разные дни не читается — к дню приписан город."""
-    import services.timeutil as tu
+    import services.infra.timeutil as tu
     from services.forum_days import day_cities_suffix
     _cities_env(tmp_path)
     monkeypatch.setattr(tu, "msk_now", lambda: datetime(2026, 10, 3, 11, 0))

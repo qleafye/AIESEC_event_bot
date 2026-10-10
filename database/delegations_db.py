@@ -17,7 +17,7 @@ import aiosqlite
 
 from database import db as _db
 from database.ext_forms_db import _with_payload
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 _FMT = "%Y-%m-%d %H:%M:%S"
 

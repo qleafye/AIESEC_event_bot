@@ -53,7 +53,7 @@ from services.scheduler import (
     schedule_wave_results_broadcast,
     schedule_wave_start_for_all,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from handlers.admin import router
 # Модульная ссылка (не `from ... import name`): та же осторожность с порядком импорта, что у
 # handlers/game/admin_game_tasks.py::_ag — на момент импорта этого файла admin_gamification может

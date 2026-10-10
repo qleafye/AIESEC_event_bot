@@ -1,5 +1,5 @@
 """Уведомление амбассадору о новой ступени СкиллАп: событие `amb_tier_reached` в
-`miniapp_outbox` разбирает бот (`services/miniapp_outbox.py` ->
+`miniapp_outbox` разбирает бот (`services/infra/miniapp_outbox.py` ->
 `services/amb_tiers_notify.py`). Одно сообщение на ступень даже при повторной доставке,
 тексты без данных приглашённых, выбор текста «слот есть / лист ожидания» по статусу строки.
 """
@@ -16,7 +16,8 @@ from config import config
 from database import amb_tiers_db as tdb
 from database import db
 from miniapp import outbox as web_outbox
-from services import amb_tiers_notify, applications, miniapp_outbox
+from services import amb_tiers_notify, applications
+from services.infra import miniapp_outbox
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_core_su5 import seed_journal_row

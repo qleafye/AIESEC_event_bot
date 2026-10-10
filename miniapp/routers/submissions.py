@@ -24,7 +24,7 @@
 `already_submitted` (partial UNIQUE, гонка с ботом — D-05), уведомление менеджерам — через
 `miniapp_outbox` (`submission_created`), его делает бот (D-01). Время — `now_msk_naive()`
 (квик 260912-mcj: та же naive-московская семья, что и `game_submissions.submitted_at`,
-которую теперь пишет бот через `services.timeutil.msk_now()`).
+которую теперь пишет бот через `services.infra.timeutil.msk_now()`).
 
 `POST /app/api/uploads?target=resume` (план 21-10, D-05, Pattern 5) — ТОТ ЖЕ маршрут, третий
 сценарий: делегат с живым черновиком анкеты (`upload_actor` третья ветка, `miniapp/deps.py`)

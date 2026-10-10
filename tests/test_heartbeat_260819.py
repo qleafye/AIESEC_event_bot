@@ -122,7 +122,7 @@ def test_loop_touches_only_when_polling_alive(tmp_path):
 
 
 def test_loop_registered_via_background_is_cancelled_by_cancel_all(tmp_path):
-    from services.background import cancel_all, pending_count, spawn
+    from services.infra.background import cancel_all, pending_count, spawn
 
     async def go():
         spawn(hb.heartbeat_loop(str(tmp_path / "hb"), interval=0.01))

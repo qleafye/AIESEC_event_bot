@@ -23,7 +23,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from config import config
 from database.db import get_setting
 from domain.settings.schema import get_setting_typed
-from services.timeutil import MOSCOW_TZ, msk_now
+from services.infra.timeutil import MOSCOW_TZ, msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ _JOBSTORE_URL = "sqlite:///data/jobs.sqlite"
 # TZFIX-260816: the scheduler pin below (init_scheduler) and _now_moscow_naive() read the SAME
 # MOSCOW_TZ constant, so they structurally cannot drift apart — that drift (pin=Moscow,
 # checks=container clock/UTC) was exactly the bug this fix closes. See .planning/TZFIX-260816.md.
-# Quick 260904-kk6 (Q1): the literal itself now lives in `services/timeutil.py` (leaf module,
+# Quick 260904-kk6 (Q1): the literal itself now lives in `services/infra/timeutil.py` (leaf module,
 # no aiogram import) — `services/questions.py::format_stamp` needs it too and cannot import
 # this module (aiogram + APScheduler), and the "exactly one literal" guard
 # (tests/test_timezone_fix_260816.py::test_moscow_literal_declared_exactly_once) forbids a
@@ -112,7 +112,7 @@ def _now_moscow_naive() -> datetime:
 
     Quick 260912-mcj: семья меток времени, которую бот сам стамповал (`reg_started.started_at`
     и вся остальная семья naive-local в `database/db.py`), теперь ТОЖЕ московская
-    (`services.timeutil.msk_now()`), а не часы контейнера — поэтому сравнивать с ней НУЖНО
+    (`services.infra.timeutil.msk_now()`), а не часы контейнера — поэтому сравнивать с ней НУЖНО
     именно этим хелпером (см. `_nudge_cutoff` ниже — прежний запрет снят вместе со сменой
     зоны хранения).
     """
@@ -1283,9 +1283,9 @@ async def _flush_due_application_decisions(now: datetime) -> None:
 
 async def miniapp_outbox_drain_job():
     """Interval-job target (no args, picklable — Pitfall 3: a job function must never close
-    over a Bot). Delegates to services/miniapp_outbox.py::drain(bot), reading the injected
+    over a Bot). Delegates to services/infra/miniapp_outbox.py::drain(bot), reading the injected
     bot from THIS module's own global — same shape as sweep_payment_overdue/
-    nudge_incomplete_registrations above. Lazy import: services.miniapp_outbox imports
+    nudge_incomplete_registrations above. Lazy import: services.infra.miniapp_outbox imports
     services.game_digest, which imports this module at ITS top level (`from services import
     scheduler as _sched`) — importing it at OUR top level would run that import mid-module,
     before `_bot`/`_scheduler` exist yet.
@@ -1297,7 +1297,7 @@ async def miniapp_outbox_drain_job():
     30s interval, documented in the plan's SUMMARY)."""
     try:
         await _flush_due_application_decisions(_now_moscow_naive())
-        from services.miniapp_outbox import drain
+        from services.infra.miniapp_outbox import drain
         await drain(_bot)
     except Exception as e:
         logger.error(f"miniapp_outbox_drain_job failed: {e}")

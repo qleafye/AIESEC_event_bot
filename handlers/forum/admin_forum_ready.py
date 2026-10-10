@@ -32,7 +32,7 @@ from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _
 from services.checkin_arrival import count_program_sessions
 from services.program import own_program_photo, resolve_program_photo
 from services.reject_rules import forum_date_for
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

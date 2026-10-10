@@ -36,7 +36,7 @@ async def backfill_journal(*, apply: bool, season: str | None) -> dict:
     """Ядро скрипта. Возвращает `{"schema": bool, "season", "rows", "breakdown", "inserted"}`."""
     from database import amb_journal_db
     from database import db as _db
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     if not await amb_journal_db.has_journal_schema():
         return {"schema": False, "season": season, "rows": 0, "breakdown": [], "inserted": 0}

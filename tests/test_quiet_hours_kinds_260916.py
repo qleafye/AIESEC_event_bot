@@ -32,7 +32,7 @@ def _after_quiet_window() -> datetime:
     прогона уходила за 17.09. Двое суток вперёд от текущего московского времени — гарантированно
     после конца окна «00:00–23:59»."""
     from datetime import timedelta
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     return msk_now() + timedelta(days=2)
 
 
@@ -684,7 +684,8 @@ def test_manual_coins_text_is_one_function_for_both_paths():
     """Формулировка живёт в одном месте: `handlers/admin.py` реэкспортирует ту же функцию,
     что зовёт разборщик outbox'а."""
     from handlers import admin as admin_mod
-    from services import coins_notify, miniapp_outbox
+    from services import coins_notify
+    from services.infra import miniapp_outbox
 
     assert admin_mod._notify_manual_coins is coins_notify.notify_manual_coins
     assert miniapp_outbox.notify_manual_coins is coins_notify.notify_manual_coins
@@ -692,7 +693,7 @@ def test_manual_coins_text_is_one_function_for_both_paths():
 
 def _drain_coins_row(monkeypatch, payload):
     """Ставит строку `coins_manual` в outbox и разбирает её ботом-запоминалкой."""
-    from services import miniapp_outbox
+    from services.infra import miniapp_outbox
 
     monkeypatch.setattr(miniapp_outbox, "request_resync", lambda *a, **kw: None)
     bot = _FakeBotChat()

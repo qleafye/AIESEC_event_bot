@@ -44,7 +44,7 @@ from database.db import (
     set_chat_bot_state,
 )
 from services import chat_tracking
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

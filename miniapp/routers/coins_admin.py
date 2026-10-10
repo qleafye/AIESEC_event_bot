@@ -163,7 +163,7 @@ async def coins_manual(
     await add_coins(body.user_id, body.delta, reason=reason, changed_by=p.telegram_id, source="manual")
     balance = await get_balance(body.user_id)
     # 16.09: `reason`/`balance` в payload добавлены ради уведомления делегата — разборщик
-    # (`services/miniapp_outbox.py`) собирает по ним ТОТ ЖЕ текст, что путь из чата
+    # (`services/infra/miniapp_outbox.py`) собирает по ним ТОТ ЖЕ текст, что путь из чата
     # (`services/coins_notify.py`), и шлёт его через тихие часы. До этого ручные монеты из
     # приложения делегату не приходили вовсе: событие только просило пересборку вкладок.
     # Строки старой формы (без этих полей) разборщик дочитает из БД — ретраить их не нужно.

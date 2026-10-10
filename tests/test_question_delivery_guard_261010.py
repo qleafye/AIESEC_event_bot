@@ -34,7 +34,7 @@ def _ready(tmp_path, name):
 
 
 def _after_quiet_window():
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     return msk_now() + timedelta(days=2)
 
 

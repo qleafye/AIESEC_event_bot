@@ -9,7 +9,7 @@
 и не будет. Квик 260906-52m свёл бывший четвёртый литерал (`miniapp/routers/admin_tasks.py`,
 дедлайны задач менеджера, план 16) сюда — тот роутер теперь импортирует `now_msk_naive`
 отсюда вместо собственной копии `MOSCOW_TZ`/`now_moscow_naive`. Осознанных литералов
-Europe/Moscow под всем проектом два: `services/timeutil.py` и этот файл.
+Europe/Moscow под всем проектом два: `services/infra/timeutil.py` и этот файл.
 """
 from __future__ import annotations
 

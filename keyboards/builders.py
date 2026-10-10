@@ -3,7 +3,7 @@ from aiogram.types import ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeybo
 from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
 from database.db import get_user, has_faq_for_city, has_important_today
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 from domain.cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта

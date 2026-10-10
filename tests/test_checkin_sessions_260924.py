@@ -17,7 +17,7 @@ from datetime import datetime
 
 from config import config
 from database import db
-from services import timeutil as timeutil_mod
+from services.infra import timeutil as timeutil_mod
 from services.checkin import ENTRY_POINT, record_arrival
 from tests._dbtpl import fast_init_db
 
@@ -42,7 +42,7 @@ def _run(coro):
 
 def _freeze_now(monkeypatch, dt: datetime):
     """Тот же приём, что `tests/test_miniapp_checkin_260924.py::_freeze_now` — `record_arrival`
-    читает `services.timeutil.msk_now` ленивым импортом внутри функции (см. её докстринг),
+    читает `services.infra.timeutil.msk_now` ленивым импортом внутри функции (см. её докстринг),
     поэтому патч атрибута МОДУЛЯ виден в момент вызова."""
     monkeypatch.setattr(timeutil_mod, "msk_now", lambda: dt)
 

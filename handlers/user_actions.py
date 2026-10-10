@@ -82,10 +82,10 @@ from keyboards.builders import (
 from keyboards.menu_dynamic import MenuButton  # подпись кнопки — настройка, узнаём любую актуальную
 from handlers.states import Question, GameSubmit
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
-from services.background import spawn as _spawn
+from services.infra.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
-from services.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
+from services.infra.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
 from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from services import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
