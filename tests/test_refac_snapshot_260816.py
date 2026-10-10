@@ -610,7 +610,7 @@ def _build_snapshot_lines():
 # editg_start/toggle/apply/cancel/revoke), registered right after `lostfound_toggle_go` and
 # before `prog_fbday_open` (import order of the three new seams in admin.py's tail).
 # Drift note (30.09, тумблер «🤝 Отбор амбассадоров»): 2 handlers inserted (932 -> 934) прямо
-# перед `show_amb_entry` (handlers/admin_amb_section.py): `amb_section_off` — алерт на устаревшие
+# перед `show_amb_entry` (handlers/amb/admin_amb_section.py): `amb_section_off` — алерт на устаревшие
 # кнопки раздела при выключенном модуле (фильтр-функция, поэтому колонка ключей пуста; обязан
 # стоять ДО хендлеров раздела), и `toggle_amb_team_selection` — сам тумблер. Пересчитано
 # `_build_snapshot_lines()`, остальные строки не сдвинулись относительно друг друга.
@@ -2353,34 +2353,34 @@ def test_snapshot_total_handler_count_is_292():
     # 29.09 (колонка «В чате»): кнопка «🔄 Сверить состав чата» — callback_query
     # chat_reconcile_now (admin_chat_reconcile) хвостом шва handlers/admin_chat_cleanup.py, сразу
     # после chclean_delay. Одна чистая вставка, 0 удалений, 0 реордеров (892 -> 893).
-    # 29.09 (квалифицированная амбассадорка СкиллАп 5): шов handlers/admin_amb_tiers.py
+    # 29.09 (квалифицированная амбассадорка СкиллАп 5): шов handlers/amb/admin_amb_tiers.py
     # хвостом мастера волн (admin_game_wave_wizard.py) — 3 admin.message (state:AmbExclude:*)
     # сразу после wave_create_intro_step и 9 admin.callback_query сразу после
     # wave_create_cancel. Сверено diff'ом (difflib.SequenceMatcher): две чистые вставки
     # (3 + 9 строк), 0 удалений, 0 реордеров (893 -> 905).
-    # 30.09 (раздел «🤝 Амбассадоры»): шов handlers/admin_amb_section.py хвостом
+    # 30.09 (раздел «🤝 Амбассадоры»): шов handlers/amb/admin_amb_section.py хвостом
     # handlers/admin_onsite_reg.py — admin.message amb_limit_value (state:AmbSlotsEdit:*) сразу
     # после chpost_value и 6 admin.callback_query сразу после onsitereg_qr_send. Сверено
     # diff'ом (difflib): две чистые вставки (1 + 6 строк), 0 удалений, 0 реордеров (905 -> 912).
-    # 30.09 (экран «🙋 Кандидаты и команда»): шов handlers/admin_amb_candidates.py хвостом
-    # handlers/admin_amb_section.py — 11 admin.callback_query сразу после amb_texts_menu.
+    # 30.09 (экран «🙋 Кандидаты и команда»): шов handlers/amb/admin_amb_candidates.py хвостом
+    # handlers/amb/admin_amb_section.py — 11 admin.callback_query сразу после amb_texts_menu.
     # Сверено diff'ом (difflib): одна чистая вставка, 0 удалений, 0 реордеров (912 -> 923).
-    # 30.09 (массовые действия амбассадоров): шов handlers/admin_amb_bulk.py хвостом
-    # handlers/admin_amb_candidates.py — admin.message appoint_person_step (state:AmbAppoint:*)
+    # 30.09 (массовые действия амбассадоров): шов handlers/amb/admin_amb_bulk.py хвостом
+    # handlers/amb/admin_amb_candidates.py — admin.message appoint_person_step (state:AmbAppoint:*)
     # сразу после amb_limit_value и 8 admin.callback_query сразу после show_form_card. Сверено
     # diff'ом (difflib): две чистые вставки (1 + 8), 0 удалений, 0 реордеров (923 -> 932).
     # 30.09 (тумблер «🤝 Отбор амбассадоров»): 2 admin.callback_query (amb_section_off,
     # toggle_amb_team_selection) сразу перед show_amb_entry. Одна чистая вставка (932 -> 934).
-    # (закрепление приглашённого): шов handlers/admin_amb_journal.py хвостом
-    # handlers/admin_amb_bulk.py — 4 admin.message (state:AmbAttach:*) сразу после
+    # (закрепление приглашённого): шов handlers/amb/admin_amb_journal.py хвостом
+    # handlers/amb/admin_amb_bulk.py — 4 admin.message (state:AmbAttach:*) сразу после
     # appoint_person_step и 4 admin.callback_query сразу после archive_csv. Сверено diff'ом
     # (difflib): две чистые вставки (4 + 4), 0 удалений, 0 реордеров (934 -> 942).
-    # 01.10 (лестница ступеней): шов handlers/admin_amb_tier_ladder.py хвостом
-    # handlers/admin_amb_journal.py — 2 admin.message (state:AmbTierRevoke:*) сразу после
+    # 01.10 (лестница ступеней): шов handlers/amb/admin_amb_tier_ladder.py хвостом
+    # handlers/amb/admin_amb_journal.py — 2 admin.message (state:AmbTierRevoke:*) сразу после
     # attach_confirm_text и 12 admin.callback_query сразу после attach_go. Сверено diff'ом
     # (difflib): две чистые вставки (2 + 12), 0 удалений, 0 реордеров (942 -> 956).
-    # 01.10 («💰 Баллы и приватность»): шов handlers/admin_amb_points.py хвостом
-    # handlers/admin_amb_tier_ladder.py — 1 admin.message (state:AmbPointsEdit:*) сразу после
+    # 01.10 («💰 Баллы и приватность»): шов handlers/amb/admin_amb_points.py хвостом
+    # handlers/amb/admin_amb_tier_ladder.py — 1 admin.message (state:AmbPointsEdit:*) сразу после
     # revoke_pick_hint и 4 admin.callback_query сразу после promote_go. Две чистые вставки
     # (1 + 4), 0 удалений, 0 реордеров (956 -> 961).
     # 01.10 («↩️ Вернуть ступень»): 2 admin.callback_query (unrevoke_list/unrevoke_go) сразу после
@@ -2453,7 +2453,7 @@ def test_snapshot_total_handler_count_is_292():
     # 09.10 (кнопка меню «✏️ Изменить анкету», handlers/menu_edit_anketa.py): +1 user_actions.message
     # menu_edit_anketa сразу после quiz_menu, до reg_handoff_idle_fallback (1200 -> 1201).
     # 09.10 (подзаголовки раздела «🤝 Амбассадоры»): +1 admin.callback_query amb_separator (amb_sep)
-    # в хвосте handlers/admin_amb_section.py, перед forumfn_qr_screen (1201 -> 1202).
+    # в хвосте handlers/amb/admin_amb_section.py, перед forumfn_qr_screen (1201 -> 1202).
     # 09.10 «🖼 Аватар бота» (handlers/admin_bot_avatar.py, хвост admin.py): +4 admin.message
     # (state:BotAvatar:* — отмена дважды/фото/не фото) и +4 admin.callback_query в хвосте
     # перед decresend_start; две чистые вставки (1202 -> 1210). Ревью: +1 admin.callback_query

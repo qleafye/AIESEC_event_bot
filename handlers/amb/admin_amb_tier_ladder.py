@@ -18,7 +18,7 @@
 
 Правила выдачи и снятия — в `services/amb_tiers.py`; модуль только показывает и зовёт их.
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
-импортом `handlers/admin_amb_journal.py`.
+импортом `handlers/amb/admin_amb_journal.py`.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ from shared.amb_tier_keys import MAX_TIERS, tier_key
 from database import amb_tiers_db
 from database import db
 from handlers.admin import router
-from handlers.admin_amb_tiers import _edit_or_send, _is_cancel, _person_label, _resolve_person_input
+from handlers.amb.admin_amb_tiers import _edit_or_send, _is_cancel, _person_label, _resolve_person_input
 from handlers.admin_caps import has_capability
 from handlers.states import AmbTierRevoke
 from services import amb_tiers
@@ -489,4 +489,4 @@ async def unrevoke_go(callback: types.CallbackQuery):
 
 # Экран «💰 Баллы и приватность» (admin_amb_points, ambpt_*) — хвост admin.router после
 # хендлеров этого файла.
-from handlers import admin_amb_points  # noqa: E402,F401
+from handlers.amb import admin_amb_points  # noqa: E402,F401

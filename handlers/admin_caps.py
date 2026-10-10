@@ -1024,7 +1024,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "state:WaveCreate:*": "moderate_game",
     "state:WaveEdit:*": "moderate_game",
 
-    # Экран «🎓 Ступени амбассадоров» (handlers/admin_amb_tiers.py). Та же ловушка префиксов:
+    # Экран «🎓 Ступени амбассадоров» (handlers/amb/admin_amb_tiers.py). Та же ловушка префиксов:
     # "ambt_unexcl:*" НЕ покрывает "ambt_unexcl_go:*", "ambt_excl" не покрывает "ambt_excl_go".
     "admin_amb_tiers": "moderate_game",
     "ambt_toggle:*": "moderate_game",
@@ -1039,7 +1039,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambt_unexcl:*": "moderate_game",
     "ambt_unexcl_go:*": "moderate_game",
     "state:AmbExclude:*": "moderate_game",
-    # Раздел «🤝 Амбассадоры» (handlers/admin_amb_section.py). Отдельного права не заводим: роли
+    # Раздел «🤝 Амбассадоры» (handlers/amb/admin_amb_section.py). Отдельного права не заводим: роли
     # «Менеджер регистраций» ставят галочку «🎮 Модерация геймификации» в «Ролях». Ловушка
     # префиксов: "ambs_mode" не покрывает "ambs_mode_go:*".
     "admin_amb_entry": "moderate_game",
@@ -1050,7 +1050,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambs_texts": "moderate_game",
     "amb_sep": "moderate_game",  # подзаголовок внутри раздела, ничего не делает
     "state:AmbSlotsEdit:*": "moderate_game",
-    # «🙋 Кандидаты и команда» (handlers/admin_amb_candidates.py). Анкета человека — ПДн, как в
+    # «🙋 Кандидаты и команда» (handlers/amb/admin_amb_candidates.py). Анкета человека — ПДн, как в
     # очереди заявок: moderate_reg. Префиксы: "ambc:*" не ловит "ambc_*", "ambc_rm:*" — "ambc_rm_go:*".
     "admin_amb_candidates": "moderate_game",
     "ambc:*": "moderate_game",
@@ -1063,7 +1063,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambc_rm_go:*": "moderate_game",
     "ambc_csv": "moderate_game",
     "ambc_card:*": "moderate_reg",
-    # Массовые действия (handlers/admin_amb_bulk.py): отказ всем, назначение, архив сезонов.
+    # Массовые действия (handlers/amb/admin_amb_bulk.py): отказ всем, назначение, архив сезонов.
     # Префиксы: "ambc_decl" (точный) не ловит "ambc_decl_go:*"/"ambc_decl_no", "ambc_add" — "ambc_add_*".
     "ambc_decl": "moderate_game",
     "ambc_decl_go:*": "moderate_game",
@@ -1077,14 +1077,14 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambrst_p:*": "moderate_game",
     "ambrst_go:*": "moderate_game",
     "state:AmbAppoint:*": "moderate_game",
-    # «Закрепить приглашённого» (handlers/admin_amb_journal.py): «ambj_pick:*» не ловит
+    # «Закрепить приглашённого» (handlers/amb/admin_amb_journal.py): «ambj_pick:*» не ловит
     # «ambj_go»/«ambj_cancel», поэтому каждый callback отдельной строкой.
     "admin_amb_attach": "moderate_game",
     "ambj_pick:*": "moderate_game",
     "ambj_go": "moderate_game",
     "ambj_cancel": "moderate_game",
     "state:AmbAttach:*": "moderate_game",
-    # Лестница ступеней (handlers/admin_amb_tier_ladder.py): «ambl_del» не ловит «ambl_del_go»,
+    # Лестница ступеней (handlers/amb/admin_amb_tier_ladder.py): «ambl_del» не ловит «ambl_del_go»,
     # «ambl_rev» — «ambl_rev_pick:*»/«ambl_rev_go:*», «ambl_prom:*» — «ambl_prom_go:*».
     "ambl:main": "moderate_game",
     "ambl_add": "moderate_game",
@@ -1101,7 +1101,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambl_unrev": "moderate_game",
     "ambl_unrev_go:*": "moderate_game",
     "state:AmbTierRevoke:*": "moderate_game",
-    # «💰 Баллы и приватность» (handlers/admin_amb_points.py): «ambpt_coins» не ловит
+    # «💰 Баллы и приватность» (handlers/amb/admin_amb_points.py): «ambpt_coins» не ловит
     # «ambpt_coins_cancel», «ambpt_toggle:*» — префикс.
     "admin_amb_points": "moderate_game",
     "ambpt_coins": "moderate_game",

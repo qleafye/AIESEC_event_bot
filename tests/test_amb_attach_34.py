@@ -119,7 +119,7 @@ def test_section_has_attach_button():
 
 
 def test_screen_flow_pending_then_already_error(tmp_path):
-    from handlers import admin_amb_journal as h
+    from handlers.amb import admin_amb_journal as h
     from tests.test_amb_bulk_34 import _cb, _person_msg
     from tests.test_amb_candidates_34 import _new_state, _seed
     c = _flow_ready(tmp_path)
@@ -156,7 +156,7 @@ def test_screen_flow_pending_then_already_error(tmp_path):
 
 
 def test_self_attach_and_command_exit(tmp_path):
-    from handlers import admin_amb_journal as h
+    from handlers.amb import admin_amb_journal as h
     from tests.test_amb_bulk_34 import _cb, _person_msg
     from tests.test_amb_candidates_34 import _new_state, _seed
     _flow_ready(tmp_path)

@@ -196,7 +196,7 @@ def _amb_row(tid, cols="ambassador_status"):
 
 
 def test_list_paginates_with_counter_and_filters(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _limit(17)
     for tid in range(100, 112):
@@ -227,7 +227,7 @@ def test_list_paginates_with_counter_and_filters(tmp_path):
 
 
 def test_list_empty_filter_explains(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     cb = _cb("admin_amb_candidates")
     _run(h.show_candidates(cb))
@@ -237,7 +237,7 @@ def test_list_empty_filter_explains(tmp_path):
 
 
 def test_list_row_format_with_referrals_and_reserve(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _seed(10, amb_status="candidate", reserve=True, name="Иван Петров", username="ivan_p")
     for i in range(5):
@@ -250,7 +250,7 @@ def test_list_row_format_with_referrals_and_reserve(tmp_path):
 
 
 def test_team_list_marks_no_pack(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _seed(10, amb_status="active", slot=True, name="С местом")
     _seed(11, amb_status="active", name="Без места", status="pending")
@@ -263,7 +263,7 @@ def test_team_list_marks_no_pack(tmp_path):
 
 
 def test_person_card_buttons_by_status(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _limit(17)
     _seed(10, amb_status="candidate")
@@ -296,7 +296,7 @@ def test_person_card_buttons_by_status(tmp_path):
 
 
 def test_slot_button_hidden_when_full(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _limit(1)
     _seed(10, amb_status="active", slot=True)
@@ -307,7 +307,7 @@ def test_slot_button_hidden_when_full(tmp_path):
 
 
 def test_stale_person_alerts(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     for handler, data in ((h.person_card, "ambp:999:candidates:0"), (h.take_person, "ambc_take:999"),
                           (h.later_person, "ambc_later:999"), (h.toggle_pack, "ambc_pack:999"),
@@ -321,7 +321,7 @@ def test_stale_person_alerts(tmp_path):
 
 
 def test_take_with_slot_sends_link_once(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _limit(17)
     for tid in range(100, 112):
@@ -347,7 +347,7 @@ def test_take_with_slot_sends_link_once(tmp_path):
 
 
 def test_take_without_slot_explains_why(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _limit(1)
     _seed(10, amb_status="candidate", status="pending")
@@ -367,7 +367,7 @@ def test_take_without_slot_explains_why(tmp_path):
 
 
 def test_take_deferred_by_quiet_hours(tmp_path, monkeypatch):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     from services import quiet_hours
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
@@ -387,7 +387,7 @@ def test_take_deferred_by_quiet_hours(tmp_path, monkeypatch):
 
 
 def test_take_message_in_delegate_language(tmp_path, monkeypatch):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     from services import i18n
     from domain.settings.schema import SETTINGS_SCHEMA
     _ready(tmp_path)
@@ -408,7 +408,7 @@ def test_take_message_in_delegate_language(tmp_path, monkeypatch):
 
 
 def test_later_keeps_candidate_and_sends_nothing(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
     bot = FakeBot()
@@ -422,7 +422,7 @@ def test_later_keeps_candidate_and_sends_nothing(tmp_path):
 
 
 def test_pack_toggle(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _seed(10, amb_status="active", slot=True)
     cb = _cb("ambc_pack:10:team:0")
@@ -435,7 +435,7 @@ def test_pack_toggle(tmp_path):
 
 
 def test_give_slot_and_refusals(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _limit(2)
     _seed(9, amb_status="active", slot=True)
@@ -455,7 +455,7 @@ def test_give_slot_and_refusals(tmp_path):
 
 
 def test_remove_confirm_texts(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     from domain.settings.schema import SETTINGS_SCHEMA
     _ready(tmp_path)
     _seed(10, amb_status="active", slot=True, name="Иван Петров")
@@ -474,7 +474,7 @@ def test_remove_confirm_texts(tmp_path):
 
 
 def test_remove_apply_frees_slot_and_notifies_once(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _limit(17)
     for tid in range(100, 111):
@@ -494,7 +494,7 @@ def test_remove_apply_frees_slot_and_notifies_once(tmp_path):
 
 
 def test_form_card_and_button_needs_moderate_reg(tmp_path, monkeypatch):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _seed(10, amb_status="candidate", name="Иван")
     cb = _cb("ambc_card:10")
@@ -516,7 +516,7 @@ def test_form_card_and_button_needs_moderate_reg(tmp_path, monkeypatch):
 def test_csv_export_no_at_and_formula_safe(tmp_path):
     import csv as csv_mod
     import io as io_mod
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     _seed(10, amb_status="active", slot=True, pack=True, name="=1+1", username="@ivan_p")
     _seed(11, amb_status="candidate", name="Мария", username="maria")
@@ -551,7 +551,7 @@ def test_list_has_csv_button_and_section_row():
 
 
 def test_list_screen_has_csv_button(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     cb = _cb("admin_amb_candidates")
     _run(h.show_candidates(cb))
@@ -561,7 +561,7 @@ def test_list_screen_has_csv_button(tmp_path):
 
 
 def test_entry_screen_links_to_candidates(tmp_path):
-    from handlers import admin_amb_section as s
+    from handlers.amb import admin_amb_section as s
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
     _seed(11, amb_status="candidate")

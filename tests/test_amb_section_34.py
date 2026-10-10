@@ -113,7 +113,7 @@ def _setting(key):
 
 
 def _open_screen(uid=ADMIN_ID):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     cb = FakeCallback("admin_amb_entry", uid)
     _run(h.show_amb_entry(cb, _new_state(uid)))
     return cb.message.edits[-1]
@@ -154,7 +154,7 @@ def test_screen_counters(tmp_path):
 # ── способ входа ────────────────────────────────────────────────────────────────────────
 
 def test_mode_confirm_explains_and_switches(tmp_path):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     _ready(tmp_path)
     cb = FakeCallback("ambs_mode")
     _run(h.amb_mode_confirm(cb))
@@ -181,7 +181,7 @@ def test_mode_confirm_explains_and_switches(tmp_path):
 
 
 def test_mode_stale_value_rejected(tmp_path):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     _ready(tmp_path)
     cb = FakeCallback("ambs_mode_go:weird")
     _run(h.amb_mode_apply(cb))
@@ -192,14 +192,14 @@ def test_mode_stale_value_rejected(tmp_path):
 # ── лимит мест ──────────────────────────────────────────────────────────────────────────
 
 def _limit_input(text, state):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     msg = FakeMessage(text)
     _run(h.amb_limit_value(msg, state))
     return msg
 
 
 def test_limit_prompt_and_save(tmp_path):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     from handlers.states import AmbSlotsEdit
     _ready(tmp_path)
     state = _new_state()
@@ -250,7 +250,7 @@ def test_limit_below_taken_rejected_zero_allowed(tmp_path):
 
 
 def test_limit_cancel_changes_nothing(tmp_path):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     from handlers.states import AmbSlotsEdit
     _ready(tmp_path)
     _run(db.set_setting("amb_slots_limit", "17"))
@@ -272,7 +272,7 @@ def test_limit_cancel_changes_nothing(tmp_path):
 # ── тексты для делегатов ────────────────────────────────────────────────────────────────
 
 def test_texts_menu_for_settings_holder(tmp_path):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     from domain.settings.schema import SETTINGS_SCHEMA
     _ready(tmp_path)
     cb = FakeCallback("ambs_texts")
@@ -291,7 +291,7 @@ def test_texts_menu_for_settings_holder(tmp_path):
 
 
 def test_texts_menu_without_settings_right(tmp_path):
-    from handlers import admin_amb_section as h
+    from handlers.amb import admin_amb_section as h
     from handlers.admin_caps import role_caps_key
     _ready(tmp_path)
     _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))

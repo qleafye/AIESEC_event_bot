@@ -524,7 +524,7 @@ class ChatCleanupEdit(StatesGroup):
 
 
 class AmbExclude(StatesGroup):
-    # Ступени амбассадоров СкиллАп (handlers/admin_amb_tiers.py): ручное исключение
+    # Ступени амбассадоров СкиллАп (handlers/amb/admin_amb_tiers.py): ручное исключение
     # приглашённого из зачёта — кого (пересылка / @username / id), причина свободным текстом,
     # подтверждение кнопкой. Данные человека и причина живут в state.get_data().
     waiting_for_person = State()
@@ -533,27 +533,27 @@ class AmbExclude(StatesGroup):
 
 
 class AmbAppoint(StatesGroup):
-    # «🙋 Кандидаты и команда» → «➕ Назначить амбассадором» (handlers/admin_amb_bulk.py):
+    # «🙋 Кандидаты и команда» → «➕ Назначить амбассадором» (handlers/amb/admin_amb_bulk.py):
     # менеджер присылает @ник, ссылку t.me, Telegram ID или пересылку сообщения делегата;
     # дальше — подтверждение кнопкой.
     waiting_for_person = State()
 
 
 class AmbTierRevoke(StatesGroup):
-    # Лестница ступеней (handlers/admin_amb_tier_ladder.py) - «Снять ступень»: кто (пересылка /
+    # Лестница ступеней (handlers/amb/admin_amb_tier_ladder.py) - «Снять ступень»: кто (пересылка /
     # @username / id), затем ступень и подтверждение кнопками (waiting_for_pick).
     waiting_for_person = State()
     waiting_for_pick = State()
 
 
 class AmbPointsEdit(StatesGroup):
-    # «Амбассадоры» - «Баллы и приватность» (handlers/admin_amb_points.py): число баллов за
+    # «Амбассадоры» - «Баллы и приватность» (handlers/amb/admin_amb_points.py): число баллов за
     # одобренного приглашённого вводом.
     waiting_for_value = State()
 
 
 class AmbAttach(StatesGroup):
-    # «Амбассадоры» - «Закрепить приглашённого» (handlers/admin_amb_journal.py): кто пришёл,
+    # «Амбассадоры» - «Закрепить приглашённого» (handlers/amb/admin_amb_journal.py): кто пришёл,
     # кто привёл, заметка («скрины в чате»), подтверждение кнопкой.
     waiting_invitee = State()
     waiting_referrer = State()
@@ -562,7 +562,7 @@ class AmbAttach(StatesGroup):
 
 
 class AmbSlotsEdit(StatesGroup):
-    # Экран «🤝 Амбассадоры → 🚪 Вход и лимит» (handlers/admin_amb_section.py): менеджер
+    # Экран «🤝 Амбассадоры → 🚪 Вход и лимит» (handlers/amb/admin_amb_section.py): менеджер
     # вводит число мест в команде амбассадоров (0 — без лимита); после сохранения — на экран.
     waiting_for_limit = State()
 

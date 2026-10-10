@@ -229,8 +229,8 @@ def _scan():
 
 
 def _screen_tables() -> set[str]:
-    from handlers import (admin_amb_points, admin_amb_section, admin_amb_tiers, admin_delegations,
-                          admin_miniapp, admin_quiz_levels, admin_sos, session_feedback)
+    from handlers.amb import admin_amb_points, admin_amb_section, admin_amb_tiers
+    from handlers import admin_delegations, admin_miniapp, admin_quiz_levels, admin_sos, session_feedback
     from services import session_enroll
 
     keys = set(admin_sos._SOS_TEXT_FIELDS[f][0] for f in admin_sos._SOS_TEXT_FIELDS)

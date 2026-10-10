@@ -128,7 +128,7 @@ def test_promote_race_single_promotion(tmp_path):
 # ── экран лестницы ────────────────────────────────────────────────────────────────────────
 
 def _open_ladder(user_id=ADMIN_ID):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     cb = FakeCallback("ambl:main", user_id)
     _run(h.show_ladder(cb, _new_state()))
     return cb.message.edits[-1]
@@ -169,7 +169,7 @@ def test_ladder_without_settings_right_hides_edit_buttons(tmp_path):
     _ready(tmp_path)
     _sql("INSERT INTO admin_roles (telegram_id, role) VALUES (?, ?)", (777001, "moderator")) \
         if False else None
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
 
     async def no_settings(*_a, **_k):
         return False
@@ -185,7 +185,7 @@ def test_ladder_without_settings_right_hides_edit_buttons(tmp_path):
 
 
 def test_add_tier_and_threshold_alert(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     _run(db.set_setting("amb_tier3_threshold", "20"))
     cb = FakeCallback("ambl_add")
@@ -204,7 +204,7 @@ def test_add_tier_and_threshold_alert(tmp_path):
 
 
 def test_delete_last_needs_confirmation_and_says_who_keeps_it(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     _run(db.set_setting("amb_tiers_count", "4"))
     for tid in (100, 110, 120):
@@ -223,7 +223,7 @@ def test_delete_last_needs_confirmation_and_says_who_keeps_it(tmp_path):
 
 
 def test_require_approved_toggle_alerts(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     cb = FakeCallback("ambl_req")
     _run(h.ladder_require_toggle(cb))
@@ -236,7 +236,7 @@ def test_require_approved_toggle_alerts(tmp_path):
 
 
 def test_quota_toggle_by_button(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     cb = FakeCallback("ambl_quota:3")
     _run(h.ladder_quota_toggle(cb))
@@ -252,7 +252,7 @@ def test_quota_toggle_by_button(tmp_path):
 # ── снять ступень: FSM ────────────────────────────────────────────────────────────────────
 
 def test_revoke_flow_full(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     _quota(2, 5)
     _make_ambassador(100, username="anna")
@@ -289,7 +289,7 @@ def test_revoke_flow_full(tmp_path):
 
 
 def test_revoke_person_without_tiers_keeps_waiting_and_cancel(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     _make_ambassador(100)
     state = _new_state()
@@ -304,7 +304,7 @@ def test_revoke_person_without_tiers_keeps_waiting_and_cancel(tmp_path):
 
 
 def test_revoke_go_without_state_is_noop(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     _make_ambassador(100)
     _run(tdb.claim_new_tiers(100, [1], "2026-10-01 10:00:00", {}))
@@ -331,7 +331,7 @@ def test_promote_button_visible_only_with_slot_and_waitlist(tmp_path):
 
 
 def test_promote_flow_confirm_then_go(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     _ready(tmp_path)
     _quota(2, 1)
     _make_ambassador(100)
@@ -371,7 +371,7 @@ def test_caps_resolve_for_every_ladder_callback():
 
 
 def test_tiers_screen_links_to_ladder(tmp_path):
-    from handlers import admin_amb_tiers as h
+    from handlers.amb import admin_amb_tiers as h
     _ready(tmp_path)
     cb = FakeCallback("admin_amb_tiers")
     _run(h.show_amb_tiers(cb, _new_state()))
