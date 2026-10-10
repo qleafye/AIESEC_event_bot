@@ -313,12 +313,12 @@ def test_outbox_handler_runs_setting_hooks_for_queued_keys(tmp_path, monkeypatch
     _setup(tmp_path, "miniapp_settings_audit_hooks.db")
     seen = []
 
-    async def fake_hooks(key):
-        seen.append(key)
+    async def fake_batch(keys):
+        seen.append(list(keys))
 
-    monkeypatch.setattr(settings_audit, "run_setting_hooks", fake_hooks)
+    monkeypatch.setattr(settings_audit, "run_setting_hooks_batch", fake_batch)
     _run(miniapp_outbox._handle_row(None, "settings_changed", {"keys": ["miniapp_section_stats"], "by": ADMIN_ID}))
-    assert seen == ["miniapp_section_stats"]
+    assert seen == [["miniapp_section_stats"]]
 
 
 def test_toggle_tells_user_when_bot_queue_unavailable(tmp_path, monkeypatch):
