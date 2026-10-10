@@ -32,7 +32,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.i18n import reg_i18n
-from handlers.registration import _ask_step, _sync_draft_out, router
+from handlers.registration import _ask_step, _step_number, _sync_draft_out, router
 from domain.regform.engine import (
     STEP_TO_COLUMN,
     _COMPOSITE_GROUPS,
@@ -162,4 +162,7 @@ async def regedu_pick(callback: types.CallbackQuery, state: FSMContext):
     # (30-UI-SPEC.md: «Исправить» не сбрасывает карточку, только переоткрывает её).
     first_part = pending["first_part"]
     await _sync_draft_out(tap_message.chat.id, state, data, first_part, answered_col=None)
-    await _ask_step(first_part, tap_message, state, pending["step"], pending["total"])
+    # Номер — позиция первого под-шага в анкете, а не номер шага после группы.
+    step, total = await _step_number(first_part, data) or (pending["step"], pending["total"])
+    await state.update_data(_reg_step=step, _reg_total=total)
+    await _ask_step(first_part, tap_message, state, step, total)
