@@ -120,3 +120,17 @@ def test_empty_season_forbids_apply(tmp_path):
     import pytest
     with pytest.raises(svc.SeasonNotSet):
         _run(svc.apply(svc.SCOPE_PAST))
+
+
+def test_apply_crash_is_reported_with_next_step(tmp_path, monkeypatch):
+    _world(tmp_path)
+
+    async def boom(*a, **k):
+        raise RuntimeError("sheet down")
+
+    monkeypatch.setattr(svc, "apply", boom)
+    cb = FakeCallback(f"ambrst_go:cand:{_dg(svc.SCOPE_CANDIDATES)}")
+    _run(h.amb_reset_go(cb))
+    text = cb.message.answers[0][0]
+    assert "Не получилось сбросить" in text and "«🧹 Сбросить статусы»" in text
+    assert cb.answers
