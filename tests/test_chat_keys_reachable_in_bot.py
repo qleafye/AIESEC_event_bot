@@ -52,6 +52,7 @@ READERS = {
     ("get_setting_for_city", 0), ("get_setting_typed_for_city", 0),
     ("t", 0), ("_say", 1), ("tr_setting", 0), ("_tr_key", 0), ("tr_key", 0),
     ("_setting_or", 0), ("with_deadline", 0),
+    ("ui_text", 0), ("ui_tr", 0),  # settings_ui_text_fields: подпись + дефолт при пустом
 }
 
 WRITERS = {
