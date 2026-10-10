@@ -27,6 +27,7 @@
 import { sectionTitle, emptyState, errorState, labelText, tile, formatCount, formV2Text } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
+import { MAX_SIDE_ASSET, shrinkPhoto } from "../photo_shrink.js";
 import {
   field, setFieldState, settingSpec, confirmBox,
   searchFilter, highlightMatch, suggestTerms,
@@ -1086,17 +1087,20 @@ async function renderSection(root, code, ctx, targetKey) {
 
   const IMAGE_EXT_RE = /\.(jpe?g|png|webp)$/i;
 
-  async function handleFileUpload(item, el, file) {
-    if (item.type === "photo" && !(file.type || "").startsWith("image/") && !IMAGE_EXT_RE.test(file.name || "")) {
+  async function handleFileUpload(item, el, original) {
+    if (item.type === "photo" && !(original.type || "").startsWith("image/") && !IMAGE_EXT_RE.test(original.name || "")) {
       setFieldState(el, "error", { text: texts.miniapp_settings_upload_wrong_type_text || "" });
       return;
     }
+    // Фото-ключ ужимается на телефоне (photo_shrink.js, потолок 2560 — столько Telegram и
+    // так хранит у фото), файл-ключ уходит как есть. Лимит — у того, что реально уйдёт.
+    setFieldState(el, "uploading", { text: "" });
+    const file = item.type === "photo" ? await shrinkPhoto(original, { maxSide: MAX_SIDE_ASSET }) : original;
     const limits = await getUploadLimits();
     if (limits.max_bytes && file.size > limits.max_bytes) {
       setFieldState(el, "error", { text: texts.miniapp_settings_upload_413_text || "" });
       return;
     }
-    setFieldState(el, "uploading", { text: "" });
     try {
       const form = new FormData();
       form.append("file", file, file.name);
@@ -1104,7 +1108,7 @@ async function renderSection(root, code, ctx, targetKey) {
       // менеджера, submissions.py::upload_part), иначе менеджер-делегат получает подпись
       // «копия сдачи» вместо подписи ассета оформления.
       const res = await api("/uploads?target=settings_asset", { method: "POST", form });
-      fileNames.set(item.key, file.name);
+      fileNames.set(item.key, original.name);
       pending.set(item.key, res.content);
       updateBatchBar();
       setFieldState(el, "default");
