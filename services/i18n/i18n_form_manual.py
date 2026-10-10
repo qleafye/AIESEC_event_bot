@@ -914,7 +914,7 @@ _REGISTRY_TEXTS_EN = {
     "Придёт ответ в чат": "The answer will come to the chat",
     "Тариф зависит от трека, реквизиты пришлём.": "The rate depends on the track, we'll send the payment details.",
     "После одобрения — оплата": "After approval — payment",
-    "📲 Подхватил ответы, которые вы ввели в приложении.": "📲 Picked up the answers you entered in the app.",
+    "📲 Подхватил ответы, которые ты ввёл(а) в приложении.": "📲 Picked up the answers you entered in the app.",
     "Список спикеров формируется и скоро появится здесь.": "The speaker list is being put together and will appear here soon.",
     "Хочешь участвовать снова? Обновим анкету — прошлые ответы предложу оставить.": "Want to join again? Let's update your application — I'll offer to keep your previous answers.",
     "Твоя заявка в этом сезоне отклонена. Это не навсегда: анкету можно поправить и подать заново 👇": "Your application was rejected this season. It's not final: you can fix your answers and apply again 👇",
