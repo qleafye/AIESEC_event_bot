@@ -342,11 +342,8 @@ async def _audience_warning(state: FSMContext, users_ids: list[int] | None, send
     missing = staff - set(users_ids) - {sender_id}
     if not missing:
         return ""
-    k = len(missing)
-    return (
-        f"⚠️ {k} из команды (админы и менеджеры) не зарегистрированы как делегаты — "
-        "рассылку они не получат.\n\n"
-    )
+    from handlers.comms.admin_broadcast_status import staff_missing_note  # нет анкеты / не одобрены
+    return await staff_missing_note(missing)
 
 
 async def _send_confirm_prompt(
@@ -372,10 +369,10 @@ async def _send_confirm_prompt(
     (по умолчанию выкл, D-01), состояние переживает перерисовку (bc_important_toggle зовёт
     эту же функцию заново)."""
     dropped = int((await state.get_data()).get("bc_scope_dropped") or 0)
-    warning = await sender_city_note(chat_id, dropped) + await _audience_warning(state, users_ids, chat_id)
+    warning = await sender_city_note(chat_id, dropped)
     from handlers.comms.admin_broadcast_status import confirm_extra  # сезон + статусы заявки
     season_text, season_rows = await confirm_extra(state, users_ids)
-    warning += season_text
+    warning += season_text + await _audience_warning(state, users_ids, chat_id)
     important = bool((await state.get_data()).get("bc_important"))
     important_btn = InlineKeyboardButton(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",

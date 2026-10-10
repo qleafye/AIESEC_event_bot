@@ -78,7 +78,7 @@ async def season_confirm_extra(state: FSMContext, users_ids: list[int] | None) -
     _current, past = await split_ids_by_season(users_ids)
     if not past:
         return "", []
-    return (f"из них прошлого сезона: {len(past)}\n\n",
+    return (f"Прошлого сезона среди получателей: {len(past)}\n\n",
             [[InlineKeyboardButton(text=_ONLY_CURRENT, callback_data="bcseason_only")]])
 
 
@@ -89,7 +89,7 @@ async def schedule_season_extra(state: FSMContext) -> tuple[str, list]:
     _current, past = await split_ids_by_season(await get_all_users_ids())
     if not past:
         return "", []
-    return (f"Из них прошлого сезона: {len(past)}\n\n",
+    return (f"Прошлого сезона среди получателей: {len(past)}\n\n",
             [[InlineKeyboardButton(text=_ONLY_CURRENT, callback_data="bcseason_sched")]])
 
 
