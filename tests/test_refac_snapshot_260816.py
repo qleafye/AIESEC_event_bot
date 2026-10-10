@@ -963,6 +963,7 @@ admin|callback_query|sheet_tabs_prefix_add|sheet_tabs_prefix_add
 admin|callback_query|sheet_tabs_prefix_del|sheet_tabs_prefix_del
 admin|callback_query|sheet_tabs_prefix_add_go|sheet_tabs_prefix_add_go
 admin|callback_query|sheet_tabs_prefix_del_go|sheet_tabs_prefix_del_go
+admin|callback_query|arr_master_on|arr_master_on:*
 admin|callback_query|admin_reject_rules|admin_reject_rules
 admin|callback_query|arr_page|arr_p:*
 admin|callback_query|arr_master_toggle|arr_master,arr_master:go
@@ -2485,7 +2486,10 @@ def test_snapshot_total_handler_count_is_292():
     # 10.10 (мастер: экраны «🔘 Кнопки меню»/«📋 Вопросы регистрации» с возвратом в шаг): +1 admin.callback_query
     # setup_wizard_screen после setup_wizard_field; чистая вставка (1244 -> 1245).
     # 10.10: bcstatus_only/bcstatus_filter (разбивка рассылки по статусу заявки) после enrf_cancel (1245 -> 1247).
-    assert len(GOLDEN_SNAPSHOT) == 1247
+    # 11.10 (правило включено при выключенных всех правилах, handlers/applications/admin_reject_master.py —
+    # импорт в начале admin_reject_rules.py): +1 admin.callback_query arr_master_on прямо перед
+    # admin_reject_rules; чистая вставка (1247 -> 1248).
+    assert len(GOLDEN_SNAPSHOT) == 1248
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
