@@ -311,3 +311,15 @@ def test_texts(tmp_path):
     bad = FakeCallback("prog_qzte:msk:999")
     run(lv.prog_qzte(bad, new_state()))
     assert bad.answers[0][1] is True
+
+
+def test_points_max_editable_from_texts_screen(tmp_path):
+    """10.10: «максимум баллов за вариант» правился только в приложении — теперь последней
+    строкой экрана текстов теста, ввод — общий редактор настроек (проверка числа там же)."""
+    ready(tmp_path)
+    run(db.set_setting("event_city_enabled", "on"))  # городской ключ числу не положен даже с городами
+    idx = lv._EDIT_KEYS.index("quiz_points_max")
+    state = new_state()
+    cb = FakeCallback(f"prog_qzte:msk:{idx}")
+    run(lv.prog_qzte(cb, state))
+    assert run(state.get_data())["setting_key"] == "quiz_points_max"  # общий ключ, не городской
