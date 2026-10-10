@@ -103,7 +103,7 @@ def test_app_only_fields_are_labelled_and_menu_goes_to_menu_buttons(tmp_path):
     text, kb = _run(wiz.step_screen("theme"))
     assert "в приложении" in text and wiz.APP_HINT in text
     _, kb = _run(wiz.step_screen("menu"))
-    assert "admin_menu_buttons" in _callbacks(kb)
+    assert "setupw_scr:menu:admin_menu_buttons" in _callbacks(kb)
     _, kb = _run(wiz.step_screen("reg_prompts"))
     assert "admin_sec:form" in _callbacks(kb)
 
@@ -208,3 +208,30 @@ def test_city_header_value_counts_as_filled(tmp_path, monkeypatch):
     _, kb = _run(wiz.step_screen("event_info", ADMIN))
     labels = [btn.text for row in kb.inline_keyboard for btn in row]
     assert any(label.startswith("✅") and "Дата" in label for label in labels), labels
+
+
+def test_conference_lc_question_opens_reg_questions_not_app(tmp_path):
+    _ready(tmp_path, "setup_wizard_lc.db")
+    _run(db.set_setting("event_type", "conference"))
+    text, kb = _run(wiz.step_screen("conf_lc", ADMIN))
+    assert "в приложении" not in text
+    assert "setupw_scr:conf_lc:admin_reg_questions" in _callbacks(kb)
+
+
+def test_screen_from_wizard_returns_on_back_only(tmp_path, monkeypatch):
+    from handlers import admin_reg_config
+
+    _ready(tmp_path, "setup_wizard_screen.db")
+    opened = []
+
+    async def _fake_menu(callback):
+        opened.append(callback.data)
+
+    monkeypatch.setattr(admin_reg_config, "show_menu_buttons", _fake_menu)
+    _run(wiz.setup_wizard_screen(_CB("setupw_scr:menu:admin_menu_buttons")))
+    assert opened == ["admin_menu_buttons"]
+    # Чужой экран не уводит в мастер, «Назад» с «🔘 Кнопки меню» — уводит в шаг «Главное меню».
+    text, _ = _run(admin_sections.settings_return_screen(ADMIN, callback_data="admin_reg_questions"))
+    assert "Главное меню" not in text
+    text, _ = _run(admin_sections.settings_return_screen(ADMIN, callback_data="admin_menu_buttons"))
+    assert "Главное меню" in text
