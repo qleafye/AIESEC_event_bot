@@ -4,19 +4,26 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from database.chat_coins_db import chat_username_entry
 from database.db import get_reg_started_by_id, get_user
 from services.infra.timeutil import utc_naive_to_msk
 
 
 async def person_label(telegram_id: int) -> str:
     """«Имя (@username)», «Имя», «@username» — что известно боту; иначе «id N». Без HTML-экранирования
-    (экранирует вызывающий: подпись идёт и в текст с parse_mode=HTML, и в кнопку)."""
+    (экранирует вызывающий: подпись идёт и в текст с parse_mode=HTML, и в кнопку).
+
+    Источники по очереди: анкета, /start, ник и имя из чата или из пересылки при выдаче роли
+    (`chat_usernames`) — менеджер, который анкету не подавал, иначе виден как «id N»."""
     user = await get_user(telegram_id)
     if user is not None:
         name, uname = user.get("full_name"), user.get("username")
     else:
         started = await get_reg_started_by_id(telegram_id)
         name, uname = None, (started or {}).get("username")
+    if not (name or "").strip() and not (uname or "").strip().lstrip("@").strip("-"):
+        seen = await chat_username_entry(telegram_id) or {}
+        name, uname = seen.get("first_name"), seen.get("username")
     uname = (uname or "").strip().lstrip("@")
     if uname == "-":  # анкета без username хранит «-» (services/registration/reg_finalize.py) — это «нет»
         uname = ""
