@@ -496,7 +496,7 @@ def _admin_module_files():
     real map (ADMIN_CAPS) `test_menu_has_no_second_map` guards against being duplicated, so it
     legitimately contains the literal pairs the other files must never hand-roll."""
     return sorted(
-        p for p in Path(admin_mod.__file__).parent.glob("admin*.py")
+        p for p in Path(admin_mod.__file__).parent.rglob("admin*.py")
         if p.name != "admin_caps.py"
     )
 

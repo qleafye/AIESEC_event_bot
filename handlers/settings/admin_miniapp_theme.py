@@ -49,7 +49,7 @@ _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 # проверяются против текущего `bg` — они, как правило, сами служат текстом/иконкой на фоне.
 _TEXT_INK = "#1C1C1C"
 
-PREVIEW_DIR = Path(__file__).resolve().parent.parent / "assets" / "theme-preview"
+PREVIEW_DIR = Path(__file__).resolve().parents[2] / "assets" / "theme-preview"
 
 # Quick 260904-183: бренд-материалы РилТолк сняты владельцем 04.09.2026 — третий пресет
 # заведён. Три встроенных пресета; «Своя» вычисляется отдельно (не хранится в этих словарях).
