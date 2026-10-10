@@ -194,12 +194,14 @@ export async function render(root, params, ctx) {
     backBtn.disabled = idx <= 0;
     backBtn.classList.toggle("hidden", idx <= 0);
 
-    const stepOf = (texts.step_of_text || "")
-      .replace("{n}", String(idx + 1)).replace("{m}", String(data.steps.length));
-    body.append(
-      h("p", { class: "label-role", text: stepOf }),
-      h("h2", { text: step.title }),
-    );
+    // Номер — с сервера (step.n / step.m): только по шагам с полями, тот же знаменатель, что у
+    // прогресса «N из M готово». У подсказки (note/link) номера нет.
+    if (step.n) {
+      const stepOf = (texts.step_of_text || "")
+        .replace("{n}", String(step.n)).replace("{m}", String(step.m));
+      body.append(h("p", { class: "label-role", text: stepOf }));
+    }
+    body.append(h("h2", { text: step.title }));
     if (step.hint) body.append(h("p", { class: "label-role", text: step.hint }));
 
     if (step.kind === "fields") {
