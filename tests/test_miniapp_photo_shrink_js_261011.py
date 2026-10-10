@@ -259,3 +259,8 @@ def test_settings_photo_asset_is_shrunk_with_asset_cap(name):
     body = _between(text, "async function handleFileUpload(", 'api("/uploads?target=settings_asset"')
     assert 'item.type === "photo" ? await shrinkPhoto(original, { maxSide: MAX_SIDE_ASSET }) : original' in body
     assert body.index("shrinkPhoto(") < body.index("file.size > limits.max_bytes")
+
+
+def test_dropzone_local_preview_releases_object_url():
+    text = _js_without_comments(FORM_JS)
+    assert "URL.revokeObjectURL(src)" in text
