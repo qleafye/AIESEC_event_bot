@@ -33,7 +33,7 @@ from handlers.settings.admin_core import _admin_city_view, _card_out_of_scope
 from handlers.states import VenueRevokeFind
 from keyboards.builders import get_cancel_kb
 from services import venue_log
-from services.person_search import search_people
+from services.access.person_search import search_people
 
 logger = logging.getLogger(__name__)
 

@@ -24,7 +24,8 @@ from handlers.admin import router
 from handlers.amb.admin_amb_bulk import _PICK_MAX, _forwarded_id, _scope
 from handlers.amb.admin_amb_candidates import _alert, _name
 from handlers.states import AmbAttach
-from services import amb_journal, person_search
+from services import amb_journal
+from services.access import person_search
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

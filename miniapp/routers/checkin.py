@@ -77,7 +77,7 @@ from services.onsite_reg import (
     wrong_city_text,
     walkin_qr_png,
 )
-from services.person_search import search_people
+from services.access.person_search import search_people
 from domain.settings.schema import get_setting_typed
 from services.program import checkin_session_points
 
@@ -612,7 +612,7 @@ async def checkin_search(
     p: Principal = Depends(require_cap(_CAP)),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
-    """D-12/D-13: поиск по фамилии (общий `services.person_search.search_people`, ё=е) —
+    """D-12/D-13: поиск по фамилии (общий `services.access.person_search.search_people`, ё=е) —
     одобренные текущего сезона первыми (`eligible`), город/@username/вуз в каждой строке
     различают тёзок. Городской скоуп — как у сканирования (см. докстринг модуля)."""
     bound = await _bound_city(request, p)
@@ -823,7 +823,7 @@ _PENDING_SCAN_MAX = 5000  # потолок выборки дня одного г
 
 
 def _fold_name(s: str | None) -> str:
-    """Поиск по фамилии у стойки: без регистра и с ё=е (как `services.person_search`)."""
+    """Поиск по фамилии у стойки: без регистра и с ё=е (как `services.access.person_search`)."""
     return (s or "").lower().replace("ё", "е")
 
 

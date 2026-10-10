@@ -212,7 +212,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     miniapp_on = False
     try:
         # Выключенное приложение закрыто делегатам — у персонала кнопка остаётся.
-        from services.miniapp_access import miniapp_open_for
+        from services.access.miniapp_access import miniapp_open_for
         miniapp_on = await miniapp_open_for(telegram_id)
     except Exception as e:
         logger.error(f"get_main_menu_kb: miniapp_enabled resolve failed: {e}")

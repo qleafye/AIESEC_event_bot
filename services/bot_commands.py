@@ -56,7 +56,7 @@ async def _description(key: str) -> str:
 
 async def organizer_ids() -> list[int]:
     """Суперадмины и держатели действующей роли — те, кому открывается /admin."""
-    from services.staff_expiry import is_expiry_active, today_iso
+    from services.access.staff_expiry import is_expiry_active, today_iso
 
     today = today_iso()
     ids = list(dict.fromkeys(config.ADMIN_IDS or ()))

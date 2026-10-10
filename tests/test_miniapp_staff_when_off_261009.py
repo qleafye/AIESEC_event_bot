@@ -2,7 +2,7 @@
 
 Тумблер «📱 Приложение включено» = off (дефолт): делегат видит `miniapp_disabled_text`, как
 раньше, а менеджеры входят — сканер, мастер первой настройки и поиск настроек есть только в
-приложении. Веб: `miniapp/main.py::_passes_when_off`; бот: `services/miniapp_access.py`
+приложении. Веб: `miniapp/main.py::_passes_when_off`; бот: `services/access/miniapp_access.py`
 (меню «📱 Приложение», его хендлер, кнопка «📱 Приложение в браузере»).
 """
 import asyncio
@@ -16,7 +16,7 @@ from handlers.settings import admin_miniapp
 from handlers import user_actions as ua_mod
 from keyboards import builders
 from miniapp.file_tokens import mint_file_token
-from services import miniapp_access
+from services.access import miniapp_access
 
 from tests.test_miniapp_auth import TOKEN
 from tests.test_miniapp_routes import (

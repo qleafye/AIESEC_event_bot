@@ -1513,7 +1513,7 @@ PARTY_SHEET_TAB_DEFAULT = "Party"
 
 async def append_to_party_sheet(data: list, city_code: str | None = None):
     """D-11: tab name resolved from the admin-configurable party_sheet_tab setting (added in
-    plan 05-03) with a hardcoded fallback — same idiom as services/allowlist.py's DEFAULT_TAB.
+    plan 05-03) with a hardcoded fallback — same idiom as services/access/allowlist.py's DEFAULT_TAB.
 
     Квик 260914-k74 (T2): заголовки вычисляются здесь (не в reg_finalize) и передаются в
     append_to_named_sheet, чтобы вкладка, созданная первым аппендом, получила строку заголовков
@@ -2096,7 +2096,7 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         # результат, что прежний `get_setting(k) or <литерал>` (enum: falsy -> "off"; text:
         # None -> дефолт).
         if not _already_registered and await get_setting_typed("preselect_enabled") == "on":
-            from services.allowlist import is_allowed, allowlist_size, _parse_manual_ids
+            from services.access.allowlist import is_allowed, allowlist_size, _parse_manual_ids
             if allowlist_size() == 0:
                 # Owner-confirmed fail-open (Open Q2): admit everyone; the refresh job
                 # alerts admins. Do NOT lock out a whole event over a sheet/quota glitch.

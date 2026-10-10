@@ -34,10 +34,10 @@ from database.db import (
     set_staff_city,
     set_staff_expiry,
 )
-from services.person_label import msk_stamp_from_utc_iso, person_label
-from services.person_search import search_people
-from services.staff_reach import mark_text, superadmin_lines, unreachable_marks
-from services.staff_expiry import (
+from services.access.person_label import msk_stamp_from_utc_iso, person_label
+from services.access.person_search import search_people
+from services.access.staff_reach import mark_text, superadmin_lines, unreachable_marks
+from services.access.staff_expiry import (
     forum_end_date_iso,
     format_ddmmyyyy,
     is_expiry_active,
@@ -702,7 +702,7 @@ def _resolve_staff_input(message) -> tuple[int | None, str | None]:
 
     Returns (telegram_id, marker_or_error):
     - (id, None) — resolved directly (forward or numeric id); ready for role assignment.
-    - (None, "@username") — needs an async `services.person_search.search_people` lookup by
+    - (None, "@username") — needs an async `services.access.person_search.search_people` lookup by
       the caller (kept out of this function so it stays sync + DB-free, per docs/CONVENTIONS.md).
     - (None, "<human error text>") — nothing usable; caller shows this text verbatim.
     """
@@ -739,7 +739,7 @@ def _resolve_staff_input(message) -> tuple[int | None, str | None]:
     if not body:
         return None, _STAFF_INPUT_ERROR
     if body.startswith("@"):
-        return None, body  # marker: caller resolves via services.person_search.search_people
+        return None, body  # marker: caller resolves via services.access.person_search.search_people
     if body.isascii() and body.isdigit():  # same unicode-digit guard as _parse_coins_amount
         return int(body), None
     return None, _STAFF_INPUT_ERROR
