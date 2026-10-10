@@ -317,6 +317,18 @@ async def on_update_error(event: ErrorEvent) -> bool:
     return True
 
 
+def register_error_handlers(dp: Dispatcher) -> None:
+    """Отказ воронки записи общего ключа привязанному к городу (`CommonSettingDenied`) — раньше
+    общего обработчика: тот бы его молча проглотил, и менеджер не узнал бы, почему ничего не
+    изменилось. Обработчики ошибок проверяются в порядке регистрации."""
+    from aiogram.filters import ExceptionTypeFilter
+    from handlers.settings.admin_settings_global import on_common_setting_denied
+    from services.settings.audit import CommonSettingDenied
+
+    dp.errors(ExceptionTypeFilter(CommonSettingDenied))(on_common_setting_denied)
+    dp.errors()(on_update_error)
+
+
 async def main():
     _configure_logging()
     logger = logging.getLogger(__name__)
@@ -476,7 +488,7 @@ async def main():
     # silently dropped (the update just vanishes). Fails soft (return True = handled). The
     # body is module-level `on_update_error` so it is unit-testable — it logs identifiers only,
     # never the update payload (PII on a persistent log volume).
-    dp.errors()(on_update_error)
+    register_error_handlers(dp)
 
     # Register routers
     payment.init_payment_module(dp.storage)  # out-of-handler FSMContext for free/single-option path

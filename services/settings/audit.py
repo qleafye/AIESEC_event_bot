@@ -135,7 +135,32 @@ async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True)
         await reject_rules_notify.on_settings_written_batch(list(keys))
 
 
+class CommonSettingDenied(Exception):
+    """Админ, привязанный к городу, пишет общий ключ (одно значение на все города). Записи нет;
+    менеджеру показывает объяснение `on_common_setting_denied`
+    (handlers/settings/admin_settings_global.py), зарегистрированный в `main.py` раньше общего
+    обработчика ошибок. Исключение, а не `False`: хендлер, забывший проверить ответ, всё равно
+    не дойдёт до «сохранено» и не перерисует экран как после успешной записи."""
+
+    def __init__(self, admin_id: int | None, key: str):
+        super().__init__(f"admin={admin_id}: общий ключ {key} — админ привязан к городу")
+        self.admin_id = admin_id
+        self.key = key
+
+
+async def _deny_common_write(admin_id: int | None, key: str) -> None:
+    """Третье назначение воронки: общее значение пишет только тот, кто видит все города
+    (`settings_ops.can_write_common` — то же правило, что у приложения). Проверка здесь, на
+    записи, а не в каждом хендлере: новый тумблер не сможет её забыть."""
+    from domain.settings.ops import can_write_common, writes_common_value  # ленивый: ops тянет БД и config
+
+    if writes_common_value(key) and not await can_write_common(admin_id):
+        logger.warning(f"admin={admin_id} setting {key}: не записано — общий ключ, админ привязан к городу")
+        raise CommonSettingDenied(admin_id, key)
+
+
 async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> None:
+    await _deny_common_write(admin_id, key)
     logger.info(f"admin={admin_id} setting {key} <- {value!r}")
     previous = await db.get_setting(key) if key == "bot_name" else None
     await db.set_setting(key, value)
@@ -172,6 +197,7 @@ async def revert_setting(admin_id: int | None, key: str, previous: str | None) -
 
 
 async def delete_setting_by_admin(admin_id: int | None, key: str) -> None:
+    await _deny_common_write(admin_id, key)  # сброс общего ключа меняет его всем городам
     logger.info(f"admin={admin_id} setting {key} <- (сброшено)")
     await db.delete_setting(key)
     await run_setting_hooks(key)
