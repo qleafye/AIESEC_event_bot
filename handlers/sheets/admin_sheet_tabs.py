@@ -162,7 +162,10 @@ async def sheet_tab_rename_go(callback: types.CallbackQuery, state: FSMContext):
     old_value = data.get("pending_tab_old")
     await state.clear()
     from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings import admin_settings_global as gscope  # ленивый шов
 
+    if key and await gscope.deny(callback, key):  # до переименования листа в Google
+        return
     if not key or new_value is None or not old_value:
         text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -333,6 +336,8 @@ async def _prefix_plan_screen(*, add: bool) -> tuple[str, InlineKeyboardMarkup]:
 
 @router.callback_query(F.data == "sheet_tabs_prefix_add")
 async def sheet_tabs_prefix_add(callback: types.CallbackQuery):
+    if await _all_cities_denied(callback):
+        return
     text, kb = await _prefix_plan_screen(add=True)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -340,9 +345,19 @@ async def sheet_tabs_prefix_add(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "sheet_tabs_prefix_del")
 async def sheet_tabs_prefix_del(callback: types.CallbackQuery):
+    if await _all_cities_denied(callback):
+        return
     text, kb = await _prefix_plan_screen(add=False)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
+
+
+async def _all_cities_denied(callback: types.CallbackQuery) -> bool:
+    """Приписка переименовывает вкладки всех городов и пишет общие ключи: менеджеру с городом
+    отказ ДО плана и до первого переименования в Google, а не воронкой записи после него."""
+    from handlers.settings import admin_settings_global as gscope  # ленивый шов
+
+    return await gscope.deny_unless_all_cities(callback)
 
 
 async def _apply_city_rename_result(admin_id: int, target, new_title: str) -> None:
@@ -352,8 +367,8 @@ async def _apply_city_rename_result(admin_id: int, target, new_title: str) -> No
     вычисляется как база + приписка, и после смены БАЗЫ (эта функция, вызванная для
     `kind == "main"`) оно автоматически становится верным."""
     if target.kind == "main":
+        await delete_setting_by_admin(admin_id, f"city_tab__{target.city_code}")  # отказ — до правки города
         await update_city(target.city_code, tab_base=new_title)
-        await delete_setting_by_admin(admin_id, f"city_tab__{target.city_code}")
         await reload_cities()
 
 
@@ -384,6 +399,8 @@ def _ordered_for_execution(renames: list[tuple]) -> list[tuple]:
 async def _run_prefix_plan(callback: types.CallbackQuery, *, add: bool) -> None:
     """Исполнение плана — пересчитан заново (не хранится в FSM, см. докстринг модуля).
     Ошибка на одной вкладке НЕ прерывает остальные (fail-soft), но попадает в отчёт и лог."""
+    if await _all_cities_denied(callback):  # старая кнопка: до первого переименования в Google
+        return
     admin_id = callback.from_user.id
     titles = await list_worksheet_titles()
     if titles is None:

@@ -33,7 +33,7 @@ from database.db import get_reg_started_by_id, get_user
 from handlers.admin import router
 from handlers.delegations.admin_delegations import (
     _admin_id, _btn, _cancel_input, _cancel_kb, _current_form, _cut, _e, _is_cancel, _kb,
-    _show, _tail_int, _to_screen, render_screen,
+    _show, _tail_int, _to_screen, deny_locked, render_screen,
 )
 from handlers.states import DelegationLink
 from services.delegations import delegations
@@ -157,6 +157,8 @@ async def _review_screen(target, offset: int | None) -> None:
 
 @router.callback_query(F.data.startswith("dlg_review:"))
 async def dlg_review(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await _review_screen(callback, _tail_int(callback.data))
     await callback.answer()
 
@@ -177,6 +179,8 @@ async def _rejected_in_bot_now(row: dict) -> bool:
 
 @router.callback_query(F.data.startswith("dlg_card:"))
 async def dlg_card(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     form, keys = await _form_and_keys()
     row = await _row_of_form(_tail_int(callback.data)) if form else None
     if row is None:
@@ -210,6 +214,8 @@ async def dlg_card(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("dlg_ta:"))
 async def dlg_ta(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     parts = str(callback.data).split(":")
     try:
         row_id, status = int(parts[1]), parts[2]
@@ -289,6 +295,8 @@ async def _absent_screen(target, offset: int | None) -> None:
 
 @router.callback_query(F.data.startswith("dlg_absent:"))
 async def dlg_absent(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await _absent_screen(callback, _tail_int(callback.data))
     await callback.answer()
 
@@ -297,6 +305,8 @@ async def dlg_absent(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("dlg_link:"))
 async def dlg_link(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     if not await delegations.is_armed():
         await callback.answer(_NOT_ARMED_LINK, show_alert=True)
         return
@@ -361,6 +371,8 @@ async def _confirm(target, state: FSMContext, tid: int, *, edit: bool) -> None:
 
 @router.message(StateFilter(DelegationLink.waiting_person))
 async def dlg_link_person(message: types.Message, state: FSMContext):
+    if await deny_locked(message, state):
+        return
     if _is_cancel(message):
         await _cancel_input(message, state)
         return
@@ -386,6 +398,8 @@ async def dlg_link_person(message: types.Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("dlg_pick:"))
 async def dlg_pick(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     tid = _tail_int(callback.data)
     if tid is None or await state.get_state() != DelegationLink.waiting_person.state:
         await callback.answer(_STALE_LINK, show_alert=True)
@@ -396,6 +410,8 @@ async def dlg_pick(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "dlg_link_yes")
 async def dlg_link_yes(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     if not await delegations.is_armed():
         await state.clear()
         await callback.answer(_NOT_ARMED_LINK, show_alert=True)
