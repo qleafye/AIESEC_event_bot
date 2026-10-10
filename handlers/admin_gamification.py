@@ -732,9 +732,11 @@ async def game_task_confirm(callback: types.CallbackQuery, state: FSMContext):
         audience=data.get("gt_audience") or "all",
     )
     _request_game_resync()  # Phase 09.1 (D, GAME-07): a new task is one of the 3 debounced triggers
-    _safe_schedule_reminder(task_id, data["gt_deadline"])
+    no_reminder = _safe_schedule_reminder(task_id, data["gt_deadline"])
     await state.set_state(None)
     await callback.answer("Задание создано")
+    if no_reminder:
+        await callback.message.answer(no_reminder)
     text, kb = await _game_tasks_screen()
     await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 

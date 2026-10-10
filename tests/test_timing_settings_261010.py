@@ -153,3 +153,59 @@ def test_qr_screen_has_catchup_row_and_rejects_time_before_morning_repeat(tmp_pa
     assert saved is None and "догона не будет" in msg.sent[0]
     msg, saved = _run(go("14:00"))
     assert saved == "14:00"
+
+
+# ── Ревью 10.10: переплан напоминания о дедлайне ─────────────────────────────────────────
+
+def test_longer_lead_with_past_moment_drops_old_job(tmp_path, monkeypatch):
+    _ready(tmp_path, "timings_drop.db")
+    monkeypatch.setattr(sched, "_deadline_reminder_hours", 24)
+    deadline = (datetime.now() + timedelta(hours=30)).replace(second=0, microsecond=0)
+    task_id = _run(db.create_task("T", "Light", 10, "photo", deadline.strftime("%Y-%m-%d %H:%M:%S"), None))
+    job_id = f"task_deadline_reminder_{task_id}"
+
+    async def body(s):
+        await sched.reconcile_wave_jobs()
+        before = s.get_job(job_id) is not None
+        await db.set_setting("wave_deadline_reminder_hours", "48")  # момент «за 48 ч» уже прошёл
+        await sched.on_setting_written("wave_deadline_reminder_hours")
+        return before, s.get_job(job_id)
+
+    before, after = _run_scheduled(tmp_path, monkeypatch, body)
+    assert before is True and after is None  # старая джоба не сработает по прежнему сроку
+
+
+def test_reminder_is_sent_once_per_deadline(tmp_path, monkeypatch):
+    from tests.test_ambassador_wave_scheduling_32 import FakeBot, _seed_user, _with_bot
+
+    _ready(tmp_path, "timings_once.db")
+    monkeypatch.setattr(sched, "_deadline_reminder_hours", 24)
+    _seed_user(5001)
+    _run(db.set_user_status(5001, "approved"))
+    deadline = (datetime.now() + timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
+    task_id = _run(db.create_task("T", "Light", 10, "photo", deadline, None))
+    bot = _with_bot(monkeypatch, FakeBot())
+
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert len(bot.sent) == 1
+    # Срок напоминания уменьшили после отправки — сверка/повторный запуск второй раз не шлёт.
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert len(bot.sent) == 1
+    assert sched._already_reminded(_run(db.get_task(task_id)))
+
+    # Новый срок задания — новое напоминание разрешено.
+    new_deadline = (datetime.now() + timedelta(hours=6)).strftime("%Y-%m-%d %H:%M:%S")
+    _run(db.update_task_deadline(task_id, new_deadline))
+    assert not sched._already_reminded(_run(db.get_task(task_id)))
+
+
+def test_task_created_too_close_to_deadline_warns(tmp_path, monkeypatch):
+    from handlers import game_task_wizard
+
+    monkeypatch.setattr(sched, "_deadline_reminder_hours", 24)
+    monkeypatch.setattr(game_task_wizard, "schedule_task_deadline_reminder", lambda *_a: False)
+    soon = (datetime.now() + timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+    note = game_task_wizard._safe_schedule_reminder(1, soon)
+    assert note and "меньше 24 ч" in note
+    monkeypatch.setattr(game_task_wizard, "schedule_task_deadline_reminder", lambda *_a: True)
+    assert game_task_wizard._safe_schedule_reminder(1, soon) is None
