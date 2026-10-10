@@ -520,7 +520,7 @@ async def season_reset_start(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer(
         f"🔄 <b>Новый сезон</b>\n\nСейчас сезон: <b>{old_label}</b>.\n\n"
         "Напиши название нового сезона — им будут помечаться все новые регистрации.\n"
-        "Например: YL'26",
+        "Например: Юлид'26",
         parse_mode="HTML",
         reply_markup=get_cancel_kb(),
     )
@@ -547,7 +547,7 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
         return
     new = (message.text or "").strip()
     if not new:
-        await message.answer("Название сезона не может быть пустым. Напиши, например: YL'26")
+        await message.answer("Название сезона не может быть пустым. Напиши, например: Юлид'26")
         return
     if len(new) > 64:
         await message.answer("Слишком длинно. Уложись в 64 символа.")
