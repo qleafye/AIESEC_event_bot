@@ -1,6 +1,6 @@
 """Подписи анкеты — корневой модуль без aiogram (Phase 19, Mini App).
 
-Перенос из `handlers/reg_schema.py` (значения байт-в-байт, не копия: `reg_schema`
+Перенос из `handlers/reg/reg_schema.py` (значения байт-в-байт, не копия: `reg_schema`
 реэкспортирует ЭТИ объекты, тест `tests/test_miniapp_labels_drift.py` сверяет `is`).
 Причина выноса: пакетный `handlers/__init__.py` при импорте любого `handlers.x` тянет
 `registration, user_actions, admin, payment`, то есть aiogram, — а веб-процесс Mini App

@@ -6,13 +6,13 @@
 Отдельный шов, а не ветка `handlers/registration.py::_ask_step` — тот же потолок агрегатора
 (`tests/test_module_size_convention_260816.py`), тот же сторож паритета
 (`reg_engine.CHAT_PROJECTION`). Своего `Router` нет — декорирует общий `router` из
-`handlers.registration`, тот же образец, что `handlers/reg_resume_fork.py`.
+`handlers.registration`, тот же образец, что `handlers/reg/reg_resume_fork.py`.
 
 Стадия блока («ждём название» / «ждём описание» / «ждём Да/Готово») хранится в данных FSM
 ТЕКУЩЕГО шага (`_repeat_stage`), а не отдельным `State` на под-вопрос — единственное новое
 состояние (`Registration.mini_portfolio_repeat`, `handlers/states.py`, план 30-06 задача 3)
 занимает весь цикл добавления блоков. Не переиспользует `Registration.mini_portfolio` — то
-состояние уже занято `handlers/reg_extra_steps.py::process_mini_portfolio`, зарегистрированным
+состояние уже занято `handlers/reg/reg_extra_steps.py::process_mini_portfolio`, зарегистрированным
 раньше по порядку импорта хвоста `registration.py` (aiogram матчит хендлеры одного состояния в
 порядке регистрации, не по специфичности фильтра).
 

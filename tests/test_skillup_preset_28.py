@@ -2,7 +2,7 @@
 `domain/regform/presets.py`.
 
 Задача 1: `REG_PRESETS`/`apply_reg_preset` переехали в `domain/regform/presets.py` дословно — старые
-четыре пресета не изменились ни на байт, старый путь импорта (`handlers.reg_schema`)
+четыре пресета не изменились ни на байт, старый путь импорта (`handlers.reg.reg_schema`)
 продолжает работать, модуль не тянет aiogram, bulk-writer умеет писать произвольные ключи
 реестра из необязательного поля пресета `"settings"`.
 
@@ -108,7 +108,7 @@ def test_reg_presets_module_is_aiogram_free():
 
 
 def test_reg_schema_reexports_presets():
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
     assert reg_schema.REG_PRESETS is reg_presets.REG_PRESETS
 
 

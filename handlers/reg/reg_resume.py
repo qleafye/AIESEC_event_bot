@@ -4,7 +4,7 @@ kind='edit' — a fallback entry into editing an already-registered current-seas
 bot, D-18: "мастер правки — в приложении", this is only the fallback).
 
 Imports the SAME shared `router` object `handlers/registration.py` defines (byte-for-byte the
-same seam pattern as `handlers/reg_flow.py`/`handlers/reg_steps.py`) and decorates it directly
+same seam pattern as `handlers/reg/reg_flow.py`/`handlers/reg/reg_steps.py`) and decorates it directly
 — never redefined, so `main.py` (which includes `registration.router` by object reference)
 never changes. Imported LAST, at the very bottom of `handlers/registration.py` (after
 `reg_flow`/`reg_steps`/`reg_consent`) — its handlers register LAST within `registration.router`,
@@ -32,7 +32,7 @@ from handlers.registration import (
 # Phase 27 (27-05, LANG-02): say()/tr_for() переводят делегатские отправки этого шва на
 # отправке.
 from handlers.i18n import reg_i18n
-from handlers.reg_summary import show_summary  # приёмка 09.10: «Продолжить» дочитанной анкеты
+from handlers.reg.reg_summary import show_summary  # приёмка 09.10: «Продолжить» дочитанной анкеты
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ async def offer_resume(message: types.Message, draft: dict, referrer_id: int | N
 async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: Bot, draft: dict) -> None:
     """Phase 21 (21-09) + quick 260904-3vm: тело восстановления FSM из черновика — вынесено из
     `reg_resume_continue` (поведение байт-в-байт прежнее), чтобы им же пользовался
-    `handlers/reg_handoff.py::reg_handoff_to_bot` («✍️ Продолжить в чате» — возврат владения из
+    `handlers/reg/reg_handoff.py::reg_handoff_to_bot` («✍️ Продолжить в чате» — возврат владения из
     приложения). Черновик передаётся вызывающим — он уже прочитан ПО СОБСТВЕННОМУ id тапнувшего
     (T-21-01/T-3vm-05), здесь второй раз не перечитывается."""
     telegram_id = tap_message.from_user.id
@@ -113,7 +113,7 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
         # Квик 27.09: черновик без города (след старого обхода) продолжается только с городом —
         # известным (`services.known_city`) или спрошенным; `city_pick` по маркеру
         # `_resume_after_city` вернётся сюда с тем же черновиком, ответы не теряются.
-        from handlers.reg_city_gate import form_city_or_ask
+        from handlers.reg.reg_city_gate import form_city_or_ask
         go, city = await form_city_or_ask(tap_message, state, resume=True)
         if not go:
             return

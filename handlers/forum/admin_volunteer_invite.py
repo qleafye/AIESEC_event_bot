@@ -109,7 +109,7 @@ def _invite_is_live(inv: dict) -> bool:
 
 
 async def _bot_username(bot) -> str | None:
-    """Тот же fail-soft приём, что `handlers/reg_ambassador.py::_bot_username` — мёртвой
+    """Тот же fail-soft приём, что `handlers/reg/reg_ambassador.py::_bot_username` — мёртвой
     ссылки быть не должно, `get_me()` не смог -> экран честно говорит об этом."""
     try:
         me = await bot.get_me()

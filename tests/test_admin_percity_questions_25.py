@@ -25,7 +25,7 @@ from handlers import admin as admin_mod
 from handlers.regform import admin_reg_config
 from handlers.regform import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.access.admin_caps import role_caps_key, role_enabled_key
-from handlers.reg_schema import REG_FLOW
+from handlers.reg.reg_schema import REG_FLOW
 import domain.cities as cities
 from tests._dbtpl import fast_init_db
 

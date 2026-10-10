@@ -542,7 +542,7 @@ def test_conversion_cleans_registration_fsm(tmp_path):
 
 def test_no_payment_step(tmp_path, monkeypatch):
     import handlers.payment as payment
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     bot, storage = _env(tmp_path)
     _run(set_setting_by_admin(None, "payment_enabled", "on"))
     touched = []

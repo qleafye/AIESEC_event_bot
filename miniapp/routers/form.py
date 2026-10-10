@@ -216,7 +216,7 @@ async def _pre_items(
     см. `reg_engine.validate_city_choice`/`validate_track_choice`). Карточка согласия —
     ИСКЛЮЧЕНИЕ (LANG-09): `label` переводится ТОЛЬКО ярусом A (`i18n.tr(label, lang, {})` с
     пустым tr_map — тот же приём, что `handlers/registration.py::_ask_step`/
-    `handlers/reg_consent.py::_send_renew_card`, квик 260917-en): срабатывает исключительно
+    `handlers/reg/reg_consent.py::_send_renew_card`, квик 260917-en): срабатывает исключительно
     точный рукописный литерал (`i18n_ui_en.UI_EN`) для НАЗВАНИЯ документа по умолчанию,
     машинный перевод (менеджерский legal-override) сюда не подключается ни при каких условиях
     — делегат видит его русским тем же fail-soft. `button_text` в разметке Mini App не
@@ -408,7 +408,7 @@ async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_userna
         }
     # Приёмка 15.09 (п.3в «потом снова кинуло на новую анкету»): в `reg_drafts.step` лежит шаг
     # для ОБЕИХ поверхностей, а чат ведёт образование четырьмя отдельными вопросами (см.
-    # `handlers/reg_types_composite.py`) — значит там может стоять «university»/«course», шага
+    # `handlers/reg/reg_types_composite.py`) — значит там может стоять «university»/«course», шага
     # с таким ключом в новой анкете нет (карточка поглотила его), и `form.js::stepIndexFromKey`
     # на незнакомом ключе отдаёт 0 — мастер начинался заново с первого вопроса. Показываем
     # делегату шаг-карточку: он и есть то место, где эти вопросы задаются в приложении.
@@ -651,7 +651,7 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
 
     # Phase 28 (28-05, SU-04, T-28-05-01, deviation Rule 3): выбор ветки развилки резюме
     # (`resume_type`) — закрытый словарь из трёх токенов, тот же контракт, что
-    # `regfork:file|link|mini` в боте (handlers/reg_resume_fork.py). Обрабатывается ОТДЕЛЬНО
+    # `regfork:file|link|mini` в боте (handlers/reg/reg_resume_fork.py). Обрабатывается ОТДЕЛЬНО
     # от общего цикла ниже: `resume_type` НЕ REG_FLOW-шаг и не проходит через
     # `reg_engine.column_to_step`/`validate_answer` — попади он в общий цикл, схлопнулся бы в
     # 400 bad_field, как любая незнакомая колонка.
@@ -879,7 +879,7 @@ async def draft_release(
     _: Principal = Depends(require_section("form")),
 ) -> dict:
     """Кнопка «Продолжить в чате» — отдаёт владение ПЕРЕД тем, как приложение откроет
-    deep-link, иначе гвард бота (handlers/reg_handoff.py) отбил бы делегата же его собственным
+    deep-link, иначе гвард бота (handlers/reg/reg_handoff.py) отбил бы делегата же его собственным
     вводом. Без outbox: бот и так заберёт анкету по deep-link `?start=continue` через
     существующий экран «Продолжить / Заново» (D-17/D-18)."""
     await set_reg_draft_surface(p.telegram_id, SURFACE_BOT)
@@ -908,7 +908,7 @@ async def draft_consent(
 #
 # Настройки в шапке мастера: группа «Язык анкеты» видна только при включённом модуле
 # (`delegate_lang_enabled`, фаза 27), переключение зовёт ТОТ ЖЕ `set_user_lang`, что бот
-# (`handlers/reg_lang.py`) — второй точки записи `users.lang` не заводим. `form_gate`, не
+# (`handlers/reg/reg_lang.py`) — второй точки записи `users.lang` не заводим. `form_gate`, не
 # `delegate_gate` — тот же гейт, что у остальных ручек анкеты (незарегистрированный делегат
 # посреди мастера тоже может переключить язык).
 
@@ -1123,7 +1123,7 @@ async def draft_submit(
 
     kind_event = "reg_finalized" if result["mode"] == "new" else "reg_edited"
     await enqueue(kind_event, {"telegram_id": p.telegram_id})
-    # Quick 260904-3vm (эстафета): второй слой к гварду бота (handlers/reg_handoff.py) — гвард
+    # Quick 260904-3vm (эстафета): второй слой к гварду бота (handlers/reg/reg_handoff.py) — гвард
     # закрывает окно до 30 с, пока эта джоба очереди не проснулась. Молча — приложение уже
     # показало делегату экран «Заявка принята», второе уведомление не нужно.
     await enqueue("reg_fsm_reset", {"telegram_id": p.telegram_id, "reason": "submitted"})

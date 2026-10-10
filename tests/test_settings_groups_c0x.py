@@ -905,7 +905,7 @@ def test_toggle_parse_equivalence_all_keys():
 
 
 def test_reg_defaults_parity():
-    from handlers.reg_schema import REG_DEFAULTS
+    from handlers.reg.reg_schema import REG_DEFAULTS
 
     assert REG_DEFAULTS == _FROZEN_REG_DEFAULTS_ORACLE
 
@@ -916,7 +916,7 @@ def test_toggle_keys_coverage():
     # "apps") into the set every event-type preset sweeps and force-writes "off" to whatever
     # it doesn't mention. See reg_engine.MODULE_SWITCH_TOGGLES for the explicit allowlist that
     # replaces this blanket rule.
-    from handlers.reg_schema import REG_DEFAULTS
+    from handlers.reg.reg_schema import REG_DEFAULTS
     from domain.regform.engine import MODULE_SWITCH_TOGGLES
 
     toggle_keys_in_schema = {k for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"}

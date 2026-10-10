@@ -20,7 +20,7 @@ reg_handoff_idle_fallback` (`StateFilter(None), F.text`) уже стоит ПО�
 анкеты (`callback_query` — ни один роутер до этого не держит безусловного catch-all по
 callback_query, так что этот хендлер реально достижим, включён в main.py САМЫМ ПОСЛЕДНИМ).
 
-Кнопка ведёт в ТОТ ЖЕ путь возобновления, что и `/start` — `handlers.reg_resume.offer_resume`
+Кнопка ведёт в ТОТ ЖЕ путь возобновления, что и `/start` — `handlers.reg.reg_resume.offer_resume`
 + `reg_resume:continue`/`reg_resume:restart` (переиспользованы байт-в-байт, не задублированы).
 """
 import logging
@@ -32,7 +32,7 @@ from aiogram.filters import StateFilter
 from config import config
 from database.db import get_user
 from handlers.access.admin_caps import resolve_capabilities
-from handlers.reg_resume import offer_resume
+from handlers.reg.reg_resume import offer_resume
 from handlers.registration import _resumable_draft_for
 from handlers.i18n import reg_i18n
 from keyboards.builders import get_main_menu_kb

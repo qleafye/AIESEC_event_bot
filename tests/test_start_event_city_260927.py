@@ -24,8 +24,8 @@ from datetime import timedelta
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_flow
-from handlers import reg_resume
+from handlers.reg import reg_flow
+from handlers.reg import reg_resume
 from services import reg_finalize as rf
 from services.timeutil import msk_now
 from tests._dbtpl import fast_init_db

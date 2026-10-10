@@ -5,7 +5,7 @@
 испортила бы канонизацию свободных ответов анкеты) + `keyboards.builders.MENU_TEXTS`
 (множества «русская+английская подпись», выведенные вычислением) + 13 фильтров
 (`F.text.in_(MENU_TEXTS[...])` вместо `F.text == "..."`) в `handlers/user_actions.py` (12) и
-`handlers/reg_lang.py` (1, `menu_lang`).
+`handlers/reg/reg_lang.py` (1, `menu_lang`).
 
 Задача 3: сама фабрика `get_main_menu_kb` переводит подписи при `lang == "en"` — единственная
 точка перевода, поэтому «восьмая непереведённая точка» физически невозможна; тест этого файла
@@ -28,7 +28,7 @@ from aiogram.types import ReplyKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg  # noqa: F401 -- тянет reg_lang в хвосте модуля
-from handlers import reg_lang  # noqa: F401 -- регистрирует menu_lang_open на registration.router
+from handlers.reg import reg_lang  # noqa: F401 -- регистрирует menu_lang_open на registration.router
 from handlers import user_actions as ua_mod
 from domain.i18n.ui_en import MENU_EN
 from keyboards.builders import (

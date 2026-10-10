@@ -1,7 +1,7 @@
 """Общий conftest: канонический порядок импорта хендлеров для ЛЮБОГО подмножества тестов.
 
 Зачем. Роутеры живут в `handlers.admin` / `handlers.registration` / `handlers.user_actions` /
-`handlers.payment`; швы (`handlers/admin_*.py`, `handlers/reg_flow.py`, `handlers/reg_steps.py`)
+`handlers.payment`; швы (`handlers/admin_*.py`, `handlers/reg/reg_flow.py`, `handlers/reg/reg_steps.py`)
 регистрируют свои хендлеры в ТОТ ЖЕ роутер и импортируются из тела владельца роутера
 (seam-импорты в `admin.py:~690+`, `registration.py:~2258`). Поэтому порядок регистрации
 хендлеров — а значит first-match и golden-снапшот `test_refac_snapshot_260816.py`,

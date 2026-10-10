@@ -184,7 +184,7 @@ def _fill(template: str, **subs) -> str:
 # тумблер `menu_invites` (кнопка «👥 Мои приглашённые»): выключен -> ссылка остаётся,
 # `invites_text` пуст. Ссылка строится в ТОМ ЖЕ формате, что и ботовская кнопка меню
 # (`https://t.me/<bot>?start=<telegram_id>`, БЕЗ префикса `amb_` — это формат другого,
-# отдельного потока «Хочу свою ссылку» на финальном экране анкеты, `handlers/reg_ambassador.py`,
+# отдельного потока «Хочу свою ссылку» на финальном экране анкеты, `handlers/reg/reg_ambassador.py`,
 # сюда не переносится: делаем ровно то же самое, что видит делегат по кнопке меню).
 async def _referral_block(
     telegram_id: int, event_city: str | None, bot_username: str | None,

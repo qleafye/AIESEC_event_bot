@@ -16,7 +16,7 @@ from contextlib import contextmanager
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import reg_schema
+from handlers.reg import reg_schema
 from handlers import registration as reg
 from services import chat_tracking
 from services.sheets import ARRIVED_HEADER, CHAT_HEADER

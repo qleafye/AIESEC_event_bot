@@ -13,10 +13,10 @@ import asyncio
 from config import config
 from database import db
 from handlers import registration as reg
-# Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py -- imported
+# Phase 13 REFAC (13-03): process_full_name moved to handlers/reg/reg_steps.py -- imported
 # separately since it decorates the SAME shared reg.router but resolves its own
 # finalize_registration/_get_enabled_steps calls via reg_steps's own module globals.
-from handlers import reg_steps
+from handlers.reg import reg_steps
 from tests._dbtpl import fast_init_db
 
 

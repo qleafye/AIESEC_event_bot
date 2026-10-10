@@ -39,7 +39,7 @@ CHAT_TEXT_GROUPS = [
         "reg_form_cta_text", "reg_handoff_to_app_text", "reg_handoff_held_by_app_text",
         "reg_handoff_to_bot_label", "reg_handoff_resumed_text", "reg_sync_from_app_text",
         "reg_already_submitted_text", "menu_refreshed_text",
-        # Кнопка «▶️ К проверке ответов» на дочитанной анкете (handlers/reg_resume.py).
+        # Кнопка «▶️ К проверке ответов» на дочитанной анкете (handlers/reg/reg_resume.py).
         "reg_resume_review_label",
     ]),
     # Пометки и подписи карточки заявки, которую видит менеджер в чате.

@@ -174,7 +174,7 @@ Cloudflare Worker (reverse-proxy `api.telegram.org` на своём домене
 6. Расшарить таблицу на `client_email` из `google_credentials.json` с правами редактора.
 
 **Колонки, включённые вопросы анкеты.** Список колонок собирается из `SHEET_COLUMNS`
-(`handlers/reg_schema.py`, значения переехали в `domain/regform/labels.py`/`domain/regform/options.py`, схема
+(`handlers/reg/reg_schema.py`, значения переехали в `domain/regform/labels.py`/`domain/regform/options.py`, схема
 реэкспортирует их байт-в-байт): служебные (ID, username, дата, статус, ФИО, детали) плюс по
 колонке на каждый включённый вопрос `reg_q_*` в порядке анкеты. Шапку пишет `ensure_sheet_header`
 (`services/sheets.py`) при старте бота, при «🔄 Синхронизация таблицы» и при правке тумблеров

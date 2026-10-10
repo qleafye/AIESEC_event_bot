@@ -2,7 +2,7 @@
 
 Расширение существующего состояния `Registration.resume` (A-03 CONTEXT), НЕ новый узел графа
 FSM: R1 — четыре инлайн-кнопки выбора способа (`regfork:file|link|text|mini`), R2a —
-существующий приём документа/текста (`handlers/reg_flow.py::process_resume*`, не тронут), R2b —
+существующий приём документа/текста (`handlers/reg/reg_flow.py::process_resume*`, не тронут), R2b —
 приём ссылки (этот модуль), R2c — три текстовых мини-подшага (`handlers/reg_extra_steps.
 ask_step`, показ уже готов планом 28-02, здесь только точка входа с R1). Владелец 17.09: R2d —
 свободный текст об опыте (`_ask_text_branch` ниже), НЕ новое состояние — та же ветка, что R2a
@@ -29,7 +29,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from handlers import reg_extra_steps
+from handlers.reg import reg_extra_steps
 from handlers.registration import _advance, _progress, _safe_answer, _sync_draft_out, router
 from handlers.states import Registration
 from handlers.i18n import reg_i18n
@@ -40,7 +40,7 @@ from domain.regform.engine import (
 )
 
 # Reply-кнопка «Назад» на текстовых подшагах (resume_link/mini_projects/mini_portfolio/
-# mini_direction) — литерал ДОСЛОВНО совпадает с `handlers.reg_extra_steps._FORK_BACK_LABEL`
+# mini_direction) — литерал ДОСЛОВНО совпадает с `handlers.reg.reg_extra_steps._FORK_BACK_LABEL`
 # (сверено, не общий импорт — тот же приём дублирования служебных литералов, что «Пропустить»/
 # «Отмена» в проекте).
 BACK_LABEL = "⬅️ Назад"
@@ -115,7 +115,7 @@ async def back_to_fork(message: types.Message, state: FSMContext) -> None:
 
 async def _ask_file_branch(message: types.Message, state: FSMContext, progress_prefix: str,
                             participant_type: str | None, city_code: str | None) -> None:
-    """R2a — существующий приём документа/текста (`handlers/reg_flow.py::process_resume*`)
+    """R2a — существующий приём документа/текста (`handlers/reg/reg_flow.py::process_resume*`)
     не меняется байт-в-байт; здесь только показывается инлайн «⬅️ Назад» (T-28-05-01: тот же
     закрытый токен `regfork:back`, ловится тем же callback-хендлером ниже — R2a остаётся в
     состоянии `Registration.resume`, не заводит своего)."""
@@ -133,7 +133,7 @@ async def _ask_text_branch(message: types.Message, state: FSMContext, progress_p
     ключ `reg_resume_fork_text_prompt_text`, НЕ общий `reg_prompt_resume`/`reg_q_resume` — тот
     описывает файл, здесь делегат ждёт вопрос конкретно про свободный текст об опыте). Остаётся
     в `Registration.resume` (тот же приём, что `_ask_file_branch` — ответ ловит существующий
-    `handlers/reg_flow.py::process_resume_text`, гейт «в fork-режиме текст мимо кнопок»
+    `handlers/reg/reg_flow.py::process_resume_text`, гейт «в fork-режиме текст мимо кнопок»
     пропускает его благодаря уже проставленному `resume_type == "text"`)."""
     text = f"{progress_prefix}{await get_setting_typed('reg_resume_fork_text_prompt_text')}"
     kb = InlineKeyboardMarkup(inline_keyboard=[[

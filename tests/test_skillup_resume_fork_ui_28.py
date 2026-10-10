@@ -1,7 +1,7 @@
 """Phase 28 (28-05, SU-04, СкиллАп 5): развилка резюме — делегатская половина.
 
-Задача 1/2: шов `handlers/reg_resume_fork.py` (экран R1, приём ссылки R2b, «Назад» на
-развилку) + гейт в `handlers/reg_flow.py` («свободный текст мимо кнопок в режиме fork больше
+Задача 1/2: шов `handlers/reg/reg_resume_fork.py` (экран R1, приём ссылки R2b, «Назад» на
+развилку) + гейт в `handlers/reg/reg_flow.py` («свободный текст мимо кнопок в режиме fork больше
 не резюме»). pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, стиль
 Fake-объектов aiogram — тот же приём, что `tests/test_reg_resume_draft.py`/
 `tests/test_skillup_steps_28.py`.
@@ -29,9 +29,9 @@ from aiogram.types import InlineKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_extra_steps
-from handlers import reg_flow
-from handlers import reg_resume_fork
+from handlers.reg import reg_extra_steps
+from handlers.reg import reg_flow
+from handlers.reg import reg_resume_fork
 from handlers.states import Registration
 
 from tests.test_miniapp_frontend import _js_without_comments
