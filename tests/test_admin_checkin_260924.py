@@ -1,7 +1,7 @@
 """Phase 12 (FORUM-CHECKIN.md): раздел «✅ Отметки на форуме» (handlers/forum/admin_checkin.py) —
 загрузка выгрузки офлайн-сканера, выбор точки, отчёт, счётчик.
 
-Формат QR/денайл (`build_payload`/`checkin_denial`) — из `services/checkin.py` (Квик 260923,
+Формат QR/денайл (`build_payload`/`checkin_denial`) — из `services/forum/checkin.py` (Квик 260923,
 уже покрыт `tests/test_checkin_qr_260923.py`); здесь — только хендлер раздела.
 
 Стиль фикстур — тот же приём, что `tests/test_season_import_073.py` (`_FakeBot.download`,
@@ -23,7 +23,7 @@ from database import db
 from database.db import _connect
 from handlers.forum import admin_checkin
 from handlers.states import CheckinImport
-from services.checkin import build_payload
+from services.forum.checkin import build_payload
 from services.infra import timeutil as timeutil_mod
 from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db

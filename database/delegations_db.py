@@ -28,7 +28,7 @@ TA_STATUSES = ("ok", "no", "check")
 NOTE_REJECTED_IN_BOT = "rejected_in_bot"
 NOTE_AMBIGUOUS_NICK = "ambiguous_nick"
 
-# Точка «Вход» в `checkins` — тот же литерал, что `services.checkin.ENTRY_POINT`. Сам модуль
+# Точка «Вход» в `checkins` — тот же литерал, что `services.forum.checkin.ENTRY_POINT`. Сам модуль
 # checkin тянет aiogram и бота, слой БД его не импортирует; равенство держит тест
 # `tests/test_delegations_db.py::test_entry_point_literal_matches_checkin`.
 ENTRY_POINT = "entry"

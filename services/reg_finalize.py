@@ -878,7 +878,7 @@ async def write_sheet_row(telegram_id: int, full: dict, mode: str) -> None:
     """Строка анкеты в Google-листе: обновить на месте, если есть, иначе дописать (`mode="new"` —
     во вкладку города/трека, `"edit"` — во вкладку обновления). Вынесено из `post_finalize` без
     изменения поведения — тем же маршрутом пишет строку и регистрация на месте
-    (`services.onsite_reg.after_onsite_approved`). Fail-soft: сбой листа только логируется."""
+    (`services.forum.onsite_reg.after_onsite_approved`). Fail-soft: сбой листа только логируется."""
     from handlers.registration import (
         _sheet_dispatch, _sheet_headers_fn, append_to_named_sheet, city_row_tab,
     )

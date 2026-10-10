@@ -130,7 +130,7 @@ _COMMENTS_PAGE_SIZE = 10
 
 
 async def render_day_feedback_screen(code: str, day: str) -> tuple[str, InlineKeyboardMarkup]:
-    from services.program import day_label, format_time_range
+    from services.forum.program import day_label, format_time_range
 
     rows = await sf.day_stats(code, day)
     lines = [f"📊 <b>Оценки сессий</b> — {day_label(day)}", ""]

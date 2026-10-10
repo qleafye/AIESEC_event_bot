@@ -15,7 +15,7 @@ from handlers.admin import router
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
 from handlers.forum.admin_quiz import _btn, deny, points_max, quiz_by_code, render_quiz
 from handlers.states import QuizImport
-from services import quiz_import
+from services.forum import quiz_import
 
 _MAX_BYTES = 2 * 1024 * 1024
 _NOT_FILE = "Пришлите файл CSV — тот, что получили по кнопке «📥 Шаблон»."

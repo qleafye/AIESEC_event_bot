@@ -1,6 +1,6 @@
 """Выгрузка офлайн-сканера перед форумом 03.10: форматы реальных приложений.
 
-`services.checkin.find_checkin_records`/`decode_scan_export`: время «03.10.2026, 10:15», дата и
+`services.forum.checkin.find_checkin_records`/`decode_scan_export`: время «03.10.2026, 10:15», дата и
 время отдельными колонками, американское «10/3/2026 10:15 AM», UTF-16 (с BOM и без), «;» вместо
 «,», пробел внутри кавычек, ФИО с запятой в некавыченном CSV, номер телефона не путается с
 временем. Дубли сводятся по токену и дню. Загрузка в боте —
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from services.checkin import decode_scan_export, find_checkin_records, parse_qr_payload
+from services.forum.checkin import decode_scan_export, find_checkin_records, parse_qr_payload
 
 TAG = "YL26/2"
 Q1 = f"{TAG}·Иванов Иван·tmn·AbC-d_12345"

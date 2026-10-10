@@ -25,9 +25,9 @@ from handlers.i18n import reg_i18n
 from handlers.forum.session_enroll import _Ctx, _btn, _kb, _show
 from handlers.user_actions import _returning_text_if_past_season, ensure_registered, router
 from keyboards.menu_dynamic import DynamicMenuText
-from services import quiz as svc
-from services import session_enroll as enroll_svc
-from services.checkin import checkin_denial
+from services.forum import quiz as svc
+from services.forum import session_enroll as enroll_svc
+from services.forum.checkin import checkin_denial
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ from datetime import datetime
 
 from domain.cities import per_city_key
 from database import db as bot_db
-from services import checkin_csv_import
+from services.forum import checkin_csv_import
 from tests.test_miniapp_checkin_260924 import (
     BASE,
     _freeze_now,
@@ -131,7 +131,7 @@ def test_no_forum_date_keeps_old_behaviour(tmp_path, monkeypatch):
 
 def test_csv_upload_marks_but_warns_about_off_day(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 12, 0))
-    from services.checkin import build_payload
+    from services.forum.checkin import build_payload
     _run(_insert_user(952009, city="spb"))
     token = _run(bot_db.get_or_create_checkin_token(952009))
     from handlers.forum import admin_checkin
@@ -152,7 +152,7 @@ def test_delegate_without_city_is_not_treated_as_moscow(tmp_path, monkeypatch):
     body = client.post(f"{BASE}/scan", json={"payload": _qr(952010)}, headers=_hdr(GAME_MANAGER_ID)).json()
     assert body["status"] == "new"
     assert _entry_rows(952010) == 1
-    from services import checkin_forum_day
+    from services.forum import checkin_forum_day
     assert _run(checkin_forum_day.off_day_for_scan({"event_city": ""}, "2026-10-01 10:00:00")) is False
 
 
@@ -191,7 +191,7 @@ def test_scanner_has_mark_anyway_button_with_confirm():
 
 def _csv_untimed(rec_extra: dict, now: datetime, tmp_path, monkeypatch, uid: int):
     _setup(tmp_path, monkeypatch, now)
-    from services.checkin import build_payload
+    from services.forum.checkin import build_payload
     from handlers.forum import admin_checkin
     _run(_insert_user(uid, city="spb"))
     token = _run(bot_db.get_or_create_checkin_token(uid))
@@ -232,7 +232,7 @@ def test_csv_without_time_on_forum_day_keeps_upload_time(tmp_path, monkeypatch):
 def test_csv_ambiguous_us_date_is_swapped_into_forum_window(tmp_path, monkeypatch):
     """«03/10/2026 10:15 AM» разбор читает как 10 марта (AM/PM = американский м/д). В окно форума
     СПб (03.10) попадает только перестановка — её и берём, со строкой отчёта."""
-    from services.checkin import find_checkin_records, build_payload
+    from services.forum.checkin import find_checkin_records, build_payload
     from handlers.forum import admin_checkin
     _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 12, 0))
     _run(_insert_user(952015, city="spb"))
@@ -254,7 +254,7 @@ def test_csv_ambiguous_us_date_is_swapped_into_forum_window(tmp_path, monkeypatc
 
 
 def test_csv_unambiguous_or_fitting_date_is_not_swapped(tmp_path, monkeypatch):
-    from services.checkin import find_checkin_records
+    from services.forum.checkin import find_checkin_records
     assert "alt" not in find_checkin_records("t,x\n10/13/2026 10:15 AM,YL26·И·spb·tok1\n", "YL26")[0]
     assert "alt" not in find_checkin_records("t,x\n03.10.2026 10:15,YL26·И·spb·tok1\n", "YL26")[0]
     rec = find_checkin_records("t,x\n03/10/2026 10:15,YL26·И·spb·tok1\n", "YL26")[0]
@@ -264,7 +264,7 @@ def test_csv_unambiguous_or_fitting_date_is_not_swapped(tmp_path, monkeypatch):
 def test_day_check_reads_settings_in_one_snapshot(tmp_path, monkeypatch):
     """Проверка дня — на каждом скане входа: настройки одним снимком, а не соединением на ключ."""
     from datetime import date
-    from services import checkin_forum_day
+    from services.forum import checkin_forum_day
     _setup(tmp_path, monkeypatch, datetime(2026, 10, 2, 18, 0))
     reads = []
     real = bot_db._load_settings_snapshot
@@ -293,7 +293,7 @@ def test_cities_off_day_before_forum_writes_nothing(tmp_path, monkeypatch):
         body = client.post(f"{BASE}/scan", json={"payload": _qr(uid)}, headers=_hdr(GAME_MANAGER_ID)).json()
         assert body["status"] == "not_forum_day", city
         assert _entry_rows(uid) == 0
-    from services import checkin_forum_day
+    from services.forum import checkin_forum_day
     assert _run(checkin_forum_day.off_day_for_scan({"event_city": None}, "2026-10-02 10:00:00")) is True
     assert _run(checkin_forum_day.off_day_for_scan({"event_city": None}, "2026-10-03 10:00:00")) is False
 
@@ -351,7 +351,7 @@ def test_bound_volunteer_own_city_delegate_off_day_is_not_other_city(tmp_path, m
 
 def test_unbound_volunteer_other_city_text_kept_via_service(tmp_path, monkeypatch):
     from datetime import date
-    from services import checkin_forum_day
+    from services.forum import checkin_forum_day
     _setup(tmp_path, monkeypatch, datetime(2026, 10, 3, 9, 0))
     denial = _run(checkin_forum_day.entry_day_denial({"event_city": "msk"}, date(2026, 10, 3)))
     assert "Делегат другого города:" in denial["reason_text"]

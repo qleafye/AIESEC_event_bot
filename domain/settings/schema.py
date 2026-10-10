@@ -101,7 +101,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     # Идея №1 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): режим «день
-    # форума» главного меню делегата (services/forum_day_menu.py, keyboards/builders.py::
+    # форума» главного меню делегата (services/forum/forum_day_menu.py, keyboards/builders.py::
     # get_main_menu_kb) — на время форума города наверх меню поднимаются «🎟 Мой QR»/
     # «📅 Программа»/«❗ Важное»/«🆘 SOS» (каждая — только если её СОБСТВЕННЫЙ гейт и так её
     # показывает), остальное сдвигается вниз, не прячется. Дефолт "off" — фича не должна
@@ -1056,9 +1056,9 @@ SETTINGS_SCHEMA = {
     # (у городов разная готовность программы к моменту запуска приложения), но НЕ photo/file —
     # это выбор ВИДА экрана, а не сам медиа-файл (`tests/test_settings_percity_resolver.py::
     # test_no_per_city_key_is_photo_or_file_type` запрещает per_city на photo/file типах, само
-    # фото читается сырым composite-ключом в `services/program.py`, D-10, мимо этого резолвера).
+    # фото читается сырым composite-ключом в `services/forum/program.py`, D-10, мимо этого резолвера).
     # `default` здесь — статичный запасной вариант ТОЛЬКО для реестра/веб-редактора настроек;
-    # реальный резолвер (`services.program.resolve_program_view`) отличает «не задано вовсе» от
+    # реальный резолвер (`services.forum.program.resolve_program_view`) отличает «не задано вовсе» от
     # «задано» по сырому значению и достраивает дефолт по наличию сессий (таблица, если они
     # заведены, иначе фото) — статичный "table" здесь этого решения не переопределяет.
     "program_miniapp_view": {
@@ -7483,12 +7483,12 @@ SETTINGS_SCHEMA = {
     # для отметки на форуме. Сканер/загрузка CSV — НЕ эта задача (D-04 note); только генерация
     # и показ QR в чате + кнопка меню. Дефолт master-тумблера OFF — тот же приём, что у
     # chat_tracking_enabled/daily_digest_enabled выше: выкат ничего не меняет, пока менеджер не
-    # включит явно. Сама генерация — services/checkin.py::build_checkin_qr.
+    # включит явно. Сама генерация — services/forum/checkin.py::build_checkin_qr.
     "checkin_qr_enabled": {
         "type": "enum", "group": "toggles", "label": "🎟 QR для чек-ина на форуме",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
-    # Метка события внутри QR (services/checkin.py::_event_tag) — НЕ то же самое, что
+    # Метка события внутри QR (services/forum/checkin.py::_event_tag) — НЕ то же самое, что
     # «🎉 Сезон события» (event_season): та подставляется в тексты для людей («YL'26»), эта —
     # машинная метка для будущего CSV-парсера сканера (без апострофа/пробелов). Дефолт None —
     # consumer падает на event_season без апострофа, если ключ не задан явно.
@@ -7808,7 +7808,7 @@ SETTINGS_SCHEMA = {
         "default": "Как переключиться",
     },
     # Бэклог чек-ина №7: тренировочный режим сканера и лист учебных QR
-    # (services/checkin_training.py). Тексты волонтёру — корпус перевода, как у соседей выше.
+    # (services/forum/checkin_training.py). Тексты волонтёру — корпус перевода, как у соседей выше.
     "checkin_training_note_text": {
         "type": "text", "group": "event", "label": "🧪 Сканер: пометка тренировки",
         "prompt": (
@@ -8085,7 +8085,7 @@ SETTINGS_SCHEMA = {
     },
 
     # ── Форум-ночь (идея №3 бэклога чек-ина): приветствие после ПЕРВОЙ отметки входа делегата ──
-    # `services/forum_welcome.py` — слушатель `services.checkin.register_first_entry_listener`.
+    # `services/forum/forum_welcome.py` — слушатель `services.forum.checkin.register_first_entry_listener`.
     # per_city (тот же довод, что у checkin_qr_broadcast_enabled/_text выше — регионы 03.10 и
     # Москва 30–31.10 живут в разных фазах, а приветствие завязано на сам факт форума города).
     # Мастер-тумблер дефолт "off" (D-36: новая функция не включается сама).
@@ -8595,7 +8595,7 @@ SETTINGS_SCHEMA = {
     # выше — загружается менеджером через общий флоу handlers/settings/admin_settings.py::PHOTO_FIELDS
     # (кнопка есть и на собственном экране карточки — settings_photo:forum_stats_card, тот же
     # генерический callback, второй копии хендлера не заводим). Без загруженного фона
-    # services/forum_stats_card.py рисует фон брендовым цветом (web_theme.PRESETS).
+    # services/forum/forum_stats_card.py рисует фон брендовым цветом (web_theme.PRESETS).
     "forum_stats_card": {
         "type": "photo", "group": "event", "label": "📊 Фон карточки «Мы в цифрах»",
         "prompt": (

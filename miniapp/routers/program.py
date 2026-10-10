@@ -5,11 +5,11 @@ Mini App: `GET /app/api/program`.
 нет своего раздела-чекбокса в `SECTIONS` — видимость плитки и доступ к ручке решает та же
 пара проверок, что у кнопки меню бота (`keyboards.builders.get_main_menu_kb`): тумблер
 `menu_program` по городу делегата + есть фото или хотя бы одна сессия
-(`services.program.program_menu_visible`). В `/app/api/me` это `sections["program"]`.
+(`services.forum.program.program_menu_visible`). В `/app/api/me` это `sections["program"]`.
 
 Вид (таблица/фото) и сам город делегата резолвятся ОДИН раз общими функциями
-`services/program.py` — вторая копия правила «что показываем» не заводится нигде (докстринг
-модуля `services/program.py`, D-29). Фото отдаётся ссылкой на `GET /app/api/file/{file_id}`
+`services/forum/program.py` — вторая копия правила «что показываем» не заводится нигде (докстринг
+модуля `services/forum/program.py`, D-29). Фото отдаётся ссылкой на `GET /app/api/file/{file_id}`
 (тот же прокси, что у любой другой картинки Mini App, T-19-19: клиент никогда не видит токен
 бота); сам file_id должен быть в `is_public_asset` (`miniapp/routers/files.py`) — это
 публичное оформление события, не персональные данные, тот же класс, что лого/обложка."""
@@ -23,7 +23,7 @@ from fastapi.responses import FileResponse
 from domain.cities import cities_module_on, normalize_city
 from database.db import get_user
 from services.i18n import i18n
-from services.program import (
+from services.forum.program import (
     build_delegate_program,
     default_program_photo_path,
     program_menu_visible,
@@ -65,7 +65,7 @@ async def _retry_error(telegram_id: int) -> HTTPException:
 async def program_section_visible(p: Principal) -> bool:
     """Раздел «📅 Программа» Mini App — вычисляемый, без своего чекбокса `miniapp_section_*`:
     виден ровно тогда, когда делегату в чате видна кнопка программы
-    (`services.program.program_menu_visible` — тумблер `menu_program` по городу + есть фото или
+    (`services.forum.program.program_menu_visible` — тумблер `menu_program` по городу + есть фото или
     сессии). Одобренность делегата сюда не входит — её проверяет `delegate_gate`/`is_delegate`.
     Сбой чтения — «раздела нет», экран не роняется."""
     try:

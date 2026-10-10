@@ -17,7 +17,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers.access.admin_caps import role_caps_key
-from services.checkin import checkin_denial
+from services.forum.checkin import checkin_denial
 from services.revert_pending import preview_revert_pending, revert_to_pending
 from tests._dbtpl import fast_init_db
 
@@ -384,7 +384,7 @@ def test_revert_source_admin_prefix_does_not_break_history_screen(tmp_path):
 
 def test_checkin_denial_blocks_after_revert(tmp_path):
     """Task 1: «QR перестаёт пускать» — без отдельного кода, checkin_denial читает статус
-    вживую (services/checkin.py::checkin_denial)."""
+    вживую (services/forum/checkin.py::checkin_denial)."""
     _db_ready(tmp_path)
 
     async def scenario():

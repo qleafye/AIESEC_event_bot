@@ -8,7 +8,7 @@ import asyncio
 from config import config
 from database import db
 from handlers.forum import admin_program
-from services.program import point_for_session
+from services.forum.program import point_for_session
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 961003101

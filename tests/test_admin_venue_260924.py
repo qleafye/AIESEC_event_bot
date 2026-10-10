@@ -9,7 +9,7 @@ import asyncio
 from config import config
 from database import db
 from handlers.forum import admin_checkin, admin_venue
-from services.checkin import ENTRY_POINT, record_arrival
+from services.forum.checkin import ENTRY_POINT, record_arrival
 from tests._dbtpl import fast_init_db
 from tests.test_checkin_reissue_260924 import _FakeCallback, _FakeMessage, _insert_user
 
@@ -206,7 +206,7 @@ def test_csv_upload_is_one_log_line(tmp_path):
     _ready(tmp_path)
     _run(_insert_user(DELEGATE_ID, full_name="Иванов Иван"))
     token = _run(db.get_or_create_checkin_token(DELEGATE_ID))
-    from services.checkin import build_payload, current_event_tag
+    from services.forum.checkin import build_payload, current_event_tag
     qr = build_payload(_run(current_event_tag()), "Иванов Иван", "Москва", token)
     state = _FakeState()
     # Второй скан — тот же день (вход каждый день: скан без времени лёг бы на день загрузки).

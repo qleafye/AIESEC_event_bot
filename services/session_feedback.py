@@ -4,9 +4,9 @@ D-24 `.planning/FORUM-CHECKIN.md`): «⭐ Отзыв о сессии одним 
 1–5 и необязательным комментарием.
 
 Домен вынесен из `handlers/forum/session_feedback.py` по правилу проекта «своего Router() нет — домен
-в services/, хендлеры — тонкий шов» (та же форма, что `services/sos.py`/`services/program.py`).
+в services/, хендлеры — тонкий шов» (та же форма, что `services/sos.py`/`services/forum/program.py`).
 
-aiogram-free НА УРОВНЕ ИМПОРТА (тот же инвариант, что `services/program.py`/`services/sos.py`)
+aiogram-free НА УРОВНЕ ИМПОРТА (тот же инвариант, что `services/forum/program.py`/`services/sos.py`)
 — `services.scheduler` (тянет aiogram `Bot`) и `services.quiet_hours` (aiogram-free сам, но
 зовёт `services.scheduler` лениво только у бота, не у веба) подтягиваются ЛЕНИВО внутри функций,
 которые вызывает ТОЛЬКО бот (планирование джоб, сама доставка) — не на пути импорта модуля.
@@ -305,7 +305,7 @@ def _comments_word(n: int) -> str:
 async def day_stats(city: str, day: str) -> list[dict]:
     """Экран «📊 Оценки сессий» дня (пункт 2 плана): сессии дня + статистика, сортировка по
     средней оценке (сессии без единой оценки — в конец, по времени начала)."""
-    from services.program import sessions_for_city_day
+    from services.forum.program import sessions_for_city_day
 
     sessions = await sessions_for_city_day(city, day)
     if not sessions:

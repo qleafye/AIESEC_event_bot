@@ -2,7 +2,7 @@
 from domain.cities import per_city_key
 from database import db, quiz_db as qz, session_enroll_db as se
 from handlers.forum import forum_deeplinks, quiz as h
-from services import quiz as svc
+from services.forum import quiz as svc
 from keyboards.menu_dynamic import DynamicMenuText
 from tests._enroll38 import CITY, add_user, ready, run
 from tests._enroll38_chat import FakeCallback, FakeMessage, buttons, make_state, setup_world

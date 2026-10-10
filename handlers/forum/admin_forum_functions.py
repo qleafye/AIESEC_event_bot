@@ -54,7 +54,7 @@ from handlers.states import RegionalNoshowMoveTimeEdit
 from keyboards.builders import get_cancel_kb
 from services import session_feedback as sf
 from services.checkin_volunteer_broadcast import schedule_city_job as schedule_volunteer_guide_job
-from services.forum_day_menu import is_forum_day_menu_active_for_city
+from services.forum.forum_day_menu import is_forum_day_menu_active_for_city
 from services import forum_day_report as fdr
 from services import forum_noshow_poll as fnsp
 from services import regional_noshow_move as rgnm
@@ -175,7 +175,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
 
     # D-41 (регистрация на месте): короткая анкета по QR у стойки — per_city, свой экран
     # (handlers/forum/admin_onsite_reg.py). Строка добавлена аддитивно, соседи не переставлены.
-    from services.onsite_reg import onsite_enabled  # строго по городу, без общего ключа
+    from services.forum.onsite_reg import onsite_enabled  # строго по городу, без общего ключа
     onsite_on = await onsite_enabled(code)
     lines.append(f"📝 Регистрация на месте: {_status(onsite_on)}")
     if visible(f"onsitereg_cfg:{_encode_city(code)}"):
@@ -184,9 +184,9 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
         )])
 
     # 6. Программа (кнопка делегата, D-29) — статус ровно тот, что у меню делегата и Mini App:
-    # `services.program.program_menu_visible` (тумблер menu_program города И есть фото или
+    # `services.forum.program.program_menu_visible` (тумблер menu_program города И есть фото или
     # сессии). Раньше строка смотрела только на сессии и писала «Вкл» при выключенной кнопке.
-    from services.program import program_menu_visible
+    from services.forum.program import program_menu_visible
     program_line = "📅 Кнопка «Программа» у делегата: "
     if await program_menu_visible(code):
         lines.append(program_line + _status(True))
@@ -211,7 +211,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
     if visible(f"forumfn_open:fb:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(text="⭐ Настройки отзывов", callback_data=f"forumfn_open:fb:{_encode_city(code)}")])
 
-    from services.session_enroll import module_enabled as _enroll_on  # запись на сессии (admin_enroll_list)
+    from services.forum.session_enroll import module_enabled as _enroll_on  # запись на сессии (admin_enroll_list)
     lines.append(f"📅 Запись на сессии: {_status(await _enroll_on(code))}")
     if visible(f"prog_enrset:{code}"):
         buttons.append([InlineKeyboardButton(text="📅 Настройки записи", callback_data=f"prog_enrset:{code}")])
@@ -461,7 +461,7 @@ async def checkinvol_time_step(message: types.Message, state: FSMContext):
 # ── Идея №1 бэклога чек-ина: режим «день форума» главного меню делегата ─────────────────────
 # Форма byte-в-byte `_vol_cfg_text_kb`/`checkinvol_toggle_go`/`checkinvol_time_start` выше —
 # тумблер + один временной слот («вечером накануне»), без джобы для переставления (не
-# APScheduler-фича — `services.forum_day_menu` резолвится живьём на каждом рендере меню, тут
+# APScheduler-фича — `services.forum.forum_day_menu` резолвится живьём на каждом рендере меню, тут
 # перепланировать нечего).
 
 async def _forumdaymenu_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:

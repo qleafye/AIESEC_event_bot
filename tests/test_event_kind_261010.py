@@ -1,7 +1,7 @@
 """Вид события в текстах делегату (`services.text_fill.event_kind`): карточка «… в цифрах» и
 похожие фразы говорят «на форуме» / «на конференции» / «на мероприятии» по «🎭 Тип события»,
 а не «на форуме» на любом событии. Пустой тип — форум (дефолт реестра), прежний вывод тот же."""
-from services import forum_stats_card as card
+from services.forum import forum_stats_card as card
 from services.text_fill import event_kind
 
 

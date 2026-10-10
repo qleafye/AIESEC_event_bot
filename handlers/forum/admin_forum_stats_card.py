@@ -19,7 +19,7 @@ FSM per-city правки только через «✏️ Изменить дл
 Рассылка — двухшаговое подтверждение (выбор аудитории кнопкой с готовым числом -> «✅ Да,
 отправить»), тот же приём двойного барьера, что «📤 Разослать QR сейчас»
 (`handlers/forum/admin_checkin.py::checkinqr_send_go`): колбэк отвечает СРАЗУ, клавиатура убирается
-ДО вызова `services.forum_stats_card.send_broadcast` (может занять минуты — сотни фото), сама
+ДО вызова `services.forum.forum_stats_card.send_broadcast` (может занять минуты — сотни фото), сама
 рассылка вдобавок блокируется `asyncio.Lock` на город.
 
 Капа — `moderate_reg` на ВСЕХ callback этого экрана (массовая рассылка + правка настроек, тот
@@ -38,7 +38,7 @@ from handlers.forum.admin_checkin import (
     _decode_city,
     _encode_city,
 )
-from services import forum_stats_card as fsc
+from services.forum import forum_stats_card as fsc
 from services.settings.audit import set_setting_by_admin
 
 

@@ -1,5 +1,5 @@
 """Идея №1 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): режим «день форума»
-главного меню делегата (per_city) — `services/forum_day_menu.py::is_forum_day_menu_active_for_city`
+главного меню делегата (per_city) — `services/forum/forum_day_menu.py::is_forum_day_menu_active_for_city`
 + `keyboards/builders.py::get_main_menu_kb` (реордер «🎟 Мой QR»/«📅 Программа»/«❗ Важное»/
 «🆘 SOS» наверх, остальное сдвигается вниз, не прячется).
 
@@ -8,7 +8,7 @@ pytest-asyncio недоступна в этом окружении — кажд�
 форма, что `tests/test_sos_260924.py`, откуда позаимствован `_add_delegate`).
 
 Два стиля времени в этом файле:
-- Точные пороги окна (вечер накануне/конец форума) — монкипатч `services.forum_day_menu.
+- Точные пороги окна (вечер накануне/конец форума) — монкипатч `services.forum.forum_day_menu.
   msk_now` (модульный импорт, тот же приём, что `tests/test_checkin_qr_broadcast_260924.py`
   использует для `services.checkin_broadcast.msk_now`), юнит-тесты бьют напрямую в
   `is_forum_day_menu_active_for_city`, БЕЗ get_main_menu_kb.
@@ -26,7 +26,7 @@ from datetime import datetime
 from config import config
 from database import db
 from keyboards.builders import get_main_menu_kb
-from services import forum_day_menu as fdm
+from services.forum import forum_day_menu as fdm
 from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
@@ -76,7 +76,7 @@ def _freeze(monkeypatch, when: datetime):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# services.forum_day_menu.is_forum_day_menu_active_for_city -- окно по времени (юнит)
+# services.forum.forum_day_menu.is_forum_day_menu_active_for_city -- окно по времени (юнит)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_false_without_forum_date(tmp_path, monkeypatch):

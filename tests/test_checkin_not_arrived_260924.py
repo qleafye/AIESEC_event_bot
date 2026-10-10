@@ -12,7 +12,7 @@ from aiogram.types import InlineKeyboardMarkup
 from config import config
 from database import db
 import services.scheduler as sched
-import services.checkin_not_arrived as cna
+import services.forum.checkin_not_arrived as cna
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import FakeCallback, FakeMessage
 
@@ -139,7 +139,7 @@ def test_summary_scoped_by_city_snapshot(tmp_path):
     assert _run(db.checkin_not_arrived_summary(city_scope=scope_spb, day="2026-10-30"))["coming"] == 0
 
 
-# ── services/checkin_not_arrived.py: send() ──────────────────────────────────────────────────
+# ── services/forum/checkin_not_arrived.py: send() ──────────────────────────────────────────────────
 
 def test_send_marks_and_delivers_with_three_buttons(tmp_path):
     _ready(tmp_path)

@@ -1,7 +1,7 @@
 """Отметка входа только в день форума города делегата.
 
 Окно форума города — `[forum_date, forum_date + sos_active_days - 1]` (тот же расчёт, что меню
-дня форума, SOS и отчёт дня: `services.forum_day_menu._forum_window_dates`). Дата форума не
+дня форума, SOS и отчёт дня: `services.forum.forum_day_menu._forum_window_dates`). Дата форума не
 задана — проверки нет (как раньше).
 
 Зачем: накануне волонтёр получает шпаргалку (D-33), открывает сканер и пробует его на QR
@@ -29,7 +29,7 @@ STATUS = "not_forum_day"
 
 
 async def forum_window(city: str | None) -> tuple[date, date] | None:
-    from services.forum_day_menu import _forum_window_dates  # тот же расчёт окна, что меню дня
+    from services.forum.forum_day_menu import _forum_window_dates  # тот же расчёт окна, что меню дня
     try:
         return await _forum_window_dates(city)
     except Exception:  # noqa: BLE001 — сбой чтения настройки не должен ронять отметку

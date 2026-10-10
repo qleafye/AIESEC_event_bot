@@ -1,4 +1,4 @@
-"""Точка расширения «токен QR -> человек» (`services.checkin.register_token_resolver`/
+"""Точка расширения «токен QR -> человек» (`services.forum.checkin.register_token_resolver`/
 `resolve_token`) под будущие гостевые пропуска: встроенный резолвер делегатов работает как
 раньше, внешний зовётся только для токена, которого нет в `users`, падающий резолвер не
 ломает скан, чужой вид пропуска без записи отметки — отказ «неизвестный тип пропуска».
@@ -8,8 +8,8 @@ from __future__ import annotations
 import pytest
 
 from database import db as bot_db
-from services import checkin, venue_log
-from services.checkin import build_payload
+from services.forum import checkin, venue_log
+from services.forum.checkin import build_payload
 
 from tests.test_miniapp_checkin_260924 import (
     BASE,

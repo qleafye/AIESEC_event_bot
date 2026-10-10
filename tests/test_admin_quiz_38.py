@@ -201,7 +201,7 @@ def test_foreign_city_denied(tmp_path):
 
 from handlers.forum import admin_quiz_levels as lv  # noqa: E402
 from handlers.states import EditSetting  # noqa: E402
-from services.quiz import QUIZ_TEXT_KEYS  # noqa: E402
+from services.forum.quiz import QUIZ_TEXT_KEYS  # noqa: E402
 
 
 def test_levels_crud(tmp_path):

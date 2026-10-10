@@ -1,5 +1,5 @@
 """Статистика прихода на форум — корневой aiogram-free модуль, ОДИН источник правды для бота
-(`services/checkin_arrival.py`, aiosqlite) и дашборда (`dashboard/queries.py`, синхронный
+(`services/forum/checkin_arrival.py`, aiosqlite) и дашборда (`dashboard/queries.py`, синхронный
 sqlite3 read-only). Прецедент — `shared/tg_media.py`/`shared/web_theme.py`: только stdlib, в образ дашборда
 копируется отдельной строкой COPY (сторож `tests/test_dashboard_docker.py`).
 
@@ -27,7 +27,7 @@ from __future__ import annotations
 import csv
 import io
 
-# Должна совпадать с `services.checkin.ENTRY_POINT` (сторож в tests/test_arrival_stats_260924.py).
+# Должна совпадать с `services.forum.checkin.ENTRY_POINT` (сторож в tests/test_arrival_stats_260924.py).
 ENTRY_POINT = "entry"
 SESSION_POINT_PREFIX = "session:"
 

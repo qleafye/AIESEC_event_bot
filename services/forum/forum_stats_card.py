@@ -96,7 +96,7 @@ from database.db import (
     list_checkins_for_user,
 )
 from services import scheduler as _sched
-from services.checkin import ENTRY_POINT, checkin_denial
+from services.forum.checkin import ENTRY_POINT, checkin_denial
 from services.infra.ru_plural import ru_plural
 from services.text_fill import event_kind
 from services.infra.timeutil import msk_now
@@ -262,7 +262,7 @@ async def collect_stats(user: dict) -> dict[str, Any]:
 # ── Аудитория ─────────────────────────────────────────────────────────────────────────────
 
 async def eligible_recipients(city: str | None, *, only_arrived: bool) -> list[dict]:
-    """Одобренные текущего сезона города через `services.checkin.checkin_denial` НА КАЖДОЙ
+    """Одобренные текущего сезона города через `services.forum.checkin.checkin_denial` НА КАЖДОЙ
     строке (единая точка правды допуска D-02, тот же приём, что `services.checkin_broadcast.
     eligible_recipients`) — `only_arrived=True` дополнительно требует хотя бы один вход
     (`database.db.first_entry_scanned_at`, любой день форума)."""

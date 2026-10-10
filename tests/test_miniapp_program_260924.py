@@ -279,7 +279,7 @@ def test_program_retry_text_has_manual_english():
 @pytest.fixture
 def disk_photo(tmp_path, monkeypatch):
     """Подмена диск-фоллбэка `resources/program.jpg` — по умолчанию файла нет."""
-    import services.program as program_service
+    import services.forum.program as program_service
 
     missing = tmp_path / "no_program.jpg"
     monkeypatch.setattr(program_service, "PROGRAM_DEFAULT_PHOTO_PATH", str(missing))

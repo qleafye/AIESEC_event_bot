@@ -23,7 +23,7 @@ from domain.cities import default_city_code
 from database.db import list_program_days_for_city
 from handlers.i18n import reg_i18n
 from handlers.user_actions import _delegate_city, router
-from services.program import day_label, format_time_range, group_parallel, sessions_for_city_day
+from services.forum.program import day_label, format_time_range, group_parallel, sessions_for_city_day
 from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 
 

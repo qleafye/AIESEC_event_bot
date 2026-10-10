@@ -5,10 +5,10 @@
   того же делегата отдаёт тот же токен), пользователя нет -- `None`.
 - миграция (`checkin_token` колонка + частичный уникальный индекс `idx_users_checkin_token`)
   не ломает существующие записи `users` и идемпотентна при повторном `init_db()`.
-- `services.checkin.build_payload`/`build_checkin_payload` — формат строки внутри QR
+- `services.forum.checkin.build_payload`/`build_checkin_payload` — формат строки внутри QR
   (`тег·ФИО·город·токен`), без декодирования самой картинки (см. задание — декодировать не
   обязательно, проверяется собранная строка).
-- `services.checkin.checkin_denial` — единая точка допуска D-02: нет пользователя, статус не
+- `services.forum.checkin.checkin_denial` — единая точка допуска D-02: нет пользователя, статус не
   `'approved'` строго (NULL/`'waitlist'`/легаси, которые `ensure_registered` пропускает), делегат
   прошлого сезона (`reg_engine.is_past_season_row`) — 482 импортированных approved-делегата
   26/1 не должны получить пропуск на текущий форум.
@@ -31,7 +31,7 @@ import pytest
 
 from config import config
 from database import db
-from services import checkin as checkin_mod
+from services.forum import checkin as checkin_mod
 from keyboards.builders import get_main_menu_kb, MENU_TEXTS
 from handlers import user_actions as ua_mod
 
@@ -136,7 +136,7 @@ def test_unique_index_rejects_duplicate_token(tmp_path):
     conn.close()
 
 
-# ── services.checkin: формат содержимого QR ──────────────────────────────────────────────────
+# ── services.forum.checkin: формат содержимого QR ──────────────────────────────────────────────────
 
 def test_build_payload_field_order_and_separator():
     payload = checkin_mod.build_payload("YL26", "Иванов Иван", "Казань", "k7Qx9abc12")
@@ -191,7 +191,7 @@ def test_build_checkin_qr_returns_png_bytes_and_caption(tmp_path):
     assert caption and "QR" in caption
 
 
-# ── services.checkin.checkin_denial: правило допуска D-02 ───────────────────────────────────
+# ── services.forum.checkin.checkin_denial: правило допуска D-02 ───────────────────────────────────
 
 def test_checkin_denial_past_season_approved_user_is_denied(tmp_path):
     """482 импортированных делегата 26/1 со status='approved' не должны получить пропуск на

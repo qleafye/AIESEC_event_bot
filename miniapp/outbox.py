@@ -50,11 +50,11 @@ Phase 21 (21-08, FORM-SYNC-02/04/07, D-05/D-06): `reg_finalized`/`reg_edited` �
 шлёт копию в чат, `miniapp` сама с Telegram Bot API/Nextcloud не говорит (D-01).
 
 `checkin_first_entry` (24.09) — первая отметка входа делегата со сканера/поиска Mini App
-(`miniapp/routers/checkin.py`); бот зовёт `services.checkin.fire_first_entry(bot, **payload)`
+(`miniapp/routers/checkin.py`); бот зовёт `services.forum.checkin.fire_first_entry(bot, **payload)`
 — слушателей `register_first_entry_listener`, которые есть только в процессе бота.
 
 `onsite_approved` (27.09, D-41) — волонтёр одобрил человека у стойки в сканере Mini App; бот
-зовёт `services.onsite_reg.after_onsite_approved` (строка листа, сообщение и QR человеку).
+зовёт `services.forum.onsite_reg.after_onsite_approved` (строка листа, сообщение и QR человеку).
 
 `amb_tier_reached` (29.09, ступени амбассадоров СкиллАп) — ставит `services.amb.amb_tiers.
 check_tiers` и в бот-процессе, и в веб-процессе (одобрение в Mini App после окна отмены)

@@ -84,9 +84,9 @@ from handlers.states import Question, GameSubmit
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.infra.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
-from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
+from services.forum.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.infra.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
-from services.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
+from services.forum.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from services.amb import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
 from services.amb import amb_status  # правила входа/выхода амбассадора — одна точка
@@ -1155,7 +1155,7 @@ async def show_info_menu(message: types.Message):
     tr = lambda s: reg_i18n.tr_text(s, lang, tr_map)  # noqa: E731
 
     # Всё, что известно (дата или «Дата начала форума», время, место, город) — services/event_info.
-    from services.event_info import info_lines
+    from services.forum.event_info import info_lines
     lines = await info_lines(await _delegate_city(message.from_user.id), tr)
     if lines:
         text = f"<b>{await ui_tr('info_screen_title_text', tr)}</b>\n\n" + "\n".join(lines)
@@ -1238,11 +1238,11 @@ async def show_program(message: types.Message):
 
     logger.info(f"User {message.from_user.id} requested Program")
 
-    # Что показать — ОДНО правило с Mini App (`services.program.resolve_program_content`):
+    # Что показать — ОДНО правило с Mini App (`services.forum.program.resolve_program_content`):
     # тумблер «Таблица/Фото» города; своё фото города; общее — только городу без своего фото и
     # без сессий. Раньше любое фото (даже чужое общее) перекрывало сессии и тумблер не читался.
     # Подпись — своя у своего фото города, общая у общего (`program_photo_caption`).
-    from services.program import program_photo_caption, resolve_program_content
+    from services.forum.program import program_photo_caption, resolve_program_content
     city = await _delegate_city(message.from_user.id)
     view, source = await resolve_program_content(city)
     if view == "photo":
@@ -1377,7 +1377,7 @@ async def my_referrals(message: types.Message, bot: Bot):
 # ── Quick 260906-8uq (FAQ-01..06): «❓ Частые вопросы» ────────────────────────────────────────
 #
 # Правило видимости (какой пункт виден делегату, городской перекрывает общий) живёт ровно
-# один раз в services/faq.py; здесь — только резолв города делегата (тот же fail-soft приём,
+# один раз в services/forum/faq.py; здесь — только резолв города делегата (тот же fail-soft приём,
 # что process_question ниже использует для фан-аута вопроса по городу) и рендер (text, kb).
 FAQ_PAGE_SIZE = 8
 
@@ -1668,7 +1668,7 @@ async def show_my_checkin_qr(message: types.Message):
     # (см. ensure_registered выше). Но её _gate_decision пропускает legacy/NULL/будущий
     # waitlist как «допущен» ради обратной совместимости ~590 старых записей — QR это
     # МАТЕРИАЛЬНЫЙ пропуск на площадку (D-02), такой лёгкий гейт для него мал. Правило допуска
-    # к самому чек-ину — отдельная строгая проверка `services.checkin.checkin_denial` ниже.
+    # к самому чек-ину — отдельная строгая проверка `services.forum.checkin.checkin_denial` ниже.
     if not await ensure_registered(message):
         return
     lang, tr_map = await reg_i18n.ctx_for(message)
@@ -1994,7 +1994,7 @@ async def checkin_qr_confirm_receipt(callback: types.CallbackQuery):
     await callback.answer(reg_i18n.tr_text(text, lang, tr_map), show_alert=True)
 
 
-# Форум-ночь п.6 (D-25, идея №14): ответ на шаблон «Не пришёл» (services/checkin_not_arrived.py).
+# Форум-ночь п.6 (D-25, идея №14): ответ на шаблон «Не пришёл» (services/forum/checkin_not_arrived.py).
 # `day` едет ВНУТРИ callback_data (`cna:{response}:{day}`), не в FSM — сообщение (и его кнопки)
 # переживает рестарт контейнера (MemoryStorage FSM — нет), делегат может ответить хоть через
 # неделю на СТАРОЕ сообщение, ответ уйдёт в ту же историческую строку `checkin_not_arrived`.

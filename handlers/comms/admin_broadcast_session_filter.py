@@ -22,7 +22,7 @@ from domain.cities import cities_module_on, city_label, default_city_code, enabl
 from database.db import SESSION_ATTENDED, SESSION_NOT_ATTENDED
 from handlers.admin import router
 from handlers.states import Broadcast
-from services.program import day_label, sessions_for_city_day, session_point_label
+from services.forum.program import day_label, sessions_for_city_day, session_point_label
 
 _MODES = (SESSION_ATTENDED, SESSION_NOT_ATTENDED)
 

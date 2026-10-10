@@ -50,10 +50,10 @@ Telegram или пересобирать таблицу самому — еди�
 - `application_mass_approved` -> `services.application_effects.mass_approve_effects(bot,
   ids)` (D-07) — welcome-рассылка + один batch-sync листа для «Принять всех N»; у массового
   одобрения нет отмены, это событие ставится сразу в `miniapp/routers/applications.py`.
-- `checkin_first_entry` -> `services.checkin.fire_first_entry(bot, **payload)` (24.09) —
+- `checkin_first_entry` -> `services.forum.checkin.fire_first_entry(bot, **payload)` (24.09) —
   слушатели первой отметки входа делегата, отмеченного сканером/поиском Mini App. Слушатели
   fail-soft сами, строка из очереди выходит обработанной даже при их сбое (не ретраим).
-- `onsite_approved` -> `services.onsite_reg.after_onsite_approved(bot, telegram_id)` (D-41) —
+- `onsite_approved` -> `services.forum.onsite_reg.after_onsite_approved(bot, telegram_id)` (D-41) —
   человека одобрили у стойки в сканере Mini App: строка листа, сообщение и QR (только ПОСЛЕ
   одобрения, D-02). Каждый шаг fail-soft сам.
 - `amb_tier_reached` -> `services.amb.amb_tiers_notify.deliver_tier_notification(bot, telegram_id,
@@ -243,13 +243,13 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         await mass_approve_effects(bot, payload.get("ids") or [])
         return
     if kind == "checkin_first_entry":
-        from services.checkin import fire_first_entry  # ленивый: checkin тянет segno/sheets
+        from services.forum.checkin import fire_first_entry  # ленивый: checkin тянет segno/sheets
 
         await fire_first_entry(bot, **payload)
         return
     if kind == "onsite_approved":
         # D-41/D-02: одобрение у стойки из Mini App — лист, сообщение и QR человеку шлёт бот.
-        from services.onsite_reg import after_onsite_approved  # ленивый, как checkin выше
+        from services.forum.onsite_reg import after_onsite_approved  # ленивый, как checkin выше
 
         await after_onsite_approved(bot, payload.get("telegram_id"))
         return

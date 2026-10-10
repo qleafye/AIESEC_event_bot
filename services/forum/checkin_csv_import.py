@@ -1,6 +1,6 @@
 """Загрузка выгрузки офлайн-сканера (D-09/D-10): отметка найденных кодов и текст отчёта.
 
-Разбор файла — `services.checkin.find_checkin_records`; хендлер бота (выбор точки, ответ на
+Разбор файла — `services.forum.checkin.find_checkin_records`; хендлер бота (выбор точки, ответ на
 кнопку) — `handlers/forum/admin_checkin.py::checkin_point_pick`. Здесь — цикл отметки и подсчёт:
 каждая запись попадает ровно в одну графу отчёта, удалённая или пересозданная сессия не
 выдаётся за «уже были», записи без времени скана перечислены отдельно.
@@ -21,11 +21,11 @@ import html
 from datetime import datetime, timedelta
 
 from domain.cities import city_label_or_none, normalize_city
-from services import checkin_forum_day
+from services.forum import checkin_forum_day
 from services.infra import timeutil
 from services.infra.timeutil import city_offset_hours
-from services.checkin import ENTRY_POINT, parse_qr_payload, record_arrival, resolve_scanned_user
-from services.program import scanned_outside_session_window
+from services.forum.checkin import ENTRY_POINT, parse_qr_payload, record_arrival, resolve_scanned_user
+from services.forum.program import scanned_outside_session_window
 
 # Больше стольких кодов — до цикла показываем «⏳ Отмечаю…»: 500 строк — ~20 секунд.
 PROGRESS_THRESHOLD = 30

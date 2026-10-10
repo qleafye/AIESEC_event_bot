@@ -18,7 +18,7 @@ from database.db import _csv_safe, get_program_session, update_program_session
 from handlers.admin import router
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.states import EditSetting
-from services.session_enroll import ENROLL_TEXT_KEYS, deadline_label, module_enabled, session_open_state
+from services.forum.session_enroll import ENROLL_TEXT_KEYS, deadline_label, module_enabled, session_open_state
 from services.settings.audit import set_setting_by_admin
 from domain.settings.placeholders import hint
 from domain.settings.schema import SETTINGS_SCHEMA

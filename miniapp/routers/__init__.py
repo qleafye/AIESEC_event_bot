@@ -114,7 +114,7 @@
                                        parse_mode); уведомление остальных moderate_reg
                                        («кто ответил») из веба не шлётся (aiogram-путь бота)
   Делегат (quick 260906-8uq, задача 5, `delegate_gate` + section faq; правило видимости —
-  services.faq.apply_city_overrides, то же самое, что читает бот):
+  services.forum.faq.apply_city_overrides, то же самое, что читает бот):
   GET  /app/api/faq                -> {items[{id,question,answer}], empty_text}
                                        городской пункт перекрывает общий с тем же нормализо-
                                        ванным вопросом; выключенные пункты и чужой город никогда
@@ -260,7 +260,7 @@
   POST /app/api/checkin/scan {payload, point?} -> {status: new|duplicate|denied|not_found|
                                        foreign_event, reason_text|null, full_name|null, city|null,
                                        university?, username?, scanned_at?}
-                                       point по умолчанию — «Вход» (services.checkin.ENTRY_POINT)
+                                       point по умолчанию — «Вход» (services.forum.checkin.ENTRY_POINT)
   POST /app/api/checkin/manual {telegram_id, point?} -> тот же контракт, что /scan (без QR —
                                        после поиска по фамилии, D-11/D-12)
   POST /app/api/checkin/enroll {telegram_id, session_id} -> {status, message} — волонтёр записывает
@@ -278,7 +278,7 @@
                                        days[{day,label,slots[{start_time,end_time,now,next,
                                        sessions[{id,title,speaker,hall_name,start_time,
                                        end_time}]}]}], empty_text|null}
-                                       view/фото резолвятся services.program (общая точка
+                                       view/фото резолвятся services.forum.program (общая точка
                                        правды с чат-кнопкой и гейтом кнопки меню бота)
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
