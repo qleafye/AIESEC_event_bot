@@ -879,10 +879,13 @@ export async function render(root, params, ctx) {
       const options = item.options || [];
       const current = options.find((o) => o.code === item.value);
       let chosen = current ? current.label : null;
+      let nextBtn = null;
+      // Приёмка 10.10: без выбора «Дальше» неактивна — раньше сервер отвечал ошибкой выбора.
+      const syncNext = () => { if (nextBtn) nextBtn.disabled = busy || !chosen; };
       const el = field(h, {
         key: item.type, type: "choice-chips", label: item.text || "",
         options: options.map((o) => o.label),
-      }, chosen, (v) => { chosen = v; });
+      }, chosen, (v) => { chosen = v; syncNext(); });
       const errorZone = el._nodes && el._nodes.errorZone;
       function showError(msg) {
         if (errorZone) { errorZone.textContent = msg || ""; errorZone.classList.remove("hidden"); }
@@ -926,9 +929,9 @@ export async function render(root, params, ctx) {
             // (один и тот же глагол действия на всей анкете, без нового реестрового ключа).
             // Приёмка 09.10: имя кнопки для скринридера — её подпись «Дальше», а не вопрос
             // развилки («Выбери город мероприятия:»), иначе кнопку «Дальше» не найти.
-            h("button", {
-              class: "btn", type: "button", disabled: busy, "aria-label": d.next_cta_text || "", onClick: next,
-            }, icon("check"), h("span", { text: d.next_cta_text || "" })),
+            (nextBtn = h("button", {
+              class: "btn", type: "button", disabled: busy || !chosen, "aria-label": d.next_cta_text || "", onClick: next,
+            }, icon("check"), h("span", { text: d.next_cta_text || "" }))),
             chatLink(d.continue_in_chat_text, d.continue_deeplink),
           ),
         ),

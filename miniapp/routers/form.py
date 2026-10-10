@@ -636,7 +636,7 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
         else:
             value, err = await validator(raw)
         if err:
-            errors[field] = err
+            errors[field] = i18n.tr(err, lang, tr_map)
         else:
             pre_patch[field] = value
     # Quick 260904-3vm (D16): ctx["effective_track"] уже резолвит промо-short так же, как
