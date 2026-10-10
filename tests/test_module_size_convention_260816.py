@@ -839,7 +839,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1593,
+        1594,
+        "10.10 (перенос на main): право settings_edit_all:* поверх прав main; 1593 -> 1594. "
         "10.10 (общая настройка при городе в шапке): +1 строка — право settings_edit_all:* (handlers/admin_settings_global.py); 1583 -> 1584. 09.10 (таблица события в боте): +2 строки — права admin_sheet_target/sheet_target_*/state:SheetTarget:*; 1581 -> 1583. "
         "10.10 («Загрузить историю чата»): +2 строки — права chimp:*/state:ChatExportImport:* (settings); 1591 -> 1593. "
         "10.10 (сброс статусов амбассадоров): +3 строки — права ambrst/ambrst_p:*/ambrst_go:* (moderate_game); 1588 -> 1591. "

@@ -66,6 +66,7 @@ OWN_SCREENS = {
     "checkin_qr_broadcast_enabled": "admin_checkin.py",
     "checkin_qr_broadcast_time": "admin_checkin.py",
     "checkin_qr_morning_repeat_time": "admin_checkin.py",
+    "checkin_qr_morning_catchup_until": "admin_checkin.py",
     "checkin_volunteer_guide_broadcast_enabled": "admin_forum_functions.py",
     "checkin_volunteer_guide_broadcast_time": "admin_forum_functions.py",
     "forum_day_menu_enabled": "admin_forum_functions.py",

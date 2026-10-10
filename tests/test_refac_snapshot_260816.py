@@ -2472,8 +2472,8 @@ def test_snapshot_total_handler_count_is_292():
     # 10.10 («Загрузить историю чата»): +4 admin.message и +4 admin.callback_query у экрана рейтинга чата (1232 -> 1240).
     # 10.10 (общая настройка при городе в шапке, handlers/admin_settings_global.py — хвост
     # admin_settings.py после admin_settings_placeholders): +1 admin.callback_query settings_edit_all
-    # сразу после phchk_retry, чистая вставка (1224 -> 1225).
-    assert len(GOLDEN_SNAPSHOT) == 1240
+    # сразу после phchk_retry, чистая вставка (1240 -> 1241).
+    assert len(GOLDEN_SNAPSHOT) == 1241
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
