@@ -6602,7 +6602,9 @@ async def drop_chat_cleanup(chat_id: int, message_ids) -> None:
 async def prune_chat_history(cutoff_ts: str) -> dict[str, int]:
     """Срок хранения истории рейтинга: сообщения старше `cutoff_ts`, реакции старше него или на
     уже удалённые сообщения, и ники тех, от кого в журнале не осталось ни сообщения, ни
-    реакции (ник без следа в чате — лишние ПД). Возвращает счётчики для лога."""
+    реакции (ник без следа в чате — лишние ПД). Возвращает счётчики для лога. Ник сотрудника
+    (`staff`) не трогается: по нему «👥 Роли и доступы» подписывают человека, которого бот знает
+    только по пересылке при выдаче роли (приёмка 10.10: в списке было «id 1315109411»)."""
     async with _connect() as db:
         cur = await db.execute("DELETE FROM chat_messages WHERE ts < ?", (cutoff_ts,))
         messages = cur.rowcount
@@ -6615,7 +6617,8 @@ async def prune_chat_history(cutoff_ts: str) -> dict[str, int]:
         reactions = cur.rowcount
         cur = await db.execute(
             "DELETE FROM chat_usernames WHERE telegram_id NOT IN ("
-            "SELECT telegram_id FROM chat_messages UNION SELECT telegram_id FROM chat_reactions)"
+            "SELECT telegram_id FROM chat_messages UNION SELECT telegram_id FROM chat_reactions "
+            "UNION SELECT telegram_id FROM staff)"
         )
         usernames = cur.rowcount
         await db.commit()
