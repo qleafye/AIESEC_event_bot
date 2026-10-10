@@ -20,7 +20,7 @@ from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/
 # список выше — тот уже стоит на потолке читаемости одной строки, а этот шов самодостаточен
 # (используется ровно в одном месте, _handle_volunteer_invite ниже).
 from database.db import add_staff, claim_volunteer_invite, get_volunteer_invite, set_staff_city
-from cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_registration_open, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key; is_city_registration_open added квик 260923-p37 (CITY-REG-CLOSE); is_city_enabled/city_label/enabled_cities removed — _city_fork_kb теперь делегирует в reg_city_gate.open_city_kb
+from domain.cities import CITIES, all_cities, normalize_city, is_default_city, city_tab_base, cities_module_on, is_city_registration_open, tab_suffix, get_setting_for_city, get_setting_typed_for_city, per_city_key  # Phase 07.1 (CITY-01/CITY-02/CITY-03): city registry — _city_tag_map() + city_row_tab + city fork below; tab_suffix added quick 260815-3hw (TABS-01/02/03, replaces the raw TAB_SUFFIX import); get_setting_for_city/get_setting_typed_for_city added Phase 09.2-04 (CITY-04): per-city text/mode resolver; all_cities added Phase 14 (CITY-07); per_city_key added Phase 25 (CITYQ-03): per-tab sheet_header_schema snapshot key; is_city_registration_open added квик 260923-p37 (CITY-REG-CLOSE); is_city_enabled/city_label/enabled_cities removed — _city_fork_kb теперь делегирует в reg_city_gate.open_city_kb
 from handlers.states import Registration
 from keyboards.builders import (
     get_main_menu_kb,
@@ -992,7 +992,7 @@ def _extract_party_track(command_args: str | None) -> str | None:
 # because the dict was never rebuilt on `reload_cities()`. It is now a function, recomputed
 # from `all_cities()` on every call. `/start` happens far less often than the dict would be
 # read, so paying the tiny recompute cost here removes the whole staleness class instead of
-# wiring a callback from cities.py back into this module.
+# wiring a callback from domain/cities.py back into this module.
 def _city_tag_map() -> dict[str, str]:
     return {f"city_{c['code']}": c["code"] for c in all_cities()}
 
@@ -1095,7 +1095,7 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
     # Менеджеру-создателю ссылки -- «@user (Имя) зашёл по ссылке волонтёров <город>, N из M».
     if invite and invite.get("created_by"):
         try:
-            from cities import city_label
+            from domain.cities import city_label
 
             name = message.from_user.full_name or message.from_user.username or str(user_id)
             uname = f" (@{message.from_user.username})" if message.from_user.username else ""

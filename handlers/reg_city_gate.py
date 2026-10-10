@@ -10,7 +10,7 @@
 """
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_label, get_setting_typed_for_city, open_cities
+from domain.cities import city_label, get_setting_typed_for_city, open_cities
 from handlers import reg_i18n
 
 
@@ -78,7 +78,7 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     заново. Атрибуция (реферер/метка/трек), пришедшая параметрами, кладётся в FSM до экрана —
     тот же приём, что `_persist_fork_attribution`."""
     import domain.regform.engine as reg_engine
-    from cities import cities_module_on
+    from domain.cities import cities_module_on
     from services.known_city import known_city
 
     uid = message.from_user.id
@@ -145,7 +145,7 @@ async def confirm_city_choice(message, code: str) -> None:
 async def summary_data(data: dict) -> dict:
     """Ответы для сводки + подпись города форума (`reg_engine.SUMMARY_EVENT_CITY_KEY`).
     Модуль городов выключен или город не выбран — подписи нет, строки в сводке тоже."""
-    from cities import cities_module_on
+    from domain.cities import cities_module_on
     from domain.regform.engine import SUMMARY_EVENT_CITY_KEY
     code = data.get("event_city")
     if not code or not await cities_module_on():

@@ -18,7 +18,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, default_city_code, enabled_cities
+from domain.cities import cities_module_on, city_label, default_city_code, enabled_cities
 from database.db import SESSION_ATTENDED, SESSION_NOT_ATTENDED
 from handlers.admin import router
 from handlers.states import Broadcast

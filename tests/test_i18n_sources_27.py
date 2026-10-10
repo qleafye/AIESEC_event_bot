@@ -27,7 +27,7 @@ _NON_DELEGATE_GROUPS = (
 _ADMIN_KEYS = ("reg_edited_admin_label", "reg_prev_reject_admin_label", "reg_resubmit_admin_label")
 
 # Три образца яруса A (служебные слова / тексты ошибок валидации) — обязаны НЕ попасть в
-# code_literals(), их переводит руками i18n_ui_en.py (план 27-02), не машина.
+# code_literals(), их переводит руками domain/i18n/ui_en.py (план 27-02), не машина.
 _TIER_A_SAMPLES = ("Отмена", "Напиши или нажми «Пропустить».", "Выбери «Да» или «Нет».")
 
 

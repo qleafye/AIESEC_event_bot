@@ -781,7 +781,7 @@ def test_submit_enqueues_fsm_reset_submitted_in_addition_to_reg_finalized(tmp_pa
 # Задача 4 — D16: короткий трек в вебе; D15: режим правки только у поданной анкеты
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 
-from cities import per_city_key
+from domain.cities import per_city_key
 from tests._dbtpl import fast_init_db
 
 

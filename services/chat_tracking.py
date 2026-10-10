@@ -11,7 +11,7 @@
 `bound_chats()` сама решает, глобальный ключ читать или per-city, и никогда не смешивает эти
 два источника в одном ответе.
 
-`database/db.py` не может импортировать `cities.py` (цикл) — а этот модуль может (он не
+`database/db.py` не может импортировать `domain/cities.py` (цикл) — а этот модуль может (он не
 `database/`), поэтому вся резолюция «какие города включены» и сборка per-city ключа живёт
 здесь, а не в `db.py`.
 """
@@ -23,7 +23,7 @@ import logging
 from datetime import timedelta
 
 from config import config
-from cities import (
+from domain.cities import (
     ALL_CITIES, cities_module_on, city_scope, enabled_cities, normalize_city, per_city_key,
 )
 from database.db import (
@@ -425,7 +425,7 @@ async def reconcile_all_now(bot, *, claimed: bool = False) -> list[dict] | None:
     if not claimed and not claim_reconcile():
         return None
     try:
-        from cities import city_label  # ленивый: чистая подпись города для отчёта
+        from domain.cities import city_label  # ленивый: чистая подпись города для отчёта
 
         reports = []
         for entry in await bound_chats():

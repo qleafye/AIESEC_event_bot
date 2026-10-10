@@ -27,7 +27,7 @@ import json
 import logging
 from datetime import datetime
 
-from cities import city_scope
+from domain.cities import city_scope
 from database.db import (
     claim_auto_reject_return,
     count_auto_reject_log,

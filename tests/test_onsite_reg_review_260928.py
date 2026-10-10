@@ -11,7 +11,7 @@ from tests._paths import REPO_ROOT
 import sqlite3
 from pathlib import Path
 
-import cities as cities_mod
+import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from services import onsite_reg, venue_log

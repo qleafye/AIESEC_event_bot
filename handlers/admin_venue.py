@@ -25,7 +25,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import city_label_or_none
+from domain.cities import city_label_or_none
 from database.db import get_checkin, get_user, list_checkins_for_user, venue_log_page, venue_log_staff
 from handlers.admin import router
 from handlers.admin_caps import has_capability

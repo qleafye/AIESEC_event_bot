@@ -39,7 +39,7 @@ import html
 import json
 import logging
 
-from cities import split_per_city_key
+from domain.cities import split_per_city_key
 from database.db import list_reject_rules
 from domain.regform.engine import MULTI_CONFIG, SELECT_CONFIG
 from services import scheduler as _sched

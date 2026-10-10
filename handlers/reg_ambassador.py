@@ -27,7 +27,7 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_user
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from domain.settings.schema import get_setting_typed
 from handlers.registration import router
 from handlers import reg_i18n

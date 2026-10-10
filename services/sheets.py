@@ -660,9 +660,9 @@ async def _resolve_status_tab(telegram_id: int) -> str | None:
     Returns `None` when the row belongs on the main sheet (module off, default/Moscow city,
     unknown user, or no per-city tab-base configured) — same "use the legacy appender" contract
     as city_row_tab itself. Async and run BEFORE the asyncio.to_thread hop below: get_user
-    (aiosqlite) and the cities.py helpers (get_setting_typed) need a running event loop, which
+    (aiosqlite) and the domain/cities.py helpers (get_setting_typed) need a running event loop, which
     the sync worker thread does not have."""
-    from cities import cities_module_on, city_tab_base, is_default_city, normalize_city, tab_suffix
+    from domain.cities import cities_module_on, city_tab_base, is_default_city, normalize_city, tab_suffix
     from database.db import get_user
 
     user = await get_user(telegram_id)

@@ -24,9 +24,9 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Request
 
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from database.db import get_checkin_status, get_referrals, get_setting, get_user, settings_snapshot
-from payment_options import parse_options
+from domain.payment import parse_options
 import domain.regform.engine as reg_engine
 from services import amb_progress, amb_screen, applications, i18n, reg_edit_policy
 from domain.settings.schema import get_setting_typed

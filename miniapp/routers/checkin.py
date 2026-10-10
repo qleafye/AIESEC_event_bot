@@ -34,7 +34,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from cities import (
+from domain.cities import (
     cities_module_on,
     city_label,
     city_label_or_none,

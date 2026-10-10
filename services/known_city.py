@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 def _known_code(code: str | None) -> str | None:
     if not code:
         return None
-    from cities import all_cities
+    from domain.cities import all_cities
     return code if code in {c["code"] for c in all_cities()} else None
 
 

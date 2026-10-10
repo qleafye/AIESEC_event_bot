@@ -161,7 +161,7 @@ def test_pending_ids_includes_current_season(tmp_path):
 
 
 def test_pending_ids_scoped_by_city(tmp_path):
-    import cities as cities_mod
+    import domain.cities as cities_mod
     _ready(tmp_path)
     _run(_add_delegate(1, city="msk"))
     _run(_add_delegate(2, city="spb"))
@@ -346,7 +346,7 @@ def test_send_poll_queues_during_quiet_hours(tmp_path, monkeypatch):
 
 
 def test_send_poll_scoped_to_city(tmp_path, monkeypatch):
-    import cities as cities_mod
+    import domain.cities as cities_mod
     _ready(tmp_path)
     _run(_add_delegate(1, city="msk"))
     _run(_add_delegate(2, city="spb"))

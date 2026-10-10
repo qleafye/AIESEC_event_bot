@@ -13,7 +13,7 @@ import asyncio
 import json
 from contextlib import contextmanager
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from handlers import reg_schema

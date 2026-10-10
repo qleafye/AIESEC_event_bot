@@ -1,10 +1,9 @@
 """Phase 19 Plan 03 Task 1 (WEBAPP-01, D-01): подписи анкеты и геймы вынесены в корневые
-aiogram-free модули `domain/regform/labels.py` / `game_labels.py`; в `handlers/` остались шимы.
+aiogram-free модули `domain/regform/labels.py` / `domain/game/labels.py` (шимов в `handlers/` больше нет).
 
 Сторожа:
-- шимы реэкспортируют ТЕ ЖЕ объекты (`is`, не `==`) — перенос, а не копия;
-- `import domain.regform.labels; import game_labels` в чистом подпроцессе не загружает `aiogram`, а
-  `import handlers.game_labels` — загружает (доказательство, что шим нужен);
+- `handlers/reg_schema.py` реэкспортирует ТЕ ЖЕ объекты (`is`, не `==`) — перенос, а не копия;
+- `import domain.regform.labels; import domain.game.labels` в чистом подпроцессе не загружает `aiogram`;
 - `miniapp` импортирует именно корневые модули;
 - состав ключей `REG_LABELS` не изменился относительно снимка.
 """
@@ -14,9 +13,7 @@ from tests._paths import REPO_ROOT
 import os
 import subprocess
 import sys
-from pathlib import Path
 
-import pytest
 
 ROOT = REPO_ROOT
 
@@ -85,16 +82,8 @@ def test_admin_broadcasts_payment_labels_same_object():
     assert admin_broadcasts._PAYMENT_STATUS_LABELS is reg_labels.PAYMENT_STATUS_LABELS
 
 
-@pytest.mark.parametrize("name", GAME_LABELS_PUBLIC + ["_CATEGORY_KEY", "_PROOF_TYPE_KEY"])
-def test_handlers_game_labels_shim_reexports_same_objects(name):
-    import game_labels
-    from handlers import game_labels as shim
-
-    assert getattr(shim, name) is getattr(game_labels, name)
-
-
 def test_game_labels_public_names_declared():
-    import game_labels
+    import domain.game.labels as game_labels
 
     assert sorted(game_labels.__all__) == sorted(GAME_LABELS_PUBLIC)
 
@@ -102,11 +91,7 @@ def test_game_labels_public_names_declared():
 # ── aiogram-free ────────────────────────────────────────────────────────────────────────
 
 def test_root_label_modules_do_not_load_aiogram():
-    assert _loaded_aiogram("import domain.regform.labels; import game_labels") == []
-
-
-def test_handlers_game_labels_loads_aiogram_so_shim_is_needed():
-    assert _loaded_aiogram("import handlers.game_labels") != []
+    assert _loaded_aiogram("import domain.regform.labels; import domain.game.labels") == []
 
 
 def test_miniapp_imports_root_modules_not_handlers():

@@ -105,7 +105,7 @@ def test_switch_uses_per_city_key_when_cities_on(tmp_path):
     ready(tmp_path)
     run(db.set_setting("event_city_enabled", "on"))
     run(el.prog_enrsw(FakeCallback("prog_enrsw:msk")))
-    from cities import per_city_key
+    from domain.cities import per_city_key
     assert run(db.get_setting(per_city_key("session_enroll_enabled", "msk"))) == "on"
 
 

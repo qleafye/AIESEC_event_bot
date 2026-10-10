@@ -36,7 +36,7 @@ def hint_line(key: str, prompt: str | None = None) -> str:
 
 async def _previous_text(key: str):
     """Прежний текст: своё сохранённое значение ключа, иначе общее/default базового ключа."""
-    from cities import split_per_city_key
+    from domain.cities import split_per_city_key
     current = await get_setting(key)
     if current:
         return current

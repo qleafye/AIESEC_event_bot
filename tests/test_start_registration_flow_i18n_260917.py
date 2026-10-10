@@ -7,7 +7,7 @@
 Литералы сверены байт-в-байт с `handlers/registration.py::_start_registration_flow` и с
 `services/i18n_sources.py::code_literals()` (`lit:registration._start_registration_flow`) —
 несовпадение хотя бы на символ означает, что перевод здесь никогда не сработает (см. докстринг
-`i18n_ui_en.py`)."""
+`domain/i18n/ui_en.py`)."""
 from handlers import reg_i18n
 from services import i18n_sources
 

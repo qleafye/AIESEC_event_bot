@@ -162,7 +162,7 @@ async def _known_non_delegate_tab_titles() -> set[str]:
     Пустое значение настройки (например, выключенный `auto_reject_sheet_tab`) не добавляет
     строку — такой вкладки бот не ведёт вовсе, она либо не существует, либо это чья-то ЧУЖАЯ
     вкладка со случайно совпавшим именем (не наш случай)."""
-    from cities import cities_module_on, enabled_cities
+    from domain.cities import cities_module_on, enabled_cities
     from handlers.registration import city_incomplete_tab
     from services.game_sheets import game_tab_plan
 

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import logging
 
-from cities import get_city, get_setting_typed_for_city, normalize_city
+from domain.cities import get_city, get_setting_typed_for_city, normalize_city
 from database.db import (
     get_user,
     record_answer_history,

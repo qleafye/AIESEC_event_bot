@@ -65,7 +65,7 @@ from handlers.reg_schema import (
     dropout_step_label,
     incomplete_city_batches,
 )
-from cities import (
+from domain.cities import (
     city_label,
     cities_module_on,
     admin_selected_city,

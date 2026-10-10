@@ -24,9 +24,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 
-from cities import city_codes, get_setting_typed_for_city, per_city_key, split_per_city_key
+from domain.cities import city_codes, get_setting_typed_for_city, per_city_key, split_per_city_key
 from database import db
-from i18n_ui_en import MENU_EN
+from domain.i18n.ui_en import MENU_EN
 from services.i18n import src_hash
 from domain.settings.schema import SETTINGS_SCHEMA
 

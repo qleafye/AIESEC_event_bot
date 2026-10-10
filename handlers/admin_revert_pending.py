@@ -23,7 +23,7 @@ from database.db import get_user
 from handlers.admin import router
 from handlers.admin_checkin import _city_allowed
 from services.revert_pending import preview_revert_pending, revert_to_pending
-from cities import city_label, normalize_city
+from domain.cities import city_label, normalize_city
 
 logger = logging.getLogger(__name__)
 

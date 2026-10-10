@@ -1,7 +1,7 @@
 """Правила записи на сессии: гейты, дедлайн, замена, слоты, расписание, подсказка сканера."""
 from datetime import datetime
 
-from cities import per_city_key
+from domain.cities import per_city_key
 from database import db, session_enroll_db
 from services import session_enroll as se
 from tests._enroll38 import CITY, add_user, ready, run, seed_delegates, seed_msk_program

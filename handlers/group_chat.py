@@ -46,7 +46,7 @@ from aiogram import F, Router, types, Bot
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_codes, city_label, cities_module_on, enabled_cities
+from domain.cities import city_codes, city_label, cities_module_on, enabled_cities
 from config import config
 from database.db import (
     CHAT_PRESENT_STATUSES,

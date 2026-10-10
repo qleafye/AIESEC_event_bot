@@ -280,7 +280,7 @@ def test_counts_and_lists(tmp_path):
 # ── переезд делегата ─────────────────────────────────────────────────────────────────────────
 
 def test_city_move_deletes_enrollments(tmp_path, monkeypatch):
-    import cities
+    import domain.cities as cities
     from services.city_move import STATUS_MODE_KEEP, move_user_city
     from tests import test_city_move_260925 as cm
 

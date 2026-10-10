@@ -19,13 +19,6 @@ from tests._paths import REPO_ROOT
 
 # Единственные *.py, которым разрешено лежать в корне.
 ALLOWED_ROOT_MODULES = {"main.py", "config.py"}
-# Модули, которые ещё ждут переноса из корня. Список только сокращается.
-PENDING_ROOT_MODULES = {
-    "cities.py",
-    "game_labels.py",
-    "i18n_ui_en.py",
-    "payment_options.py",
-}
 
 # Нарушения, которые пока терпим: (файл относительно корня, импортируемый модуль).
 # Список только сокращается — новое нарушение валит тест.
@@ -53,17 +46,12 @@ def _top(module):
 
 
 def test_repo_root_has_only_entry_points():
-    extra = sorted(p.name for p in REPO_ROOT.glob("*.py") if p.name not in ALLOWED_ROOT_MODULES | PENDING_ROOT_MODULES)
+    extra = sorted(p.name for p in REPO_ROOT.glob("*.py") if p.name not in ALLOWED_ROOT_MODULES)
     assert not extra, (
         f"В корне репозитория появились модули: {extra}. В корне только main.py и config.py. "
         "Модуль на чистой stdlib — в shared/, доменная логика без aiogram — в domain/<домен>/, "
         "код бота — в services/<домен>/ или handlers/<домен>/, разовый скрипт — в tools/."
     )
-
-
-def test_pending_root_allowlist_has_no_stale_entries():
-    stale = sorted(m for m in PENDING_ROOT_MODULES if not (REPO_ROOT / m).exists())
-    assert not stale, f"Модуль уже перенесён — уберите его из PENDING_ROOT_MODULES: {stale}"
 
 
 def test_shared_imports_only_stdlib():

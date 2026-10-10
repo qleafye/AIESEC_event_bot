@@ -21,7 +21,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import cities as cities_mod
+import domain.cities as cities_mod
 from config import config
 from database import db
 from database import delegations_db as ddb

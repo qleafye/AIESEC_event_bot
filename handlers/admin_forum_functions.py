@@ -28,7 +28,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import (
+from domain.cities import (
     cities_module_on,
     city_label,
     default_city_code,
@@ -821,7 +821,7 @@ async def _noshow_poll_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboar
     if not forum_date_set:
         lines.append("\n⚠️ «🗓 Дата начала форума» не задана — опрос не поставится, даже если Вкл здесь.")
 
-    from cities import cities_module_on as _cmo, city_scope as _cscope
+    from domain.cities import cities_module_on as _cmo, city_scope as _cscope
     scope = _cscope(code) if code and await _cmo() else None
     summary = await fnsp.summary_text(city_scope=scope)
     lines.append(f"\n{summary}")
@@ -958,7 +958,7 @@ async def _regional_noshow_cfg_text_kb(code: str | None) -> tuple[str, InlineKey
     if not text_set:
         lines.append("\n⚠️ Текст предложения пуст — рассылка НЕ уйдёт, даже если включена здесь.")
 
-    from cities import cities_module_on as _cmo, city_scope as _cscope
+    from domain.cities import cities_module_on as _cmo, city_scope as _cscope
     scope = _cscope(code) if code and await _cmo() else None
     lines.append(f"\n{await rgnm.summary_text(city_scope=scope)}")
 
@@ -1122,7 +1122,7 @@ async def rgnm_target_pick(callback: types.CallbackQuery):
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    from cities import get_city
+    from domain.cities import get_city
     if get_city(target_code) is None:
         await callback.answer("Такого города нет.", show_alert=True)
         return

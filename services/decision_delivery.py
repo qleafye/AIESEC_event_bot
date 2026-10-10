@@ -199,7 +199,7 @@ async def preview_decision_text(user: dict) -> str:
         lang, tr_map = await _i18n_context(tid)
         raw = await reject_message_text(await last_rejection_reason(tid), lang, tr_map)
     else:
-        from cities import cities_module_on, normalize_city
+        from domain.cities import cities_module_on, normalize_city
         from handlers.reg_schema import _approve_text_for
         city_code = normalize_city(user.get("event_city")) if await cities_module_on() else None
         raw = await _approve_text_for(user.get("participant_type") or "full", city_code)

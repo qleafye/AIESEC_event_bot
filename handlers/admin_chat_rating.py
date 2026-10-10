@@ -24,7 +24,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import shared.chat_score as chat_score
-from cities import (
+from domain.cities import (
     ALL_CITIES,
     admin_selected_city,
     city_codes,

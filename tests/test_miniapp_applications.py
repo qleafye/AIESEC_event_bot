@@ -301,7 +301,7 @@ def test_next_city_label_absent_when_cities_module_off(client):
 
 
 def test_next_city_label_all_cities_for_unbound_manager(client):
-    from cities import ALL_CITIES_LABEL
+    from domain.cities import ALL_CITIES_LABEL
 
     _set("event_city_enabled", "on")
     _seed_user(932002, registration_date="2026-01-01 00:00:01")
@@ -310,7 +310,7 @@ def test_next_city_label_all_cities_for_unbound_manager(client):
 
 
 def test_next_city_label_matches_bound_manager_city(client):
-    from cities import city_label as _city_label_fn
+    from domain.cities import city_label as _city_label_fn
 
     _set("event_city_enabled", "on")
     _seed_user(932003, event_city="spb", registration_date="2026-01-01 00:00:01")

@@ -326,7 +326,7 @@ def test_batch_reschedules_once_per_module_not_per_key(monkeypatch):
     покрывает городские того же модуля."""
     import services.settings.audit as settings_audit
     import services.settings.reschedule as settings_reschedule
-    from cities import per_city_key
+    from domain.cities import per_city_key
 
     got = []
 

@@ -16,7 +16,7 @@ async def sender_city(admin_id: int | None) -> str | None:
     """Город, которым ограничены рассылки этого человека, или `None` — без ограничения."""
     if admin_id is None or admin_id in config.ADMIN_IDS:
         return None
-    from cities import cities_module_on, normalize_city
+    from domain.cities import cities_module_on, normalize_city
     from database.db import get_staff_city
 
     if not await cities_module_on():
@@ -35,7 +35,7 @@ async def split_by_sender_city(admin_id: int | None, ids: list[int]) -> tuple[li
     code = await sender_city(admin_id)
     if code is None:
         return ids, 0
-    from cities import city_scope
+    from domain.cities import city_scope
     from database.db import count_and_list_filtered, reg_started_only_ids_in_scope
 
     scope = city_scope(code)
@@ -59,7 +59,7 @@ async def sender_city_note(admin_id: int | None, dropped: int = 0) -> str:
     code = await sender_city(admin_id)
     if code is None:
         return ""
-    from cities import city_label
+    from domain.cities import city_label
     note = f"🏙 Только делегатам вашего города: {await city_label(code)}.\n"
     if dropped:
         note += (f"⚠️ {dropped} из выбранных — из другого города или их нет в базе бота: "

@@ -1,7 +1,7 @@
 """Исправления по ревью фазы: фильтры рассылки, вопросы без вариантов и пр."""
 from __future__ import annotations
 
-import cities
+import domain.cities as cities
 from database import db, quiz_db as qz, session_enroll_db as se_db
 from tests._enroll38 import CITY, add_user, ready, run, seed_delegates, seed_msk_program
 
@@ -82,7 +82,7 @@ def test_current_question_skips_question_without_options(tmp_path):
 
 
 def test_staff_enroll_validates_delegate(tmp_path):
-    from cities import per_city_key
+    from domain.cities import per_city_key
     from services import session_enroll as svc
 
     ready(tmp_path)
@@ -168,7 +168,7 @@ def test_parallel_start_gives_single_open_attempt(tmp_path):
 
 
 def test_already_enrolled_on_full_session_is_not_full(tmp_path):
-    from cities import per_city_key
+    from domain.cities import per_city_key
     from services import session_enroll as svc
 
     ready(tmp_path)

@@ -1,5 +1,5 @@
 """Квик 260917-en (владелец, приёмка на английском делегате): «перевод интерфейса очень криво
-сделан». `i18n_ui_en.py` (ярус A — служебные слова) и `services/i18n_miniapp_manual.py` (тексты
+сделан». `domain/i18n/ui_en.py` (ярус A — служебные слова) и `services/i18n_miniapp_manual.py` (тексты
 приложения вне анкеты) уже рукописные — здесь тот же ярус B (`manual=1`, `services/i18n.py::tr()`
 ищет по `src_hash` содержимого, не по ключу реестра), но для КОРПУСА САМОЙ АНКЕТЫ
 (`services/i18n_sources.py::DELEGATE_GROUPS` — `reg_prompts`/`reg`/`party`): подсказки вопросов,
@@ -51,7 +51,7 @@ import logging
 
 from database.db import seed_manual_translations
 from services.i18n import src_hash
-from i18n_ui_en import MENU_EN  # литеральный словарь без импортов проекта — цикла нет
+from domain.i18n.ui_en import MENU_EN  # литеральный словарь без импортов проекта — цикла нет
 
 logger = logging.getLogger(__name__)
 

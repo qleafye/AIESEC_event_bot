@@ -13,7 +13,7 @@ import pytest
 import domain.regform.engine as reg_engine
 from config import config
 from database import db
-from i18n_ui_en import UI_EN
+from domain.i18n.ui_en import UI_EN
 from services.i18n import context, delegate_lang, load_map, resolve_lang, src_hash, tr
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db

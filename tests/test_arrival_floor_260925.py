@@ -70,7 +70,7 @@ def test_bot_floor_for_bound_city(tmp_path, monkeypatch):
 
 
 async def _scope_spb(_admin_id):
-    import cities
+    import domain.cities as cities
     return cities.city_scope("spb")
 
 
@@ -78,7 +78,7 @@ def test_bot_floor_all_cities_sums_and_counts_stands_across_cities(tmp_path, mon
     _ready(tmp_path)
     _freeze(monkeypatch)
     _seed()
-    import cities
+    import domain.cities as cities
     _run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
     text, _kb = _run(admin_checkin_floor.render_floor(ADMIN_ID))
     assert "Все города" in text
@@ -215,7 +215,7 @@ def test_bot_floor_shows_pace_and_idle_stand(tmp_path, monkeypatch):
     # 500 последний раз сканировал в 10:20 (10 мин назад — ещё не простой); сдвинем «сейчас».
     later = datetime(2026, 10, 3, 10, 34, 0)
     monkeypatch.setattr(admin_checkin_floor, "msk_now", lambda: later)
-    import cities
+    import domain.cities as cities
     _run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
     text, _kb = _run(admin_checkin_floor.render_floor(ADMIN_ID))
     assert "Анна (@anna) — 2 · раз в 70 мин · ⏸ простаивает 14 мин" in text

@@ -28,7 +28,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
-from cities import ALL_CITIES, admin_selected_city, city_codes, city_label, cities_module_on, is_per_city
+from domain.cities import ALL_CITIES, admin_selected_city, city_codes, city_label, cities_module_on, is_per_city
 from handlers.admin import router
 from handlers.states import SettingsSearch
 from domain.settings.schema import SETTINGS_SCHEMA

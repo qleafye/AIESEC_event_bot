@@ -25,7 +25,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import city_label
+from domain.cities import city_label
 from config import config
 from handlers.admin import router
 from handlers.admin_chat_rating import _screen_city

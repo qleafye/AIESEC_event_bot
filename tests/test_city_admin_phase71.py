@@ -17,8 +17,8 @@ from handlers import admin_settings  # Phase 13 (13-06): settings moved out of a
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import registration as reg_mod
 from handlers.admin_caps import required_capability
-from cities import CITIES
-import cities as cities_mod
+from domain.cities import CITIES
+import domain.cities as cities_mod
 from tests._dbtpl import fast_init_db
 
 

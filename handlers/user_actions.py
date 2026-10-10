@@ -51,7 +51,7 @@ from handlers.registration import DEFAULT_START_RETURNING_TEXT
 # reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
 from handlers import reg_i18n
 from domain.settings.ui_text_fields import ui_text, ui_tr  # подписи, вынесенные из кода в настройки
-from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
+from domain.game.labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
     category_label, proof_types_label, sort_tasks_for_delegate,
     render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
     # Phase 32 (32-06, D-27/D-28/D-31/D-36/D-38): один делегатский помощник — амбассадорский
@@ -68,7 +68,7 @@ from services.ambassador_waves import (  # Phase 32 (32-06): участие в �
 from handlers.game_submit_counter import (  # Phase 16 (16-02): editable submission counter (Экран 3)
     game_counter_text as _game_counter_text, game_counter_kb as _game_counter_kb, edit_counter as _edit_counter,
 )
-from cities import (
+from domain.cities import (
     cities_module_on, normalize_city, city_scope,  # Phase 09.1 (B): show_game_tasks city filter
     get_setting_for_city,  # Phase 09.2 (B): contacts/info screens resolve by delegate city
     city_label,  # Трек «региональные форумы → Москва»: подпись города в ответах rnm_*
@@ -458,7 +458,7 @@ async def show_leaderboard(message: types.Message):
 PAGE_SIZE = 6  # Phase 16 (16-01): delegate task-list page size (CONTEXT.md "5-6 заданий на страницу")
 
 
-# `_game_task_deadline_short` -> handlers/game_labels.py::task_deadline_short (16-03), imported
+# `_game_task_deadline_short` -> domain/game/labels.py::task_deadline_short (16-03), imported
 # above under the old name so every existing call site/test keeps working unchanged.
 
 
@@ -641,7 +641,7 @@ def _submit_button_label(task: dict) -> str:
     return f"📤 {name}"
 
 
-# `_render_task_card_text` -> handlers/game_labels.py::render_task_card_text (16-03, GAME-UI-03):
+# `_render_task_card_text` -> domain/game/labels.py::render_task_card_text (16-03, GAME-UI-03):
 # the manager's «👁 Как видит делегат» / wizard preview render the SAME card via the same
 # function -- imported above under the old name (tests call `ua_mod._render_task_card_text`).
 
@@ -676,7 +676,7 @@ async def mytask_open(callback: types.CallbackQuery):
     a stale button implies about current state (a "pending" active submission collapses the
     card to a submit-less "на проверке" variant, closing the stale-tap race).
 
-    Квик 260917-en: `_render_task_card_text` живёт в корневом `game_labels.py`, который делит
+    Квик 260917-en: `_render_task_card_text` живёт в корневом `domain/game/labels.py`, который делит
     и Mini App (`miniapp/routers/*`) — сигнатуру той функции не трогаем, чтобы не разойтись со
     вторым исполнителем на приложении; переводим только `status_line`, который СОБИРАЕТСЯ
     здесь (бот-only код) ДО передачи внутрь."""

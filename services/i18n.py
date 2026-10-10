@@ -20,7 +20,7 @@ import hashlib
 import logging
 
 from database import db
-from i18n_ui_en import UI_EN
+from domain.i18n.ui_en import UI_EN
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -180,7 +180,7 @@ async def tr_setting_for_city(
     """То же самое, что `tr_setting`, но для городского оверрайда
     (`cities.get_setting_typed_for_city`) — хаб и экран статуса читают событийные тексты
     по городу делегата."""
-    from cities import get_setting_typed_for_city
+    from domain.cities import get_setting_typed_for_city
 
     value = await get_setting_typed_for_city(key, city)
     return tr(value, lang, tr_map) if value else value

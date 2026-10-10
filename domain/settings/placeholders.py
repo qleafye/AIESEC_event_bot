@@ -15,7 +15,7 @@ import difflib
 import re
 from dataclasses import dataclass, field
 
-from cities import split_per_city_key
+from domain.cities import split_per_city_key
 from domain.settings.schema import SETTINGS_SCHEMA
 
 TOKEN_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")

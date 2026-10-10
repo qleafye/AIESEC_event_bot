@@ -24,7 +24,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability
-import cities
+import domain.cities as cities
 from tests._dbtpl import fast_init_db
 
 
@@ -197,7 +197,7 @@ def test_toggle_reads_the_city_header_once_per_render_call(tmp_path):
         calls.append(admin_id)
         return await original(admin_id)
 
-    # Оба модуля импортируют имя напрямую (`from cities import admin_selected_city`), поэтому
+    # Оба модуля импортируют имя напрямую (`from domain.cities import admin_selected_city`), поэтому
     # подменять надо в каждом — патч одного `cities.admin_selected_city` не перехватил бы ничего.
     admin_settings.admin_selected_city = counting
     admin_sections.admin_selected_city = counting

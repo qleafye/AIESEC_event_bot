@@ -114,7 +114,7 @@ def test_city_keys_hidden_when_manager_cannot_edit_shared_value(tmp_path, monkey
     их общее значение ему не принадлежит (то же правило, что `editable` в Mini App)."""
     _ready(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))
-    import cities
+    import domain.cities as cities
     import domain.settings.ops as settings_ops
 
     async def _visible(_admin):

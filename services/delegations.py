@@ -344,7 +344,7 @@ async def convert_to_delegate(
     строка не пишется; у бывшего pending/rejected обновляется статус существующей строки.
     """
     import domain.regform.engine as reg_engine
-    from cities import default_city_code
+    from domain.cities import default_city_code
 
     answer_id = str(row["answer_id"])
     user = await get_user(tid)

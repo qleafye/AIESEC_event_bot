@@ -1001,7 +1001,7 @@ def test_finalize_registration_passes_through_for_rejected_current_season_when_a
 # город B «можно» -> разные решения одним и тем же гейтом на разных строках.
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-import cities as cities_mod
+import domain.cities as cities_mod
 from tests._dbtpl import fast_init_db
 
 

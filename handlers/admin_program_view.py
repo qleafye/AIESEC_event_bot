@@ -21,7 +21,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, per_city_key
+from domain.cities import cities_module_on, city_label, per_city_key
 from handlers.admin import router
 from handlers.states import ProgramPhotoUpload
 from services.program import (

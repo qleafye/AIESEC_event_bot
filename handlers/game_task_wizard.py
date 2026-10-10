@@ -1,7 +1,7 @@
 """Phase 16 (16-03, GAME-UI-03): pure helpers of the task-creation wizard's FINAL step
 («👁 Так увидит делегат» preview + «✅ Опубликовать / ✏️ Изменить / ❌ Отмена») and of the
 deadline presets («сегодня 23:59 / +3 дня / +7 дней / своя дата»). No router, no handlers --
-a seam module in the game_labels.py / game_submit_counter.py mould, imported by BOTH
+a seam module in the domain/game/labels.py / game_submit_counter.py mould, imported by BOTH
 handlers/admin_gamification.py (creation steps) and handlers/admin_game_tasks.py (preset
 callbacks, «✏️ Изменить» re-entry, point-edit deadline) -- admin_gamification.py sits at its
 size ceiling (tests/test_module_size_convention_260816.py) and admin_game_tasks.py cannot be
@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import cities
+import domain.cities as cities
 from domain.settings.schema import get_setting_typed
 from database.db import NO_DEADLINE_AT, list_waves
 from services.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
@@ -37,7 +37,7 @@ from services.scheduler import (
     schedule_task_deadline_reminder,
 )
 from handlers.states import GameTaskCreate
-from handlers.game_labels import render_task_card_text
+from domain.game.labels import render_task_card_text
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@
 Хелперы — из tests/test_uat_seed_event_city_260916.py."""
 import asyncio
 
-import cities
+import domain.cities as cities
 from database import db
 from tests.test_uat_seed_event_city_260916 import (
     TESTER_ID,

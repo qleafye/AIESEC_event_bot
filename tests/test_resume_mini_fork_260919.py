@@ -223,7 +223,7 @@ def test_resume_mode_toggle_percity_refreshes_that_citys_tab(tmp_path, monkeypat
 
     async def prepare():
         await db.set_setting("event_city_enabled", "on")
-        import cities
+        import domain.cities as cities
         await cities.set_admin_city(ADMIN_ID, "spb")
 
     _run(prepare())

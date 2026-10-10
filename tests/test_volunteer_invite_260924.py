@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 
-import cities as cities_mod
+import domain.cities as cities_mod
 from config import config
 from database import db
 from handlers import admin_volunteer_invite as avi  # noqa: F401 -- регистрирует volinvite_*/volinv_*

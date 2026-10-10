@@ -5,7 +5,7 @@ and config.DB_PATH points at a tmp_path file, same convention as tests/test_role
 tests/test_city_admin_phase72.py.
 
 Task 1: database/db.py `staff.city` migration + `get_staff_city`/`set_staff_city` + the
-"right, not filter" guards in cities.py::set_admin_city/admin_selected_city.
+"right, not filter" guards in domain/cities.py::set_admin_city/admin_selected_city.
 Task 2: handlers/admin.py city step in «Роли и доступы» + the admin_city_switch lock.
 """
 import asyncio
@@ -17,7 +17,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from config import config
 from database import db
-import cities
+import domain.cities as cities
 from handlers import admin as admin_mod
 from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import admin_roles
@@ -173,7 +173,7 @@ def test_init_db_on_pre_phase_db_adds_column_without_dropping_rows(tmp_path):
     assert roster[0]["city"] is None
 
 
-# ── Task 1: cities.py set_admin_city / admin_selected_city — right, not filter ─────────────
+# ── Task 1: domain/cities.py set_admin_city / admin_selected_city — right, not filter ─────────────
 
 def test_set_admin_city_bound_manager_rejects_other_city(tmp_path):
     _admin_ready(tmp_path)

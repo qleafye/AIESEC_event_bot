@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 import pytest
 
 from database import db as bot_db
-from game_labels import task_visible_to
+from domain.game.labels import task_visible_to
 
 from tests.test_miniapp_delegate import client  # noqa: F401 — переиспользуемая фикстура
 from tests.test_miniapp_routes import DELEGATE_ID, _hdr

@@ -11,7 +11,7 @@ import io
 import sqlite3
 
 import shared.arrival_stats as arrival_stats
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from database.db import _connect

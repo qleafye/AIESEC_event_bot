@@ -104,7 +104,7 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     «мы тебя не видим» и нужен. Отправка ручная и с подтверждением менеджера, а адресат
     зарегистрировался на форум, который идёт прямо сейчас, — это служебное сообщение (как QR,
     D-35), а не рассылка. В остальные дни тихие часы соблюдаются, как раньше."""
-    from cities import get_setting_typed_for_city
+    from domain.cities import get_setting_typed_for_city
     from services import quiet_hours
 
     ids = await checkin_not_arrived_pending_ids(city_scope=city_scope)

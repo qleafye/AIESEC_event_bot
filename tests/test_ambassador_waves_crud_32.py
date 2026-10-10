@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from services import ambassador_waves as aw

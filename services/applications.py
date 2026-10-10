@@ -38,7 +38,7 @@ import logging
 from datetime import datetime, timedelta
 
 import domain.regform.moderation_card as moderation_card
-from cities import cities_module_on, city_scope, normalize_city
+from domain.cities import cities_module_on, city_scope, normalize_city
 from database.db import (
     approve_all_pending,
     approve_user_atomic,

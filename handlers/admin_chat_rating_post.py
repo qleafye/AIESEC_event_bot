@@ -19,7 +19,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import get_setting_typed_for_city, per_city_key
+from domain.cities import get_setting_typed_for_city, per_city_key
 from handlers.admin import router
 from handlers.admin_chat_rating import _GLOBAL, _checked_city, _raw, _screen_city
 from domain.settings.validation import is_command_like, validate_setting_value

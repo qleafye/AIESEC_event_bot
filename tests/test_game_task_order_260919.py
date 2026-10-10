@@ -13,7 +13,7 @@ tests/test_game_ui16_delegate_260820.py (pytest-asyncio в окружении н
 import asyncio
 from datetime import datetime, timedelta
 
-import game_labels
+import domain.game.labels as game_labels
 from config import config
 from database import db
 from handlers import user_actions as ua_mod

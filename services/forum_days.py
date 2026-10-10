@@ -20,7 +20,7 @@ DEFAULT_DAYS = 2  # тот же дефолт, что у `sos_active_days` в р�
 
 async def forum_window(city: str | None) -> tuple[date, date] | None:
     """`[первый, последний]` день форума города по его СВОЕЙ дате; `None` — даты нет."""
-    from cities import get_setting_typed_for_city
+    from domain.cities import get_setting_typed_for_city
     from services.reject_rules import forum_date_for
 
     raw = await forum_date_for(city)
@@ -40,7 +40,7 @@ async def forum_window(city: str | None) -> tuple[date, date] | None:
 async def forum_city_codes(day: date | None, today: date) -> list[str] | None:
     """Коды включённых городов, у которых `day` — день форума (`day=None` — форум уже начался
     к `today`). `None` — модуль городов выключен: город один, ограничивать нечего."""
-    from cities import cities_module_on, enabled_cities
+    from domain.cities import cities_module_on, enabled_cities
 
     if not await cities_module_on():
         return None
@@ -58,7 +58,7 @@ async def forum_city_codes(day: date | None, today: date) -> list[str] | None:
 async def forum_city_scopes(day_raw: str | None, today: date) -> list | None:
     """То же, что `forum_city_codes`, но дескрипторами `cities.city_scope` для SQL. `day_raw` —
     «YYYY-MM-DD» из записи фильтра (сентинел «сегодня» вызывающий уже раскрыл)."""
-    from cities import city_scope
+    from domain.cities import city_scope
 
     day = None
     if day_raw:
@@ -78,7 +78,7 @@ async def not_arrived_city_note(filters: list[dict], ids: list[int]) -> str:
     фильтре нет «не пришли» или модуль городов выключен."""
     if not any(f.get("field") == "checkin_entry" and f.get("value") == "no" for f in filters):
         return ""
-    from cities import cities_module_on, city_label, normalize_city
+    from domain.cities import cities_module_on, city_label, normalize_city
     from database.db import get_user
 
     if not await cities_module_on():
@@ -102,7 +102,7 @@ async def day_cities_suffix(day_raw: str) -> str:
     день форума. Без этого «не пришли 25.09» при форумах в разные дни не читается. `day_raw` —
     «YYYY-MM-DD» или сентинел «сегодня» (`database.db.CHECKIN_DAY_TODAY`). Модуль городов
     выключен или в этот день форума нет ни у кого — пустая строка."""
-    from cities import city_label
+    from domain.cities import city_label
     from database.db import CHECKIN_DAY_TODAY
     from services.timeutil import msk_now
 

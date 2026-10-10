@@ -40,10 +40,10 @@ SCAN_SUBTREES = ("handlers", "miniapp", "services", "dashboard", "tools", "datab
 EXCLUDE_DIR_NAMES = {"tests", ".venv", ".claude", "node_modules", ".planning", "__pycache__"}
 
 # Сторож 1 — единственный файл на проекте, которому разрешено разбирать `deadline_at` строкой
-# `strptime`: корневой `game_labels.py` (план 32-04, задача 1) — `task_deadline`/
+# `strptime`: корневой `domain/game/labels.py` (план 32-04, задача 1) — `task_deadline`/
 # `task_deadline_admin` и есть тот самый единственный разбор, на который обязаны переходить
 # все остальные читатели.
-ALLOWED_STRPTIME_FILES = {"game_labels.py"}
+ALLOWED_STRPTIME_FILES = {"domain/game/labels.py"}
 
 # Сторож 2 — единственный файл, которому разрешён литерал `9999-12-31`: объявление
 # `NO_DEADLINE_AT` в `database/db.py` (план 32-01). `dashboard/queries.py` держит
@@ -121,7 +121,7 @@ def _format_violations(violations: list[tuple[str, int, str]], heading: str) -> 
 def test_no_own_deadline_strptime_outside_game_labels():
     violations = _find_strptime_violations()
     assert not violations, _format_violations(
-        violations, "Свой разбор `deadline_at` через `strptime` вне `game_labels.py`:",
+        violations, "Свой разбор `deadline_at` через `strptime` вне `domain/game/labels.py`:",
     )
 
 
@@ -160,5 +160,5 @@ def test_sentinel_literal_detector_catches_planted_sample(tmp_path):
 # ── контракт списков разрешений ──────────────────────────────────────────────────────────
 
 def test_allowed_file_lists_are_explicit_constants():
-    assert ALLOWED_STRPTIME_FILES == {"game_labels.py"}
+    assert ALLOWED_STRPTIME_FILES == {"domain/game/labels.py"}
     assert ALLOWED_SENTINEL_FILES == {"database/db.py", "dashboard/queries.py"}

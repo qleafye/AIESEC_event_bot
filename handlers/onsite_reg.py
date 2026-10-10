@@ -36,7 +36,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from cities import (
+from domain.cities import (
     cities_module_on,
     default_city_code,
     enabled_cities,

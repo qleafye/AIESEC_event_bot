@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
 from database.db import get_user
-from cities import (
+from domain.cities import (
     admin_selected_city,
     city_label,
     city_scope,

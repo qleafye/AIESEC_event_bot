@@ -60,7 +60,7 @@ from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
 import domain.regform.moderation_card as moderation_card
 from domain.settings.schema import get_setting_typed
-from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
+from domain.cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_modcard_render import build_card_text
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
 from services.ru_plural import ru_plural

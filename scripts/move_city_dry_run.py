@@ -8,7 +8,7 @@
 (памятка `standalone-script-sheet-traps`: разовый скрипт обязан сверяться со СПИСКОМ реальных
 вкладок, не угадывать/создавать по имени). `--apply` включает запись.
 
-Запускать ИЗ РАБОЧЕГО КАТАЛОГА БОТА (там же, где `config.py`/`database/`/`cities.py`), тем же
+Запускать ИЗ РАБОЧЕГО КАТАЛОГА БОТА (там же, где `config.py`/`database/`/`domain/cities.py`), тем же
 `.env`, что у процесса бота:
 
     python -m scripts.move_city_dry_run 900800001 msk
@@ -44,7 +44,7 @@ async def main() -> int:
     print(f"режим: {'ПРИМЕНИТЬ (--apply)' if args.apply else 'ПРОСМОТР (dry-run, ничего не меняю)'}")
     print("=" * 78)
 
-    from cities import reload_cities
+    from domain.cities import reload_cities
     from database.db import get_user
     from services.city_move import move_user_city
 

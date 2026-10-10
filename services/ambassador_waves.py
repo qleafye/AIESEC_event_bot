@@ -21,7 +21,7 @@ from __future__ import annotations
 import statistics
 from datetime import datetime
 
-import cities
+import domain.cities as cities
 import domain.settings.ops as settings_ops
 from database.db import (
     NO_DEADLINE_AT,

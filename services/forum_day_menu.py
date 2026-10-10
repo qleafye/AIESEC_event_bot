@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta
 
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from database.db import (
     create_session_feedback_prompt,
     get_program_session,

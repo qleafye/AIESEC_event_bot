@@ -98,7 +98,7 @@ def test_garbage_date_still_gets_format_hint():
 
 
 def test_impossible_date_text_has_manual_translation():
-    from i18n_ui_en import UI_EN
+    from domain.i18n.ui_en import UI_EN
     assert "Такой даты нет — проверь число и месяц." in UI_EN
 
 

@@ -25,7 +25,7 @@ import html
 import logging
 from datetime import datetime, timedelta
 
-from cities import cities_module_on, normalize_city
+from domain.cities import cities_module_on, normalize_city
 from database.db import (
     enqueue_game_digest, get_user, list_unsent_game_digest, mark_game_digest_sent,
 )

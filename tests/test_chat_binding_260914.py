@@ -23,7 +23,7 @@ from aiogram.types import (
     ChatMemberUpdated, Message, Update, User,
 )
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from handlers import group_chat

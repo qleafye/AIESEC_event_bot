@@ -81,7 +81,7 @@
 Ярус A (служебные слова — «Готово», «Отмена», «Пропустить», «Другое», «Да»/«Нет», тексты ошибок
 валидации `_SKIP_TEXT_ERRORS`/`_BESPOKE_CHOICE`/`_MEMBERSHIP_STEPS`) в этот корпус НЕ входит:
 эти литералы участвуют в жёстких сравнениях (`F.text == "Отмена"`) и в фильтрах aiogram — их
-перевод обязан быть детерминированным и рукописным (`i18n_ui_en.py`, план 27-02), а не машинным
+перевод обязан быть детерминированным и рукописным (`domain/i18n/ui_en.py`, план 27-02), а не машинным
 (машинный перевод недетерминирован между версиями модели — фильтр мог бы «расклеиться» после
 апдейта движка). `code_literals()` ниже берёт только ярус B (контент менеджера: тексты
 вопросов, списки вариантов).
@@ -90,14 +90,14 @@ from __future__ import annotations
 
 import logging
 
-from cities import CITIES, split_per_city_key
-import cities
+from domain.cities import CITIES, split_per_city_key
+import domain.cities as cities
 from config import config
 from domain.settings.schema import SETTINGS_SCHEMA
 import domain.regform.engine as reg_engine
 import domain.regform.labels as reg_labels
 import domain.regform.options as reg_options
-import payment_options
+import domain.payment as payment_options
 
 logger = logging.getLogger(__name__)
 
@@ -283,7 +283,7 @@ def code_literals() -> list[tuple[str, str]]:
     # импортированы из DEFAULT_START_REGISTERED_TEXT/DEFAULT_START_RETURNING_TEXT. Правка
     # текста в registration.py без зеркальной правки здесь тихо расходится с корпусом —
     # `tests/test_i18n_sources_27.py` держит обе строки байт-в-байт списком, «сверено на дату
-    # плана» (тот же приём, что уже используется в i18n_ui_en.py для validate_date_range).
+    # плана» (тот же приём, что уже используется в domain/i18n/ui_en.py для validate_date_range).
     # DEFAULT_START_RETURNING_TEXT несёт {season} — плейсхолдер сентинелится автоматически
     # (services/i18n_glossary.py::_TAG_OR_PLACEHOLDER_RE), отдельно защищать не нужно.
     items.append((
@@ -594,7 +594,7 @@ def code_literals() -> list[tuple[str, str]]:
 
 async def city_texts() -> list[tuple[str, str]]:
     """Названия городов мероприятия (Квик 260917-en, item 3 приёмки 17.09) — живут в таблице
-    `cities` (`cities.py`), НЕ в `SETTINGS_SCHEMA`/`bot_settings` напрямую, поэтому
+    `cities` (`domain/cities.py`), НЕ в `SETTINGS_SCHEMA`/`bot_settings` напрямую, поэтому
     `stored_delegate_texts()` их не видит вообще (тот сканирует только `bot_settings`).
     `cities.city_label(code)` уже резолвит override (`city_label__{code}`) поверх базового
     `cities.label` — берём РОВНО то, что реально покажется делегату на кнопке `_city_fork_kb`

@@ -10,7 +10,7 @@ import asyncio
 
 from config import config
 from database import db
-import cities
+import domain.cities as cities
 from tests._dbtpl import fast_init_db
 
 

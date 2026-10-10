@@ -7,13 +7,13 @@ Mini App не могло позвать (aiogram-модуль), поэтому `
 ту же просрочку в зависимости от того, кто из менеджеров и на какой поверхности одобрил сдачу
 (бот или Mini App), что двигало места в рейтинге волны.
 
-Сам модуль aiogram-free (`game_labels.py`/`domain/settings/schema.py` — уже используются и Mini App, и
+Сам модуль aiogram-free (`domain/game/labels.py`/`domain/settings/schema.py` — уже используются и Mini App, и
 ботом), поэтому его можно звать из обоих процессов. Обе точки одобрения бота
 (`grev_approve`/`grev_approve_amount_step` в `handlers/admin_gamification.py`) тоже зовут
 эту функцию — формула считается в одном месте буквально."""
 from __future__ import annotations
 
-from game_labels import penalized_coins, task_has_deadline
+from domain.game.labels import penalized_coins, task_has_deadline
 from domain.settings.schema import get_setting_typed
 
 

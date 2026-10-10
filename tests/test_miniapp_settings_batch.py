@@ -14,7 +14,7 @@ import logging
 import pytest
 
 import domain.settings.ops as settings_ops
-from cities import ALL_CITIES, PER_CITY_SEP
+from domain.cities import ALL_CITIES, PER_CITY_SEP
 from database import db as bot_db
 from domain.settings.schema import get_setting_typed
 
@@ -547,7 +547,7 @@ def test_batch_multi_null_resets_to_twenty_defaults(tmp_path, no_tab):
 
 def test_common_forum_date_refused_with_cities_on(tmp_path, no_tab):
     """При включённых городах общий forum_date ничего не включает — правка требует город."""
-    from cities import set_admin_city
+    from domain.cities import set_admin_city
     client = _setup(tmp_path)
     _set("event_city_enabled", "on")
     _run(set_admin_city(ADMIN_ID, ALL_CITIES))

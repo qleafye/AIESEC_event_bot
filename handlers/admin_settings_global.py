@@ -19,7 +19,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import ALL_CITIES, cities_module_on, city_label, is_per_city
+from domain.cities import ALL_CITIES, cities_module_on, city_label, is_per_city
 from domain.settings.ops import COMMON_DENIED_TEXT, can_write_common, writes_common_value
 from handlers.admin import router
 from handlers.states import EditSetting

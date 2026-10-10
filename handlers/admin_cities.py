@@ -41,7 +41,7 @@ from services.sheets import dedupe_sheet_by_id, REFUSED_UNPINNED_TAB
 from services.background import spawn as _spawn
 from keyboards.builders import get_cancel_kb
 from handlers.states import CityForm, SeasonReset, SeasonImport, clear_admin_flow_state
-from cities import (
+from domain.cities import (
     CITIES,
     ALL_CITIES,
     ALL_CITIES_LABEL,
@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 
 # ── Phase 07.1 (CITY-04) / Phase 14 (14-07, CITY-07): «🏙 Города» admin screen ───────────────
 # Phase 14-07 closes CITY-07 fully: add/rename/tab-base/default/delete are now all in-bot, no
-# `.env` restart round-trip. The city list itself lives in the `cities` table (cities.py cache,
+# `.env` restart round-trip. The city list itself lives in the `cities` table (domain/cities.py cache,
 # `all_cities()`); a manager never types or sees a raw city CODE — only the human-facing label
 # and the deep-link it produces (T-14-34).
 

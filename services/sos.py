@@ -37,7 +37,7 @@ import logging
 import re
 from datetime import date, datetime, timedelta
 
-from cities import cities_module_on, get_setting_typed_for_city, per_city_key
+from domain.cities import cities_module_on, get_setting_typed_for_city, per_city_key
 from database.db import advance_sos_claimed_remind, get_sos_report, set_sos_escalated
 from services.questions import format_stamp
 from services.timeutil import city_offset_hours, msk_now, shift_hours
@@ -279,7 +279,7 @@ async def resolve_city_label(city_code: str | None) -> str | None:
     if not city_code:
         return None
     try:
-        from cities import city_label
+        from domain.cities import city_label
 
         return await city_label(city_code)
     except Exception as e:

@@ -152,7 +152,7 @@ async def _handle_task_changed(payload: dict) -> None:
     более раннего дедлайна и напомнит слишком поздно."""
     from database.db import get_task
     from services.scheduler import cancel_task_deadline_reminder, schedule_task_deadline_reminder
-    from game_labels import task_deadline
+    from domain.game.labels import task_deadline
 
     task_id = payload.get("task_id")
     if task_id is None:
