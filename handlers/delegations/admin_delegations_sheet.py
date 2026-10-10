@@ -26,7 +26,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import ext_forms_db as ef
 from handlers.admin import router
 from handlers.delegations.admin_delegations import (
-    _btn, _current_form, _cut, _e, _kb, _show, _tail_int, _to_screen, render_screen,
+    _btn, _current_form, _cut, _e, _kb, _show, _tail_int, _to_screen, deny_locked, render_screen,
 )
 from services.delegations import delegations_mirror
 from services.sheets import sheets
@@ -90,6 +90,8 @@ async def _hidden_tabs(form: dict) -> set[str]:
 
 @router.callback_query(F.data == "dlg_sheet")
 async def dlg_sheet(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     form = await _current_form()
     if form is None:
         await render_screen(callback)
@@ -210,6 +212,8 @@ async def _show_check(callback, state: FSMContext, form: dict, tab: str) -> None
 
 @router.callback_query(F.data.startswith("dlg_tab:"))
 async def dlg_tab(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     idx = _tail_int(callback.data)
     tabs = (await state.get_data()).get("dlg_tabs") or []
     if idx is None or not 0 <= idx < len(tabs):
@@ -235,6 +239,8 @@ async def _picked_tab(form: dict, state: FSMContext) -> str | None:
 
 @router.callback_query(F.data == "dlg_check")
 async def dlg_check(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     form = await _current_form()
     if form is None:
         await render_screen(callback)
@@ -252,6 +258,8 @@ async def dlg_check(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "dlg_write_on")
 async def dlg_write_on(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     form = await _current_form()
     tab = await _picked_tab(form, state) if form else None
     if form is None or not tab:
@@ -287,6 +295,8 @@ async def dlg_write_on(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "dlg_write_yes")
 async def dlg_write_yes(callback: types.CallbackQuery, state: FSMContext):
+    if await deny_locked(callback, state):
+        return
     form = await _current_form()
     tab = await _picked_tab(form, state) if form else None
     if form is None or not tab:
@@ -321,6 +331,8 @@ async def dlg_write_yes(callback: types.CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "dlg_write_off")
 async def dlg_write_off(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     form = await _current_form()
     if form is None or not _form_enabled(form):
         await callback.answer(_NOT_ENABLED, show_alert=True)
@@ -334,6 +346,8 @@ async def dlg_write_off(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_write_off_yes")
 async def dlg_write_off_yes(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     form = await _current_form()
     if form is None or not _form_enabled(form):
         await callback.answer(_NOT_ENABLED, show_alert=True)
