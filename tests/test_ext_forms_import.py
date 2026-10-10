@@ -12,8 +12,8 @@ import pytest
 from database import ext_forms_db as ef
 from handlers.ext_forms import admin_ext_forms_push as push
 from handlers.states import ExtFormImport
-from services import ext_forms_import as imp
-from services import ext_forms_yandex_sync as S
+from services.ext_forms import ext_forms_import as imp
+from services.ext_forms import ext_forms_yandex_sync as S
 from tests.test_roles_phase8 import (
     ADMIN_ID, FakeMessage, _fresh_state, _roles_ready, dispatch_callback,
 )

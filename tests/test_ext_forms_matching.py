@@ -7,8 +7,8 @@ import pytest
 from config import config
 from database import db
 from database import ext_forms_db as ef
-from services import ext_forms_match as m
-from services.ext_forms_ingest import ingest_answer
+from services.ext_forms import ext_forms_match as m
+from services.ext_forms.ext_forms_ingest import ingest_answer
 from tests._dbtpl import fast_init_db
 
 
@@ -144,7 +144,7 @@ def test_rematch_skips_form_without_keys(tmp_path):
 
 def test_guess_keys_nick_is_a_word_not_a_substring():
     """«сотрудник/школьник» — не ник в Telegram."""
-    from services.ext_forms_match import guess_key_questions
+    from services.ext_forms.ext_forms_match import guess_key_questions
     qs = [("a", "Вы сотрудник или школьник?"), ("b", "Ваш ник в Telegram"),
           ("c", "Телефон")]
     assert guess_key_questions(qs) == ("b", "c")
