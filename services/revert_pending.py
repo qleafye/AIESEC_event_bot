@@ -29,7 +29,7 @@ QR чек-ина «перестаёт пускать» БЕЗ отдельног
 трогаются нигде в этом модуле — только читаются для превью (см. `preview_revert_pending`).
 
 Журнал: `record_answer_history(..., source=f"admin:{admin_id}")` — тот же маркер «кто и когда»,
-что у `services/city_move.py` (координатор 25.09). Колонка снимка — `"status"`: экран «🕓
+что у `services/cities/city_move.py` (координатор 25.09). Колонка снимка — `"status"`: экран «🕓
 История» (`handlers/applications/admin_moderation.py::appr_history`) пропускает записи с этой колонкой
 намеренно (статус уже показан отдельной строкой карточки) — сама запись при этом остаётся в
 `reg_answer_history`/листе «История правок» (оба читают `.get(source, source)`, незнакомый

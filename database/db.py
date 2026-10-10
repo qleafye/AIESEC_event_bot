@@ -4141,7 +4141,7 @@ async def record_reg_event(
 
 async def get_last_reg_event_city(telegram_id: int, season: str | None = None) -> str | None:
     """Квик 27.09: последний НЕпустой город этого делегата в воронке (`reg_events`) — одно из
-    звеньев цепочки «что уже известно о городе» (`services.known_city`). `season` задан —
+    звеньев цепочки «что уже известно о городе» (`services.cities.known_city`). `season` задан —
     только записи этого сезона: город прошлого сезона не должен молча переехать в новый."""
     query = (
         "SELECT event_city FROM reg_events WHERE telegram_id = ? "
@@ -13134,7 +13134,7 @@ async def regional_noshow_move_claim(
     apply_move`) — `UPDATE ... WHERE response IS NULL`. `rowcount == 1` означает, что именно
     ЭТОТ вызов выиграл гонку: СУБД сериализует конкурентные `UPDATE` на одну строку, второй
     одновременный тап увидит `response` уже не `NULL` и получит `rowcount == 0`. Сам перенос
-    (`services.city_move.move_user_city`) стартует ТОЛЬКО после `True` здесь — не наоборот
+    (`services.cities.city_move.move_user_city`) стартует ТОЛЬКО после `True` здесь — не наоборот
     (см. докстринг `apply_move`)."""
     async with _connect() as db:
         cursor = await db.execute(

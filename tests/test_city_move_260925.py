@@ -32,7 +32,7 @@ from handlers.cities import admin_city_move
 from handlers.access.admin_caps import role_caps_key
 import services.sheets.sheets as sheets_mod
 from services.checkin import record_arrival
-from services.city_move import (
+from services.cities.city_move import (
     STATUS_MODE_KEEP,
     STATUS_MODE_TO_MODERATION,
     move_user_city,
@@ -883,7 +883,7 @@ def test_citymove_start_denied_when_old_city_out_of_scope(tmp_path):
 
 def test_citymove_pick_shows_track_unsupported_warning(tmp_path, monkeypatch):
     """У Москвы registration_mode=full — краткий трек делегата там не заводится, но трек НЕ
-    меняется (см. services/city_move.py): экран только предупреждает словами."""
+    меняется (см. services/cities/city_move.py): экран только предупреждает словами."""
     _db_ready(tmp_path)
     _install_fake_sheets(monkeypatch)
 
@@ -1164,7 +1164,7 @@ def test_move_same_tab_updates_row_in_place_without_duplicate(tmp_path, monkeypa
         return {"target_tab": None, "target_exists": True, "fallback_tab": None,
                 "fallback_exists": True, "write_tab": None}
 
-    import services.city_move as cm
+    import services.cities.city_move as cm
     import services.reg_finalize as rf
     monkeypatch.setattr(rf, "_resolve_update_tab", main_tab_only)
     monkeypatch.setattr(cm, "_resolve_sheet_targets", targets_main)

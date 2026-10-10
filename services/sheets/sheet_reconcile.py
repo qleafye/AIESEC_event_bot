@@ -25,7 +25,7 @@ is_past_season_row` — те же 482 импортированных делег�
 отчёта и тапом кнопки; повторный тап поймает in-memory замок (`_claim`/`_release`) и не
 задвоит работу.
 
-aiogram-free (тот же разрез, что `services/city_move.py`/`services/reject_journal.py`) — вызывающий
+aiogram-free (тот же разрез, что `services/cities/city_move.py`/`services/reject_journal.py`) — вызывающий
 хендлер (`handlers/sheets/admin_sheet_reconcile.py`) строит текст/клавиатуры сам."""
 from __future__ import annotations
 
