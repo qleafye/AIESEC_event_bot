@@ -130,7 +130,7 @@ def test_auto_rejected_delegate_sees_reason_and_date_like_manual_reject(client):
     отказе (статус, причина, дата). `hub_status` читает `application_decisions`/`users.
     rejected_at` универсально, без ветвления по `decided_by` — запись с сентинелом
     AUTO_DECIDED_BY уже даёт паритет без единой правки hub.py (Pitfall 1)."""
-    from services.reject_journal import AUTO_DECIDED_BY
+    from services.applications.reject_journal import AUTO_DECIDED_BY
 
     _set("reg_form_status_screen", "on")
     _run(_sql(

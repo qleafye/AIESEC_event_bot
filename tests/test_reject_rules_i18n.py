@@ -10,7 +10,7 @@ import asyncio
 
 from config import config
 from database import db
-import services.reject_rules as rr
+import services.applications.reject_rules as rr
 from services.i18n.i18n import src_hash
 from tests._dbtpl import fast_init_db
 

@@ -5,7 +5,7 @@
 1. **Модуль aiogram-free — и на уровне импорта, И на уровне вызова.** Его импортирует и
    ВЫЗЫВАЕТ веб-процесс Mini App (`miniapp/routers/review.py`, `miniapp/routers/applications.py`
    — см. `miniapp/deps.py`: «Модуль aiogram-free»). Всё, что тянет aiogram
-   (`services.scheduler`, `services.application_effects`, `services.game_digest` — оно само
+   (`services.scheduler`, `services.applications.application_effects`, `services.game_digest` — оно само
    тянет `services.scheduler`) импортируется ЛЕНИВО, внутри функций, которые вызывает ТОЛЬКО
    бот (`flush_due` и её приватные помощники `_rebuild_markup`/`_flush_*_row`) — никогда на
    пути, которым идёт веб-процесс (`window_for_city`/`defer_until`/вся семья
@@ -497,11 +497,11 @@ async def _flush_poll_row(row_id: int, user_id: int, payload: dict, now_str: str
 
 
 async def _flush_application_decision_row(row_id: int, user_id: int, payload: dict, now_str: str) -> None:
-    """Task 3 (services/application_effects.py): перечитать `users.status`, сравнить с
+    """Task 3 (services/applications/application_effects.py): перечитать `users.status`, сравнить с
     `payload["status"]` — разошлись -> НЕ слать (менеджер передумал ночью); совпал -> доставить
     ровно одно последнее решение."""
     from database.db import get_user, mark_delayed_notification_sent
-    from services.application_effects import apply_decision_effects
+    from services.applications.application_effects import apply_decision_effects
     from services import scheduler as _sched
 
     user = await get_user(user_id)

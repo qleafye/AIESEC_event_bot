@@ -1,10 +1,10 @@
 """«Тихо неработающих правил не бывает» (D-14) — реакция на правку настроек анкеты: когда
 менеджер выключает вопрос анкеты или убирает вариант ответа, правило автоотказа, которое на
-них опиралось, встаёт на паузу САМО (`services.reject_rules.active_rules` уже пересчитывает и
+них опиралось, встаёт на паузу САМО (`services.applications.reject_rules.active_rules` уже пересчитывает и
 записывает это на каждой загрузке — план 31-04), а держателям права «Настройки» уходит
 сообщение, какое правило встало на паузу и почему.
 
-Отдельный файл, не `services/reject_rules.py` — там стоит сторож «модуль не грузит бот-фреймворк»,
+Отдельный файл, не `services/applications/reject_rules.py` — там стоит сторож «модуль не грузит бот-фреймворк»,
 а рассылка держателям права идёт через `handlers.access.admin_caps.notify_by_capability`, которому нужны
 исключения и метод отправки самого бот-фреймворка. Второй файл держит эту границу чистой — сам
 пересчёт паузы (`active_rules`) по-прежнему живёт в сервисе без этой зависимости, здесь — только
@@ -43,7 +43,7 @@ from domain.cities import split_per_city_key
 from database.db import list_reject_rules
 from domain.regform.engine import MULTI_CONFIG, SELECT_CONFIG
 from services import scheduler as _sched
-from services.reject_rules import active_rules, rule_summary
+from services.applications.reject_rules import active_rules, rule_summary
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -166,7 +166,7 @@ async def _combos_from_enabled_rules() -> list[tuple[str | None, str | None]]:
 async def _recompute_and_notify() -> None:
     """Общее тело обоих входов ниже: пересчитать паузу `active_rules`'ом по каждому реальному
     сочетанию «город × трек» (второй копии правила паузы здесь нет, пересчёт — целиком в
-    `services.reject_rules.active_rules`), собрать правила с `paused_changed == "on"`, отправить
+    `services.applications.reject_rules.active_rules`), собрать правила с `paused_changed == "on"`, отправить
     держателям права «Настройки» ОДНО сообщение НА ГОРОД правила (`notify_by_capability(city=...)`
     сам сужает адресатов до привязанных к этому городу + непривязанных + суперадминов — держатель,
     привязанный к другому городу, сообщения не увидит); правило «все города» (`city is None`)
@@ -175,7 +175,7 @@ async def _recompute_and_notify() -> None:
         # Веб-процесс приложения: бота нет, а пересчёт ЗАПИСЫВАЕТ paused_reason — после него бот
         # перехода уже не увидит и уведомление держателям права потеряется. Пересчёт и письмо
         # делает бот, когда разберёт очередь `settings_changed`.
-        logger.info("services.reject_rules_notify: процесс без бота — пересчёт паузы оставлен боту")
+        logger.info("services.applications.reject_rules_notify: процесс без бота — пересчёт паузы оставлен боту")
         return
 
     combos = await _combos_from_enabled_rules()
@@ -188,7 +188,7 @@ async def _recompute_and_notify() -> None:
             rules = await active_rules(event_city=city, participant_type=track)
         except Exception as exc:  # noqa: BLE001 — один сорвавшийся пересчёт не топит остальные
             logger.error(
-                "services.reject_rules_notify: пересчёт паузы сорвался (city=%r, track=%r): %s",
+                "services.applications.reject_rules_notify: пересчёт паузы сорвался (city=%r, track=%r): %s",
                 city, track, exc,
             )
             continue
@@ -216,7 +216,7 @@ async def _recompute_and_notify() -> None:
             # (пустой ADMIN_IDS) ИЛИ отправка каждому получателю сорвалась. Тихо неотправленного
             # уведомления быть не должно — лог фиксирует это явно.
             logger.error(
-                "services.reject_rules_notify: уведомление о паузе не нашло ни одного получателя "
+                "services.applications.reject_rules_notify: уведомление о паузе не нашло ни одного получателя "
                 "(city=%r, rule_ids=%s)",
                 city, [rule["id"] for rule in rules_in_city],
             )
@@ -233,7 +233,7 @@ async def on_setting_written(key: str) -> None:
             return  # выключенный модуль автоотказа не шумит (D-15)
         await _recompute_and_notify()
     except Exception as exc:  # noqa: BLE001
-        logger.error("services.reject_rules_notify.on_setting_written(%r) failed: %s", key, exc)
+        logger.error("services.applications.reject_rules_notify.on_setting_written(%r) failed: %s", key, exc)
 
 
 async def on_settings_written_batch(keys: list[str]) -> None:
@@ -250,4 +250,4 @@ async def on_settings_written_batch(keys: list[str]) -> None:
             return
         await _recompute_and_notify()
     except Exception as exc:  # noqa: BLE001
-        logger.error("services.reject_rules_notify.on_settings_written_batch(...) failed: %s", exc)
+        logger.error("services.applications.reject_rules_notify.on_settings_written_batch(...) failed: %s", exc)

@@ -474,7 +474,7 @@ async def _hidden_important(code: str | None) -> str | None:
 
 async def _hidden_sos(code: str | None) -> str | None:
     from services.sos import is_sos_active_for_city
-    from services.reject_rules import forum_date_for
+    from services.applications.reject_rules import forum_date_for
     sos_city = code if code is not None else default_city_code()
     if await is_sos_active_for_city(sos_city):
         return None

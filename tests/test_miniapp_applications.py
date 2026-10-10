@@ -7,7 +7,7 @@
 
 Харнесс — `tests/test_miniapp_routes.py` (тот же процесс/БД, что у `tests/test_miniapp_review.py`).
 Bot API (`getUserProfilePhotos` для аватара) мокается целиком — ни один тест не ходит в сеть.
-Окно отмены (5с, `services.applications.UNDO_WINDOW_SECONDS`) проверяется прямой записью
+Окно отмены (5с, `services.applications.applications.UNDO_WINDOW_SECONDS`) проверяется прямой записью
 просроченного `effects_due_at` в БД, а не `sleep`.
 """
 from __future__ import annotations

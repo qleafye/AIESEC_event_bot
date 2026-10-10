@@ -11,7 +11,8 @@ from config import config
 from database import db
 from handlers.applications import admin_reject_retro as h
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
-from services import reg_finalize, reject_retro
+from services import reg_finalize
+from services.applications import reject_retro
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_admin_su5 import ADMIN_ID, FakeCallback
 
@@ -70,7 +71,7 @@ def _setup(tmp_path, monkeypatch):
         sent.append((tid, status, reason))
 
     monkeypatch.setattr(reg_finalize, "_auto_reject_patch", fake_patch)
-    monkeypatch.setattr("services.application_effects.apply_decision_effects", fake_effects)
+    monkeypatch.setattr("services.applications.application_effects.apply_decision_effects", fake_effects)
     return sent
 
 
@@ -180,7 +181,7 @@ def test_failure_after_effects_does_not_lose_row(tmp_path, monkeypatch):
             raise RuntimeError("telegram упал")
         sent.append((tid, status, reason))
 
-    monkeypatch.setattr("services.application_effects.apply_decision_effects", flaky)
+    monkeypatch.setattr("services.applications.application_effects.apply_decision_effects", flaky)
     first = _run(reject_retro.apply(object(), "2026-01-01", pause=0))
     assert first["failed"] == 1
     assert _state()[1][1] is None  # метка не поставлена — строка видна повтору
@@ -196,7 +197,7 @@ def test_manual_reject_does_not_get_a_letter(tmp_path, monkeypatch):
     """Отклонённый менеджером вручную (решение человека в журнале) получает только пометку, даже
     если в журнале автоотказа у него осталась живая строка с прошлых подач."""
     sent = _setup(tmp_path, monkeypatch)
-    from services.reject_journal import record_auto_reject
+    from services.applications.reject_journal import record_auto_reject
     _run(record_auto_reject(3, [7], [RULE_TEXT]))
     stamp = "2099-01-01 00:00:00"
     _run(db.record_application_decision(3, "rejected", "вручную", 777, stamp, stamp, effects_sent_at=stamp))

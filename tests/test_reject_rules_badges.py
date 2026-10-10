@@ -17,7 +17,7 @@ import json
 
 from config import config
 from database import db
-import services.applications as applications
+import services.applications.applications as applications
 from tests._dbtpl import fast_init_db
 
 UID = 920900100
@@ -65,7 +65,7 @@ async def _seed_rule(*, name=None, reject_text="Правило сработал�
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════
-# Задача 1: services.applications — rule_badge_lines/auto_reject_cleared_line/queue_page
+# Задача 1: services.applications.applications — rule_badge_lines/auto_reject_cleared_line/queue_page
 # ═══════════════════════════════════════════════════════════════════════════════════════
 
 # ── rule_badge_lines (D-20) ───────────────────────────────────────────────────────────────
@@ -425,14 +425,14 @@ def test_show_current_card_prints_cleared_badge_not_resubmit_end_to_end(tmp_path
 
 def test_decision_suffix_auto_decided_by_shows_auto_rule_label():
     from handlers.applications.admin_app_list import _decision_suffix
-    from services.reject_journal import AUTO_DECIDED_BY
+    from services.applications.reject_journal import AUTO_DECIDED_BY
 
     assert _decision_suffix("rejected", AUTO_DECIDED_BY, {}) == " · 🤖 Автоправило"
 
 
 def test_decision_suffix_pending_status_empty_even_for_auto_sentinel():
     from handlers.applications.admin_app_list import _decision_suffix
-    from services.reject_journal import AUTO_DECIDED_BY
+    from services.applications.reject_journal import AUTO_DECIDED_BY
 
     assert _decision_suffix("pending", AUTO_DECIDED_BY, {}) == ""
 
@@ -460,7 +460,7 @@ def test_decision_suffix_manager_label_lookup_fallback_unchanged():
 
 
 def test_admin_app_list_no_new_hardcoded_minus_one_literal():
-    """Сентинел импортирован из services.reject_journal, не записан вторым литералом -1."""
+    """Сентинел импортирован из services.applications.reject_journal, не записан вторым литералом -1."""
     import inspect
 
     from handlers.applications import admin_app_list

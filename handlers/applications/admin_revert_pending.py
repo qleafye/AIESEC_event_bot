@@ -1,5 +1,5 @@
 """Phase 33 (delegate-card admin actions): «↩️ Вернуть в ожидание» — кнопка на карточке
-`/find` (`handlers/admin.py::cmd_find_user`), сам перевод — `services/revert_pending.py`.
+`/find` (`handlers/admin.py::cmd_find_user`), сам перевод — `services/applications/revert_pending.py`.
 
 Не форумная функция (админ-действие модератора) — своей строки в хабе «🎪 Форум: функции»
 нет и не нужно (см. рабочее задание фазы, тот же посыл, что у `handlers/cities/admin_city_move.py`).
@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_user
 from handlers.admin import router
 from handlers.forum.admin_checkin import _city_allowed
-from services.revert_pending import preview_revert_pending, revert_to_pending
+from services.applications.revert_pending import preview_revert_pending, revert_to_pending
 from domain.cities import city_label, normalize_city
 
 logger = logging.getLogger(__name__)

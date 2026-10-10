@@ -6,7 +6,7 @@
   не возвращены журналом), _csv_safe на строковых ячейках.
 - services.scheduler.sync_auto_reject_sheet_job — пустое имя вкладки не трогает лист; заданное
   имя зовёт sync_named_worksheet с шапкой/строками.
-- services.reject_journal.return_to_moderation — после успешного возврата обновляет статус в
+- services.applications.reject_journal.return_to_moderation — после успешного возврата обновляет статус в
   листе на «Новая» и пересобирает вкладку; сбой листа не откатывает возврат.
 - handlers.applications.admin_reject_reports — экран показывает текущие значения словами, кнопки ведут на
   settings_edit:<ключ>, «🔄 Обновить вкладку сейчас» — только когда имя задано.
@@ -20,7 +20,7 @@ import asyncio
 
 from config import config
 from database import db
-from services import reject_journal as rj
+from services.applications import reject_journal as rj
 from services import scheduler as sched
 from tests._dbtpl import fast_init_db
 
@@ -179,7 +179,7 @@ def test_sync_auto_reject_sheet_job_blank_whitespace_tab_is_treated_as_empty(tmp
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# services.reject_journal.return_to_moderation -> обновление листа (D-G)
+# services.applications.reject_journal.return_to_moderation -> обновление листа (D-G)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_return_to_moderation_updates_sheet_status_and_resyncs_tab(tmp_path, monkeypatch):

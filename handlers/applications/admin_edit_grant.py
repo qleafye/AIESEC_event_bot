@@ -1,6 +1,6 @@
 """Phase 33 (delegate-card admin actions, задача 3): «✏️ Открыть правку после решения» —
 кнопка на карточке `/find` для одобренного делегата (`handlers/admin.py::cmd_find_user`).
-Сам примитив исключения — `services/delegate_overrides.py` (`kind="edit"`), общий с задачей 2.
+Сам примитив исключения — `services/applications/delegate_overrides.py` (`kind="edit"`), общий с задачей 2.
 
 Видна только для `status == "approved"` — `services/reg_edit_policy.py::edit_gate` (Р-1 в её
 докстринге) НИКОГДА не гейтит `rejected` (правка отклонённой анкеты технически неотличима от
@@ -27,7 +27,7 @@ from domain.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
 from handlers.forum.admin_checkin import _city_allowed
-from services import delegate_overrides
+from services.applications import delegate_overrides
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

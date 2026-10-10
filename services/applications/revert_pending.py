@@ -3,7 +3,7 @@
 (`handlers/applications/admin_revert_pending.py`), сам перевод статуса — здесь.
 
 Штатный путь возврата — `database.db.revert_user_to_pending` (тот же примитив, что
-`services/reject_journal.py::return_to_moderation` использует для возврата из журнала
+`services/applications/reject_journal.py::return_to_moderation` использует для возврата из журнала
 автоотказов): атомарный `UPDATE ... WHERE status = ?`, второй тап/гонка статусов проигрывает
 молча, не откатывая уже применённое.
 
@@ -12,7 +12,7 @@
     ТОЛЬКО если делегат был одобрен (у отклонённого напоминаний и так нет, вызов для него
     безвреден, но незачем);
   - `services.sheets.sheets.update_status_in_sheet` — та же функция, что пишет решение модератора в
-    лист (`services/application_effects.py::apply_decision_effects`), лейбл — тот же, что у
+    лист (`services/applications/application_effects.py::apply_decision_effects`), лейбл — тот же, что у
     НОВОЙ заявки (`reg_labels.STATUS_LABELS["pending"]` = «Новая»), делегат в листе снова
     выглядит как неразобранная заявка;
   - `services.reg_digest.notify_application(is_new=True, reason=REASON_REVERT)` — та же
@@ -41,7 +41,7 @@ QR чек-ина «перестаёт пускать» БЕЗ отдельног
 делегатом, тревожить лишний раз не нужно, но иногда нужно.
 
 aiogram-free по импортам; `bot` приходит параметром (as-is, тот же приём, что
-`services/game/coins_notify.py`/`services/application_effects.py`) — нужен и для
+`services/game/coins_notify.py`/`services/applications/application_effects.py`) — нужен и для
 `notify_application` (маршрутизация менеджерам), и для отправки текста делегату."""
 from __future__ import annotations
 

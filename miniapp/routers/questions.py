@@ -48,7 +48,8 @@ from database.db import (
     mark_question_dispatched,
     release_question_delivery,
 )
-from services import applications, quiet_hours
+from services.applications import applications
+from services import quiet_hours
 from services.questions import (
     FILTER_LABELS, STATUSES, format_stamp, is_stuck, load_stuck_minutes, question_status, record_answer,
     status_label,

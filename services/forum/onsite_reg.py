@@ -120,7 +120,7 @@ async def _stored_reject_reason(user: dict) -> str | None:
     """Причина отказа, если она записана: последний ручной отказ в журнале решений, иначе
     пометка автоотказа. Fail-soft — без причины текст всё равно честный."""
     try:
-        from services.applications import last_rejection_reason
+        from services.applications.applications import last_rejection_reason
         reason = await last_rejection_reason(user["telegram_id"])
     except Exception:
         logger.exception("onsite_reg: причина отказа не прочитана (tid=%s)", user.get("telegram_id"))
@@ -220,7 +220,7 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
     )
     if flipped:
         from services.forum import venue_log
-        from services.applications import record_decision
+        from services.applications.applications import record_decision
 
         reason = _OVERRIDE_REASON if overriding else _DECISION_REASON
         details: dict = {"override_reject": True} if overriding else {}
