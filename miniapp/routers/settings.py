@@ -127,6 +127,22 @@ class SettingIn(BaseModel):
     value: str
 
 
+BOT_NOT_NOTIFIED_TEXT = (
+    "Сохранено, но бот пока не применил изменение (очередь недоступна). "
+    "Нажмите сохранить ещё раз — тогда бот подхватит."
+)
+
+
+async def _tell_bot(keys: list[str], by: int, **extra) -> bool:
+    """Ставит в очередь бота `settings_changed`. Настройка и строка очереди пишутся разными
+    вызовами (запись настройки несёт побочные эффекты — снимок, перевод, счётчик), одной
+    транзакцией их не свести, поэтому провал очереди НЕ глотается: возвращает False, и
+    вызывающий честно говорит пользователю «сохранено, но бот не применил»."""
+    from miniapp.outbox import enqueue
+
+    return await enqueue("settings_changed", {"keys": keys, "by": by, **extra}) is not None
+
+
 @router.post("/app/api/admin/settings")
 async def settings_set(
     body: SettingIn,
@@ -139,9 +155,8 @@ async def settings_set(
         raise HTTPException(400, {"reason": "bad_value", "text": BAD_VALUE_TEXT})
     await write_setting_logged(p.telegram_id, body.key, body.value)
     # Реакции бота на правку (кнопка меню чата, джобы) — через очередь, как у пакетной записи.
-    from miniapp.outbox import enqueue
-
-    await enqueue("settings_changed", {"keys": [body.key], "by": p.telegram_id})
+    if not await _tell_bot([body.key], p.telegram_id):
+        raise HTTPException(503, {"reason": "bot_not_notified", "text": BOT_NOT_NOTIFIED_TEXT})
     return await _items()
 
 
@@ -706,6 +721,7 @@ async def settings_batch(
             checked[key] = check.value
 
         saved: list[str] = []
+        bot_applied = True
         if not errors and not needs_confirm and not stale:
             # Фаза 2 — записи. Аудит «кто правит» — та же строка, что у бота (Quick 260820-rms).
             # Имя бота: прежнее значение — в очередь, бот вернёт его, если Telegram откажет.
@@ -747,11 +763,8 @@ async def settings_batch(
             if event_keys:
                 # Реакции на правку (описание бота, время «Итогов дня», автоотказ) живут в
                 # процессе бота — просим его через очередь, как после записи из бота.
-                from miniapp.outbox import enqueue
-
-                await enqueue("settings_changed", {"keys": list(dict.fromkeys(event_keys)),
-                                                   "by": p.telegram_id,
-                                                   "prev_bot_name": prev_bot_name})
+                bot_applied = await _tell_bot(list(dict.fromkeys(event_keys)), p.telegram_id,
+                                              prev_bot_name=prev_bot_name)
             if failure:
                 raise HTTPException(500, {
                     "reason": "partial_save",
@@ -788,6 +801,8 @@ async def settings_batch(
             "stale": stale,
             "warnings": warnings,
             "items": items,
+            "bot_applied": bot_applied,
+            "notice": "" if bot_applied else BOT_NOT_NOTIFIED_TEXT,
         }
 
 
