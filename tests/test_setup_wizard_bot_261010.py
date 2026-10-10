@@ -100,6 +100,7 @@ def test_step_screen_buttons_lead_to_bot_editors_and_navigation(tmp_path):
 
 def test_app_only_fields_are_labelled_and_menu_goes_to_menu_buttons(tmp_path):
     _ready(tmp_path)
+    _run(db.set_setting("miniapp_enabled", "on"))  # шаг оформления есть только при приложении
     text, kb = _run(wiz.step_screen("theme"))
     assert "в приложении" in text and wiz.APP_HINT in text
     _, kb = _run(wiz.step_screen("menu"))
@@ -235,3 +236,49 @@ def test_screen_from_wizard_returns_on_back_only(tmp_path, monkeypatch):
     assert "Главное меню" not in text
     text, _ = _run(admin_sections.settings_return_screen(ADMIN, callback_data="admin_menu_buttons"))
     assert "Главное меню" in text
+
+
+# ── Приёмка 10.10: один знаменатель, кнопки меню «включена/выключена», шаги приложения ──
+
+def test_step_number_uses_same_denominator_as_overview(tmp_path):
+    """На обзоре «5 из 11 готово», а на шаге «Шаг 6 из 14»: подсказки (ℹ️) входили в номер шага,
+    но не в прогресс. Номер — только по шагам с полями, у подсказки номера нет."""
+    _ready(tmp_path)
+    steps = _run(wiz._steps())
+    counted = [s for s in steps if s.kind == "fields"]
+    overview, _ = _run(wiz.overview_screen())
+    assert f"из {len(counted)} готово" in overview
+    for n, step in enumerate(counted, start=1):
+        text, _ = _run(wiz.step_screen(step.key))
+        assert text.startswith(f"Шаг {n} из {len(counted)}"), step.key
+    note = next(s for s in steps if s.kind != "fields")
+    text, _ = _run(wiz.step_screen(note.key))
+    assert text.startswith("ℹ️ Подсказка") and "Шаг " not in text.splitlines()[0]
+
+
+def test_menu_step_shows_off_buttons_as_off_and_needs_one_on(tmp_path):
+    """`menu_speakers=off` — непустое значение, и мастер писал «задано». Строка кнопки —
+    «включена/выключена», шаг закрыт, если включена хотя бы одна."""
+    _ready(tmp_path)
+    _run(db.set_setting("menu_speakers", "off"))
+    text, _ = _run(wiz.step_screen("menu"))
+    assert "🗣 Спикеры — выключена" in text
+    assert "— включена" in text and "задано" not in text
+    status = _run(wiz._status([s for s in STEPS if s.key == "menu"]))
+    assert status["menu"][0] is True and status["menu"][1]["menu_speakers"] is False
+
+    menu = next(s for s in STEPS if s.key == "menu")
+    for key in menu.fields:
+        _run(db.set_setting(key, "off"))
+    assert _run(wiz._status([menu]))["menu"][0] is False
+
+
+def test_app_only_steps_hidden_without_miniapp(tmp_path):
+    """Таймер и оформление правятся только в приложении: без него шаг из бота не закрыть."""
+    _ready(tmp_path)
+    _run(db.set_setting("miniapp_enabled", "off"))
+    keys = [s.key for s in _run(wiz._steps())]
+    assert "countdown" not in keys and "theme" not in keys
+    _run(db.set_setting("miniapp_enabled", "on"))
+    keys = [s.key for s in _run(wiz._steps())]
+    assert "countdown" in keys and "theme" in keys

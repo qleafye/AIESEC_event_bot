@@ -233,7 +233,9 @@ def test_show_tile_false_when_all_steps_done(tmp_path):
         if not step["counts"]:
             continue
         for item in step["fields"]:
-            if item.get("options") == ["on", "off"]:
+            if step["key"] == "menu":
+                value = "on"  # кнопки меню: «задано» = включена (приёмка 10.10)
+            elif item.get("options") == ["on", "off"]:
                 # «Задано» для тумблера значит «не дефолт» — если дефолт уже "on",
                 # писать нужно "off", а не одно и то же значение всегда.
                 value = "off" if item.get("default") == "on" else "on"
@@ -243,6 +245,23 @@ def test_show_tile_false_when_all_steps_done(tmp_path):
     body2 = _setup_resp(client).json()
     assert body2["done_count"] == body2["total"]
     assert body2["show_tile"] is False
+
+
+def test_menu_step_done_only_when_a_button_is_on_and_numbers_match_total(tmp_path):
+    """Приёмка 10.10: выключенная кнопка меню считалась «задано» — то же правило, что в боте.
+    И номер шага (n из m) считается по тем же шагам, что total."""
+    client = _setup(tmp_path)
+    menu_keys = [k for k in _step(_setup_resp(client).json(), "menu")["fields"]]
+    for item in menu_keys:
+        _set(item["base_key"], "off")
+    body = _setup_resp(client).json()
+    assert _step(body, "menu")["done"] is False
+    _set("menu_info", "on")
+    body = _setup_resp(client).json()
+    assert _step(body, "menu")["done"] is True
+    counted = [s for s in body["steps"] if s["counts"]]
+    assert [(s["n"], s["m"]) for s in counted] == [(i, body["total"]) for i in range(1, len(counted) + 1)]
+    assert all(s["n"] is None for s in body["steps"] if not s["counts"])
 
 
 # ══ 11: HTTP — POST /app/api/admin/setup -> 405 (нет своего пути записи) ═════════════════
@@ -303,7 +322,7 @@ def test_hub_js_wires_setup_tile():
 
 
 def test_visible_steps_conference_includes_lc_step_only_for_conference():
-    conf_keys = [s.key for s in visible_steps("conference", {})]
+    conf_keys = [s.key for s in visible_steps("conference", {"miniapp_enabled": True})]
     assert "conf_lc" in conf_keys
     assert conf_keys.index("conf_lc") < conf_keys.index("countdown")
     for other in ("forum", "skillup", "custom", None):

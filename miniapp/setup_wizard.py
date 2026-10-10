@@ -34,6 +34,7 @@ class WizardStep:
     requires: str | None = None           # ключ-тумблер, который должен быть "on"
     accept_default: bool = False          # значение по умолчанию тоже считается «задано»
     explicit_choice: bool = False         # «задано» = менеджер выбрал явно, даже равное дефолту
+    toggles: bool = False                 # поля — тумблеры on/off: «задано» = включено (кнопки меню)
 
 
 # Порядок — из шпаргалки; вставка СкиллАп (13–16) идёт после общих текстов и до таблицы
@@ -93,8 +94,9 @@ STEPS: tuple[WizardStep, ...] = (
             "menu_question", "menu_faq", "menu_referral", "menu_invites",
         ),
         done_rule="any",
-        # Все кнопки по умолчанию включены — это уже рабочее меню, а не пропуск шага.
-        accept_default=True,
+        # Приёмка 10.10: значение «off» тоже непустое, и выключенная кнопка числилась «задано».
+        # Строка поля — «включена/выключена», шаг закрыт, если включена хотя бы одна кнопка.
+        toggles=True,
     ),
     WizardStep(
         key="reg_prompts",
@@ -130,6 +132,8 @@ STEPS: tuple[WizardStep, ...] = (
         hint="От неё считается таймер обратного отсчёта на хабе делегата.",
         kind="fields",
         fields=("miniapp_hub_countdown_date",),
+        # Таймер живёт только в приложении и правится только там: без приложения шаг не закрыть.
+        requires="miniapp_enabled",
     ),
     WizardStep(
         key="cities",
@@ -220,6 +224,7 @@ STEPS: tuple[WizardStep, ...] = (
         done_rule="any",
         # Тема «АЙСЕК — классика» по умолчанию — законный выбор, шаг не висит «не задано».
         accept_default=True,
+        requires="miniapp_enabled",
     ),
 )
 
@@ -238,6 +243,8 @@ TEXTS: dict[str, str] = {
     "all_steps_text": "Все шаги",
     "value_set_text": "задано",
     "value_default_text": "не задано",
+    "value_on_text": "включена",
+    "value_off_text": "выключена",
     "open_section_text": "Открыть раздел",
     "hide_tile_text": "Скрыть плитку",
     "error_toast_text": "Не получилось сохранить — попробуйте ещё раз.",
@@ -255,6 +262,14 @@ def visible_steps(event_type: str | None, flags: dict[str, bool]) -> list[Wizard
             continue
         out.append(step)
     return out
+
+
+def step_numbers(steps: list[WizardStep]) -> dict[str, tuple[int, int]]:
+    """«Шаг n из m» — только по шагам с полями, тот же знаменатель, что у «{done} из {total}
+    готово» (приёмка 10.10: рядом стояли «из 11» и «Шаг 6 из 14»). Подсказки (`note`/`link`)
+    номера не получают."""
+    counted = [s.key for s in steps if s.kind == "fields"]
+    return {key: (i, len(counted)) for i, key in enumerate(counted, start=1)}
 
 
 def step_done(step: WizardStep, filled: dict[str, bool]) -> bool:
