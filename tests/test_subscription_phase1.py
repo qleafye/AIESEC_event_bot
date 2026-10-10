@@ -146,7 +146,7 @@ def test_finalize_persists_subscription_for_new_user(tmp_path, monkeypatch):
 def test_segment_handlers_present_and_capability_gated():
     src = "".join(
         p.read_text(encoding="utf-8")
-        for p in sorted(ADMIN_DIR.glob("admin*.py"))
+        for p in sorted(ADMIN_DIR.rglob("admin*.py"))
     )
     assert "broadcast_unsubscribed" in src
     assert "broadcast_incomplete" in src

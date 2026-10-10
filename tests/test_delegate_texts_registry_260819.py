@@ -1002,8 +1002,8 @@ def _literal_setting_keys_in_source() -> dict[str, set[str]]:
         r"""\bget_setting(?:_typed)?(?:_for_city)?\(\s*(["'])([A-Za-z0-9_]+)\1"""
     )
     found: dict[str, set[str]] = {}
-    files = glob.glob(os.path.join(root, "handlers", "*.py")) + glob.glob(
-        os.path.join(root, "services", "*.py")
+    files = glob.glob(os.path.join(root, "handlers", "**", "*.py"), recursive=True) + glob.glob(
+        os.path.join(root, "services", "**", "*.py"), recursive=True
     )
     assert files, "handlers/*.py и services/*.py не найдены — тест смотрит не туда"
     for path in files:

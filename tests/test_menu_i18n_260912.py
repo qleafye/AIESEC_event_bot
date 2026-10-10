@@ -215,7 +215,7 @@ _MENU_LABELS = [text for _key, text in MENU_BUTTONS if _key != "menu_lang"] + ["
 
 def test_no_handler_file_matches_menu_label_by_exact_equality():
     offenders = []
-    for path in sorted((REPO_ROOT / "handlers").glob("*.py")):
+    for path in sorted((REPO_ROOT / "handlers").rglob("*.py")):
         text = path.read_text(encoding="utf-8")
         for lineno, line in enumerate(text.splitlines(), start=1):
             if "F.text" not in line:

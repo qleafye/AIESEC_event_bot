@@ -121,8 +121,8 @@ def test_moscow_literal_declared_exactly_once():
     aiogram-free (D-01). `services/scheduler.py` now re-exports MOSCOW_TZ from timeutil.py.
     """
     hits = []
-    for pattern in ("services/*.py", "handlers/*.py"):
-        for path in glob.glob(pattern):
+    for pattern in ("services/**/*.py", "handlers/**/*.py"):
+        for path in glob.glob(pattern, recursive=True):
             text = Path(path).read_text(encoding="utf-8")
             count = text.count('"Europe/Moscow"')
             if count:
