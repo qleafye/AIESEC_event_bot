@@ -48,7 +48,7 @@ from handlers import admin_caps
 from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
-import cities
+import domain.cities as cities
 from tests._dbtpl import fast_init_db, replay_seed
 
 

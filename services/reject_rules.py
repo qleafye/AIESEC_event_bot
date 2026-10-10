@@ -31,7 +31,7 @@ import logging
 from datetime import datetime
 
 from config import config
-from cities import (
+from domain.cities import (
     cities_module_on,
     city_label,
     city_scope,

@@ -12,7 +12,7 @@ import pytest
 
 import domain.settings.ops as settings_ops
 import domain.settings.placeholders as settings_placeholders
-from cities import ALL_CITIES, PER_CITY_SEP, city_codes
+from domain.cities import ALL_CITIES, PER_CITY_SEP, city_codes
 from database import db as bot_db
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from domain.settings.synonyms import SETTINGS_SYNONYMS
@@ -397,7 +397,7 @@ def test_hints_countdown_all_cities_lists_missing_city_labels(tmp_path):
     assert "Города без даты:" in countdown["text"]
 
     async def _labels():
-        import cities as cities_mod
+        import domain.cities as cities_mod
         return {code: await cities_mod.city_label(code) for code in city_codes()}
 
     labels = asyncio.run(_labels())

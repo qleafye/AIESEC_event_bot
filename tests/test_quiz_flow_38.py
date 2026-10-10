@@ -1,5 +1,5 @@
 """Делегатский поток теста компетенций: вход, гейт, вопросы, продолжение, результат, пересдача."""
-from cities import per_city_key
+from domain.cities import per_city_key
 from database import db, quiz_db as qz, session_enroll_db as se
 from handlers import forum_deeplinks, quiz as h
 from services import quiz as svc

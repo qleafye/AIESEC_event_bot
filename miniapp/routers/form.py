@@ -38,7 +38,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import domain.regform.engine as reg_engine
-from cities import (
+from domain.cities import (
     cities_module_on,
     city_label,
     ensure_cities_fresh,

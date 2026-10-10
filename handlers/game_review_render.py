@@ -1,6 +1,6 @@
 """Phase 16 (16-04, GAME-UI-03): чистые рендеры и клавиатуры менеджерских экранов геймы —
 карточка модерации сдачи (Экран 5), карточки/кнопки «🪙 Монеты вручную» (Экран 8), полосы
-«📊 Статистика геймы» (Экран 9). Модуль БЕЗ роутера и хендлеров (как game_labels.py /
+«📊 Статистика геймы» (Экран 9). Модуль БЕЗ роутера и хендлеров (как domain/game/labels.py /
 game_task_wizard.py): хендлеры остаются в handlers/admin_gamification.py и импортируют отсюда
 под прежними именами (с подчёркиванием), поэтому существующие тесты вида
 `admin_gamification._render_submission_card(...)` работают без правок.
@@ -20,7 +20,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import GAME_CATEGORIES, parse_proof_types, task_title
 from domain.settings.schema import get_setting_typed
 from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
-from handlers.game_labels import category_label, penalized_coins
+from domain.game.labels import category_label, penalized_coins
 
 # ── Подписи типов подтверждения (синхронная копия) ──────────────────────────────────────────
 # Human-readable labels for GAME_PROOF_TYPES (D-08/CLAUDE.md «для людей, не для прогеров»):

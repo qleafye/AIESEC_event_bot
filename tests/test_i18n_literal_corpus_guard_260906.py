@@ -20,7 +20,7 @@ from tests._paths import REPO_ROOT
 import ast
 from pathlib import Path
 
-from i18n_ui_en import UI_EN
+from domain.i18n.ui_en import UI_EN
 from services import i18n_sources
 
 ROOT = REPO_ROOT

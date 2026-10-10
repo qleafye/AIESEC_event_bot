@@ -39,7 +39,7 @@ from urllib.parse import urlparse
 from config import config
 from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS, RESUME_COLUMNS, settings_snapshot
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
-from cities import (
+from domain.cities import (
     ALL_CITIES, cities_module_on, city_codes, city_label,
     get_setting_typed_for_city, is_city_registration_open,
     normalize_city, open_cities, per_city_key,
@@ -47,7 +47,7 @@ from cities import (
 from domain.regform.labels import DELEGATE_LABELS, REG_LABELS
 import domain.regform.options as _opts
 from services.i18n import tr as _tr
-from i18n_ui_en import EN_TO_RU as _EN_TO_RU
+from domain.i18n.ui_en import EN_TO_RU as _EN_TO_RU
 
 # ── Registration Flow Engine: REG_FLOW + непосредственные зависимости ──────────────────────
 # Перенесено дословно из handlers/reg_schema.py (было там с Phase 13 REFAC 13-02) — только

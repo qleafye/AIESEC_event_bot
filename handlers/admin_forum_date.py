@@ -22,7 +22,7 @@ from aiogram import types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import (
+from domain.cities import (
     admin_selected_city,
     cities_module_on,
     city_codes,

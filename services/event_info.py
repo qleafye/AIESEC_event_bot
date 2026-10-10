@@ -12,7 +12,7 @@ import html
 async def info_lines(code: str | None, tr) -> list[str]:
     """Строки «🗓 Дата / ⌚ Время / 📍 Место / 🏙 Город» (HTML) для города делегата. `tr` —
     переводчик подписей и значений (`reg_i18n.tr_text` с языком делегата)."""
-    from cities import cities_module_on, city_label_or_none, get_setting_for_city
+    from domain.cities import cities_module_on, city_label_or_none, get_setting_for_city
     from domain.settings.ui_text_fields import ui_tr  # подписи строк — из настроек (info_*_label_text)
     from services.reject_rules import forum_date_for
 

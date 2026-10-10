@@ -39,7 +39,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from cities import per_city_key
+from domain.cities import per_city_key
 from handlers import user_actions as ua_mod
 from handlers import registration as reg_mod
 from handlers import reg_schema as reg_schema_mod

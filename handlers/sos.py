@@ -32,7 +32,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
-from cities import default_city_code, get_setting_typed_for_city
+from domain.cities import default_city_code, get_setting_typed_for_city
 from database.db import (
     add_sos_details, create_sos_report, get_open_sos_report, get_sos_report, get_user,
     mark_sos_collecting_started, set_sos_location,
@@ -40,7 +40,7 @@ from database.db import (
 from handlers import reg_i18n
 from handlers.states import SosReport
 from handlers.user_actions import _delegate_city, ensure_registered, router
-from i18n_ui_en import DONE_WORDS
+from domain.i18n.ui_en import DONE_WORDS
 from keyboards.builders import get_main_menu_kb
 from keyboards.menu_dynamic import MenuButton
 from services import sos as sos_service

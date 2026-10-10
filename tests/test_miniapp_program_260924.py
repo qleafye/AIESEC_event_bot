@@ -164,7 +164,7 @@ def test_program_table_view_groups_parallel_sessions(client):
 # ── per_city фото/вид — своё городское побеждает общее ──────────────────────────────────────
 
 def test_program_per_city_photo_overrides_global(client):
-    from cities import per_city_key
+    from domain.cities import per_city_key
     _set("event_city_enabled", "on")
     _set_user_city(DELEGATE_ID, "msk")
     _set("program_photo_file_id", "GLOBAL_FILE_ID")
@@ -174,7 +174,7 @@ def test_program_per_city_photo_overrides_global(client):
 
 
 def test_program_per_city_view_overrides_global(client):
-    from cities import per_city_key
+    from domain.cities import per_city_key
     _set("event_city_enabled", "on")
     _set_user_city(DELEGATE_ID, "msk")
     _run(bot_db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Открытие"))
@@ -213,7 +213,7 @@ def test_me_program_section_hidden_when_menu_button_off(client):
 
 
 def test_me_program_section_follows_per_city_menu_toggle(client):
-    from cities import per_city_key
+    from domain.cities import per_city_key
     _set("event_city_enabled", "on")
     _set_user_city(DELEGATE_ID, "msk")
     _set("program_photo_file_id", "GLOBAL_FILE_ID")

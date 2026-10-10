@@ -34,7 +34,7 @@ import asyncio
 import logging
 from datetime import date, datetime, time, timedelta
 
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,7 @@ def cancel_city_job(city: str | None) -> None:
 
 async def _city_still_valid(city: str | None) -> bool:
     if city is not None:
-        from cities import cities_module_on, enabled_cities
+        from domain.cities import cities_module_on, enabled_cities
         if await cities_module_on():
             codes = {c["code"] for c in await enabled_cities()}
             if city not in codes:
@@ -190,7 +190,7 @@ def _cancel_stale_city_jobs(enabled_codes: set[str]) -> None:
 
 
 async def reconcile() -> list[str | None]:
-    from cities import cities_module_on, enabled_cities
+    from domain.cities import cities_module_on, enabled_cities
 
     touched: list[str | None] = []
     try:
@@ -242,7 +242,7 @@ async def send_poll(city: str | None) -> dict:
     from database.db import forum_noshow_poll_mark_sent, forum_noshow_poll_pending_ids, get_user
     from domain.settings.schema import get_setting_typed
     from services import quiet_hours
-    import cities as _cities
+    import domain.cities as _cities
 
     bot = _bot()
     if bot is None:

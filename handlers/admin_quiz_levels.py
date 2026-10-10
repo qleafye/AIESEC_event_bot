@@ -8,7 +8,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from database import quiz_db as qdb
 from handlers.admin import router
 from handlers.admin_enroll_list import _write_key

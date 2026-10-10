@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import cities
+import domain.cities as cities
 import domain.settings.ops as settings_ops
 from database import db
 from handlers import admin_settings as st

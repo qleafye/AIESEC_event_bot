@@ -21,7 +21,7 @@ import logging
 from datetime import date, datetime
 
 from database.db import settings_snapshot
-from cities import cities_module_on, city_label, default_city_code, enabled_cities, normalize_city
+from domain.cities import cities_module_on, city_label, default_city_code, enabled_cities, normalize_city
 
 logger = logging.getLogger(__name__)
 

@@ -21,7 +21,7 @@ from services.timeutil import msk_now
 
 async def _city_label(raw) -> str:
     """Сырое event_city -> название города (db.py сам cities не импортирует)."""
-    from cities import city_label_or_none, normalize_city
+    from domain.cities import city_label_or_none, normalize_city
     return await city_label_or_none(normalize_city(raw)) or ""
 
 EMPTY_TEXT = ("Одобренных в текущем сезоне пока нет. Список появится, когда вы одобрите "

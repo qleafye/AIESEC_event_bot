@@ -41,7 +41,7 @@ from handlers.reg_schema import (
 # Phase 28 (28-10, SU-11): единый bulk-writer пресетов — корневой aiogram-free модуль,
 # тот же, что зовёт веб-путь (settings_ops.apply_event_type_preset).
 from domain.regform.presets import apply_reg_preset
-from cities import (
+from domain.cities import (
     ALL_CITIES,
     admin_selected_city,
     cities_module_on,

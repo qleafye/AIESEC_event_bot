@@ -11,7 +11,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import city_label, get_setting_typed_for_city
+from domain.cities import city_label, get_setting_typed_for_city
 from database import quiz_db as qdb
 from database import session_enroll_db as edb
 from handlers.admin import router

@@ -33,7 +33,7 @@ import html
 import logging
 from datetime import date, datetime, time, timedelta
 
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -173,7 +173,7 @@ def cancel_city_job(city: str | None) -> None:
 
 async def _city_still_valid(city: str | None) -> bool:
     if city is not None:
-        from cities import cities_module_on, enabled_cities
+        from domain.cities import cities_module_on, enabled_cities
         if await cities_module_on():
             codes = {c["code"] for c in await enabled_cities()}
             if city not in codes:
@@ -224,7 +224,7 @@ async def reconcile() -> list[str | None]:
     """На боте: (пере)ставить джобу КАЖДОГО включённого города (или один общий проход
     `city=None`, если модуль городов выключен) — fail-soft НА ГОРОД, тот же приём, что
     `services.checkin_volunteer_broadcast.reconcile`."""
-    from cities import cities_module_on, enabled_cities
+    from domain.cities import cities_module_on, enabled_cities
 
     touched: list[str | None] = []
     try:
@@ -260,12 +260,12 @@ def _hour_label(hh: str) -> str:
 
 
 async def build_report_text(city: str | None, day: str) -> str:
-    from cities import city_label, cities_module_on
+    from domain.cities import city_label, cities_module_on
     from database.db import (
         CHECKIN_ENTRY_POINT, checkin_not_arrived_summary, checkin_peak_hour_for_city_day,
         count_approved_current_season, count_checkins_by_point_and_day, sos_day_stats,
     )
-    import cities as _cities
+    import domain.cities as _cities
 
     scope = _cities.city_scope(city)
     label = await city_label(city) if (city and await cities_module_on()) else None
@@ -402,7 +402,7 @@ async def checkins_csv_for_city_day(city: str | None, day: str) -> bytes:
     import io
 
     from database.db import list_checkins_for_city_day
-    import cities as _cities
+    import domain.cities as _cities
 
     rows = await list_checkins_for_city_day(day, city_scope=_cities.city_scope(city))
     output = io.StringIO()

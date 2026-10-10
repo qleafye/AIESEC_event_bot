@@ -73,7 +73,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 import domain.regform.engine as reg_engine
-from cities import cities_module_on, city_label as resolve_city_label, normalize_city
+from domain.cities import cities_module_on, city_label as resolve_city_label, normalize_city
 from database.db import get_user
 from domain.regform.labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services import i18n, reg_edit_policy
@@ -218,7 +218,7 @@ def profile_fields(
     (ФИО, город, вуз) НЕ переводится (это не текст интерфейса, а данные человека); канонический
     вариант choice/select-шага (уже по-русски после `_canonicalize_answer`, план 27-04) — тоже
     прогоняется через `tr()`, чтобы совпасть со словом, которое делегат выбирал на английской
-    анкете («Да»/«Нет» и т.п. — ярус A, `i18n_ui_en.py`); свободный текст без перевода в
+    анкете («Да»/«Нет» и т.п. — ярус A, `domain/i18n/ui_en.py`); свободный текст без перевода в
     `tr_map`/`UI_EN` fail-soft отдаёт русский как есть (D-04)."""
     tr_map = tr_map or {}
     out = []

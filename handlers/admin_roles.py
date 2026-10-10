@@ -58,7 +58,7 @@ from services.checkin_volunteer_broadcast import greet_new_holder, greet_new_hol
 from keyboards.builders import get_cancel_kb
 
 logger = logging.getLogger(__name__)
-from cities import (
+from domain.cities import (
     CITIES,
     cities_module_on,
     city_codes,
@@ -807,7 +807,7 @@ async def roles_city_start(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("roles_city_pick:"))
 async def roles_city_pick(callback: types.CallbackQuery):
     # WR-02 (09.1-REVIEW.md): the guarantee admin_city_switch makes the human ("менять может
-    # суперадмин") was enforced only in cities.py's own set_admin_city/admin_selected_city --
+    # суперадмин") was enforced only in domain/cities.py's own set_admin_city/admin_selected_city --
     # this handler itself was gated by nothing but the `settings` capability, so any holder of
     # that capability could rebind ANY person's city, including their own, and thereby unlock
     # every other city's queues. Positive-form idiom, byte-identical to admin_city_switch:1927.

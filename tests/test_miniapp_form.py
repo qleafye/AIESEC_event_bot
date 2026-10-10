@@ -661,7 +661,7 @@ def test_patch_does_not_log_answer_values(client, caplog):
 # (те же города и те же подписи, что у клавиатур бота); deep-link/edit приоритетны (409).
 
 def test_pre_items_city_fork_carries_field_and_server_options(client):
-    import cities
+    import domain.cities as cities
 
     _set("event_city_enabled", "on")
     body = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID)).json()

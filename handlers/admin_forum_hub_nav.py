@@ -22,7 +22,7 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, enabled_cities
+from domain.cities import cities_module_on, city_label, enabled_cities
 from database.db import checkin_qr_send_counts
 from handlers.admin import router
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
@@ -43,7 +43,7 @@ async def sees_all_cities(admin_id: int) -> bool:
     if not await cities_module_on():
         return True
     import domain.settings.ops as settings_ops
-    from cities import city_codes
+    from domain.cities import city_codes
     return set(city_codes()) <= set(await settings_ops.per_city_visible_codes(admin_id))
 HUB_BACK_TEXT = "◀️ К «Форум: функции»"
 _OPEN_PREFIX = "forumfn_open:"
@@ -215,7 +215,7 @@ async def _native_screen(target: str, admin_id: int, code: str | None):
         # Экран кнопок меню читает город из шапки — ставим шапку на город хаба (как
         # `asos_city`), иначе хаб Тюмени при шапке «Все города» правил бы общие кнопки.
         if code and await cities_module_on():
-            from cities import set_admin_city
+            from domain.cities import set_admin_city
             await set_admin_city(admin_id, code)
         from handlers.admin_reg_config import build_menu_keyboard, render_menu_text
         return await render_menu_text(admin_id), await build_menu_keyboard(admin_id)

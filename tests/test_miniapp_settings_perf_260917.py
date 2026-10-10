@@ -67,7 +67,7 @@ def _seed_realistic_settings():
         if i % 3 == 0:
             _set(key, "on" if i % 2 == 0 else "текст-значение")
     per_city_keys = [k for k in keys if SETTINGS_SCHEMA[k].get("per_city")][:20]
-    from cities import per_city_key
+    from domain.cities import per_city_key
     for key in per_city_keys:
         for code in ("msk", "spb", "tyumen"):
             _set(per_city_key(key, code), "override")

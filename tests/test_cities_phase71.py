@@ -8,7 +8,7 @@ import asyncio
 
 from config import config
 from database import db
-import cities
+import domain.cities as cities
 from handlers import registration as reg
 from domain.settings.schema import get_setting_typed
 
@@ -17,7 +17,7 @@ def _use_tmp_db(tmp_path):
     config.DB_PATH = str(tmp_path / "test_forum_cities.db")
 
 
-# ── Task 1: cities.py registry ──────────────────────────────────────────────────
+# ── Task 1: domain/cities.py registry ──────────────────────────────────────────────────
 
 def test_parse_cities_default_gives_three_entries_in_order():
     parsed = cities.parse_cities(config.EVENT_CITIES)

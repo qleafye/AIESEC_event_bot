@@ -118,7 +118,7 @@ async def city_offset_hours(city: str | None) -> int:
     if not city:
         return 0
     try:
-        from cities import get_setting_typed_for_city
+        from domain.cities import get_setting_typed_for_city
         return clamp_offset(await get_setting_typed_for_city("city_tz_offset", city))
     except Exception:
         return 0

@@ -23,7 +23,7 @@ from database import db
 # (цикл admin <-> admin_settings, та же идиома, что в tests/test_settings_groups_c0x.py).
 from handlers import admin as _admin_mod  # noqa: F401
 from handlers import admin_settings
-from handlers import game_labels
+from domain.game import labels as game_labels
 from handlers import payment as pay_mod
 from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod

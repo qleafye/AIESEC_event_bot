@@ -22,7 +22,7 @@ import logging
 
 import segno
 
-from cities import cities_module_on, city_label, normalize_city, per_city_key
+from domain.cities import cities_module_on, city_label, normalize_city, per_city_key
 from database import db as _db
 from database.db import approve_onsite, get_user
 from domain.regform.engine import is_past_season_row

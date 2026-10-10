@@ -55,7 +55,7 @@ from database.db import (
     upsert_reg_draft,
     username_needle,
 )
-from cities import (
+from domain.cities import (
     all_cities,
     cities_module_on,
     city_label,

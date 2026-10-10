@@ -104,13 +104,13 @@ def test_show_hidden_item_gives_its_own_alert(tmp_path):
 @pytest.fixture
 def _restore_cities_cache():
     """`cities.reload_cities()` мутирует `cities.CITIES` НА МЕСТЕ (другие модули держат
-    `from cities import CITIES`, ребинд сломал бы их алиасы), а conftest.py проекта намеренно
+    `from domain.cities import CITIES`, ребинд сломал бы их алиасы), а conftest.py проекта намеренно
     не сбрасывает состояние между тестами. Прежний ручной `CITIES.clear()` в хвосте теста
     оставлял СЛЕДУЮЩИМ файлам того же процесса ПУСТОЙ список городов (и не срабатывал вовсе,
     если тест падал раньше) — городская статистика, вкладки таблицы и percity-анкета
     валились в полном прогоне. Снимок с восстановлением — форма
     `tests/test_quiet_hours_screen_260911.py::_restore_cities_cache`."""
-    import cities
+    import domain.cities as cities
     snapshot = list(cities.CITIES)
     yield
     cities.CITIES.clear()
@@ -134,7 +134,7 @@ def test_hide_and_delete_buttons_not_adjacent_with_cities_module_bound_header(
     tmp_path, monkeypatch, _restore_cities_cache
 ):
     _admin_ready(tmp_path)
-    import cities as cities_mod
+    import domain.cities as cities_mod
     _run(db.insert_city("msk", "Москва", "", 0))
     _run(db.set_setting("event_city_enabled", "on"))
     _run(cities_mod.reload_cities())

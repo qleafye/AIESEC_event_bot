@@ -1,6 +1,6 @@
 """Склонение после числа: дробные числа, и слово валюты согласуется только в позиции
 подстановки («{coins} баллов»), а не по всему готовому тексту."""
-from game_labels import fill_template
+from domain.game.labels import fill_template
 from services.ru_plural import agree_placeholder, points_word, ru_plural
 
 F = ("балл", "балла", "баллов")

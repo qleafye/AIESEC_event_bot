@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from cities import per_city_key
+from domain.cities import per_city_key
 from database import db as bot_db, session_enroll_db
 from services import session_enroll as se
 from services.checkin import current_event_tag

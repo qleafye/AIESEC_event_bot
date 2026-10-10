@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 
-from cities import PER_CITY_SEP
+from domain.cities import PER_CITY_SEP
 from database import db as bot_db
 from domain.settings.schema import get_setting_typed
 

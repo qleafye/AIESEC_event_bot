@@ -109,7 +109,7 @@ async def build_questions_sheet_rows() -> list[list]:
     `handlers/user_actions.py::process_question` (город есть -> «Менеджеры города X», иначе
     «Все менеджеры»); отдельной колонки для этого в БД нет и не заводим — это факт вычисления
     на момент выгрузки, не сохранённый факт отправки."""
-    from cities import cities_module_on, normalize_city, city_label  # cities -> database.db, обратной зависимости нет
+    from domain.cities import cities_module_on, normalize_city, city_label  # cities -> database.db, обратной зависимости нет
 
     users = await get_all_users_dicts()
     by_id = {u["telegram_id"]: u for u in users}

@@ -13,7 +13,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import city_label
+from domain.cities import city_label
 from database import session_enroll_db as edb
 from database.db import get_program_session, update_program_session
 from handlers.admin import router

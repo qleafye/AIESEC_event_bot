@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 
-import cities
+import domain.cities as cities
 from database import db as bot_db
 from tests.test_miniapp_checkin_260924 import BASE, _grant_checkin_to_game_manager, _run, client_with
 from tests.test_miniapp_routes import GAME_MANAGER_ID, _hdr, _set

@@ -12,7 +12,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_codes, city_label
+from domain.cities import city_codes, city_label
 from database.db import (
     count_program_sessions_for_hall,
     delete_program_hall,

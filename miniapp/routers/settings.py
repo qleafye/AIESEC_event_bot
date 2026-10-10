@@ -37,7 +37,7 @@ from pydantic import BaseModel
 import domain.regform.engine as reg_engine
 import domain.settings.ops as settings_ops
 import shared.web_theme as web_theme
-from cities import (
+from domain.cities import (
     ALL_CITIES,
     ALL_CITIES_LABEL,
     admin_selected_city,

@@ -23,7 +23,7 @@ import re
 
 from config import config
 from database import db
-from i18n_ui_en import UI_EN
+from domain.i18n.ui_en import UI_EN
 from services import i18n
 from services.i18n_miniapp_manual import MANUAL_EN
 from services.i18n_form_manual import (

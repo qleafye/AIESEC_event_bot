@@ -34,7 +34,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from database.db import get_setting
 from services.settings.audit import set_setting_by_admin, delete_setting_by_admin
-from cities import ALL_CITIES, admin_selected_city, is_per_city, per_city_key
+from domain.cities import ALL_CITIES, admin_selected_city, is_per_city, per_city_key
 from handlers.states import EditSetting
 from domain.settings.validation import is_command_like
 from handlers.admin import router

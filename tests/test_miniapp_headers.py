@@ -6,7 +6,7 @@
   встречный регресс — дашборд по-прежнему отдаёт `X-Frame-Options: DENY`.
 - aiogram-free сторож: `import miniapp.main` в чистом подпроцессе не загружает `aiogram`
   (грепа импортов недостаточно — aiogram приезжает транзитивно через пакетный
-  `handlers/__init__.py`, стоит кому-то написать `from handlers.game_labels import …`).
+  `handlers/__init__.py`, стоит кому-то написать `from domain.game.labels import …`).
 - Сторож на отсутствие слова-триггера кэша прав в `miniapp/deps.py` — по образцу
   `tests/test_dashboard_auth.py`.
 """

@@ -17,7 +17,7 @@ import html as html_module
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import ALL_CITIES, admin_selected_city, city_label, get_setting_typed_for_city
+from domain.cities import ALL_CITIES, admin_selected_city, city_label, get_setting_typed_for_city
 from handlers.admin import router
 from services import quiet_hours
 from domain.settings.schema import get_setting_typed

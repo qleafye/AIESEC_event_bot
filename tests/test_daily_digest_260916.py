@@ -11,7 +11,7 @@ import asyncio
 
 import pytest
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from services import daily_digest as dd

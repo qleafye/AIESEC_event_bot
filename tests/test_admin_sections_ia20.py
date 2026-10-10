@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 
 from database import db
-import cities
+import domain.cities as cities
 from handlers import admin_reg_config as regcfg
 from handlers import admin_reg_percity as regpercity  # module-size split: questions/prompts screens
 from handlers import admin_roles as roles

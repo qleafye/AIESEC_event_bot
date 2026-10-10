@@ -20,7 +20,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import (
+from domain.cities import (
     cities_module_on,
     city_label,
     default_city_code,

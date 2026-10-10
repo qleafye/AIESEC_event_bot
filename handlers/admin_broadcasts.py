@@ -99,7 +99,7 @@ from services.broadcast_scope import (
 from services.forum_days import day_cities_suffix  # «не пришли 25.09 — Москва»
 from keyboards.builders import get_cancel_kb
 from handlers.states import Broadcast
-from cities import CITIES, cities_module_on, city_label, city_scope
+from domain.cities import CITIES, cities_module_on, city_label, city_scope
 from handlers.admin import router
 from config import config
 
@@ -1639,7 +1639,7 @@ async def filter_pick_value(callback: types.CallbackQuery, state: FSMContext):
         # `exclude` is computed by cities.city_scope — the SAME function that scopes both
         # moderation queues and the CSV export, so "which codes count as this city" has
         # exactly one definition. It travels inside the filter dict because database/db.py
-        # may not import cities (cycle), and it must survive the JSON round-trip a scheduled
+        # may not import domain.cities as cities (cycle), and it must survive the JSON round-trip a scheduled
         # broadcast's spec goes through. `label` renders the summary in human words.
         labels = data.get("filter_option_labels") or {}
         scope = city_scope(value)

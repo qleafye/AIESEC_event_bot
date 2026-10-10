@@ -16,7 +16,7 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from cities import (
+from domain.cities import (
     ALL_CITIES,
     admin_selected_city,
     cities_module_on,
@@ -208,7 +208,7 @@ async def asos_city_open(callback: types.CallbackQuery):
     (выбор из списка, старое сообщение с хабом). Экран SOS, привязка чата и тексты читают
     город из шапки, поэтому сначала шапку ставим на город хаба — иначе менеджер видел бы
     заявки другого города, а «🔗 Привязать чат SOS» привязал бы чат не к тому городу."""
-    from cities import set_admin_city
+    from domain.cities import set_admin_city
 
     code = callback.data.split(":", 1)[1]
     if await cities_module_on() and not await set_admin_city(callback.from_user.id, code):

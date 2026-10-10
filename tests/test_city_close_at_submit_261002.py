@@ -5,7 +5,7 @@
 """
 import asyncio
 
-import cities
+import domain.cities as cities
 from database import db
 from tests._dbtpl import fast_init_db
 from tests.test_city_flow_phase71 import (

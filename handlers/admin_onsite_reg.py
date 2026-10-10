@@ -15,7 +15,7 @@ import logging
 from aiogram import Bot, F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, per_city_key
+from domain.cities import cities_module_on, city_label, per_city_key
 from database.db import get_staff_city
 from handlers.admin import router
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city

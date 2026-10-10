@@ -39,7 +39,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from config import config
 from database.db import get_setting, update_city
-from cities import reload_cities
+from domain.cities import reload_cities
 from handlers.admin import router
 from handlers.states import EditSetting
 from services.settings.audit import delete_setting_by_admin, set_setting_by_admin

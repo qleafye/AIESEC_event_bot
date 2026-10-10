@@ -127,7 +127,7 @@ def test_response_to_missing_row_is_false_not_a_crash(tmp_path):
 
 def test_summary_scoped_by_city_snapshot(tmp_path):
     """Сводка города — по СНИМКУ `event_city` на момент отправки, не по текущему полю users."""
-    import cities as cities_mod
+    import domain.cities as cities_mod
     _ready(tmp_path)
     _run(_add_user(1, city="msk"))
     now = "2026-10-30 12:00:00"
@@ -211,7 +211,7 @@ def test_send_retry_after_quiet_hours_delivers(tmp_path):
 
 
 def test_send_scoped_to_city(tmp_path):
-    import cities as cities_mod
+    import domain.cities as cities_mod
     _ready(tmp_path)
     _run(_add_user(1, city="msk"))
     _run(_add_user(2, city="spb"))
@@ -400,7 +400,7 @@ def test_cna_qr_denies_not_approved_delegate(tmp_path):
 def test_admin_confirm_names_city_and_today(tmp_path):
     """Подтверждение массовой отправки называет число, город и «сегодня» — менеджер видит, кому
     уйдёт, до нажатия."""
-    from cities import city_label
+    from domain.cities import city_label
     from handlers import admin_checkin as ac
     _ready(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))

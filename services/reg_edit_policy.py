@@ -35,7 +35,7 @@ registration.py` уже применяют в других местах. Имп�
 True`. Оба гейта резолвят их через `cities.get_setting_typed_for_city(key,
 user_row.get("event_city"))` — та же лестница, что у любого другого per-city ключа (модуль
 городов выключен ИЛИ у делегата нет `event_city` ИЛИ у города нет своего значения -> общее
-значение байт-в-байт, `cities.py` уже это гарантирует). `event_season`, наоборот, НЕ per-city
+значение байт-в-байт, `domain/cities.py` уже это гарантирует). `event_season`, наоборот, НЕ per-city
 (сезон — свойство события целиком, не города) — читается как раньше, простым
 `get_setting_typed`."""
 from __future__ import annotations
@@ -44,7 +44,7 @@ import logging
 
 import domain.regform.engine as reg_engine
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 

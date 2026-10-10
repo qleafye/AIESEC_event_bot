@@ -16,7 +16,7 @@ import asyncio
 
 from config import config
 from database import db
-import cities
+import domain.cities as cities
 import domain.regform.engine as e
 import domain.settings.ops as settings_ops
 from handlers import admin_reg_config

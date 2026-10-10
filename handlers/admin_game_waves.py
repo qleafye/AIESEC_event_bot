@@ -34,8 +34,8 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import cities
-from cities import ALL_CITIES_LABEL, admin_selected_city
+import domain.cities as cities
+from domain.cities import ALL_CITIES_LABEL, admin_selected_city
 from database.db import (
     delete_wave,
     get_wave,
@@ -44,7 +44,7 @@ from database.db import (
     set_wave_state,
     task_title,
 )
-from game_labels import task_deadline, task_deadline_admin, task_has_deadline
+from domain.game.labels import task_deadline, task_deadline_admin, task_has_deadline
 from services import ambassador_waves as aw
 from services.scheduler import (
     cancel_wave_jobs,

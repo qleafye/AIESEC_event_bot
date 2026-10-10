@@ -4049,7 +4049,7 @@ SETTINGS_SCHEMA = {
     },
 
     # Phase 16 (16-01, GAME-UI-01): RU-подписи категорий (единственный источник —
-    # handlers/game_labels.py::category_label; коды GAME_CATEGORIES в БД не меняются) + тексты
+    # domain/game/labels.py::category_label; коды GAME_CATEGORIES в БД не меняются) + тексты
     # редизайна экранов «🎯 Задания»/«🪙 Баланс».
     "game_category_label_light": {
         "type": "text", "group": "game", "label": "🎮 Категория «Light» (RU)",
@@ -4137,7 +4137,7 @@ SETTINGS_SCHEMA = {
     # делегатские тексты монетного блока, остававшиеся литералами в handlers/user_actions.py.
     # Группа та же, "game": менеджер правит весь монетный блок в одном месте.
     # Phase 17.1 (17.1-01): RU-подписи типов подтверждения — зеркально game_category_label_*
-    # выше (единственный источник — handlers/game_labels.py::proof_types_label; коды
+    # выше (единственный источник — domain/game/labels.py::proof_types_label; коды
     # GAME_PROOF_TYPES в БД не меняются). Админская копия
     # handlers/admin_gamification.py::_proof_types_label остаётся литеральной до 16-03,
     # который репойнтит её на game_labels (не в скоупе).
@@ -9182,7 +9182,7 @@ def multi_codes(key: str, labels: list[str]) -> tuple[list[str] | None, str | No
 
 # UAT 07.09 (T-d6t): «__city__» — то же разделение композитного ключа `{base}__city__{code}`,
 # что `settings_ops.base_setting_key`/`cities.PER_CITY_SEP` (значение то же — "__city__").
-# Не импортируем ни один из этих модулей: `cities.py` сама импортирует `settings_schema`
+# Не импортируем ни один из этих модулей: `domain/cities.py` сама импортирует `settings_schema`
 # (D-01, докстринг модуля) — импорт назад завёл бы цикл. Литерал здесь единственный дубль,
 # сознательно вместо цикла импортов.
 _PER_CITY_SEP = "__city__"

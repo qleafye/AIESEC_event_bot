@@ -15,7 +15,7 @@ import re
 from aiogram.filters import BaseFilter
 from aiogram.types import Message
 
-from cities import cities_module_on, default_city_code, normalize_city
+from domain.cities import cities_module_on, default_city_code, normalize_city
 from database.db import get_user
 from services import menu_labels
 from services.menu_labels import (  # noqa: F401 — реэкспорт для прежних импортов

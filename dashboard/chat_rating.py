@@ -334,7 +334,7 @@ _RULE_COLUMNS = (
 def _city_setting(conn, key: str, city) -> str | None:
     """Копия лестницы cities.get_setting_for_city только на чтение: значение города (если
     непустое и не «*»), иначе общее, иначе None (дефолт берёт вызывающий). Дашборд не
-    импортирует cities.py — образ его не содержит."""
+    импортирует domain/cities.py — образ его не содержит."""
     keys = [key]
     if city and city != _ALL_CITIES:
         keys.insert(0, f"{key}{_PER_CITY_SEP}{city}")

@@ -486,7 +486,7 @@ async def fire_first_entry(bot, user_id: int, city: str | None, day: str, **kwar
 
 
 def _first_entry_event(user: dict, ts: str, source: str, by_staff_id, approx: bool, **extra) -> dict:
-    import cities as _cities  # ленивый импорт — тот же приём, что в record_arrival
+    import domain.cities as _cities  # ленивый импорт — тот же приём, что в record_arrival
 
     return {
         "user_id": user["telegram_id"],
@@ -587,7 +587,7 @@ async def record_arrival(
     if session is None:
         return {"status": "invalid_point"}
 
-    import cities as _cities  # ленивый импорт — тот же приём, что services/program.py делает для msk_now
+    import domain.cities as _cities  # ленивый импорт — тот же приём, что services/program.py делает для msk_now
 
     delegate_city = _cities.normalize_city(user.get("event_city"))
     if session["city"] != delegate_city:

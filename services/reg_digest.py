@@ -29,7 +29,7 @@ import html
 import logging
 from datetime import datetime, timedelta
 
-from cities import cities_module_on, normalize_city
+from domain.cities import cities_module_on, normalize_city
 from database.db import (
     auto_reject_summary, enqueue_reg_digest, get_setting, get_user, list_unsent_reg_digest,
     mark_reg_digest_sent,

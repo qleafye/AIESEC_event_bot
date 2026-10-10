@@ -65,7 +65,7 @@ def _open_from_hub(target: str, code: str = "spb", uid: int = ADMIN_ID):
 
 
 def test_menu_from_hub_uses_hub_city_not_header(tmp_path):
-    from cities import admin_selected_city, set_admin_city
+    from domain.cities import admin_selected_city, set_admin_city
     _seed_spb(tmp_path)
     asyncio.run(set_admin_city(ADMIN_ID, "msk"))
     text, _kb = _open_from_hub("menu", "spb")

@@ -239,11 +239,11 @@ AIESEC_event_bot/
 ├── domain/settings/ops.py            # Правила настроек, общие для бота и Mini App, без aiogram
 ├── domain/settings/validation.py     # Валидация значения настройки до записи в bot_settings
 ├── domain/settings/synonyms.py       # Синонимы для поиска по настройкам в Mini App
-├── cities.py                  # Реестр городов мероприятия (event_city)
+├── domain/cities.py                  # Реестр городов мероприятия (event_city)
 ├── domain/regform/engine.py               # Ядро анкеты без aiogram, общее для бота и Mini App
 ├── domain/regform/labels.py               # Подписи анкеты, корневой модуль без aiogram
 ├── domain/regform/options.py              # Списки вариантов ответа анкеты
-├── game_labels.py              # RU-подписи геймификации, корневой модуль без aiogram
+├── domain/game/labels.py              # RU-подписи геймификации, корневой модуль без aiogram
 ├── domain/regform/moderation_card.py          # Карточка заявки для модератора: что показывать, как обрезать
 ├── shared/web_theme.py                # Пресеты оформления Mini App и дашборда
 │

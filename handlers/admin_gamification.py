@@ -85,9 +85,9 @@ from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from services.ambassador_waves import can_edit_wave, wave_editable_fields
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
-from handlers.game_labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
-from handlers.game_labels import proof_types_label as _registry_proof_types_label
-from handlers.game_labels import (  # Phase 32 (32-07, D-25/D-27/D-35): срок/подсказка штрафа
+from domain.game.labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
+from domain.game.labels import proof_types_label as _registry_proof_types_label
+from domain.game.labels import (  # Phase 32 (32-07, D-25/D-27/D-35): срок/подсказка штрафа
     task_deadline_admin,
     task_has_deadline,
 )
@@ -111,7 +111,7 @@ from handlers.game_task_wizard import (  # Phase 16 (16-03): pure wizard helpers
     # every call site below goes through these, never the scheduler functions directly.
     _safe_cancel_reminder, _safe_schedule_reminder,
 )
-from cities import (
+from domain.cities import (
     admin_selected_city,
     cities_module_on,
     city_codes,

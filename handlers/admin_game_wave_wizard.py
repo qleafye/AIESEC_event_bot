@@ -32,8 +32,8 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-import cities
-from cities import admin_selected_city
+import domain.cities as cities
+from domain.cities import admin_selected_city
 from database.db import (
     create_wave,
     get_wave,
@@ -43,7 +43,7 @@ from database.db import (
     update_task_deadline,
     update_wave,
 )
-from game_labels import task_deadline
+from domain.game.labels import task_deadline
 from keyboards.builders import get_cancel_kb
 from services import ambassador_waves as aw
 from services.scheduler import (

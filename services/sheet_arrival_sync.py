@@ -72,7 +72,7 @@ async def city_offsets_by_user(telegram_ids) -> dict[int, int]:
     """{telegram_id: смещение города делегата}. Ни у одного города нет своего пояса (общий
     случай, дефолт МСК) -> пустой словарь БЕЗ чтения пользователей: лишних запросов к базе у
     массовой пересборки листа нет."""
-    from cities import city_codes
+    from domain.cities import city_codes
     city_offsets = {code: await city_offset_hours(code) for code in city_codes()}
     if not any(city_offsets.values()):
         return {}

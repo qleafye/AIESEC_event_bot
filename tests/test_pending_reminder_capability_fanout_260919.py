@@ -245,7 +245,7 @@ def test_city_bound_count_matches_what_the_queue_screen_would_show(tmp_path, mon
     for tid in (1, 2, 3):
         asyncio.run(_set_pending(tid))
 
-    from cities import city_scope
+    from domain.cities import city_scope
     from database.db import get_pending_count as real_get_pending_count
 
     expected = asyncio.run(real_get_pending_count(city_scope=city_scope("msk")))
