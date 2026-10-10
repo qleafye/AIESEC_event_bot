@@ -11,7 +11,9 @@
 import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp, haptic, stagger } from "../motion.js";
-import { fileUrl, flatRow, sectionTitle, labelText, tile, noticeBox, ambassadorLinkBlock } from "../ui.js";
+import {
+  fileUrl, flatRow, sectionTitle, labelText, tile, noticeBox, ambassadorLinkBlock, formatCount, screenText,
+} from "../ui.js";
 import { unitFor } from "../units.js";
 import { personNode } from "../person.js";
 
@@ -268,7 +270,7 @@ async function renderDelegateHub(root, ctx) {
     setSectionValue("#/leaderboard", bal.rank == null ? "пока без места" : `ты ${bal.rank}-й`);
   }
   if (historyR.status === "fulfilled") {
-    setSectionValue("#/coins", `${historyR.value.total} операций`);
+    setSectionValue("#/coins", opsCount(historyR.value.total));
   }
   if (profileR.status === "fulfilled") {
     const p = profileR.value;
@@ -483,6 +485,12 @@ function dashboardTile(h, tg, me) {
   );
 }
 
+// Счётчик истории баллов склоняется по числу: шаблон из реестра
+// (miniapp_coins_ops_count_text) через formatCount, как у остальных счётчиков; без шаблона — число.
+function opsCount(n) {
+  return formatCount(screenText("coins_ops_count") || "{n}", Number(n) || 0);
+}
+
 function applyManagerTileData(hash, data, tileEl, hero) {
   const small = tileEl.querySelector("small");
   if (hash === "#/review") {
@@ -497,7 +505,7 @@ function applyManagerTileData(hash, data, tileEl, hero) {
   } else if (hash === "#/admin-tasks") {
     small.textContent = `${data.active_count} активных · ${data.archived_count} в архиве`;
   } else if (hash === "#/admin-coins") {
-    small.textContent = `${data.total} операций`;
+    small.textContent = opsCount(data.total);
   } else if (hash === "#/questions") {
     small.textContent = data.counts.new ? `${data.counts.new} без ответа` : "все отвечены";
   } else if (hash === "#/stats") {

@@ -199,6 +199,7 @@ _MISC = {
         "Couldn't load the data. Check your connection and tap «Retry»."
     ),
     "Повторить": "Retry",
+    "{n} {операция|операции|операций}": "{n} {operation|operations|operations}",
     "Не дошло до сервера. Проверьте связь и попробуйте ещё раз.": (
         "Didn't reach the server. Check your connection and try again."
     ),
