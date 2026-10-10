@@ -49,7 +49,7 @@ from datetime import datetime, timedelta
 
 import domain.regform.engine as reg_engine
 from domain.regform.labels import REG_LABELS
-from cities import get_setting_for_city
+from domain.cities import get_setting_for_city
 from config import config
 from database.db import (
     add_user,
@@ -577,7 +577,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
             # анкеты СПб/Тюмени (прод 25.09/27.09).
             if not data.get("event_city"):
                 try:
-                    from cities import cities_module_on
+                    from domain.cities import cities_module_on
                     if await cities_module_on():
                         from services.known_city import known_city
                         _known = await known_city(telegram_id)

@@ -18,7 +18,7 @@ import logging
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 
-from cities import normalize_city
+from domain.cities import normalize_city
 from database import quiz_db
 from database.db import get_user
 from handlers import reg_i18n

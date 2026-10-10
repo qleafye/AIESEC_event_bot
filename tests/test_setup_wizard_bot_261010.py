@@ -192,7 +192,7 @@ def test_other_saves_are_not_hijacked_into_wizard(tmp_path, monkeypatch):
 
 
 def test_city_header_value_counts_as_filled(tmp_path, monkeypatch):
-    import cities
+    import domain.cities as cities
 
     _ready(tmp_path, "setup_wizard_city.db")
     _run(db.set_setting("event_city_enabled", "on"))

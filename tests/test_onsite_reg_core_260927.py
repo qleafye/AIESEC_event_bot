@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
-import cities as cities_mod
+import domain.cities as cities_mod
 from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA

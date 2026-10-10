@@ -4,7 +4,7 @@ import asyncio
 import pytest
 from aiogram.dispatcher.event.bases import SkipHandler
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin_settings

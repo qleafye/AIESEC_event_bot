@@ -110,7 +110,7 @@ from handlers import admin_gamification  # noqa: E402
 from handlers import admin_game_tasks  # noqa: E402  (новый шов-модуль этого плана)
 from handlers import admin_core  # noqa: E402
 from handlers import user_actions as ua_mod  # noqa: E402
-from handlers import game_labels  # noqa: E402
+from domain.game import labels as game_labels  # noqa: E402
 import domain.settings.schema as settings_schema  # noqa: E402
 
 

@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from cities import per_city_key
+from domain.cities import per_city_key
 from database import db
 from tests._enroll38 import CITY, seed_delegates, seed_msk_program
 

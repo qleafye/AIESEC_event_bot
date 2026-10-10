@@ -77,7 +77,7 @@ def test_not_arrived_only_for_cities_with_forum_today(tmp_path):
             )
             await conn.commit()
     asyncio.run(_msk())
-    import cities
+    import domain.cities as cities
     asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
     asyncio.run(db.set_setting("forum_date__city__msk", "30.10.2099"))
     _text, cbs = _screen_cbs(ADMIN_ID)
@@ -91,7 +91,7 @@ def test_not_arrived_only_for_cities_with_forum_today(tmp_path):
 def test_screen_from_city_hub_shows_only_that_city(tmp_path):
     """Из хаба города при шапке «Все города» — экран этого города, а не всех."""
     _seed(tmp_path)
-    import cities
+    import domain.cities as cities
     asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{ADMIN_ID}", cities.ALL_CITIES))
     assert len([c for c in _screen_cbs(ADMIN_ID)[1] if c.startswith("checkinqr_send:")]) > 1
     _text, cbs = _screen_cbs(ADMIN_ID, "spb")

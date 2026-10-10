@@ -493,7 +493,7 @@ def test_upload_receipt_entry_threads_own_track_not_full(tmp_path, monkeypatch):
 def test_payment_options_tracks_in_words_and_prompt_has_no_codes():
     """Подсказка «💳 Варианты оплаты» называет треки словами — парсер их принимает; старые
     коды в уже сохранённых настройках по-прежнему работают."""
-    from payment_options import parse_options
+    from domain.payment import parse_options
     from domain.settings.schema import SETTINGS_SCHEMA
     opts = parse_options("Вход|1000|с ночёвкой, Без ночевки\nПолный|5000|полная регистрация\nСтарый|1|party_overnight")
     assert opts == [

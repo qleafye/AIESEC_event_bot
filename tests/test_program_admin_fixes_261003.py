@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 
-from cities import per_city_key
+from domain.cities import per_city_key
 from database import db
 from handlers import admin_program, admin_program_view
 from handlers.states import ProgramSessionField

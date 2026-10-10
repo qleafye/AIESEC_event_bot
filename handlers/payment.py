@@ -16,7 +16,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import get_setting, get_user, update_payment_status, set_payment_due
-from payment_options import parse_options as _parse_options  # квик-фикс 260913: см. ниже
+from domain.payment import parse_options as _parse_options  # квик-фикс 260913: см. ниже
 from domain.settings.schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
@@ -126,8 +126,8 @@ async def should_offer_receipt_upload(telegram_id: int) -> bool:
     return bool(requisites and requisites.strip())
 
 
-# _parse_options: см. импорт `from payment_options import parse_options as _parse_options`
-# в шапке файла. Сам парсер переехал в корневой `payment_options.py` (без aiogram-зависимости) —
+# _parse_options: см. импорт `from domain.payment import parse_options as _parse_options`
+# в шапке файла. Сам парсер переехал в корневой `domain/payment.py` (без aiogram-зависимости) —
 # Mini App (`miniapp/routers/hub.py`) импортировал его отсюда и тянул за собой весь `handlers/`
 # пакет бота в образ Mini App. Реэкспорт под старым именем — существующие
 # `from handlers.payment import _parse_options` и монкейпатчи `handlers.payment._parse_options`

@@ -128,7 +128,7 @@ def test_forum_date_resolves_per_city_with_city_override_winning(tmp_path):
     городской override побеждает глобальное значение (тот же приём, что
     test_typed_resolver_registration_mode в tests/test_settings_percity_resolver.py)."""
     _ready(tmp_path)
-    import cities
+    import domain.cities as cities
 
     async def scenario():
         await db.set_setting("event_city_enabled", "on")

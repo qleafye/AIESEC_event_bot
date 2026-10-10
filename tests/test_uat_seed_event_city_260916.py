@@ -19,7 +19,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.base import StorageKey
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from tests._dbtpl import fast_init_db

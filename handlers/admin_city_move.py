@@ -14,7 +14,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_codes, city_label, cities_module_on, get_city, is_city_enabled, normalize_city
+from domain.cities import city_codes, city_label, cities_module_on, get_city, is_city_enabled, normalize_city
 from database.db import get_user
 from handlers import reg_i18n
 from handlers.admin import router

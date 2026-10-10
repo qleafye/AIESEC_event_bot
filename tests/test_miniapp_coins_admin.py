@@ -16,7 +16,7 @@ from pathlib import Path
 
 import aiosqlite
 
-from cities import city_scope
+from domain.cities import city_scope
 from database import db as bot_db
 from domain.settings.schema import get_setting_typed
 

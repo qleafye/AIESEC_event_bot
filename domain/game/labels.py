@@ -1,6 +1,6 @@
 """Phase 19 (Mini App): КОРНЕВОЙ aiogram-free модуль — переехал сюда целиком из
-`handlers/game_labels.py` (там остался шим-реэкспорт). Импортировать `game_labels`, НЕ
-`handlers.game_labels`: второй через пакетный `handlers/__init__.py` тянет aiogram.
+`domain/game/labels.py` (там остался шим-реэкспорт). Импортировать `game_labels`, НЕ
+`domain.game.labels`: второй через пакетный `handlers/__init__.py` тянет aiogram.
 
 Phase 16 (16-01, GAME-UI-01): единственный источник RU-подписей категорий/типов
 подтверждения геймификации. Делегатский рендер (`handlers/user_actions.py`) — прямой
@@ -314,7 +314,7 @@ async def task_visible_to(user: dict | None, task: dict) -> bool:
     минуя список вовсе. Ленивые импорты (`database.db.list_waves` через `services.
     ambassador_waves.wave_visibility_ids`, `cities`) — этот модуль корневой для Mini App,
     таскать их на уровень модуля незачем ни боту, ни веб-процессу."""
-    from cities import cities_module_on, city_scope, normalize_city
+    from domain.cities import cities_module_on, city_scope, normalize_city
     from services.ambassador_waves import wave_visibility_ids
 
     is_ambassador = bool(user and user.get("is_ambassador"))

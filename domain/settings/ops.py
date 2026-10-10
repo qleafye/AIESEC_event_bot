@@ -39,7 +39,7 @@ import re
 from dataclasses import dataclass
 
 from config import config
-from cities import (
+from domain.cities import (
     PER_CITY_SEP, city_codes, city_label, city_tab_base, normalize_city, split_per_city_key,
     tab_suffix,
 )
@@ -100,7 +100,7 @@ async def can_write_common(admin_id: int | None) -> bool:
     правя «свою» настройку, он менял бы её чужим городам. Модуль городов выключен — город
     один, правило не действует. Единое правило бота (handlers/admin_settings_global.py) и
     приложения (validate_batch_item)."""
-    from cities import cities_module_on  # ленивый: cities тянет БД, settings_ops импортируют в тестах без неё
+    from domain.cities import cities_module_on  # ленивый: cities тянет БД, settings_ops импортируют в тестах без неё
 
     if admin_id is None or not await cities_module_on():
         return True

@@ -12,7 +12,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, city_scope, default_city_code, enabled_cities
+from domain.cities import cities_module_on, city_label, city_scope, default_city_code, enabled_cities
 from database.db import QUIZ_NOT_PASSED, SESSION_ENROLL_IN, SESSION_ENROLL_NONE
 from database.quiz_db import get_quiz_for_city
 from database.session_enroll_db import list_trackable_sessions

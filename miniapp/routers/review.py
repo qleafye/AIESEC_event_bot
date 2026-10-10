@@ -35,7 +35,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from cities import cities_module_on, city_label, city_scope, normalize_city
+from domain.cities import cities_module_on, city_label, city_scope, normalize_city
 from database.db import (
     add_coins,
     claim_submission,
@@ -48,7 +48,7 @@ from database.db import (
     get_user,
     task_title,
 )
-from game_labels import category_label, penalized_coins, proof_types_label
+from domain.game.labels import category_label, penalized_coins, proof_types_label
 from services import quiet_hours
 from services.game_award import award_for
 from domain.settings.schema import get_setting_typed

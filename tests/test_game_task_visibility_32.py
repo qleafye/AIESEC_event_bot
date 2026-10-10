@@ -14,7 +14,7 @@
 """
 import asyncio
 
-import game_labels
+import domain.game.labels as game_labels
 from config import config
 from database import db
 from tests._dbtpl import fast_init_db

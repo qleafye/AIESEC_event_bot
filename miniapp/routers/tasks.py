@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from cities import cities_module_on, city_scope, normalize_city
+from domain.cities import cities_module_on, city_scope, normalize_city
 from database.db import (
     count_rejected_submissions,
     get_active_submission,
@@ -27,7 +27,7 @@ from database.db import (
     list_active_tasks,
     task_title,
 )
-from game_labels import (
+from domain.game.labels import (
     ambassador_block_index,
     category_label,
     proof_types_label,

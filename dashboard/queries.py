@@ -6,7 +6,7 @@
 а `scope` — `Scope(city, season)`. Значения в SQL — ТОЛЬКО через `?`-параметры; имя колонки
 для `breakdown()` — только из белого списка `ALLOWED_BREAKDOWNS` (T-15-03-02).
 
-Этот модуль сознательно НЕ импортирует `cities.py`/`database.db`/`domain/settings/schema.py` —
+Этот модуль сознательно НЕ импортирует `domain/cities.py`/`database.db`/`domain/settings/schema.py` —
 все они тянут `aiosqlite`/`aiogram`-адъянсентные модули бота, а дашборд — отдельный процесс
 с отдельным (синхронным, read-only) подключением. Резолв города по умолчанию и дефолты
 настроек поэтому продублированы здесь, по СЫРОЙ таблице `cities`/`bot_settings`, а не через
@@ -130,7 +130,7 @@ def city_options(conn) -> list[dict]:
 
 
 # ── резолв города по умолчанию (повторяет cities.default_city_code/normalize_city, но по
-# сырой таблице — этот модуль не импортирует cities.py, см. модульный докстринг) ──────────
+# сырой таблице — этот модуль не импортирует domain/cities.py, см. модульный докстринг) ──────────
 
 def _default_city_code(conn) -> str:
     configured = os.environ.get("EVENT_CITY_DEFAULT", "msk")

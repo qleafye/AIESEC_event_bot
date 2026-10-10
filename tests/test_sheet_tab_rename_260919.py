@@ -20,7 +20,7 @@ from aiogram.types import InlineKeyboardButton
 import gspread
 import pytest
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin_sheet_tabs

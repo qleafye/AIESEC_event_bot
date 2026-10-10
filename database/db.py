@@ -2811,7 +2811,7 @@ _MINIAPP_EXTRA_TRANSLATE_KEYS = frozenset({
 
 
 _CITY_OVERRIDE_SEP = "__city__"  # то же самое значение, что cities.PER_CITY_SEP — литерал, а
-# не импорт: `database/db.py` не имеет права импортировать `cities` (цикл, `cities.py` сам
+# не импорт: `database/db.py` не имеет права импортировать `cities` (цикл, `domain/cities.py` сам
 # импортирует `database.db`; `tests/test_cities_registry_260818.py::
 # test_db_py_never_imports_cities_module` — структурный сторож этого правила).
 
@@ -3550,7 +3550,7 @@ async def export_participants_csv(*, city_scope=None, with_payment: bool = False
 async def get_city_counts(*, season: str | None = None) -> list[tuple]:
     """One row per RAW `event_city` value present in `users` (including NULL and any
     unknown/garbage code) — `(event_city, total, pending, approved)`. Deliberately returns
-    the raw column, never collapsed: db.py cannot import `cities` (import cycle — cities.py
+    the raw column, never collapsed: db.py cannot import `cities` (import cycle — domain/cities.py
     already imports database.db), so folding NULL/garbage into the default city is the
     CALLER's job via `cities.normalize_city`. The stats screen intentionally does NOT filter
     by the admin's selected city — it is a city-vs-city comparison, not a scoped view
@@ -4445,7 +4445,7 @@ async def record_decision_delivery(telegram_id: int, decision: str, status: str,
 
 # ── Phase 07.2 Plan 01 (CITY-02): city scope clause builder ──────────────────
 #
-# `cities.py` imports `database.db` (registry accessors need `get_setting`/`set_setting`),
+# `domain/cities.py` imports `database.db` (registry accessors need `get_setting`/`set_setting`),
 # so `database/db.py` must NEVER import `cities` — that would be an import cycle. The
 # registry's knowledge (which codes exist, which is the default) is therefore handed to
 # `_city_clause` BY VALUE as the `(code, exclude)` descriptor `cities.city_scope` builds;
@@ -5726,7 +5726,7 @@ def _build_filter_clause(filters: list[dict]) -> tuple[str, list]:
     `cities.normalize_city` and the Sheets tabs. The list of "other known city codes" arrives
     in the filter dict itself under the `exclude` key, put there by the caller
     (`handlers/admin.py`, via `cities.city_scope`), because `database/db.py` may NEVER import
-    `cities` — `cities.py` already imports this module, so that would be an import cycle.
+    `cities` — `domain/cities.py` already imports this module, so that would be an import cycle.
     The `exclude` key must therefore also survive the `json.dumps`/`json.loads` round-trip a
     scheduled broadcast's filter spec goes through.
 
@@ -10149,9 +10149,9 @@ async def get_game_stats() -> dict:
 
 # ── Phase 14 (CITY-07): `cities` table accessors ────────────────────────────────────────────
 #
-# Pure SQL layer only -- this module NEVER imports `cities.py` (that would create an import
-# cycle: `cities.py` already imports `database.db`). Business logic (cache reload, seed-from-
-# .env, transliteration) lives entirely in `cities.py`; this file only stores/reads/counts rows.
+# Pure SQL layer only -- this module NEVER imports `domain/cities.py` (that would create an import
+# cycle: `domain/cities.py` already imports `database.db`). Business logic (cache reload, seed-from-
+# .env, transliteration) lives entirely in `domain/cities.py`; this file only stores/reads/counts rows.
 
 async def list_cities_rows() -> list[dict]:
     """Every city row, ordered the way the registry and every UI screen renders them."""

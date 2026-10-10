@@ -39,7 +39,7 @@ from domain.regform.engine import (  # noqa: F401
     parse_repeatable, repeatable_display,
     MINI_RESUME_STEPS, mini_resume_branch_active,
 )
-from cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
+from domain.cities import cities_module_on, normalize_city, is_default_city, city_tab_base, tab_suffix, get_setting_for_city, per_city_key
 from keyboards.builders import get_main_menu_kb
 # Квик 260917-en (приёмка 17.09, п.4): текст после одобрения — самый частый делегатский текст
 # после /start, раньше уходил по-русски даже при lang=en (bot.send_message мимо reg_i18n.say,

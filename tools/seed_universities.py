@@ -380,7 +380,7 @@ def _universities_from_config() -> dict:
 
 def cities_fallback_snapshot() -> dict:
     """Города СЕГОДНЯ всегда фолбэк, не живой запрос (лицензия `arbaev/russia-cities` не
-    подтверждена — README): каноники — города текущих мероприятий бота (реестр `cities.py`,
+    подтверждена — README): каноники — города текущих мероприятий бота (реестр `domain/cities.py`,
     дата в подписи отрезается по первой запятой) + восемь городов топ-8 из
     `reg_engine.SELECT_CONFIG['city']` (сегодняшний список кнопок делегата на шаге «Город»).
     Псевдонимов нет — короткая база, поиск по ней работает просто на меньшем числе записей
@@ -389,9 +389,9 @@ def cities_fallback_snapshot() -> dict:
     Города берутся через `cities.all_cities()` — тот же публичный аксессор кэша `CITIES`,
     которым пользуются `handlers/admin_cities.py` и `handlers/registration.py`, а не
     прямым чтением .env-значения (сторож `tests/test_cities_registry_260818.py` запрещает
-    читать это значение где-либо, кроме `cities.py`). Скрипт не вызывает `reload_cities()`,
+    читать это значение где-либо, кроме `domain/cities.py`). Скрипт не вызывает `reload_cities()`,
     поэтому список — тот же холодный фолбэк из `.env`, что и раньше, если БД недоступна/пуста."""
-    import cities as cities_module
+    import domain.cities as cities_module
     import domain.regform.engine as reg_engine
 
     names: list[str] = []

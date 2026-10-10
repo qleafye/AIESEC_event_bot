@@ -1,5 +1,5 @@
 """Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа анкеты — корневой
-модуль без зависимости на бот-фреймворк, сосед `domain/settings/schema.py`/`cities.py`/`domain/regform/labels.py`.
+модуль без зависимости на бот-фреймворк, сосед `domain/settings/schema.py`/`domain/cities.py`/`domain/regform/labels.py`.
 
 Перенос из `keyboards/builders.py` (списки, живущие внутри `*_kb`-функций) и из
 `handlers/registration.py::_ask_step` (списки, встроенные прямо в `_reply_kb([...])` для

@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import domain.regform.engine as reg_engine
-from cities import CITIES
+from domain.cities import CITIES
 
 from tests.test_miniapp_form import (  # noqa: F401 — фикстуры подтягиваются по имени
     client,

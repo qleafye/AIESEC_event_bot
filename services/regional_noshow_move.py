@@ -36,7 +36,7 @@ import html
 import logging
 from datetime import date, datetime, time, timedelta
 
-from cities import default_city_code, get_setting_typed_for_city, normalize_city
+from domain.cities import default_city_code, get_setting_typed_for_city, normalize_city
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -219,7 +219,7 @@ def cancel_city_job(city: str | None) -> None:
 
 async def _city_still_valid(city: str | None) -> bool:
     if city is not None:
-        from cities import cities_module_on, enabled_cities
+        from domain.cities import cities_module_on, enabled_cities
         if await cities_module_on():
             codes = {c["code"] for c in await enabled_cities()}
             if city not in codes:
@@ -260,7 +260,7 @@ def _reconcile_notify_job() -> None:
 
 
 async def reconcile() -> list[str | None]:
-    from cities import cities_module_on, enabled_cities
+    from domain.cities import cities_module_on, enabled_cities
 
     touched: list[str | None] = []
     try:
@@ -341,7 +341,7 @@ async def send_offers(city: str | None) -> dict:
     from database.db import get_muted_today_ids, get_user, regional_noshow_move_mark_sent, regional_noshow_move_pending_ids
     from domain.settings.schema import get_setting_typed
     from services import quiet_hours
-    import cities as _cities
+    import domain.cities as _cities
 
     bot = _bot()
     if bot is None:
@@ -575,7 +575,7 @@ async def _notify_managers_job() -> None:
     экрана `_regional_noshow_cfg_text_kb` (`summary_text`), не только по уведомлениям."""
     from database.db import regional_noshow_move_mark_notified, regional_noshow_move_unnotified_moved
     from handlers.admin_caps import notify_by_capability
-    import cities as _cities
+    import domain.cities as _cities
 
     bot = _bot()
     if bot is None:

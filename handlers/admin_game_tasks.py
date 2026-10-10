@@ -45,7 +45,7 @@ from services.ambassador_waves import can_edit_wave, wave_editable_fields, wave_
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync
 from handlers.states import GameTaskCreate, GameTaskEdit
-from handlers.game_labels import render_task_card_text
+from domain.game.labels import render_task_card_text
 from handlers.game_task_wizard import (
     _DEADLINE_PAST,
     _PROMPT_CATEGORY,

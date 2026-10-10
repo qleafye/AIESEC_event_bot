@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from config import config
 from database import db
-import cities
+import domain.cities as cities
 from handlers import admin as admin_mod
 from handlers import admin_gamification
 from handlers import admin_roles

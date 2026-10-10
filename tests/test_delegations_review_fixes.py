@@ -145,7 +145,7 @@ def test_summary_counts_one_person_once_per_university(tmp_path):
 # ---------- CR-05: существующая анкета переезжает в текущий сезон и город делегации ----------
 
 def test_existing_user_moves_to_current_season_and_city(tmp_path):
-    import cities as cities_mod
+    import domain.cities as cities_mod
     from services.checkin import checkin_denial
     _env(tmp_path)
     fid = _delegation_form()

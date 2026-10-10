@@ -30,7 +30,7 @@ from database.db import current_consent_version, get_user_consent_versions
 from database.db import RESUME_RECALL_COLUMNS
 from domain.settings.schema import get_setting_typed
 from services.consent import tapped_button_text
-from cities import CITIES, is_city_registration_open
+from domain.cities import CITIES, is_city_registration_open
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb, get_main_menu_kb
 from handlers.registration import (
@@ -64,7 +64,7 @@ from domain.regform.engine import multi_max
 # этого шва на отправке; служебные слова фильтров (CANCEL_WORDS/CONFIRM_WORDS/EDIT_WORDS) —
 # ярус A i18n_ui_en, не второй список литералов.
 from handlers import reg_i18n
-from i18n_ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
+from domain.i18n.ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
 from services import reg_edit_policy  # Квик 260922-wrg: гейт повторной подачи после отказа
 
 logger = logging.getLogger(__name__)

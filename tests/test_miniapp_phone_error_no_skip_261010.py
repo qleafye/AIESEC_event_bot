@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import pytest
 
-import i18n_ui_en
+import domain.i18n.ui_en as i18n_ui_en
 import domain.regform.engine as reg_engine
 
 from tests.test_miniapp_form import client, db_path  # noqa: F401 — фикстуры подтягиваются по имени

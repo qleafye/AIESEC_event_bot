@@ -9,10 +9,10 @@ import asyncio
 
 import pytest
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
-from i18n_ui_en import MENU_EN
+from domain.i18n.ui_en import MENU_EN
 from keyboards import menu_dynamic
 from keyboards.builders import MENU_BUTTONS, get_main_menu_kb
 from keyboards.menu_dynamic import (

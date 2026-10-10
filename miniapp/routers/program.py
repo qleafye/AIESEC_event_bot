@@ -20,7 +20,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
-from cities import cities_module_on, normalize_city
+from domain.cities import cities_module_on, normalize_city
 from database.db import get_user
 from services import i18n
 from services.program import (

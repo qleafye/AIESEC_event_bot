@@ -12,7 +12,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
+from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
 from database import session_enroll_db as edb
 from database.db import _csv_safe, get_program_session, update_program_session
 from handlers.admin import router

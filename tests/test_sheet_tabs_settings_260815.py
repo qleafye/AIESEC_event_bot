@@ -28,7 +28,7 @@ from handlers.admin_caps import ADMIN_CAPS, required_capability
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 import services.sheets as sheets
 import domain.settings.ops as settings_ops
-import cities
+import domain.cities as cities
 from tests._dbtpl import fast_init_db
 
 

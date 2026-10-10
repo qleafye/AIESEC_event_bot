@@ -1,5 +1,5 @@
 """Кнопки меню «Запись на сессии» и «Тест»: вторые гейты, подпись из настройки, причины."""
-from cities import per_city_key
+from domain.cities import per_city_key
 from database import db, quiz_db
 from keyboards.builders import get_main_menu_kb, menu_hidden_reason
 from tests._enroll38 import CITY, add_user, ready, run

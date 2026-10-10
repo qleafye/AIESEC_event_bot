@@ -27,7 +27,7 @@ from handlers import admin as admin_mod
 from handlers import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers import admin_settings
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
-import cities
+import domain.cities as cities
 from tests._dbtpl import fast_init_db
 
 
@@ -259,7 +259,7 @@ def test_reg_prompt_edit_party_city_key_splits_correctly(tmp_path):
 
     composed = state.data.get("setting_key")
     assert composed == "reg_prompt_expectations__party__city__spb"
-    # T-25 order-of-suffixes guard on a LIVE key -- not just cities.py's own primitive unit test.
+    # T-25 order-of-suffixes guard on a LIVE key -- not just domain/cities.py's own primitive unit test.
     parsed = cities.split_per_city_key(composed)
     assert parsed == (PARTY_BASE_KEY, "spb")
 

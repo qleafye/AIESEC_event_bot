@@ -13,7 +13,7 @@ pytest-asyncio в проекте нет — каждый async-вызов чер
 import asyncio
 import html as html_escape_module
 
-import cities
+import domain.cities as cities
 from database import db
 
 from tests.test_sheet_logs_260902 import _ready
@@ -409,7 +409,7 @@ def test_count_applications_empty_db_returns_zeros(tmp_path):
 # напрямую, без полного dispatch через Router (тот же приём, что у test_questions_journal_260904).
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-import cities as cities_mod
+import domain.cities as cities_mod
 import handlers.admin_sections as sec
 from handlers import admin_app_list
 from handlers.admin_caps import ADMIN_CAPS, required_capability

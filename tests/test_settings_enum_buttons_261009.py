@@ -74,7 +74,7 @@ CITY_ADMIN = 900261010
 
 
 def _city_ready(tmp_path, name):
-    import cities
+    import domain.cities as cities
     from database import db
     config.DB_PATH = str(tmp_path / name)
     fast_init_db()

@@ -18,7 +18,7 @@ STATUS_LABELS = {
 async def status_city_season_lines(user: dict) -> str:
     """Готовый HTML-хвост карточки (каждая строка с `\\n` впереди). Город — только при включённом
     модуле городов: без него подпись «Город» у всех одна и та же и ничего не говорит."""
-    from cities import cities_module_on, city_label, normalize_city
+    from domain.cities import cities_module_on, city_label, normalize_city
 
     status = user.get("status")
     lines = [f"Статус: {STATUS_LABELS.get(status) or html.escape(str(status or '—'))}"]

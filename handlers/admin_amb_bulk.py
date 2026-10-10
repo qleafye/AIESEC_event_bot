@@ -27,7 +27,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import city_label_or_none
+from domain.cities import city_label_or_none
 from database import amb_status_db
 from database import db as _db
 from handlers.admin import router

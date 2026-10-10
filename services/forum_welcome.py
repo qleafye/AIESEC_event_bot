@@ -31,7 +31,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city
 from services.timeutil import city_offset_hours
 
 logger = logging.getLogger(__name__)

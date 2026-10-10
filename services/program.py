@@ -29,7 +29,7 @@ from __future__ import annotations
 import re
 from datetime import date, datetime, timedelta
 
-from cities import cities_module_on, default_city_code, per_city_key
+from domain.cities import cities_module_on, default_city_code, per_city_key
 from database.db import (
     create_program_hall,
     create_program_session,
@@ -485,7 +485,7 @@ async def program_menu_visible(city: str | None) -> bool:
     показать (`has_program_content`). Ровно та пара проверок, что делает
     `keyboards.builders.get_main_menu_kb` для `menu_program`; Mini App (раздел «📅 Программа»
     в `/app/api/me` и гейт `GET /app/api/program`) читает её отсюда, а не собирает заново."""
-    from cities import get_setting_typed_for_city
+    from domain.cities import get_setting_typed_for_city
 
     if await get_setting_typed_for_city("menu_program", city) != "on":
         return False

@@ -329,7 +329,7 @@ def test_points_max_editable_from_texts_screen_for_own_city_only(tmp_path):
     msg = FakeMessage("8")
     run(settings_edit_value(msg, state))
     assert run(aq.points_max(CITY)) == 8
-    other = next(c for c in __import__("cities").city_codes() if c != CITY)
+    other = next(c for c in __import__("domain.cities", fromlist=["_"]).city_codes() if c != CITY)
     assert run(aq.points_max(other)) == 5  # чужой город не задет
     # назад — на ту же страницу текстов теста, где была кнопка
     page = idx // lv._TEXT_PAGE

@@ -29,7 +29,7 @@ import math
 import re
 from datetime import datetime
 
-from cities import PER_CITY_SEP
+from domain.cities import PER_CITY_SEP
 from domain.settings.schema import SETTINGS_SCHEMA, multi_codes, option_labels
 
 # Тумблеры on/off в реестре без option_labels — человеку их показываем так (и так же

@@ -20,7 +20,7 @@ from __future__ import annotations
 import html
 from datetime import datetime, timedelta
 
-from cities import city_label_or_none, normalize_city
+from domain.cities import city_label_or_none, normalize_city
 from services import checkin_forum_day
 from services import timeutil
 from services.timeutil import city_offset_hours

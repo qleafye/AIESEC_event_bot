@@ -10,7 +10,7 @@ from tests._paths import REPO_ROOT
 
 from datetime import datetime
 
-from cities import per_city_key
+from domain.cities import per_city_key
 from database import db as bot_db
 from services import checkin_csv_import
 from tests.test_miniapp_checkin_260924 import (

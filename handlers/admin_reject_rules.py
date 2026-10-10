@@ -23,7 +23,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
+from domain.cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
 from database.db import count_auto_reject_log_for_rule, get_reject_rule, get_staff_city
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view

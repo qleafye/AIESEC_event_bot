@@ -95,7 +95,7 @@ def _ready(tmp_path, name):
 
 from datetime import datetime, time as dtime, timedelta
 
-from cities import per_city_key
+from domain.cities import per_city_key
 import services.quiet_hours as qh
 from tests.test_miniapp_labels_drift import _loaded_aiogram
 

@@ -12,7 +12,7 @@ import asyncio
 
 import pytest
 
-import cities
+import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin as admin_mod  # noqa: F401 -- seam-imports admin_gamification

@@ -14,7 +14,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, per_city_key
+from domain.cities import cities_module_on, city_label, per_city_key
 from handlers.admin import router
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.timeutil import city_offset_hours, offset_label

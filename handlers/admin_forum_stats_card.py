@@ -29,7 +29,7 @@ import html
 from aiogram import F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
+from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
 from database.db import get_setting
 from handlers.admin import router
 from handlers.admin_checkin import (

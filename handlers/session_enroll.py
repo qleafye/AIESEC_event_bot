@@ -23,7 +23,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram import F
 
-from cities import get_setting_typed_for_city, normalize_city
+from domain.cities import get_setting_typed_for_city, normalize_city
 from database import session_enroll_db as edb
 from database.db import get_user
 from handlers import reg_i18n

@@ -441,7 +441,7 @@ def test_eligible_recipients_excludes_other_city(tmp_path):
     _seed_user(UID + 1, event_city="spb")
 
     async def go():
-        import cities as _cities
+        import domain.cities as _cities
         return await fsc.eligible_recipients(None, only_arrived=False)
 
     result = _run(go())

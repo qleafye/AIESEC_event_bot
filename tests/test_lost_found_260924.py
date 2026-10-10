@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-import cities as cities_mod
+import domain.cities as cities_mod
 from config import config
 from database import db
 from handlers import admin as admin_mod
@@ -160,7 +160,7 @@ def _bind_chat(city):
 
 
 def _enable(city=None):
-    from cities import per_city_key
+    from domain.cities import per_city_key
     if city:
         _run(db.set_setting(per_city_key("lost_found_enabled", city), "on"))
     else:

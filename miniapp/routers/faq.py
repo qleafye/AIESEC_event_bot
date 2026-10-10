@@ -32,7 +32,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from cities import cities_module_on, city_label, normalize_city
+from domain.cities import cities_module_on, city_label, normalize_city
 from database.db import (
     create_faq_item,
     delete_faq_item,

@@ -330,7 +330,7 @@ def test_event_type_skillup_enum_button_goes_to_confirm(tmp_path, monkeypatch):
 def test_event_type_skillup_single_city_header_changes_type_only(tmp_path):
     """Шапка на одном городе: экран сразу говорит, что сменится только тип (пресет — из
     «🌍 Все города»); кнопка пишет общий event_type и не трогает анкету — без тупика."""
-    import cities
+    import domain.cities as cities
     from tests.test_roles_phase8 import FakeMessage as MsgFake
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))

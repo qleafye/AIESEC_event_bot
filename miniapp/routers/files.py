@@ -50,7 +50,7 @@ from fastapi.responses import StreamingResponse
 
 import domain.regform.engine as reg_engine
 import shared.tg_media as tg_media
-from cities import cities_module_on, city_codes, normalize_city, per_city_key
+from domain.cities import cities_module_on, city_codes, normalize_city, per_city_key
 from dashboard.access import resolve_capabilities, staff_city
 from dashboard.db import read_conn
 from database.db import (

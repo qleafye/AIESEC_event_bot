@@ -2,7 +2,7 @@
 
 Widest blast-radius test in the phase: `cities.CITIES` used to be a module-level constant
 parsed from `config.EVENT_CITIES` at import time; it is now a cache backed by the `cities`
-table, reloaded on demand. `from cities import CITIES` is aliased by name into
+table, reloaded on demand. `from domain.cities import CITIES` is aliased by name into
 `handlers/admin.py` and `handlers/registration.py` — the single highest-risk invariant this
 file guards is "reload_cities() mutates the SAME list object", never rebinding `CITIES`.
 
@@ -16,7 +16,7 @@ import pathlib
 
 from config import config
 from database import db
-import cities
+import domain.cities as cities
 
 
 def _db_ready(tmp_path):
@@ -125,11 +125,11 @@ def test_count_users_and_tasks_by_city_ignore_null(tmp_path):
 
 
 def test_db_py_never_imports_cities_module():
-    """Structural: database/db.py stays a pure SQL layer -- no `import cities`/`from cities`
-    (that would create an import cycle, since cities.py already imports database.db)."""
+    """Structural: database/db.py stays a pure SQL layer -- no `import domain.cities`/`from domain.cities`
+    (that would create an import cycle, since domain/cities.py already imports database.db)."""
     src = REPO_ROOT.joinpath("database", "db.py").read_text(encoding="utf-8")
-    assert "import cities" not in src
-    assert "from cities" not in src
+    assert "import domain.cities" not in src
+    assert "from domain.cities" not in src
 
 
 # ── Task 2: cache, seed-from-.env, reload with in-place mutation, code generator ────────────
@@ -333,8 +333,8 @@ def test_reload_visible_to_all_readers_pitfall_2(tmp_path):
 
 
 def test_admin_and_registration_CITIES_are_the_same_object_as_cache():
-    """Structural contract against future regression: `from cities import CITIES` in both
-    god-files must alias the SAME list object cities.py mutates in place."""
+    """Structural contract against future regression: `from domain.cities import CITIES` in both
+    god-files must alias the SAME list object domain/cities.py mutates in place."""
     from handlers import admin as admin_mod
     from handlers import registration as reg
 
@@ -344,7 +344,7 @@ def test_admin_and_registration_CITIES_are_the_same_object_as_cache():
 
 def test_no_module_besides_cities_reads_config_EVENT_CITIES():
     """Structural sentry (mirrors test_gate_no_legacy_admin_check_remains's shape): after this
-    plan, `config.EVENT_CITIES` (the actual .env read) may only appear in `cities.py` --
+    plan, `config.EVENT_CITIES` (the actual .env read) may only appear in `domain/cities.py` --
     the cold fallback value + the one-time `seed_cities_if_empty()` seed. Matches the literal
     attribute-access pattern (`config.EVENT_CITIES`), not a bare substring search, because two
     OTHER files (`handlers/admin.py`, `services/scheduler.py`, both out of this plan's file
@@ -352,7 +352,7 @@ def test_no_module_besides_cities_reads_config_EVENT_CITIES():
     name "EVENT_CITIES" as historical context from Phase 07.1/07.2 -- those are not reads and
     are not this plan's regression to fix."""
     root = REPO_ROOT
-    allowed = {root / "cities.py"}
+    allowed = {root / "domain/cities.py"}
     offenders = []
     for path in root.rglob("*.py"):
         parts = path.relative_to(root).parts

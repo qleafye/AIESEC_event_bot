@@ -119,7 +119,7 @@ async def _filled(step: WizardStep, key: str, photos: set[str], city: str | None
     if key in photos:
         return bool(await get_setting(f"{key}_photo_file_id"))
     if city and SETTINGS_SCHEMA.get(key, {}).get("per_city"):
-        from cities import per_city_key
+        from domain.cities import per_city_key
 
         composed = per_city_key(key, city)
         raw_city = await get_setting(composed) if composed else None
@@ -145,7 +145,7 @@ async def _header_city(admin_id: int | None) -> str | None:
     """Город шапки админки (как у редактора бота), `None` — все города или модуль выключен."""
     if admin_id is None:
         return None
-    from cities import ALL_CITIES, admin_selected_city, cities_module_on
+    from domain.cities import ALL_CITIES, admin_selected_city, cities_module_on
 
     if not await cities_module_on():
         return None

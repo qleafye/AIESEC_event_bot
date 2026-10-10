@@ -13,7 +13,7 @@ import aiosqlite
 import pytest
 
 from database import db as bot_db
-from game_labels import render_task_card_text
+from domain.game.labels import render_task_card_text
 
 from miniapp.routers.submissions import make_part_token
 

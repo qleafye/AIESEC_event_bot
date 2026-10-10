@@ -30,7 +30,7 @@ from database.db import get_setting, settings_snapshot
 from services.settings.audit import set_setting_by_admin, delete_setting_by_admin
 from handlers.states import EditSetting
 from handlers.reg_schema import REG_FLOW, REG_LABELS, REG_CATEGORIES
-from cities import (
+from domain.cities import (
     ALL_CITIES,
     admin_selected_city,
     cities_module_on,

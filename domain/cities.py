@@ -90,7 +90,7 @@ CITIES = parse_cities(config.EVENT_CITIES)
 async def reload_cities() -> list[dict]:
     """Refreshes `CITIES` from the `cities` table. MUTATES THE SAME LIST OBJECT IN PLACE —
     `CITIES = fresh` is FORBIDDEN here: `handlers/admin.py` and `handlers/registration.py`
-    both do `from cities import CITIES`, binding their own module-level name to this exact
+    both do `from domain.cities import CITIES`, binding their own module-level name to this exact
     list object at import time. A rebind would leave both of those aliases pointing at a
     now-stale, disconnected list forever (14-RESEARCH.md Pattern 3 / Pitfall 2) — every
     reader of `CITIES` by name would silently stop seeing new/edited/deleted cities.
@@ -159,7 +159,7 @@ def set_cities_for_test(rows: list[dict]) -> None:
     `CITIES = rows`). Deliberately NOT `monkeypatch.setattr(cities, "CITIES", ...)`:
     monkeypatch would rebind the module attribute, which is exactly the aliasing hazard this
     module exists to prevent — a test using monkeypatch could pass locally while masking a
-    real `reload_cities()` regression that only breaks the `from cities import CITIES`
+    real `reload_cities()` regression that only breaks the `from domain.cities import CITIES`
     aliases in `handlers/admin.py`/`handlers/registration.py`."""
     CITIES.clear()
     CITIES.extend(rows)
@@ -414,7 +414,7 @@ ADMIN_CITY_KEY_PREFIX = "admin_city__"
 def city_scope(code: str | None) -> tuple[str, tuple[str, ...]] | None:
     """Pure, sync city-scope descriptor for `database.db._city_clause` — no DB access, no
     await, no knowledge of SQL. `database/db.py` cannot import this module (it would create
-    an import cycle: `cities.py` already imports `database.db`), so the resolved scope is
+    an import cycle: `domain/cities.py` already imports `database.db`), so the resolved scope is
     handed to db.py BY VALUE as this `(code, exclude)` tuple, never by importing the registry.
 
     `code is None` -> `None` ("no scope" — the caller wants every row, unfiltered; this is

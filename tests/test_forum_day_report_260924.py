@@ -117,7 +117,7 @@ def test_count_checkins_by_point_and_day_scopes_by_day(tmp_path):
 
 
 def test_count_checkins_by_point_and_day_scoped_by_city(tmp_path):
-    import cities as cities_mod
+    import domain.cities as cities_mod
     _ready(tmp_path)
     _run(_add_delegate(1, city="msk"))
     _run(_add_delegate(2, city="spb"))

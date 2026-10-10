@@ -12,7 +12,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import normalize_city
+from domain.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
 from handlers.admin_checkin import _city_allowed

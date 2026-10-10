@@ -20,7 +20,7 @@ Import discipline: this module imports `cities` (which imports `database.db` +
 import html
 import logging
 
-from cities import (
+from domain.cities import (
     cities_module_on,
     city_label,
     city_tab_base,
