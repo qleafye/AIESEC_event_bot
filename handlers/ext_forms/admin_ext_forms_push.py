@@ -17,10 +17,10 @@ from handlers.ext_forms.admin_ext_forms import _btn, _e, _show, _tail_id
 from handlers.states import ExtFormImport
 from keyboards.builders import get_cancel_kb
 from services.infra.background import spawn
-from services.ext_forms_import import (
+from services.ext_forms.ext_forms_import import (
     ImportFileError, export_to_answers, import_answers, read_export_rows,
 )
-from services.ext_forms_match import rematch_unmatched
+from services.ext_forms.ext_forms_match import rematch_unmatched
 
 logger = logging.getLogger(__name__)
 

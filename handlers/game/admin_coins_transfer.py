@@ -23,7 +23,7 @@ from services.infra.ru_plural import points_word  # «1 балл», «5 балл
 from handlers.admin import router
 from handlers.states import CoinsTransfer
 from services.game import coins_transfer
-from services import ext_forms_google as gsheet
+from services.ext_forms import ext_forms_google as gsheet
 
 logger = logging.getLogger(__name__)
 

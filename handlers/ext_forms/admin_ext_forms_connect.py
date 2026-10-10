@@ -21,12 +21,12 @@ from handlers.admin import router
 from handlers.ext_forms.admin_ext_forms import _e, _show, render_form_card
 from handlers.states import ExtFormConnect
 from keyboards.builders import get_cancel_kb
-from services import ext_forms_google as gg
-from services import ext_forms_yandex as yx
+from services.ext_forms import ext_forms_google as gg
+from services.ext_forms import ext_forms_yandex as yx
 from services.infra.background import spawn
-from services.ext_forms_match import guess_key_questions
-from services.ext_forms_parse import parse_yandex_questions
-from services.ext_forms_yandex_sync import backfill_form, ensure_fresh_token
+from services.ext_forms.ext_forms_match import guess_key_questions
+from services.ext_forms.ext_forms_parse import parse_yandex_questions
+from services.ext_forms.ext_forms_yandex_sync import backfill_form, ensure_fresh_token
 
 logger = logging.getLogger(__name__)
 
