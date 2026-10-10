@@ -82,6 +82,7 @@ from database.db import (
     list_unprocessed_miniapp_outbox,
     mark_miniapp_outbox_failed,
     mark_miniapp_outbox_processed,
+    get_task,
     get_user,
     task_title,
 )
@@ -192,6 +193,13 @@ async def _handle_manual_coins(bot, payload: dict) -> None:
     request_resync()
 
 
+async def _old_row_task_title(payload: dict) -> str:
+    """Строка от приложения прежней версии несёт только текст задания: название берём у самого
+    задания, а если его уже нет — первую строку текста (`task_title`)."""
+    task = await get_task(payload["task_id"]) if payload.get("task_id") else None
+    return task_title(task or {"text": payload.get("task_text")})
+
+
 async def _handle_row(bot, kind: str, payload: dict) -> None:
     """Один вызов на строку. Бросает исключение на неизвестном `kind` или на сбое
     обработчика — `drain` решает, что делать с попыткой."""
@@ -201,8 +209,7 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
             submission_id=payload.get("submission_id"),
             user_id=payload.get("user_id"),
             task_id=payload.get("task_id"),
-            # строка от приложения прежней версии несёт только текст — название из него
-            task_title=payload.get("task_title") or task_title({"text": payload.get("task_text")}),
+            task_title=payload.get("task_title") or await _old_row_task_title(payload),
             submitter_name=payload.get("submitter_name"),
         )
         return
