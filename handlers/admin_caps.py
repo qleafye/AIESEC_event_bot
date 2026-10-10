@@ -406,7 +406,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_faq": "moderate_reg",
     "afaq_*": "moderate_reg",
     "state:FaqItem:*": "moderate_reg",
-    # Делегации вузов (handlers/admin_delegations.py, handlers/admin_delegations_review.py):
+    # Делегации вузов (handlers/delegations/admin_delegations.py, handlers/delegations/admin_delegations_review.py):
     # менеджер заявок ведёт делегации сам — выбор формы и вопросов, тумблер геймы, отсечка ЦА,
     # курсы, тексты, проверка курса и ручная привязка. Право то же, что у модерации заявок;
     # один префиксный ключ `dlg_*` на все callback'и экрана и его подэкранов.
