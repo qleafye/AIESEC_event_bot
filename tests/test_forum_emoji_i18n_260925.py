@@ -30,6 +30,10 @@ _FORUM_EMOJI_KEYS = {
     "sos_claimed_escalation_text": None,
     # Инструкция волонтёру (group "apps") — служебный текст, не переводится.
     "checkin_volunteer_guide_text": None,
+    # Кнопки опроса «не пришли» делегату (подписи из реестра, 10.10) — перевод как у чата.
+    "checkin_not_arrived_here_button_text": "chat",
+    "checkin_not_arrived_coming_button_text": "chat",
+    "checkin_not_arrived_cant_button_text": "chat",
 }
 
 
