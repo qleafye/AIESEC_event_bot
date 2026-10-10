@@ -1,14 +1,14 @@
 """Квик 260912-mcj: семья меток времени «сейчас» бота — с UTC-контейнера на московское naive.
 
-`services/timeutil.py::msk_now()` — единственный источник этой семьи (карточка заявки, профиль
-Mini App, лист, дашборд, фильтр рассылки по дате). `services.timeutil.process_clock_is_utc()` —
+`services/infra/timeutil.py::msk_now()` — единственный источник этой семьи (карточка заявки, профиль
+Mini App, лист, дашборд, фильтр рассылки по дате). `services.infra.timeutil.process_clock_is_utc()` —
 гейт одноразовой миграции старых строк (`database.db._migrate_local_timestamps_to_msk`),
 вызывается из `init_db` НА ОДНОМ соединении с финальным commit — см. докстринг функции.
 
 Три сторожа в этом файле:
 1. `msk_now()`/`process_clock_is_utc()` — чистые unit-тесты хелперов.
 2. AST-сторож — ни одного голого `datetime.now()` (без аргументов) в коде бота и Mini App,
-   кроме leaf-модулей `services/timeutil.py`/`miniapp/timeutil.py`. AST, а не grep: докстринги
+   кроме leaf-модулей `services/infra/timeutil.py`/`miniapp/timeutil.py`. AST, а не grep: докстринги
    и комментарии этих же файлов упоминают строку `datetime.now()` как текст, и grep-гейт
    самовалидировался бы на этом тексте.
 3. Миграция — сдвиг/не-сдвиг/идемпотентность/isoformat/кривые значения.
@@ -28,8 +28,8 @@ import aiosqlite
 
 from config import config
 from database import db
-import services.timeutil as timeutil_mod
-from services.timeutil import msk_now, process_clock_is_utc
+import services.infra.timeutil as timeutil_mod
+from services.infra.timeutil import msk_now, process_clock_is_utc
 from tests._dbtpl import fast_init_db
 
 MOSCOW_TZ = ZoneInfo("Europe/Moscow")
@@ -105,7 +105,7 @@ def test_process_clock_is_utc_false_when_now_is_moscow_and_utcnow_is_utc():
 
 # ── 2. AST-сторож: ни одного голого datetime.now() в коде бота/Mini App ──────────────────
 
-_ALLOWED_BARE_DATETIME_NOW = {"services/timeutil.py", "miniapp/timeutil.py"}
+_ALLOWED_BARE_DATETIME_NOW = {"services/infra/timeutil.py", "miniapp/timeutil.py"}
 
 
 def _bare_datetime_now_lines(path: Path) -> list[int]:
@@ -425,7 +425,7 @@ def test_dashboard_requirements_declares_tzdata():
 def test_dashboard_modules_never_import_bot_services_or_database():
     """Тот же класс падения образа, что ловит `test_dashboard_docker.py` для корневых
     модулей (web_theme 31.08, tg_media 10.09) -- `dashboard/Dockerfile` копирует ТОЛЬКО
-    `dashboard/` + несколько корневых файлов, `services.timeutil.msk_now` уронил бы контейнер
+    `dashboard/` + несколько корневых файлов, `services.infra.timeutil.msk_now` уронил бы контейнер
     на старте `ModuleNotFoundError`."""
     offenders = {}
     for path_str in glob.glob("dashboard/*.py"):

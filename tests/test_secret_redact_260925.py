@@ -14,7 +14,7 @@ import pytest
 from aiogram.exceptions import TelegramNetworkError
 
 import shared.secret_redact as secret_redact
-import services.proxy_session as proxy_session
+import services.infra.proxy_session as proxy_session
 from config import config
 from shared.secret_redact import (
     RedactSecretsFilter,

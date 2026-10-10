@@ -73,7 +73,7 @@ async def _all_settings() -> dict:
 
 
 def _drain():
-    """Await any background tasks spawned via services.background.spawn (_refresh_short_sheet_header
+    """Await any background tasks spawned via services.infra.background.spawn (_refresh_short_sheet_header
     is fire-and-forget) so assertions on the fake ensure_named_sheet_header see the call."""
     async def _g():
         pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]

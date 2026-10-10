@@ -68,7 +68,7 @@ from handlers.access.admin_purge import _footprint_lines
 from domain.regform.engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
 from services.checkin import ENTRY_POINT
 from services.scheduler import cancel_payment_reminders
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

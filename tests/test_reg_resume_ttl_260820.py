@@ -8,7 +8,7 @@ _should_show_city_fork выходит на непустом городе. Стр
 
 pytest-asyncio недоступен — async через asyncio.run(), config.DB_PATH -> tmp.
 
-CI-фикс: `started_at` пишется `mark_reg_started` через `services.timeutil.msk_now()` (квик
+CI-фикс: `started_at` пишется `mark_reg_started` через `services.infra.timeutil.msk_now()` (квик
 260912-mcj, московское время независимо от часов хоста/контейнера), а `get_reg_started_city`
 сравнивает окно той же `msk_now()` (`database/db.py::_reg_started_cutoff`). Раньше здесь сеялось
 хостовым `datetime.now()` — на CI (UTC, ubuntu) это на 3 часа раньше московского, и
@@ -19,7 +19,7 @@ from datetime import timedelta
 
 from config import config
 from database import db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 from tests._dbtpl import fast_init_db
 

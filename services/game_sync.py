@@ -10,7 +10,7 @@ fresh ~30s timer. This is a plain asyncio task, not a persistent third-party job
 scheduler (CONTEXT.md D is explicit about this) — the debounce only needs "wait, then
 maybe-cancel", which `asyncio.sleep` + `Task.cancel()` already do on their own.
 
-Import discipline: this module imports ONLY stdlib + `services.background.spawn` +
+Import discipline: this module imports ONLY stdlib + `services.infra.background.spawn` +
 `services.sheets._send_admin_alert`. It never reaches into the admin request layer above
 `services/` — that layer already imports `services.*`, so an import the other way would be
 a cycle. Instead, the admin layer hands its own `rebuild_game_sheets` coroutine down via
@@ -21,7 +21,7 @@ uses for `set_alert_bot`).
 import asyncio
 import logging
 
-from services.background import spawn
+from services.infra.background import spawn
 from services.sheets import _send_admin_alert
 
 logger = logging.getLogger(__name__)

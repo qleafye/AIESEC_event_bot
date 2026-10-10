@@ -49,7 +49,7 @@ from database.db import (
     record_session_checkin,
 )
 from domain.regform.engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
-from services.timeutil import aware_to_msk, msk_from_timestamp
+from services.infra.timeutil import aware_to_msk, msk_from_timestamp
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -464,7 +464,7 @@ def register_first_entry_listener(fn) -> None:
     Слушатели живут в ПРОЦЕССЕ БОТА. Mini App (сканер/поиск) — отдельный процесс без Bot: там
     `record_arrival` вызывается без `bot`, событие уходит в `miniapp_outbox`
     (`checkin_first_entry`), и бот зовёт слушателей при разборе очереди
-    (`services/miniapp_outbox.py`) — с задержкой в один тик джобы. Регистрировать слушателя
+    (`services/infra/miniapp_outbox.py`) — с задержкой в один тик джобы. Регистрировать слушателя
     нужно в процессе бота (например, при импорте модуля фичи из `main.py`)."""
     if fn not in _first_entry_listeners:
         _first_entry_listeners.append(fn)
@@ -598,7 +598,7 @@ async def record_arrival(
             "reason_text": f"Делегат другого города: {delegate_label}. Эта сессия — {session_label}",
         }
 
-    from services.timeutil import msk_now  # ленивый импорт — см. докстринг record_arrival
+    from services.infra.timeutil import msk_now  # ленивый импорт — см. докстринг record_arrival
 
     effective_day = scanned_at[:10] if scanned_at else msk_now().strftime("%Y-%m-%d")
     day_mismatch = effective_day != session["day"]
@@ -823,7 +823,7 @@ def _swapped_reading(text: str, stamp: str) -> str | None:
 def _row_date(cells: list[str]) -> str | None:
     """День скана из строки, где есть только дата без времени («YYYY-MM-DD»). Год — не дальше
     года от текущего: случайное «1.2.34» в соседней колонке не становится датой."""
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     this_year = msk_now().year
     for cell in cells:
         ymd = _parse_cell_date(cell)

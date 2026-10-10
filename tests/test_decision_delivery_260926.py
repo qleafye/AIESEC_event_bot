@@ -316,7 +316,7 @@ def test_apply_decision_effects_quiet_hours_records_queued(tmp_path, monkeypatch
 
 
 def test_apply_decision_effects_retry_after_then_success_records_delivered(tmp_path, monkeypatch):
-    """429 на первой попытке, успех на повторе (services.telegram_send.send_with_retry) —
+    """429 на первой попытке, успех на повторе (services.infra.telegram_send.send_with_retry) —
     итог всё равно «доставлено», не «не доставлено»."""
     _db_ready(tmp_path)
     _run(_seed_user(109, status="rejected"))

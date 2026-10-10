@@ -28,8 +28,8 @@ import html
 from datetime import datetime
 
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, NO_DEADLINE_AT, parse_proof_types, task_title
-from services.ru_plural import agree_placeholder
-from services.timeutil import msk_now
+from services.infra.ru_plural import agree_placeholder
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 # code (GAME_CATEGORIES) -> registry key name (game_category_label_{light,medium,hard,
@@ -104,7 +104,7 @@ def task_deadline_short(task: dict) -> tuple[str, bool]:
     the manager preview. Quick 260819-gtl: short dd.mm date (CONTEXT.md decision 3), not the
     full dd.mm.yyyy hh:mm. Moved here verbatim from user_actions.py in 16-03.
 
-    Квик 260919-m9x: «сейчас» — московское (`services.timeutil.msk_now`), а не
+    Квик 260919-m9x: «сейчас» — московское (`services.infra.timeutil.msk_now`), а не
     `datetime.now()`. Дедлайн менеджер вводит по Москве, а контейнер на проде живёт в UTC:
     задание «до 23:59» считалось открытым ещё три часа, до 02:59 МСК следующих суток —
     расходилось и со строкой «срок вышел», и с обратным отсчётом дней в приложении, который

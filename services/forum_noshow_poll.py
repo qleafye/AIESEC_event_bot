@@ -35,7 +35,7 @@ import logging
 from datetime import date, datetime, time, timedelta
 
 from domain.cities import get_setting_typed_for_city
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import ext_forms_db as xdb
 from handlers.admin import router
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 FORMS_PAGE = 8
 ANSWER_TEXT_MAX = 3500

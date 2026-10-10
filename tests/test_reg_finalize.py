@@ -1,6 +1,6 @@
 """Phase 21 Plan 08 (FORM-SYNC-02/04): контракт общего финала — `services.reg_finalize.
 finalize_data`/`post_finalize` — единого для бота (`handlers/registration.py::
-finalize_registration`) и джобы очереди Mini App (`services/miniapp_outbox.py`, kind
+finalize_registration`) и джобы очереди Mini App (`services/infra/miniapp_outbox.py`, kind
 `reg_finalized`/`reg_edited`).
 
 pytest-asyncio недоступен — async через asyncio.run(), фикстура временной БД — тот же приём,
@@ -18,7 +18,7 @@ from handlers.access import admin_caps
 from handlers import registration as reg_mod
 import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
-from services import miniapp_outbox
+from services.infra import miniapp_outbox
 from services import sheets as sheets_service
 from miniapp import outbox as mo
 from tests._dbtpl import fast_init_db

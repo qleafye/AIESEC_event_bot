@@ -50,7 +50,7 @@ from services.checkin import (
     register_token_resolver,
     resolve_token,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

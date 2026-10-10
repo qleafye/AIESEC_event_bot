@@ -23,7 +23,7 @@ from database import db
 from handlers.access import admin_caps, admin_roles
 from services import daily_digest as dd
 from services import staff_reach
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 ADMIN_A = 929001

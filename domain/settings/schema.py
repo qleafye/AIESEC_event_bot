@@ -5119,7 +5119,7 @@ SETTINGS_SCHEMA = {
     },
 
     # ── Phase 14 (CFG-01): group "system" — тайминги прокси переехали из .env. Оба значения
-    # читаются ОДИН раз в конструкторе FailoverAiohttpSession (services/proxy_session.py) —
+    # читаются ОДИН раз в конструкторе FailoverAiohttpSession (services/infra/proxy_session.py) —
     # правка тут применяется только после перезапуска бота (14-RESEARCH.md, Pitfall 5,
     # решение (a): переносим, но честно пишем об этом менеджеру в prompt).
     "proxy_recheck_seconds": {
@@ -5146,7 +5146,7 @@ SETTINGS_SCHEMA = {
     # Квик 260919 (аудит прода, «прокси-шторм» 08.09/15.09): резервный канал был мёртв весь
     # сентябрь, и бот дёргался между каналами на КАЖДОЙ сетевой ошибке — 12 переключений за
     # 55 секунд, алерт при этом слался через ту же упавшую сессию и не доходил (см. докстринг
-    # services/proxy_session.py). Ключ читается ОДИН раз в конструкторе FailoverAiohttpSession,
+    # services/infra/proxy_session.py). Ключ читается ОДИН раз в конструкторе FailoverAiohttpSession,
     # как и пара выше — правка применяется после перезапуска.
     "proxy_switch_dwell_seconds": {
         "type": "int", "group": "system", "label": "⏱ Прокси: пауза между переключениями",

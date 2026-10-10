@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import GAME_CATEGORIES, parse_proof_types, task_title
 from domain.settings.schema import get_setting_typed
-from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
+from services.infra.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from domain.game.labels import category_label, penalized_coins
 
 # ── Подписи типов подтверждения (синхронная копия) ──────────────────────────────────────────

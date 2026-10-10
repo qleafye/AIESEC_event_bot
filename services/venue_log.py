@@ -38,7 +38,7 @@ from database.db import (
     undo_venue_checkin,
     venue_log_add,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

@@ -6,7 +6,7 @@ from datetime import timedelta
 from config import config
 from database import db
 from services import sos as sos_service
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 DELEGATE_ID = 904010

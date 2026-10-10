@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from services.timeutil import utc_naive_to_msk
+from services.infra.timeutil import utc_naive_to_msk
 
 # Шапка ответа организаторов делегату — бот и Mini App (литерал корпуса перевода
 # `lit:questions.org_reply_header`).

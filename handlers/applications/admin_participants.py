@@ -16,7 +16,7 @@ from database.db import export_participants_csv
 from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_view
 from domain.settings.schema import get_setting_typed
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 
 async def _city_label(raw) -> str:

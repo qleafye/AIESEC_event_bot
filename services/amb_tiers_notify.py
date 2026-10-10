@@ -1,7 +1,7 @@
 """Доставка уведомления о новой ступени амбассадора (событие `amb_tier_reached`).
 
 Событие ставит `services.amb_tiers.check_tiers` в `miniapp_outbox` — из бот-процесса или из
-веб-процесса Mini App; разбирает его только бот (`services/miniapp_outbox.py::_handle_row`).
+веб-процесса Mini App; разбирает его только бот (`services/infra/miniapp_outbox.py::_handle_row`).
 
 Повтор безопасен: сначала атомарно ставится `notified_at`
 (`database.amb_tiers_db.claim_tier_notification`, `UPDATE ... WHERE notified_at IS NULL`),
@@ -28,7 +28,7 @@ import re
 
 from shared.amb_tier_keys import tier_key
 from database import amb_tiers_db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 logger = logging.getLogger(__name__)

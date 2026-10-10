@@ -28,7 +28,7 @@ from domain.settings.schema import get_setting_typed, option_label
 from database.db import get_setting
 from services.settings.audit import set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
 from services.sheets import ensure_sheet_header
-from services.background import spawn as _spawn
+from services.infra.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS, menu_hidden_reason
 from keyboards.menu_dynamic import caption_for
 from handlers.reg.reg_schema import (

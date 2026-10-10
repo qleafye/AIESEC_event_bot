@@ -37,7 +37,7 @@ from dataclasses import dataclass
 
 from database import amb_status_db
 from database import db as _db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

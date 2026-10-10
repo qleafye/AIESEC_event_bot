@@ -19,7 +19,7 @@ from config import config
 from database import db
 from services import checkin as checkin_mod
 from services import checkin_arrival, venue_log
-from services import timeutil as timeutil_mod
+from services.infra import timeutil as timeutil_mod
 from tests._dbtpl import fast_init_db
 
 UID = 260925101

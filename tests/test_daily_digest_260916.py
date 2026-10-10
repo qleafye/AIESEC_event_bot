@@ -15,7 +15,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from services import daily_digest as dd
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 944401

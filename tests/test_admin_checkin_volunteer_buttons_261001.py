@@ -32,7 +32,7 @@ def _seed(tmp_path):
     asyncio.run(db.set_setting("checkin_qr_enabled", "on"))
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(_setup_bound_manager("spb"))
-    from services.timeutil import msk_now  # «Написать не пришедшим» — только в день форума
+    from services.infra.timeutil import msk_now  # «Написать не пришедшим» — только в день форума
     for code in ("spb", "msk"):
         asyncio.run(db.set_setting(f"forum_date__city__{code}", msk_now().strftime("%d.%m.%Y")))
     async def _user():

@@ -89,7 +89,7 @@ from services.coins_notify import notify_manual_coins
 from services.game_digest import notify_submission
 from services.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

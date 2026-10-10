@@ -609,7 +609,7 @@ def test_after_onsite_approved_unknown_user_no_crash(tmp_path, monkeypatch):
 
 
 def test_outbox_routes_onsite_approved(monkeypatch):
-    from services import miniapp_outbox
+    from services.infra import miniapp_outbox
 
     seen = []
 

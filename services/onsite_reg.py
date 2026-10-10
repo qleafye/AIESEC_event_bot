@@ -27,7 +27,7 @@ from database import db as _db
 from database.db import approve_onsite, get_user
 from domain.regform.engine import is_past_season_row
 from services.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, record_arrival
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -315,7 +315,7 @@ async def after_onsite_approved(bot, telegram_id: int) -> None:
         logger.exception("onsite_reg: язык человека не определён (tid=%s)", telegram_id)
 
     from services.i18n import tr
-    from services.telegram_send import send_with_retry
+    from services.infra.telegram_send import send_with_retry
 
     try:
         text = tr(await get_setting_typed("onsite_reg_approved_text"), lang, tr_map)

@@ -307,7 +307,7 @@ def test_toggle_logs_author_and_queues_hooks(tmp_path, caplog):
 
 
 def test_outbox_handler_runs_setting_hooks_for_queued_keys(tmp_path, monkeypatch):
-    from services import miniapp_outbox
+    from services.infra import miniapp_outbox
     import services.settings.audit as settings_audit
 
     _setup(tmp_path, "miniapp_settings_audit_hooks.db")

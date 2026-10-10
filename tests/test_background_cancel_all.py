@@ -1,10 +1,10 @@
-"""services.background.cancel_all: shutdown must cancel every registered fire-and-forget
+"""services.infra.background.cancel_all: shutdown must cancel every registered fire-and-forget
 task and wait for it to unwind — BEFORE main.py closes the bot session, otherwise a task
 mid-flight dies on a closed aiohttp ClientSession."""
 import asyncio
 
-from services import background
-from services.background import _background_tasks, cancel_all, pending_count, spawn
+from tests._paths import REPO_ROOT
+from services.infra.background import _background_tasks, cancel_all, pending_count, spawn
 
 
 def test_cancel_all_cancels_and_drains_registered_tasks():
@@ -88,9 +88,7 @@ def test_cancel_all_bounded_by_timeout_for_stubborn_task(caplog):
 
 def test_main_cancels_background_tasks_before_closing_session():
     """Order in main.py's shutdown path: cancel_all → bot.session.close()."""
-    from pathlib import Path
-
-    src = Path(background.__file__).resolve().parent.parent.joinpath("main.py").read_text(encoding="utf-8")
+    src = REPO_ROOT.joinpath("main.py").read_text(encoding="utf-8")
     i_cancel = src.index("await cancel_background_tasks()")
     i_close = src.index("await bot.session.close()")
     assert i_cancel < i_close

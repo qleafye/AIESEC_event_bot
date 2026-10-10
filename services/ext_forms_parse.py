@@ -9,7 +9,7 @@ import json
 import re
 from datetime import datetime, timezone
 
-from services.timeutil import MOSCOW_TZ
+from services.infra.timeutil import MOSCOW_TZ
 
 _FMT = "%Y-%m-%d %H:%M:%S"
 

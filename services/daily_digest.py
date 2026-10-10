@@ -43,7 +43,7 @@ from datetime import timedelta
 from domain.cities import cities_module_on, city_label, city_scope, enabled_cities
 from database.db import auto_reject_summary, daily_digest_stats, get_display_names
 from domain.settings.schema import get_setting_typed
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from services import staff_reach
 
 logger = logging.getLogger(__name__)

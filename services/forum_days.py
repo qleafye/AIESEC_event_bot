@@ -104,7 +104,7 @@ async def day_cities_suffix(day_raw: str) -> str:
     выключен или в этот день форума нет ни у кого — пустая строка."""
     from domain.cities import city_label
     from database.db import CHECKIN_DAY_TODAY
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     today = msk_now().date()
     try:

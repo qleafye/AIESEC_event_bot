@@ -14,7 +14,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 TESTER_ID = 900940
