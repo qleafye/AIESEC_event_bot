@@ -20,7 +20,7 @@ from services.access.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
 from services.infra.background import spawn as _spawn, cancel_all as cancel_background_tasks
 import services.infra.miniapp_outbox as miniapp_outbox
-import services.delegations as delegations
+import services.delegations.delegations as delegations
 from services.heartbeat import PollingHeartbeatMiddleware, heartbeat_loop, clear_heartbeat
 import services.sheets as sheets_service
 import services.infra.proxy_session as proxy_session

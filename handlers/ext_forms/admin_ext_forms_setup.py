@@ -81,7 +81,7 @@ async def show_tab_picker(message, form_id: int, state: FSMContext, *, edit: boo
                     InlineKeyboardMarkup(inline_keyboard=[[_btn("⬅️ К списку", "admin_ext_forms")]]),
                     edit=edit)
         return
-    from services import delegations  # ленивый шов: модуль делегаций тянет БД и aiogram
+    from services.delegations import delegations  # ленивый шов: модуль делегаций тянет БД и aiogram
     if form_id == await delegations.delegation_form_id():
         # Форма делегаций пишет в вкладку выгрузки Яндекса по ID ответа — отсюда её выбирать
         # нельзя: раскладка бота в той же вкладке дала бы «чужую шапку» и задвоила строки.

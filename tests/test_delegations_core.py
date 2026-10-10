@@ -1,4 +1,4 @@
-"""Делегации вузов — ядро `services/delegations.py`: вопросы формы, поля ответа, поиск человека
+"""Делегации вузов — ядро `services/delegations/delegations.py`: вопросы формы, поля ответа, поиск человека
 по @нику, вердикт ЦА, решение о привязке, превращение в одобренного делегата Москвы без
 анкеты, поздний вход через /start, хуки фазы внешних форм.
 
@@ -26,7 +26,7 @@ from config import config
 from database import db
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
-from services import delegations as dlg
+from services.delegations import delegations as dlg
 from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 

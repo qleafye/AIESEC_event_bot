@@ -20,7 +20,7 @@ from database import ext_forms_db as ef
 from handlers.delegations import admin_delegations as mod
 from handlers.settings import admin_sections as sec
 from handlers.access.admin_caps import required_capability
-from services import delegations as dlg
+from services.delegations import delegations as dlg
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 from tests._dbtpl import fast_init_db
