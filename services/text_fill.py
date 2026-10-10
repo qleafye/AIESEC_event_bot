@@ -66,3 +66,21 @@ async def event_name() -> str | None:
     from database.db import get_setting
 
     return ((await get_setting("event_name")) or "").strip() or None
+
+
+# Вид события для фраз вроде «дней на форуме» — по «🎭 Тип события» (`event_type`). СкиллАп —
+# тоже форум; «Вручную» и неизвестное — нейтральное «мероприятие». Пустой тип = форум: это
+# дефолт реестра, и прежний вывод у событий без явного выбора не меняется.
+_EVENT_KIND = {
+    "forum": {"prep": "форуме", "en": "forum"},
+    "skillup": {"prep": "форуме", "en": "forum"},
+    "conference": {"prep": "конференции", "en": "conference"},
+}
+_EVENT_KIND_NEUTRAL = {"prep": "мероприятии", "en": "event"}
+
+
+def event_kind(event_type: str | None, lang: str = "ru") -> str:
+    """Слово вида события: RU — в предложном падеже («на форуме», «на конференции», «на
+    мероприятии»), EN — «forum» / «conference» / «event»."""
+    forms = _EVENT_KIND.get(event_type or "forum", _EVENT_KIND_NEUTRAL)
+    return forms["en"] if lang == "en" else forms["prep"]

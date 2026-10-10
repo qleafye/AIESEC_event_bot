@@ -98,6 +98,7 @@ from database.db import (
 from services import scheduler as _sched
 from services.checkin import ENTRY_POINT, checkin_denial
 from services.ru_plural import ru_plural
+from services.text_fill import event_kind
 from services.timeutil import msk_now
 from settings_schema import get_setting_typed
 
@@ -141,13 +142,15 @@ _MONTH_EN = (
 _ru_plural = ru_plural  # общая функция склонения (services/ru_plural.py)
 
 
-def _hero_caption(key: str, n: int, lang: str) -> str:
-    """Подпись под цифрой-героем в согласии с числом: «1 день на форуме», «2 дня», «5 дней»."""
+def _hero_caption(key: str, n: int, lang: str, event_type: str | None = None) -> str:
+    """Подпись под цифрой-героем в согласии с числом: «1 день на форуме», «2 дня», «5 дней».
+    Вид события — по «🎭 Тип события» («на конференции», «на мероприятии»)."""
+    kind = event_kind(event_type, "en" if lang == "en" else "ru")
     if lang == "en":
         word = {"days": ("day", "days"), "sessions": ("session", "sessions")}[key]
-        return f"{word[0] if int(n) == 1 else word[1]} at the forum"
+        return f"{word[0] if int(n) == 1 else word[1]} at the {kind}"
     forms = {"days": ("день", "дня", "дней"), "sessions": ("сессия", "сессии", "сессий")}[key]
-    return f"{_ru_plural(n, *forms)} на форуме"
+    return f"{_ru_plural(n, *forms)} на {kind}"
 
 
 # Сезон вида «26/1» / «YL 26/1» — служебный код, людям непонятен: на картинке не показываем.
@@ -164,8 +167,8 @@ _LABELS: dict[str, dict[str, str]] = {
     "ru": {
         "title": "{event} в цифрах",
         "title_plain": "Итоги в цифрах",
-        "days": "Дней на форуме",
-        "sessions": "Сессий на форуме",
+        "days": "Дней на {kind}",
+        "sessions": "Сессий на {kind}",
         "hall": "Любимый зал",
         "coins": "Баллов заработано",
         "rank": "Место в рейтинге",
@@ -177,8 +180,8 @@ _LABELS: dict[str, dict[str, str]] = {
         # докстринг модуля), без перевода.
         "title": "{event} in numbers",
         "title_plain": "Results in numbers",
-        "days": "Forum days",
-        "sessions": "Forum sessions",
+        "days": "{Kind} days",
+        "sessions": "{Kind} sessions",
         "hall": "Favorite hall",
         "coins": "Points earned",
         "rank": "Leaderboard place",
@@ -188,10 +191,16 @@ _LABELS: dict[str, dict[str, str]] = {
 }
 
 
-def label_set(lang: str) -> dict[str, str]:
+def label_set(lang: str, event_type: str | None = None) -> dict[str, str]:
     """`lang == "en"` -> английские подписи (бренд всё равно кириллицей); всё остальное
-    (`"ru"`, `"ask"`, неизвестное) -> русские, fail-soft тот же, что у остального проекта."""
-    return _LABELS["en"] if lang == "en" else _LABELS["ru"]
+    (`"ru"`, `"ask"`, неизвестное) -> русские, fail-soft тот же, что у остального проекта.
+    `{kind}`/`{Kind}` — вид события по «🎭 Тип события» (`text_fill.event_kind`)."""
+    en = lang == "en"
+    kind = event_kind(event_type, "en" if en else "ru")
+    return {
+        k: v.replace("{kind}", kind).replace("{Kind}", kind.capitalize())
+        for k, v in _LABELS["en" if en else "ru"].items()
+    }
 
 
 # ── Сбор данных делегата (только реальное — см. докстринг модуля) ───────────────────────────
@@ -397,6 +406,7 @@ def render_card_sync(
     city_label_text: str | None = None,
     date_range_text: str | None = None,
     event_name: str | None = None,
+    event_type: str | None = None,
 ) -> bytes:
     """Чистая (без БД/сети) синхронная функция — единственная, что зовёт `asyncio.to_thread`.
     Никогда не падает на длинном имени/пустых данных/отсутствующем фоне/лого (см. докстринг
@@ -410,7 +420,7 @@ def render_card_sync(
     `_footer_line`."""
     from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-    labels = label_set(lang)
+    labels = label_set(lang, event_type)
     width, height = CARD_WIDTH, CARD_HEIGHT
 
     base = None
@@ -502,7 +512,7 @@ def render_card_sync(
         hero_text = str(stats[hero_key])
         hero_font = _fit_font(draw, hero_text, _FONT_TITLE, 340, 160, content_width)
         hero_num_h = draw.textbbox((0, 0), hero_text, font=hero_font)[3]
-        caption_text = _truncate(draw, _hero_caption(hero_key, stats[hero_key], lang), hero_caption_font, content_width)
+        caption_text = _truncate(draw, _hero_caption(hero_key, stats[hero_key], lang, event_type), hero_caption_font, content_width)
         cap_h = draw.textbbox((0, 0), caption_text, font=hero_caption_font)[3]
         hero_block_h = hero_num_h + 6 + cap_h
 
@@ -640,6 +650,7 @@ async def render_preview(lang: str = "ru", city: str | None = None) -> bytes:
         render_card_sync, _PREVIEW_STATS, background, lang, accent,
         logo_bytes=logo, city_label_text=city_label_text, date_range_text=date_range_text,
         event_name=await event_name(),
+        event_type=await get_setting_typed("event_type"),
     )
 
 
@@ -692,6 +703,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
         from services.text_fill import event_name, fill_event
 
         event_title = await event_name()
+        event_type = await get_setting_typed("event_type")
         if not (caption_base or "").strip():
             # Экран обещает менеджеру «подпись пуста — рассылка НЕ уйдёт»; без этой проверки
             # уходило фото без подписи.
@@ -728,6 +740,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
                     render_card_sync, stats, background, render_lang, accent,
                     logo_bytes=logo, city_label_text=city_label_text, date_range_text=date_range_text,
                     event_name=event_title,
+                    event_type=event_type,
                 )
                 # Подпись уходит с parse_mode=HTML: «<» или «&» в имени давали 400 этому делегату.
                 caption = reg_i18n.tr_fmt(

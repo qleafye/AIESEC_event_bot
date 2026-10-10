@@ -78,7 +78,7 @@ def _fake_render(monkeypatch, calls):
     """Подменяет тяжёлый Pillow-рендер лёгкой заглушкой, записывающей аргумент `lang` — рассылку
     тестируем отдельно от самого рендера (у рендера свои тесты ниже, с настоящим Pillow)."""
     def _stub(stats, background, lang, accent, *, logo_bytes=None, city_label_text=None, date_range_text=None,
-              event_name=None):
+              event_name=None, event_type=None):
         calls.append(lang)
         return b"PNGDATA"
     monkeypatch.setattr(fsc, "render_card_sync", _stub)
