@@ -187,7 +187,23 @@ def test_failure_after_effects_does_not_lose_row(tmp_path, monkeypatch):
     second = _run(reject_retro.apply(object(), "2026-01-01", pause=0))
     assert second["failed"] == 0
     assert _state()[1][1]  # дообработана
-    assert sorted(t for t, _, _ in sent).count(1) == 0  # второго письма не было: уже rejected
+    assert [t for t, _, _ in sent].count(1) == 1  # письмо не потеряно: статус уже rejected, но дошлём
+    assert _sql("SELECT attempt_count FROM auto_reject_log WHERE telegram_id = 1") == [(1,)]  # журнал не задвоен
+    assert _sql("SELECT decided_by FROM application_decisions WHERE telegram_id = 1") == [(-1,)]
+
+
+def test_manual_reject_does_not_get_a_letter(tmp_path, monkeypatch):
+    """Отклонённый менеджером вручную (решение человека в журнале) получает только пометку, даже
+    если в журнале автоотказа у него осталась живая строка с прошлых подач."""
+    sent = _setup(tmp_path, monkeypatch)
+    from services.reject_journal import record_auto_reject
+    _run(record_auto_reject(3, [7], [RULE_TEXT]))
+    stamp = "2099-01-01 00:00:00"
+    _run(db.record_application_decision(3, "rejected", "вручную", 777, stamp, stamp, effects_sent_at=stamp))
+    _run(reject_retro.apply(object(), "2026-01-01", pause=0))
+    assert 3 not in [t for t, _, _ in sent]
+    assert _state()[3][1]  # пометка поставлена
+    assert _sql("SELECT COUNT(*) FROM application_decisions WHERE telegram_id = 3") == [(1,)]
 
 
 def test_manager_approval_during_run_is_not_overwritten(tmp_path, monkeypatch):

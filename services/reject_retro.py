@@ -8,6 +8,9 @@
   правила через `apply_decision_effects` — тихие часы соблюдаются, решение
   `application_decisions` от имени автоотказа);
 - уже отклонён вручную -> только пометка (колонки + журнал), второго письма нет;
+- отклонён НАШИМ прошлым прогоном, оборвавшимся до письма (есть живая строка журнала, но нет
+  решения в `application_decisions`) -> дошлём письмо и решение: статус `rejected` уже стоит,
+  а метка не поставлена как раз потому, что письмо не дошло;
 - одобрен -> не трогается.
 
 Уже помеченные автоотказом пропускаются (метка пишется последней), поэтому повторное применение
@@ -53,6 +56,25 @@ def split_targets(pairs: list[tuple[dict, dict]]) -> dict[str, list[tuple[dict, 
     return groups
 
 
+async def resolve_unfinished(groups: dict[str, list[tuple[dict, dict]]]) -> dict[str, list[tuple[dict, dict]]]:
+    """Переносит из «rejected» в «pending» тех, кого оборвал наш же прошлый прогон: журнал
+    автоотказа есть, а решения человека или автоотказа в `application_decisions` нет. Ручной отказ
+    всегда оставляет там строку (бот и веб пишут её при любом решении), автоотказ пишет её
+    последней, после письма, — значит, «журнал есть, решения нет» = письмо не дошло. Таким
+    записываем `_resume`: статус менять не надо, надо дослать письмо."""
+    from database.db import get_last_application_decision, get_live_auto_reject_log_entry
+
+    stay = []
+    for user, patch in groups["rejected"]:
+        tid = user["telegram_id"]
+        if await get_live_auto_reject_log_entry(tid) and not await get_last_application_decision(tid):
+            groups["pending"].append(({**user, "_resume": True}, patch))
+        else:
+            stay.append((user, patch))
+    groups["rejected"] = stay
+    return groups
+
+
 def person_label(user: dict) -> str:
     name = (user.get("full_name") or "").strip()
     username = (user.get("username") or "").lstrip("@")
@@ -63,7 +85,7 @@ def person_label(user: dict) -> str:
 async def preview(since: str) -> dict:
     """Сводка без единой записи: сколько отклонится, сколько получит пометку, сколько одобренных
     не тронем, плюс примеры."""
-    groups = split_targets(await collect(since))
+    groups = await resolve_unfinished(split_targets(await collect(since)))
     return {
         "pending": len(groups["pending"]),
         "rejected": len(groups["rejected"]),
@@ -87,8 +109,10 @@ async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None
     выборка). Возвращает счётчики. Порядок на человека: статус «отклонён» проверяемой записью
     (`reject_user`, только из «на рассмотрении»), журнал, письмо, и только потом метка
     `auto_reject_rule_ids` — она «закрывает» строку для повторного запуска, поэтому на сбое
-    посередине строка остаётся видна и дообрабатывается, а не теряется."""
-    from database.db import reject_user, update_user_answers
+    посередине строка остаётся видна и дообрабатывается, а не теряется. Если сбой пришёлся на
+    письмо, повтор шлёт его заново (`resolve_unfinished`); письмо может уйти дважды, если
+    оборвалась только запись решения, — это осознанно лучше потерянного."""
+    from database.db import get_live_auto_reject_log_entry, reject_user, update_user_answers
     from reg_labels import STATUS_LABELS
     from services.application_effects import apply_decision_effects
     from services.applications import record_decision
@@ -98,7 +122,7 @@ async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None
     pairs = await collect(since)
     if ids is not None:
         pairs = [(u, p) for u, p in pairs if int(u["telegram_id"]) in ids]
-    groups = split_targets(pairs)
+    groups = await resolve_unfinished(split_targets(pairs))
     done = {"pending": 0, "rejected": 0, "failed": 0, "skipped": 0}
     sheet_ids: list[int] = []
     for status in ("pending", "rejected"):
@@ -106,14 +130,17 @@ async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None
             tid = user["telegram_id"]
             try:
                 column_patch = {k: patch[k] for k in AUTO_COLUMNS if k in patch}
-                if status == "pending":
+                resume = bool(user.get("_resume"))
+                if status == "pending" and not resume:
                     if not await reject_user(tid):
                         done["skipped"] += 1  # успели одобрить/отклонить вручную — не трогаем
                         continue
-                    sheet_ids.append(tid)
-                else:
+                elif not resume:
                     column_patch.pop("rejected_at", None)
-                await record_auto_reject(tid, patch["reject_rule_ids"], patch["reject_texts"])
+                if status == "pending":
+                    sheet_ids.append(tid)
+                if not await get_live_auto_reject_log_entry(tid):  # повтор не растит attempt_count
+                    await record_auto_reject(tid, patch["reject_rule_ids"], patch["reject_texts"])
                 if status == "pending":
                     lang, tr_map = await i18n_context(tid)
                     reason = "\n\n".join(i18n_tr(t, lang, tr_map) for t in patch["reject_texts"]) or None
