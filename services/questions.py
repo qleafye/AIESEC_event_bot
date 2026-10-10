@@ -1,6 +1,6 @@
 """Quick 260904-2cj: единственное место, где живёт правило статуса вопроса делегата.
 
-Чистый модуль (форма `services/applications.py`, только этот вовсе не ходит в базу — ни
+Чистый модуль (форма `services/applications/applications.py`, только этот вовсе не ходит в базу — ни
 одного импорта `database.db`, ни одного SQL): статус вопроса выводится из ТРЁХ колонок
 строки `delegate_questions` (answered_by/delivered_at/answered_at), которые уже есть в
 проекте (T-08-33/D-14) — здесь только чтение, схему не трогаем.
@@ -166,12 +166,12 @@ def format_stamp(raw: str | None, *, stored_utc: bool = True, offset_hours: int 
         МСК (`msk_now().strftime(...)`, квик 260912-mcj)  -> stored_utc=False:
             (вызывающих у этого режима больше нет — режим сохранён для меток, которые
             пишутся уже московским `msk_now()` и печатаются другой функцией,
-            `services/applications.py::format_edited_date`: edited_at, approved_at,
+            `services/applications/applications.py::format_edited_date`: edited_at, approved_at,
             registration_date)
 
     Долг «`reg_answer_history.changed_at` пишется локальным временем» закрыт квиком
     260906-52m: `record_answer_history` переведена на `datetime.utcnow()`, все три точки
-    показа (`services/sheets/sheet_logs.py`, `services/applications.py::_history_entry`,
+    показа (`services/sheets/sheet_logs.py`, `services/applications/applications.py::_history_entry`,
     `handlers/applications/admin_moderation.py::appr_history`) переключены на сдвиг в МСК. Долг «семья
     `edited_at`/`approved_at`/`registration_date` пишется локальным временем контейнера и
     отстаёт от Москвы на 3 часа» закрыт квиком 260912-mcj — эта семья теперь сама пишется

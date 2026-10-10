@@ -623,7 +623,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     решения (или его постановке в очередь тихих часов — контракт `quiet_hours.send_or_queue_text`
     здесь не считается провалом), иначе — итоговое исключение (после одного 429-ретрая,
     `services.infra.telegram_send.send_with_retry` — тот же приём, что у отказа в
-    `services/application_effects.py::apply_decision_effects`). Бонус (медиа) — best-effort:
+    `services/applications/application_effects.py::apply_decision_effects`). Бонус (медиа) — best-effort:
     его сбой НЕ портит статус доставки решения (само письмо уже ушло), только логируется.
     Остаётся fail-soft: ни одна ветка не поднимает исключение наружу, вызывающий читает только
     возврат.
@@ -714,7 +714,7 @@ async def approve_user(bot: Bot, telegram_id: int, *, auto_approved: bool = Fals
     ONLY caller passing True is `services/reg_finalize.py::post_finalize`'s auto-approve tail.
 
     Координатор 25.09 (учёт доставки решения): возврат — `None` при успехе, иначе итоговое
-    исключение (`services/application_effects.py` классифицирует и пишет `users.
+    исключение (`services/applications/application_effects.py` классифицирует и пишет `users.
     decision_delivery_*`). Остаётся fail-soft: ни один путь не поднимает исключение наружу,
     существующие вызывающие, игнорирующие возврат, ведут себя byte-for-byte прежними."""
     logger.info(f"user={telegram_id} action=approve_welcome")
@@ -761,7 +761,7 @@ async def resend_approve_text(bot: Bot, telegram_id: int) -> Exception | None:
     повторно НЕ шлётся (делегат уже получил его при первом решении). В отличие от `approve_user`,
     шаг оплаты НЕ открывается никогда — при `payment_enabled=on` обычное одобрение уходит в
     `handlers.payment.start_payment_step`, который заново рисует пикер тарифов и сбрасывает FSM
-    делегата (см. `services/application_effects.py::apply_decision_effects`, `resend=True`);
+    делегата (см. `services/applications/application_effects.py::apply_decision_effects`, `resend=True`);
     переотправка обязана прислать письмо, а не открыть заново шаг оплаты, поэтому здесь модуль
     оплаты не проверяется вовсе — сразу `send_completion_and_bonus`."""
     try:

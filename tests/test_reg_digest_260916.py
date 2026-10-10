@@ -392,7 +392,7 @@ def test_send_reg_digest_appends_rule_breakdown_and_all_auto_header(tmp_path, mo
         name="Младше 16", city=None, tracks="[]", conditions="{}", action="reject",
         reject_text=None, enabled=1, created_by=None,
     ))
-    from services.reject_journal import record_auto_reject
+    from services.applications.reject_journal import record_auto_reject
     asyncio.run(record_auto_reject(DELEGATE_MSK, [rid], ["текст"]))
     now = "2026-09-16 12:00:00"
     asyncio.run(db.enqueue_reg_digest(DELEGATE_MSK, "msk", now, auto_rejected=1))

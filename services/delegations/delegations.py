@@ -44,7 +44,7 @@ from database.db import (
 from services.delegations.delegations_course import _cutoff_dt, evaluate_ta, parse_course
 from services.ext_forms.ext_forms_match import username_from_value
 from services.reg_stuck_reset import _is_registration_state
-from services.reject_journal import AUTO_DECIDED_BY
+from services.applications.reject_journal import AUTO_DECIDED_BY
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
@@ -60,7 +60,7 @@ NOTE_AMBIGUOUS_NICK = ddb.NOTE_AMBIGUOUS_NICK
 # проверяют «delegation не пусто» — пустое значение сделало бы делегата обычным участником.
 UNIVERSITY_UNKNOWN = "вуз не указан"
 # Автор журнала решений при автоматическом одобрении — тот же сентинел, что у автоотказа
-# анкеты (`services.reject_journal.AUTO_DECIDED_BY`): списки заявок уже умеют показывать его
+# анкеты (`services.applications.reject_journal.AUTO_DECIDED_BY`): списки заявок уже умеют показывать его
 # как «автоматически». Когда одобрение авторизовал менеджер, автором становится он.
 DELEGATION_DECIDED_BY = AUTO_DECIDED_BY
 
@@ -301,7 +301,7 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
     import html as html_module
 
     from keyboards.builders import get_main_menu_kb
-    from services.application_effects import _record_delivery_fail_soft
+    from services.applications.application_effects import _record_delivery_fail_soft
     from services.i18n.i18n import context as i18n_context
     from services.i18n.i18n import tr
     from services.infra.telegram_send import send_with_retry
@@ -460,7 +460,7 @@ async def convert_to_delegate(
             logger.exception("delegations: FSM анкеты не сброшен (tid=%s)", tid)
 
     if flipped:
-        from services.applications import record_decision
+        from services.applications.applications import record_decision
         try:
             await record_decision(
                 tid, "approved", None, by if by is not None else DELEGATION_DECIDED_BY,

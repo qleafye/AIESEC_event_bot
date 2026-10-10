@@ -30,7 +30,7 @@ msk «как есть, одобренной»). Единая точка прав
 Сообщение делегату НЕ шлётся ни при каком `status_mode` — перевод города осознанно тихое
 админ-действие (SEED прямо исключил уведомление делегата из объёма фазы).
 
-aiogram-free (тот же разрез, что `services/reject_journal.py` против `handlers/applications/admin_moderation.py`
+aiogram-free (тот же разрез, что `services/applications/reject_journal.py` против `handlers/applications/admin_moderation.py`
 — модуль ничего не знает про Bot/aiogram, вызывающий хендлер строит собственные сообщения)."""
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ async def move_user_city(
 
     `status_mode`: `"keep"` — статус не трогаем; `"to_moderation"` — штатный возврат на
     модерацию (`database.db.revert_user_to_pending`, тот же примитив, что
-    `services/reject_journal.py::return_to_moderation`), no-op если статус уже `pending`.
+    `services/applications/reject_journal.py::return_to_moderation`), no-op если статус уже `pending`.
 
     `history_source` — `source` записи `reg_answer_history` (решение координатора 25.09):
     дефолт `"admin"` — ручной перевод менеджером карточкой (`handlers/cities/admin_city_move.py`,
@@ -195,7 +195,7 @@ async def move_user_city(
     форумы → Москва» (`services/regional_noshow_move.py::apply_move`) передаёт свой маркер
     (`"system:regional_offer"`) — перенос инициирован делегатом по кнопке предложения, не
     менеджером карточкой; экран истории правок показывает `source` как есть (см. `_EDITED_
-    SOURCE_LABELS.get(source, source)` в `services/applications.py`), незнакомое значение не
+    SOURCE_LABELS.get(source, source)` в `services/applications/applications.py`), незнакомое значение не
     роняет экран, просто печатается сырым текстом."""
     if status_mode not in STATUS_MODES:
         return {"ok": False, "error": f"Неизвестный режим статуса: {status_mode!r}", "dry_run": dry_run}

@@ -1,4 +1,4 @@
-"""Phase 31 Plan 04 (D-05/D-08/D-10/D-11/D-13/D-14/D-16): `services/reject_rules.py` — служебный
+"""Phase 31 Plan 04 (D-05/D-08/D-10/D-11/D-13/D-14/D-16): `services/applications/reject_rules.py` — служебный
 слой правил автоотказа. Три пласта сторожей — по одному на задачу плана:
 - Задача 1: `active_rules`/`forum_date_for` — рубильник, фильтр по городу/треку, пересчёт паузы.
 - Задача 2: `can_edit_city`/`save_rule`/`delete_rule`/`validate_condition` — право по городу,
@@ -16,7 +16,7 @@ import json
 
 from config import config
 from database import db
-import services.reject_rules as rr
+import services.applications.reject_rules as rr
 from tests.test_miniapp_labels_drift import _loaded_aiogram
 from tests._dbtpl import fast_init_db
 
@@ -87,8 +87,8 @@ def test_kill_switch_returns_empty_without_db_query(tmp_path, monkeypatch):
 
 
 def test_reject_rules_module_does_not_load_aiogram():
-    loaded = _loaded_aiogram("import services.reject_rules")
-    assert loaded == [], f"services.reject_rules потянул aiogram: {loaded}"
+    loaded = _loaded_aiogram("import services.applications.reject_rules")
+    assert loaded == [], f"services.applications.reject_rules потянул aiogram: {loaded}"
 
 
 def test_active_rules_returns_only_enabled_rules(tmp_path):

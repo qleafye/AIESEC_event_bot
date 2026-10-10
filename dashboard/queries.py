@@ -2427,7 +2427,7 @@ def sos_block(conn, scope: Scope) -> dict | None:
     }
 
 
-# Строка причины сбоя должна совпадать с `services.decision_delivery.ERROR_BLOCKED` — дашборд
+# Строка причины сбоя должна совпадать с `services.applications.decision_delivery.ERROR_BLOCKED` — дашборд
 # НЕ импортирует `services/*` (не тянуть транзитивно aiogram/aiosqlite в slim-образ, см.
 # докстринг модуля), поэтому строка продублирована здесь; дрейф ловит
 # `tests/test_dashboard_forum_stats_260926.py`.
@@ -2436,7 +2436,7 @@ _DECISION_ERROR_BLOCKED = "бот заблокирован делегатом"
 
 def decision_delivery_block(conn, scope: Scope) -> dict | None:
     """Раздел «Решения по заявкам»: доставлено / не доставлено (в т.ч. заблокировали бота) /
-    в очереди / неизвестно — та же раскладка, что `services.decision_delivery.
+    в очереди / неизвестно — та же раскладка, что `services.applications.decision_delivery.
     summarize_deliveries` (бот), но одним SQL-агрегатом по `users.decision_delivery_status` —
     без обхода списка людей в Python и без ПД (D-17: только счётчики, ни одного имени)."""
     has_column = any(

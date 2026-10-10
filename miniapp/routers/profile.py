@@ -47,7 +47,7 @@
 строка дат (`form_meta_text` — «Отправлена {date}» + опционально «изменена {date}» +
 опционально «одобрена {date}», D-10) — обе собраны на сервере из реестра, клиент только
 рисует готовую строку (D-06). Дата форматируется ЕДИНСТВЕННЫМ существующим в проекте
-человеческим форматом даты Mini App — `services.applications.format_edited_date` (тот же
+человеческим форматом даты Mini App — `services.applications.applications.format_edited_date` (тот же
 помощник, что карточка заявки менеджера использует для «✏️ Изменена»; второго формата дат
 этот план не заводит).
 
@@ -55,7 +55,7 @@ D-10 (владелец, `23.1-CONTEXT.md` O-2): `users.approved_at` проста
 атомарным `UPDATE` в `database.db.approve_user_atomic`/`approve_all_pending` — единственная
 точка правды для всех трёх путей одобрения (бот: карточка «✅ Одобрить» и «Принять всех»,
 веб: `miniapp/routers/applications.py`), т.к. бот кое-где зовёт `database.db.approve_all_pending`
-НАПРЯМУЮ, минуя `services.applications.claim_approve_all` (`handlers/applications/admin_moderation.py`,
+НАПРЯМУЮ, минуя `services.applications.applications.claim_approve_all` (`handlers/applications/admin_moderation.py`,
 `appr_all_yes`) — стамповать `approved_at` только в обёртках сервиса означало бы пропустить
 чатовое «Принять всех». Профиль здесь просто читает уже проставленную колонку.
 
@@ -78,7 +78,7 @@ from database.db import get_user
 from domain.regform.labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services.i18n import i18n
 from services import reg_edit_policy
-from services.applications import format_edited_date
+from services.applications.applications import format_edited_date
 from services.nextcloud import file_name_from_link
 from domain.settings.schema import get_setting_typed
 

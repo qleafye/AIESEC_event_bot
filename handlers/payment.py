@@ -198,7 +198,7 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
     (пикер тарифов / фоллбэк на бесплатный путь / реквизиты одного тарифа), иначе — исключение
     (после фоллбэка на приветственный текст тоже упавшего). Остаётся fail-soft: наружу
     исключение не поднимается, только классифицируется для учёта доставки решения в
-    `services/application_effects.py`.
+    `services/applications/application_effects.py`.
     """
     lang, tr_map = await i18n_service.context(telegram_id)
     try:

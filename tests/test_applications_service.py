@@ -1,4 +1,4 @@
-"""Phase 23 План 02 (APP-TINDER-01) — юнит-покрытие `services/applications.py`: ядро отбора
+"""Phase 23 План 02 (APP-TINDER-01) — юнит-покрытие `services/applications/applications.py`: ядро отбора
 заявок без aiogram (очередь, карточка, атомарные решения, журнал отмены).
 
 pytest-asyncio не используется — асинхронщина через `asyncio.run()`, БД — временная
@@ -10,7 +10,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 import domain.regform.moderation_card as moderation_card
-import services.applications as applications
+import services.applications.applications as applications
 from config import config
 from database import db
 from tests._dbtpl import fast_init_db
@@ -407,7 +407,7 @@ def test_claim_approve_all_stamps_approved_at_web_mass_path(tmp_path):
 
 def test_bot_direct_approve_all_pending_also_stamps_approved_at(tmp_path):
     # Бот (handlers/applications/admin_moderation.py::appr_all_yes) зовёт database.db.approve_all_pending
-    # НАПРЯМУЮ, минуя services.applications.claim_approve_all — approved_at обязан приехать
+    # НАПРЯМУЮ, минуя services.applications.applications.claim_approve_all — approved_at обязан приехать
     # и по этому пути (та же атомарная UPDATE, живёт в database.db, а не в этом сервисе).
     _use_tmp_db(tmp_path)
     fast_init_db()

@@ -21,7 +21,7 @@ from config import config
 from database import amb_status_db as sdb
 from database import db
 from services.amb import amb_status, amb_tiers
-from services import applications
+from services.applications import applications
 from tests._dbtpl import fast_init_db
 
 SEASON = "RT 26"
@@ -245,7 +245,7 @@ def _call_name(node) -> str | None:
     return None
 
 
-_APPROVAL_FILES = ("services/applications.py", "services/reg_finalize.py")
+_APPROVAL_FILES = ("services/applications/applications.py", "services/reg_finalize.py")
 
 
 def _functions_calling(name: str) -> dict[str, set[str]]:
@@ -426,7 +426,7 @@ def _holder(tid, *, pack=False, city=None):
 
 
 def test_revert_to_pending_releases_slot_without_pack(ready):
-    from services.revert_pending import revert_to_pending
+    from services.applications.revert_pending import revert_to_pending
     _limit(1)
     _holder(60)
     assert _run(amb_status.offer_open()) is False
@@ -438,7 +438,7 @@ def test_revert_to_pending_releases_slot_without_pack(ready):
 
 
 def test_revert_to_pending_keeps_slot_with_pack(ready):
-    from services.revert_pending import revert_to_pending
+    from services.applications.revert_pending import revert_to_pending
     _holder(61, pack=True)
     assert _run(revert_to_pending(61, by_admin=1, notify=False))["ok"]
     assert _st(61)["slot_at"]

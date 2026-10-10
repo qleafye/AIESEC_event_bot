@@ -68,7 +68,7 @@ def test_mute_mechanism_confined_to_broadcast_owners():
 # ── Слой 2: функциональная проверка — решение по заявке доходит муженному ───────────────
 
 def test_application_decision_reaches_muted_delegate(tmp_path, monkeypatch):
-    from services import application_effects
+    from services.applications import application_effects
 
     async def go():
         _ready(tmp_path)

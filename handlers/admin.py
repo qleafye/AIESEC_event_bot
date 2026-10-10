@@ -104,7 +104,7 @@ from services.scheduler import (
 from services.access.allowlist import refresh_allowlist, allowlist_size
 from services import source_links
 from services.infra.background import spawn as _spawn
-from services import decision_delivery
+from services.applications import decision_delivery
 from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport, clear_admin_flow_state
 from handlers.access.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
@@ -491,7 +491,7 @@ async def cmd_find_user(message: types.Message):
             f"{_find_email_line(user)}"
             f"Регистрация: {user['registration_date']}"
         )
-        from services.delegate_card import ext_forms_card_lines, status_city_season_lines  # 01.10
+        from services.applications.delegate_card import ext_forms_card_lines, status_city_season_lines  # 01.10
         text += await status_city_season_lines(user)
         forms_line, has_forms = await ext_forms_card_lines(user['telegram_id'])
         text += forms_line
@@ -512,14 +512,14 @@ async def cmd_find_user(message: types.Message):
                 text="📝 Ответы форм", callback_data=f"extf_view:{user['telegram_id']}",
             )])
         # Phase 33: «↩️ Вернуть в ожидание» — видна только для решённой заявки (одобрена/
-        # отклонена), для ожидающей возвращать не с чего (services/revert_pending.py
+        # отклонена), для ожидающей возвращать не с чего (services/applications/revert_pending.py
         # REVERTIBLE_STATUSES). Подтверждение и сама операция — handlers/applications/admin_revert_pending.py.
         if user.get("status") in ("approved", "rejected"):
             rows.append([InlineKeyboardButton(
                 text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
             )])
         # «📨 Отправить решение заново» — для решённой заявки; если письмо не дошло, причина
-        # строкой в карточке (services/decision_delivery.py::failure_line). Шов — handlers/
+        # строкой в карточке (services/applications/decision_delivery.py::failure_line). Шов — handlers/
         # admin_resend_decision.py.
         if user.get("status") in ("approved", "rejected"):
             text += decision_delivery.failure_line(user)
@@ -530,7 +530,7 @@ async def cmd_find_user(message: types.Message):
         # заявки (services/reg_edit_policy.resubmit_gate — единственный гейт, которому это
         # исключение вообще что-то меняет). Уже активное исключение — строкой в тексте карточки
         # + кнопка «отозвать» вместо кнопки выдачи (не обе разом).
-        from services import delegate_overrides
+        from services.applications import delegate_overrides
         if user.get("status") == "rejected":
             resubmit_override = await delegate_overrides.active_override(
                 user["telegram_id"], delegate_overrides.KIND_RESUBMIT,

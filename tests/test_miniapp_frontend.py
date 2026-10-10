@@ -1670,7 +1670,7 @@ def test_applications_screen_mass_approve_uses_shared_confirm_box():
 
 def test_applications_screen_history_renders_server_labels_not_raw_columns():
     """План 23-06 закрыл Known Stub 23-05: экран рисует `label`/`old`/`new`/`when`/
-    `source_label`, которые уже перевёл сервер (`services.applications._history_entry`) —
+    `source_label`, которые уже перевёл сервер (`services.applications.applications._history_entry`) —
     ни `row.column`, ни `row.source`, ни голого `row.changed_at` в JS больше нет."""
     text = _js_without_comments(APPLICATIONS_JS)
     assert "change.label" in text

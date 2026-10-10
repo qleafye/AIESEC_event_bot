@@ -32,7 +32,7 @@
 `claim_submission -> add_coins` (план 19-05); `coins_manual` — только уведомление делегату.
 
 Phase 23 (23-04, APP-TINDER-02, D-06/D-07): `application_decided`/`application_mass_approved`
-— хвост решения по заявке отбора (`services/applications.py`, план 23-02). Веб-процесс НЕ
+— хвост решения по заявке отбора (`services/applications/applications.py`, план 23-02). Веб-процесс НЕ
 шлёт приветствие/отказ делегату сам: `approve_user` (welcome + меню + реквизиты) — aiogram-
 путь бота, должен остаться единственным местом, где оно отправляется РОВНО один раз (D-10).
 `application_decided` ставится не сразу — `flush_application_decisions` ниже переносит его
@@ -112,7 +112,7 @@ async def enqueue(kind: str, payload: dict) -> int | None:
 
 
 async def flush_application_decisions(now: datetime) -> int:
-    """D-06: подметает просроченные решения по заявкам (`services.applications.
+    """D-06: подметает просроченные решения по заявкам (`services.applications.applications.
     flush_due_decisions`, план 23-02) и ставит их эффект в очередь как `application_decided`.
 
     `flush_due_decisions` зовёт свой колбэк СИНХРОННО и без await (его тестовый двойник в
@@ -123,13 +123,13 @@ async def flush_application_decisions(now: datetime) -> int:
 
     `kind`, который получает колбэк, — это `application_decisions.decision` ('approved' |
     'rejected'), А НЕ вид outbox: этот адаптер и есть перевод одного в другое —
-    `services/applications.py` намеренно ничего не знает про имя `application_decided`
+    `services/applications/applications.py` намеренно ничего не знает про имя `application_decided`
     (докстринг `flush_due_decisions`: модуль остаётся свободен от `miniapp.outbox`).
 
     Бот (`services/scheduler.py::miniapp_outbox_drain_job`) НЕ импортирует этот модуль —
     зависимость `miniapp -> services/database` однонаправленная — и держит маленький
     дубль этого же адаптера на голых `database.db.enqueue_miniapp_outbox` (see его докстринг)."""
-    from services.applications import flush_due_decisions  # локально: applications.py не
+    from services.applications.applications import flush_due_decisions  # локально: applications.py не
     # знает про miniapp вовсе, здесь достаточно узнать про него ОДНОЙ функции при вызове.
 
     pending: list = []

@@ -110,7 +110,7 @@ async def reset_stuck_registration(
 
     `notify`/`bot` — делегатское сообщение «Анкета сброшена — начни заново: /start» (тумблер
     экрана подтверждения, дефолт «да» — 33-SEED); `bot=None` с `notify=True` тихо пропускает
-    отправку (тот же fail-soft приём, что `services/revert_pending.py`)."""
+    отправку (тот же fail-soft приём, что `services/applications/revert_pending.py`)."""
     draft = await get_reg_draft(telegram_id)
     if draft is None:
         return {"ok": False, "error": "Черновика уже нет — возможно, делегат сам успел закончить или сбросить анкету."}

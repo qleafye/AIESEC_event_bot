@@ -24,7 +24,7 @@ import pytest
 
 from config import config
 from database import db
-import services.reject_rules as rr
+import services.applications.reject_rules as rr
 from services import reg_finalize as rf
 from tests._dbtpl import fast_init_db
 

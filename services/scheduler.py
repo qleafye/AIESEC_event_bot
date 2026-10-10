@@ -1256,14 +1256,14 @@ async def _flush_due_application_decisions(now: datetime) -> None:
     the undo window, the decision's deferred effect (`application_decided`) would otherwise
     never leave `application_decisions` for `miniapp_outbox`. Same translation as
     `miniapp/outbox.py::flush_application_decisions` (kind/payload shape, collect-then-gather
-    around `services.applications.flush_due_decisions`'s sync unawaited callback) — duplicated
+    around `services.applications.applications.flush_due_decisions`'s sync unawaited callback) — duplicated
     here on purpose rather than imported: `services/scheduler.py` (bot process) must never
     depend on `miniapp.*` (the one-way boundary every other job in this file already respects,
-    see the docstring above). Lazy import of `services.applications`/`database.db.
+    see the docstring above). Lazy import of `services.applications.applications`/`database.db.
     enqueue_miniapp_outbox` for the same reason the sibling job below stays lazy — this
     function only runs from inside a job, never at module import time."""
     from database.db import enqueue_miniapp_outbox
-    from services import applications
+    from services.applications import applications
 
     pending = []
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")
