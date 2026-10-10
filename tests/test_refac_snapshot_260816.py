@@ -1038,6 +1038,7 @@ admin|callback_query|prog_wretime|prog_wretime
 admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
+admin|callback_query|settings_edit_all|settings_edit_all:*
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -2469,6 +2470,9 @@ def test_snapshot_total_handler_count_is_292():
     # 10.10 (ревью разовых операций): кнопка «Начислить» несёт числа предпросмотра, фильтр
     # amb_backfill_go стал startswith("ambpt_fill_go") — состав хендлеров прежний, меняется литерал.
     # 10.10 («Загрузить историю чата»): +4 admin.message и +4 admin.callback_query у экрана рейтинга чата (1232 -> 1240).
+    # 10.10 (общая настройка при городе в шапке, handlers/admin_settings_global.py — хвост
+    # admin_settings.py после admin_settings_placeholders): +1 admin.callback_query settings_edit_all
+    # сразу после phchk_retry, чистая вставка (1224 -> 1225).
     assert len(GOLDEN_SNAPSHOT) == 1240
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после

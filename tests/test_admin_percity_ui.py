@@ -190,9 +190,11 @@ def test_module_on_non_per_city_key_editor_marked_global_only(tmp_path):
     assert "Общая настройка (одна на все города)" in cb.message.text
     spb_label = asyncio.run(cities.city_label("spb"))
     assert cb.message.text.splitlines()[0] == f"🏙 {spb_label}"
-    # FSM starts immediately -- the key is edited globally, there is no city-scoped step.
-    assert state.state == admin_mod.EditSetting.waiting_for_value
-    assert state.data.get("setting_key") == "event_name"
+    # 10.10: общая настройка при городе в шапке — ввод только после кнопки «✏️ Изменить для
+    # всех городов» (handlers/admin_settings_global.py): случайное сообщение при просмотре
+    # экрана больше не меняет текст всем городам.
+    assert state.state is None
+    assert "settings_edit_all:event_name" in data
 
 
 def test_landing_never_shows_percity_picker_button_for_registration_mode(tmp_path):
