@@ -78,8 +78,10 @@ def test_five_new_keys_have_at_least_two_lowercase_synonyms():
 # ── page.SCREEN_TEXT_KEYS: доставка без седьмого errorText ──────────────────────────────
 
 def test_screen_text_keys_has_exactly_six_entries_matching_new_keys():
-    assert len(page_module.SCREEN_TEXT_KEYS) == 6
-    assert set(page_module.SCREEN_TEXT_KEYS.values()) == set(NEW_KEYS)
+    # Имя историческое: 10.10 седьмой ключ — счётчик операций на главной.
+    assert len(page_module.SCREEN_TEXT_KEYS) == 7
+    # Приёмка 10.10: плюс счётчик операций с баллами на главной (склонение по числу).
+    assert set(page_module.SCREEN_TEXT_KEYS.values()) == set(NEW_KEYS) | {"miniapp_coins_ops_count_text"}
 
 
 # ── доставка в оболочку: data-screen-texts ───────────────────────────────────────────────

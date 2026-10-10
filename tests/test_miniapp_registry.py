@@ -71,6 +71,7 @@ MINIAPP_KEYS = [
     "miniapp_upload_caption_settings",  # Quick 260904-8o3 Task 2 (E3): ассет оформления
     "miniapp_upload_caption_resume",  # Phase 21 Plan 02 (FORM-SYNC-05, Pattern 5)
     # 260824-8qw (MD-03): подтверждение перед выключением приложения / скрытием от делегатов
+    "miniapp_coins_ops_count_text",
     "miniapp_confirm_disable_text",
     "miniapp_confirm_staff_only_text",
     # Phase 19.1-02: ручки пресетов оформления (D-03/D-04)
@@ -334,7 +335,8 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # (miniapp_upload_file_rejected_text) (194 -> 195).
     # Квик 27.09 (ревью): +2 текста сбоя загрузки файла и обложки не-картинкой — раньше
     # литералы JS, EN-делегат видел их по-русски (195 -> 197).
-    assert len(MINIAPP_KEYS) == 197
+    # Приёмка 10.10: +1 счётчик операций с баллами на главной (197 -> 198).
+    assert len(MINIAPP_KEYS) == 198
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -405,7 +407,8 @@ def test_text_keys_have_human_defaults():
     # (160 -> 161).
     # Квик 27.09: +1 текстовый ключ отказа Telegram по файлу сдачи (161 -> 162).
     # Квик 27.09 (ревью): +2 текста сбоя загрузки и обложки не-картинкой (162 -> 164).
-    assert len(text_keys) == 164
+    # Приёмка 10.10: +1 счётчик операций с баллами на главной (164 -> 165).
+    assert len(text_keys) == 165
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
