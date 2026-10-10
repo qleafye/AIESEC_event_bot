@@ -3,7 +3,7 @@
 список SOS показывает суть заявки и кто/когда взял и решил."""
 from __future__ import annotations
 
-from handlers import admin_sos, sos as sos_handlers
+from handlers.forum import admin_sos, sos as sos_handlers
 from services import sos as sos_service
 from database import db
 from tests.test_sos_260924 import (

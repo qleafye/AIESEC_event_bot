@@ -5,7 +5,7 @@
 Не входит в generic-пикер `handlers/comms/admin_broadcasts.py::_show_value_picker` — там значение
 всегда одно из ДВУХ сентинелов (has/none, in/out, …), здесь значение — конкретная сессия
 программы, у которой есть собственный трёхшаговый выбор. Форма шва — эталон
-`handlers/admin_program.py`: своего `Router()` нет, `from handlers.admin import router`,
+`handlers/forum/admin_program.py`: своего `Router()` нет, `from handlers.admin import router`,
 каждый декоратор — в одну строку (инвариант cap-теста `tests/test_roles_phase8.py`). Импорт —
 хвостом `handlers/comms/admin_broadcasts.py` (тот же приём, что `admin_program_halls` в хвосте
 `admin_program.py`).

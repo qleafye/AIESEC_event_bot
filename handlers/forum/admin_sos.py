@@ -619,7 +619,7 @@ _SOS_DELAY_PRESETS = (5, 10, 15, 30)
 # После сохранения/отмены — назад на этот экран (admin_sections.settings_return_screen, шаг 0).
 _BACK_TO_SOS = {"return_cb": "asos_settings", "return_label": "← К текстам и таймингам SOS"}
 
-# D-31: третий тайминг — «сколько ждать дозапись» (режим «дописываю SOS», handlers/sos.py::
+# D-31: третий тайминг — «сколько ждать дозапись» (режим «дописываю SOS», handlers/forum/sos.py::
 # SosReport.collecting) — тот же реестровый ключ `sos_collecting_timeout_minutes`, тот же
 # пресет/«Другое» приём, что у reopen/claimed выше, поэтому вынесен в общий словарь field ->
 # base_key вместо if/else-цепочки на два значения.

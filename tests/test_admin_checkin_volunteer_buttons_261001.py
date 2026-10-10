@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 
 from database import db
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from tests.test_admin_checkin_260924 import (
     ADMIN_ID,
     BOUND_ID,

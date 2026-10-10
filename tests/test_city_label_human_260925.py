@@ -22,7 +22,7 @@ import pytest
 import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
-from handlers import admin_checkin, admin_checkin_stats
+from handlers.forum import admin_checkin, admin_checkin_stats
 from services.checkin import ENTRY_POINT, build_payload, current_event_tag
 
 from tests.test_miniapp_checkin_260924 import (

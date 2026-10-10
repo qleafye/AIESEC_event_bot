@@ -7,7 +7,7 @@
 
 Тумблер `volunteer_invite_enabled` — per_city, дефолт OFF (D: «риск утечки ссылки принят», но
 не включён нигде без явного решения менеджера города). Своего `Router()` нет — декорирует
-`handlers.admin.router`, тот же приём, что `handlers/admin_forum_functions.py`; импортирован в
+`handlers.admin.router`, тот же приём, что `handlers/forum/admin_forum_functions.py`; импортирован в
 ХВОСТЕ `handlers/admin.py`, ПОСЛЕДНИМ (золотой снапшот — чистый аппенд).
 
 Гонки закрыты на уровне БД (`database/db.py::claim_volunteer_invite`, см. его докстринг) — этот
@@ -38,7 +38,7 @@ from database.db import (
     revoke_volunteer_invite,
 )
 from handlers.admin import router
-from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _admin_city_scope, _city_allowed, _decode_city, _encode_city
+from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _admin_city_scope, _city_allowed, _decode_city, _encode_city
 from handlers.states import VolunteerInviteWizard
 from keyboards.builders import get_cancel_kb
 from services.staff_expiry import format_ddmmyyyy, forum_end_date_iso, is_expiry_active, parse_ddmmyyyy, relative_days_iso
@@ -185,7 +185,7 @@ async def _render_city_picker() -> tuple[str, InlineKeyboardMarkup]:
 @router.callback_query(F.data == "volinvite_entry")
 async def volinvite_entry(callback: types.CallbackQuery, bot: Bot):
     """Точка входа с экрана «👥 Роли и доступы» (там нет своей шапки-города) — тот же
-    трёхветочный резолвер, что `handlers.admin_forum_functions._resolve_screen_city`."""
+    трёхветочный резолвер, что `handlers.forum.admin_forum_functions._resolve_screen_city`."""
     own_scope = await _admin_city_scope(callback.from_user.id)
     code = own_scope[0] if own_scope is not None else (
         default_city_code() if not await cities_module_on() else None

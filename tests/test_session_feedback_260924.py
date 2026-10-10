@@ -1,6 +1,6 @@
 """Форум-ночь п.9 (идея №15 бэклога чек-ина, `.planning/IDEAS-CHECKIN-BACKLOG-260924.md`; D-24
 `.planning/FORUM-CHECKIN.md`): «⭐ Отзыв о сессии одним тапом» — БД (`session_feedback`),
-домен (`services/session_feedback.py`) и делегатский шов (`handlers/session_feedback.py`).
+домен (`services/session_feedback.py`) и делегатский шов (`handlers/forum/session_feedback.py`).
 
 pytest-asyncio недоступен (см. `tests/test_db_phase5.py`) — каждый async-вызов через
 `asyncio.run()`, `config.DB_PATH` смотрит в `tmp_path`, БД — шаблонная копия
@@ -21,7 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 import services.scheduler as sched
 import services.session_feedback as sf
-import handlers.session_feedback as sf_handlers
+import handlers.forum.session_feedback as sf_handlers
 from services.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
@@ -616,7 +616,7 @@ def test_prog_fbday_open_missing_city_shows_empty_state(tmp_path):
 
 def test_session_card_hides_comments_button_when_none(tmp_path):
     """Карточка сессии: «💬 Комментарии» — только когда есть хоть один комментарий."""
-    from handlers import admin_program
+    from handlers.forum import admin_program
 
     def _cbs(kb):
         return [b.callback_data for row in kb.inline_keyboard for b in row]

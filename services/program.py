@@ -253,7 +253,7 @@ def session_point_label(session: dict, *, limit: int = 40) -> str:
     """Подпись кнопки точки отметки сессии: время + (· зал) + название, обрезанное до `limit`
     символов — единая точка форматирования и для сканера Mini App
     (`miniapp/routers/checkin.py`), и для точек в загрузке CSV
-    (`handlers/admin_checkin.py`), чтобы подпись не разошлась в двух местах."""
+    (`handlers/forum/admin_checkin.py`), чтобы подпись не разошлась в двух местах."""
     hall_part = f" · {session['hall_name']}" if session.get("hall_name") else ""
     time_part = format_time_range(session["start_time"], session["end_time"])
     title = (session.get("title") or "").strip()
@@ -292,7 +292,7 @@ def scanned_outside_session_window(
 ) -> bool:
     """Форум-ночь п.5 (D-18..D-20): время скана из CSV-выгрузки лежит вне интервала сессии
     `[start - slack, end + slack]` того же дня — предупреждение в отчёте («вне времени сессии»,
-    `handlers/admin_checkin.py`), НЕ запрет (отметка всё равно ставится — волонтёр мог
+    `handlers/forum/admin_checkin.py`), НЕ запрет (отметка всё равно ставится — волонтёр мог
     отсканировать чуть раньше входа в зал или чуть позже начала). Пустой/нечитаемый `scanned_at`,
     или другой день — `False` (нечего сравнивать; D-10 уже отдельно помечает approx-время)."""
     if not scanned_at:
@@ -428,7 +428,7 @@ async def own_program_photo(city: str | None) -> str | None:
 
 async def program_photo_caption(city: str | None) -> str | None:
     """Подпись к фото программы, которое видит делегат города: у своего фото города — своя
-    подпись (загружается вместе с ним, `handlers/admin_program_view.py`), у общего — общая."""
+    подпись (загружается вместе с ним, `handlers/forum/admin_program_view.py`), у общего — общая."""
     if await cities_module_on() and city and await own_program_photo(city):
         composed = per_city_key("program_caption", city)
         return (await get_setting(composed)) if composed else None
@@ -501,7 +501,7 @@ async def build_delegate_program(city: str | None, at: datetime | None = None) -
     группировки/сортировки не заводится нигде.
 
     `city=None` резолвится в `default_city_code()` (та же однocity-фоллбэк идиома, что у
-    `keyboards.builders.get_main_menu_kb`/`handlers.admin_program._resolve_city_for_screen`) —
+    `keyboards.builders.get_main_menu_kb`/`handlers.forum.admin_program._resolve_city_for_screen`) —
     у сессий программы «нет города» не бывает, только конкретный код."""
     if at is None:
         from services.timeutil import city_now  # ленивый импорт — см. докстринг модуля

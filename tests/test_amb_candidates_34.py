@@ -580,7 +580,7 @@ def test_every_callback_resolves_to_its_right():
 
 
 def test_seam_is_registered_on_admin_router():
-    import handlers.admin_onsite_reg  # noqa: F401 — хвост admin.router подключает шов
+    import handlers.forum.admin_onsite_reg  # noqa: F401 — хвост admin.router подключает шов
     from handlers.admin import router
     names = [h.callback.__name__ for h in router.callback_query.handlers]
     expected = ["show_candidates", "candidates_page", "person_card", "take_person", "later_person",

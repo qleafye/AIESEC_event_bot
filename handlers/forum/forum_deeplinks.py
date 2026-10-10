@@ -10,8 +10,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 DEEPLINKS: dict[str, str] = {
-    "sessions": "handlers.session_enroll:open_from_deeplink",
-    "quiz": "handlers.quiz:open_from_deeplink",
+    "sessions": "handlers.forum.session_enroll:open_from_deeplink",
+    "quiz": "handlers.forum.quiz:open_from_deeplink",
 }
 
 

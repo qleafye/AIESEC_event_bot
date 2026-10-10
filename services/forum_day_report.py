@@ -8,7 +8,7 @@
 уже умеет фоллбэк «никто не привязан к городу -> все держатели»).
 
 Идемпотентность АВТОМАТИЧЕСКОЙ отправки — по (город, день форума), `database.db.
-forum_day_report_sends`. Ручная кнопка «📊 Отчёт дня сейчас» (`handlers/admin_forum_functions.py`)
+forum_day_report_sends`. Ручная кнопка «📊 Отчёт дня сейчас» (`handlers/forum/admin_forum_functions.py`)
 эту таблицу НЕ трогает вовсе — зовёт `build_report_text`/`send_report(..., mark_sent=False)`
 напрямую, чтобы повторный ручной запуск не путался с автоматической идемпотентностью и не гасил
 вечернюю джобу того же дня.
@@ -397,7 +397,7 @@ def _bot():
 
 async def checkins_csv_for_city_day(city: str | None, day: str) -> bytes:
     """CSV отметок города за `day` — «📥 Выгрузить отметки (CSV)» кнопка отчёта дня
-    (`handlers/admin_forum_functions.py`)."""
+    (`handlers/forum/admin_forum_functions.py`)."""
     import csv
     import io
 

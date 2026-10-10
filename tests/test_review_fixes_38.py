@@ -37,7 +37,7 @@ def test_refresh_city_filter_spec_recomputes_exclude_for_enroll_and_quiz():
 # ── Вопрос без вариантов ─────────────────────────────────────────────────────────────────────
 
 def test_question_without_options_blocks_enable_and_activity(tmp_path):
-    from handlers import admin_quiz as aq
+    from handlers.forum import admin_quiz as aq
     from tests.test_admin_enroll_38 import FakeCallback
 
     ready(tmp_path)
@@ -103,7 +103,7 @@ def test_staff_enroll_validates_delegate(tmp_path):
 
 
 def test_limit_below_enrolled_and_time_change_ask_confirmation(tmp_path):
-    from handlers import admin_enroll, admin_enroll_guard as g, admin_program
+    from handlers.forum import admin_enroll, admin_enroll_guard as g, admin_program
     from handlers.states import ProgramEnrollLimit, ProgramSessionField
     from tests.test_admin_enroll_38 import FakeCallback, FakeMessage, new_state
 

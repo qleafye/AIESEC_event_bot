@@ -7,7 +7,7 @@
 Рассылку QR проверяем чтением планировщика (`get_job`), НЕ вызовом
 `services.checkin_broadcast.schedule_city_jobs` — тот переставляет джобы.
 
-Вход — кнопка хаба «🎪 Форум: функции» (`handlers/admin_forum_functions.py`), город приходит
+Вход — кнопка хаба «🎪 Форум: функции» (`handlers/forum/admin_forum_functions.py`), город приходит
 в callback_data оттуда. Форма шва — как у соседей: `from handlers.admin import router`, импорт
 из хвоста `handlers/admin.py`. Право — `moderate_reg`, как у самого хаба."""
 import html
@@ -28,7 +28,7 @@ from database.db import (
 )
 from handlers.admin import router
 from handlers.access.admin_caps import _holds, capability_holders, required_capability, resolve_capabilities
-from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
+from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.checkin_arrival import count_program_sessions
 from services.program import own_program_photo, resolve_program_photo
 from services.reject_rules import forum_date_for
@@ -57,9 +57,9 @@ def _days_word(n: int) -> str:
 
 
 async def _edit_cb(key: str, code: str | None) -> str:
-    """Правка для города СВЕТОФОРА, а не шапки админки (handlers/admin_forum_date.py)."""
+    """Правка для города СВЕТОФОРА, а не шапки админки (handlers/forum/admin_forum_date.py)."""
     if code and await cities_module_on():
-        from handlers.admin_forum_date import city_edit_callback
+        from handlers.forum.admin_forum_date import city_edit_callback
         return city_edit_callback(key, code)
     return f"settings_edit:{key}"
 
@@ -302,7 +302,7 @@ async def forum_ready_open(callback: types.CallbackQuery):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
     text, kb = await render_ready(callback.from_user.id, code, callback.bot)
-    from handlers.admin_forum_hub_nav import edit_or_answer  # правкой хаба, а не новым сообщением
+    from handlers.forum.admin_forum_hub_nav import edit_or_answer  # правкой хаба, а не новым сообщением
     await edit_or_answer(callback, text, kb)
     await callback.answer()
 

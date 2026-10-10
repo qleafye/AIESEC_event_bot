@@ -1,5 +1,5 @@
 """Бэклог чек-ина п.10: «📊 Статистика прихода» — общий модуль `shared/arrival_stats.py`, экран бота
-(`handlers/admin_checkin_stats.py`) и блок дашборда «Приход» (`dashboard.queries.arrival_block`)
+(`handlers/forum/admin_checkin_stats.py`) и блок дашборда «Приход» (`dashboard.queries.arrival_block`)
 считают одно и то же одними запросами.
 
 async через `asyncio.run()` (конвенция проекта), БД — `tests/_dbtpl.py::fast_init_db`."""
@@ -15,7 +15,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from database.db import _connect
-from handlers import admin_checkin, admin_checkin_stats
+from handlers.forum import admin_checkin, admin_checkin_stats
 from services import checkin as checkin_service
 from services import checkin_arrival
 from tests._dbtpl import fast_init_db

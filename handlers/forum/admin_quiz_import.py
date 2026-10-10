@@ -12,8 +12,8 @@ from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, ReplyKeyboard
 from database import quiz_db as qdb
 from database import session_enroll_db as edb
 from handlers.admin import router
-from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
-from handlers.admin_quiz import _btn, deny, points_max, quiz_by_code, render_quiz
+from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
+from handlers.forum.admin_quiz import _btn, deny, points_max, quiz_by_code, render_quiz
 from handlers.states import QuizImport
 from services import quiz_import
 

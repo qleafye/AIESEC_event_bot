@@ -7,7 +7,7 @@ aiogram обрабатывает апдейты одного человека п
 import asyncio
 
 from database import db
-from handlers import sos as sos_handlers
+from handlers.forum import sos as sos_handlers
 from services import sos as sos_service
 from tests.test_sos_260924 import (
     DELEGATE_ID, FakeBot, FakeMessage, _add_delegate, _collecting_state, _ready, _run,

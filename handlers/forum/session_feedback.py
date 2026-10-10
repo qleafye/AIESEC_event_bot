@@ -36,7 +36,7 @@ from domain.cities import cities_module_on, city_label, get_setting_typed_for_ci
 from database.db import get_program_session
 from handlers.i18n import reg_i18n
 from handlers.admin import router
-from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
+from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
 from handlers.states import EditSetting, SessionFeedbackComment
 from handlers.user_actions import router as delegate_router
 from services.settings.audit import set_setting_by_admin
@@ -290,7 +290,7 @@ async def prog_fbtoggle(callback: types.CallbackQuery):
     await set_setting_by_admin(callback.from_user.id, key, new_val)
     await (sf.reconcile_city(code) if per_city_ctx else sf.reconcile_all())
     text, kb = await render_feedback_settings_screen(code)
-    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    from handlers.forum.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     kb = keep_hub_back(callback.message, kb)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Сохранено.")
@@ -314,7 +314,7 @@ async def prog_fbdelay(callback: types.CallbackQuery):
     await set_setting_by_admin(callback.from_user.id, key, str(value))
     await (sf.reconcile_city(code) if per_city_ctx else sf.reconcile_all())
     text, kb = await render_feedback_settings_screen(code)
-    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    from handlers.forum.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     kb = keep_hub_back(callback.message, kb)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Сохранено.")
