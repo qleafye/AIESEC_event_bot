@@ -25,7 +25,7 @@ from database.db import (
     get_poll_results,
     POLL_STATUS_LABELS,
 )
-from services.polls import (
+from services.comms.polls import (
     close_poll,
     export_polls_to_sheet,
     render_results_text,

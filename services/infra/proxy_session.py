@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 # scripts/backfill_resumes.py, which intentionally never calls set_alert_bot).
 _alert_bot = None
 _alert_bot_warned = False
-# Admins who blocked the bot. Same reasoning as services/reminders.py: a blocked admin can
+# Admins who blocked the bot. Same reasoning as services/comms/reminders.py: a blocked admin can
 # never receive an alert, so retrying on every rotation just prints an identical ERROR. Noted
 # once, then skipped; a restart clears the set and re-tests whether they unblocked.
 _blocked_admins: set[int] = set()

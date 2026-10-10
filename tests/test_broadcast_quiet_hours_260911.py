@@ -316,7 +316,7 @@ def test_bc_go_after_warning_still_delivers(tmp_path, monkeypatch):
     async def _noop(_seconds):
         return None
     monkeypatch.setattr(admin_broadcasts.asyncio, "sleep", _noop)
-    from services import broadcast_run as br
+    from services.comms import broadcast_run as br
     monkeypatch.setattr(br.asyncio, "sleep", _noop)
 
     async def go():

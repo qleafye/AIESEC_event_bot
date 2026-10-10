@@ -613,7 +613,7 @@ def test_send_broadcast_sends_normally_outside_quiet_hours(tmp_path, monkeypatch
 
 def test_send_broadcast_ignores_quiet_hours_when_disabled(tmp_path, monkeypatch):
     """Дефолт (тихие часы выключены) — поведение прежнее байт-в-байт, ни одного лишнего чтения
-    настроек тихих часов (инвариант 3 докстринга services.quiet_hours)."""
+    настроек тихих часов (инвариант 3 докстринга services.comms.quiet_hours)."""
     _ready(tmp_path)
     _seed_user(UID, status="approved")
     bot = _with_bot(monkeypatch)

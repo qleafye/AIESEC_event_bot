@@ -1,6 +1,6 @@
 """Quick 260904-2cj (QJRN-01..04): журнал вопросов делегатов в Mini App — та же поверхность,
 что «❓ Вопросы делегатов» в чате бота (`handlers/comms/admin_questions.py`, импортировать нельзя —
-aiogram), правило статуса и постраничная выборка — ОБЩИЕ (`services/questions.py`,
+aiogram), правило статуса и постраничная выборка — ОБЩИЕ (`services/comms/questions.py`,
 `database.db.list_questions_page`/`count_questions_by_status`), второй копии правила здесь нет.
 
 Порядок ответа — `POST /{qid}/answer`:
@@ -49,8 +49,8 @@ from database.db import (
     release_question_delivery,
 )
 from services.applications import applications
-from services import quiet_hours
-from services.questions import (
+from services.comms import quiet_hours
+from services.comms.questions import (
     FILTER_LABELS, STATUSES, format_stamp, is_stuck, load_stuck_minutes, question_status, record_answer,
     status_label,
 )
@@ -257,7 +257,7 @@ async def questions_answer(
     # (второго писателя в Bot API не появляется, D-01). `parse_mode=None`: веб и раньше слал
     # текст без разметки. `queued_until` в ответе — «доставим утром в 09:00» для интерфейса.
     # Шапка — на языке делегата (приёмка 01.10: EN-делегат получал её по-русски).
-    from services.questions import org_reply_title
+    from services.comms.questions import org_reply_title
 
     answer_text = f"💬 {await org_reply_title(row['user_id'])}\n\n{text}"
     try:

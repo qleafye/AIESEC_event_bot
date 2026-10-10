@@ -203,7 +203,7 @@ def test_nudge_respects_quiet_hours(tmp_path, monkeypatch):
     _ready(tmp_path, "nudge_quiet.db")
     from services import scheduler as sched
     from database import db as db_mod
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     marked = []
     _patch_common(

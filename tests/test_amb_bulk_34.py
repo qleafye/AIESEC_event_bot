@@ -213,7 +213,7 @@ def test_decline_failure_counted_and_does_not_stop(tmp_path, monkeypatch):
 
 
 def test_decline_quiet_hours_counted_as_deferred(tmp_path, monkeypatch):
-    from services import quiet_hours
+    from services.comms import quiet_hours
     _fast(monkeypatch)
     _ready(tmp_path)
     for tid in (100, 101):

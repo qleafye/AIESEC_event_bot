@@ -3,8 +3,8 @@ import asyncio
 
 from config import config
 from database import db
-from services.reminders import _reminder_enabled, _reminder_interval, DEFAULT_INTERVAL
-import services.reminders as reminders_mod
+from services.comms.reminders import _reminder_enabled, _reminder_interval, DEFAULT_INTERVAL
+import services.comms.reminders as reminders_mod
 from tests._dbtpl import fast_init_db
 
 

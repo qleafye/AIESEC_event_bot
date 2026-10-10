@@ -968,7 +968,7 @@ _SERVICE_KEYS = {
 }
 
 # 17.1-03 держал тут allow-list «вне скоупа» (nudge_*/allowlist_refresh_minutes/
-# incomplete_sync_hours/pending_reminder_enabled из services/scheduler.py и services/reminders.py).
+# incomplete_sync_hours/pending_reminder_enabled из services/scheduler.py и services/comms/reminders.py).
 # Quick 260819: все они объявлены в SETTINGS_SCHEMA (reg/system/toggles) — список пуст и
 # оставлен как место для будущих сознательных исключений (страж ниже не даст ему «протухнуть»).
 _OUT_OF_SCOPE_KEYS: set[str] = set()

@@ -14,7 +14,7 @@ from handlers.access import uat_seed
 from handlers.chat import group_chat
 from handlers.reg import reg_silence_fallback, onsite_reg
 from handlers.access import admin_no_access
-from services.reminders import pending_reminder_loop
+from services.comms.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.access.allowlist import warm_allowlist_if_gating_on
 from services.sheets.sheets import ensure_sheet_header

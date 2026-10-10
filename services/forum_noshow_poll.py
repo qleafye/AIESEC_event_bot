@@ -14,7 +14,7 @@ forum_noshow_poll`, `UNIQUE(telegram_id, season)`); опрос НЕ повтор
 Тихие часы — В ОТЛИЧИЕ от `services/forum/checkin_not_arrived.py` (то сообщение теряет смысл, если
 доставить его с задержкой — «мы тебя не видим ПРЯМО СЕЙЧАС»), опрос «почему не пришёл» остаётся
 верным независимо от момента доставки, поэтому используем ОЧЕРЕДЬ тихих часов
-(`services.quiet_hours.send_or_queue_text`), а не молчаливый пропуск: у этой джобы нет ручной
+(`services.comms.quiet_hours.send_or_queue_text`), а не молчаливый пропуск: у этой джобы нет ручной
 кнопки повтора (в отличие от «Написать не пришедшим»), пропущенный делегат иначе не получил бы
 опрос вовсе.
 
@@ -241,7 +241,7 @@ async def send_poll(city: str | None) -> dict:
     Троттлинг/мут/тихие часы — докстринг модуля."""
     from database.db import forum_noshow_poll_mark_sent, forum_noshow_poll_pending_ids, get_user
     from domain.settings.schema import get_setting_typed
-    from services import quiet_hours
+    from services.comms import quiet_hours
     import domain.cities as _cities
 
     bot = _bot()

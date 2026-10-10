@@ -1150,7 +1150,7 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "filled": "14",
     "n": "10",
     # Quick 260904-dq1: {time} у quiet_hours_manager_notice_text — конец окна тихих часов,
-    # подставляется services.quiet_hours.manager_notice тем же .replace-приёмом.
+    # подставляется services.comms.quiet_hours.manager_notice тем же .replace-приёмом.
     "time": "09:00",
     # Phase 28: лимит мультивыбора ({max}/{selected}) и маркер домена ссылки резюме ({domain}).
     "max": "5",
@@ -1204,7 +1204,7 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # несёт ведущий пробел и скобки (см. `services.regional_noshow_move._dates_label_for`).
     "target_city": "Москва",
     "dates": " (30.10–31.10)",
-    # Название мероприятия (`services.text_fill.event_label`): без «🎪 Название мероприятия» —
+    # Название мероприятия (`services.comms.text_fill.event_label`): без «🎪 Название мероприятия» —
     # нейтральное слово, с ним — настоящее название (подменяется в `preview_samples`).
     "event": "мероприятие",
 }

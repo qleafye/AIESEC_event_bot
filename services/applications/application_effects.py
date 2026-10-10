@@ -78,14 +78,14 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
     Quick 260904-dq1: `notify=False`/`sheet=False` — обратно совместимые kwargs. Лист
     обновляется НЕЗАВИСИМО от тихих часов (рабочий инструмент менеджера, автосинк, морозить
     до утра нельзя); уведомление делегату — единственное, что откладывается. Если `notify`
-    попал в окно тишины делегата, решение кладётся в очередь `services.quiet_hours` с
+    попал в окно тишины делегата, решение кладётся в очередь `services.comms.quiet_hours` с
     due_at = конец окна, а немедленной отправки НЕ происходит (`quiet_hours.flush_due`
     перечитывает `users.status` на разборе и доставляет — Task 3 260904-dq1-PLAN.md).
 
     Координатор 25.09 (учёт доставки решения, память auto-approve-incident-260906): каждая
     попытка отправить письмо о решении фиксируется в `users.decision_delivery_*`
     (`_record_delivery_fail_soft`) — «в очереди» при уходе в тихие часы (этот же вызов, когда
-    его позовёт `services.quiet_hours._flush_application_decision_row`, перезапишет статус на
+    его позовёт `services.comms.quiet_hours._flush_application_decision_row`, перезапишет статус на
     «доставлено»/«не доставлено»), «доставлено»/«не доставлено» при немедленной попытке.
     `notify=False` — эффект без попытки отправки (например, узкий пересчёт листа) — учёт НЕ
     трогается вовсе, писать «не доставлено» о письме, которое и не пытались слать, было бы
@@ -99,7 +99,7 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
     было."""
     notify_now = notify
     if notify:
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.scheduler import _now_moscow_naive
         now = _now_moscow_naive()
         due = await quiet_hours.defer_until(now, telegram_id)
@@ -160,7 +160,7 @@ async def mass_approve_effects(bot, ids: list) -> None:
     чтения `defer_until`), а не как основной путь ретрая."""
     if not ids:
         return
-    from services import quiet_hours
+    from services.comms import quiet_hours
     from services.scheduler import _now_moscow_naive
 
     for tid in ids:
