@@ -202,7 +202,11 @@ def test_section_and_group_labels_match_bot_verbatim(tmp_path):
     )
 
     # ── группы ──
-    bot_group_tokens = {tok for _label, tok, _keys in SETTINGS_GROUPS}
+    from settings_chat_fields import CHAT_TEXT_GROUPS
+
+    # Сборные группы бота из settings_chat_fields.py — не группы реестра: в приложении те же
+    # ключи лежат в своих группах реестра, отдельной группы-двойника там нет.
+    bot_group_tokens = {tok for _label, tok, _keys in SETTINGS_GROUPS} - {tok for _l, tok, _k in CHAT_TEXT_GROUPS}
     mismatches = []
     seen_tokens = set()
     for section in body["sections"]:

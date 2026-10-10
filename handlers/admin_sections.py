@@ -79,6 +79,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_reg_skip_source_for_referred"),
         ("toggle", "toggle_reg_referrer_must_be_ambassador"),
         ("toggle", "toggle_reg_offer_ref_link"),
+        # Тексты этого предложения (settings_chat_fields.py) — сразу под его тумблером.
+        ("group", "ref_offer"),
         # Phase 28 (28-09, SU-10): имя файла резюме в облаке — рядом с реф-механикой выше.
         ("toggle", "toggle_resume_filename_short_mode"),
         # Phase 30 (30-01, A2-08): девять тумблеров «Анкета 2.0» (артборд 13) — порядок:
@@ -97,6 +99,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # псевдоним» и закрепление чипов, необязательная тонкая настройка (30-CONTEXT.md).
         ("screen", "admin_lookup", "📚 Справочники"),
         ("group", "reg"),
+        # Кнопки и ответы анкеты в чате, раньше правившиеся только в приложении.
+        ("group", "reg_chat"),
         ("group", "party"),
         ("group", "consent"),
     ]),
@@ -126,7 +130,10 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Право `moderate_reg`, тот же довод, что у соседнего "admin_sos" — массовые рассылки/
         # расписание форумных функций, не рутинное сканирование (`checkin`).
         ("op", "admin_forum_functions"),
+        # Тексты форума в чате: регистрация на месте, приглашение волонтёра, лист учебных QR.
+        ("group", "forum_chat"),
         ("screen", "modcard_open", "🧾 Поля карточки заявки"),
+        ("group", "modcard_labels"),  # пометки той же карточки («Изменена», «Повторная подача»…)
         # Phase 28 (28-08, SU-08): чекбокс-пикеры скоринговых множеств — рядом с «🧾 Поля
         # карточки заявки» (тот же класс экрана: динамический набор, кнопки вместо кодов).
         ("screen", "admin_reg_scoring", "🧮 Правила балла"),
@@ -187,6 +194,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("comms", "📢 Общение", [
         ("op", "admin_broadcast"),
         ("op", "admin_polls"),
+        ("group", "broadcast_texts"),  # «🔕 Не присылать сегодня» под рассылками-альбомами
     ]),
     ("game", "🎮 Геймификация", [
         ("op", "admin_game_tasks"),
@@ -245,6 +253,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("op", "admin_settings_guide"),
         ("screen", "admin_roles", "👥 Роли и доступы"),
         ("screen", "admin_miniapp_settings", "🎨 Оформление"),
+        # Сообщение с кнопкой приложения и «приложение выключено» — их видят и без приложения.
+        ("group", "miniapp_chat"),
         # Phase 07.3 (02, RET-01): «🔄 Новый сезон» строже, чем весь экран, — только
         # суперадмин из config.ADMIN_IDS. Скрытие кнопки — это UX «бот для людей», НЕ
         # настоящий гейт: настоящий — перепроверка ADMIN_IDS внутри самих хендлеров

@@ -101,6 +101,9 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
         "settings_group:consent", "settings_group:game", "settings_group:amb",
         # Квик 260927: «💬 Чат делегатов» (веса рейтинга чата) — перед «🔧 Система».
         "settings_group:chat", "settings_group:system",
+        # 10.10: тексты чата, правившиеся только в приложении (settings_chat_fields.py).
+        "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
+        "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
     ]
     assert not any(cd and cd.startswith("settings_edit:") for cd in flat)
     assert not any(cd and cd.startswith("settings_photo:") for cd in flat)
@@ -512,7 +515,8 @@ def test_render_snapshot_apps(tmp_path):
     flat = _flat_callback_data(kb)
 
     expected_keys = [
-        "reg_complete_text", "approve_text", "reject_text", "pending_gate_text",
+        # 10.10: ответ при автоприёме — рядом с обычным текстом одобрения.
+        "reg_complete_text", "approve_text", "approve_text__auto", "reject_text", "pending_gate_text",
         "pending_reminder_interval",
         # 10.10: порог «🔒 залип» у вопросов делегатов — сразу после интервала напоминаний.
         "question_stuck_minutes",
@@ -520,6 +524,8 @@ def test_render_snapshot_apps(tmp_path):
         "nudge_after_minutes", "nudge_text",
         # Phase 28 (28-09, SU-09): слово-фоллбэк для {remaining} — рядом с текстом догонялки.
         "nudge_remaining_fallback_text",
+        # 10.10: две кнопки сообщения-догонялки (правились только в приложении).
+        "reg_nudge_chat_button_text", "reg_nudge_app_button_text",
         # Phase 23-01 (APP-TINDER-01, D-05): шаблоны причин отказа шторки Mini App.
         "reject_reason_templates",
         # Phase 28 (28-07, SU-08): шесть скоринговых правил — до экрана-пикера (план 28-08).
@@ -537,14 +543,18 @@ def test_render_snapshot_apps(tmp_path):
         "reg_submit_digest_minutes",
         # Квик 260923 (форум-чекин, D-01..D-04): метка события + подпись/текст «выключен» —
         # новый хвост группы (сам master-тумблер checkin_qr_enabled — тумблер раздела).
-        "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
+        # 10.10: ответ на «Сохранил QR» — сразу за подписью к QR.
+        "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_confirm_receipt_text",
+        "checkin_qr_disabled_text",
         # Форум-ночь (ночная приёмка, задача 3): текст самой рассылки QR — был в реестре,
         # но не в боте (только Mini App); дописан рядом с соседями QR-чек-ина.
         "checkin_qr_broadcast_text",
         # 01.10: утренний повтор QR в день форума — свой текст без «Завтра форум!».
         "checkin_qr_morning_text",
         # Форум-ночь п.6 (D-25, идея №14): текст шаблона «Не пришёл» — новый хвост группы.
-        "checkin_not_arrived_text",
+        # 10.10: следом три ответа на его кнопки.
+        "checkin_not_arrived_text", "checkin_not_arrived_show_qr_hint_text",
+        "checkin_not_arrived_coming_ack_text", "checkin_not_arrived_cant_ack_text",
         # Форум-ночь (ночная приёмка, задача 3): шпаргалка волонтёра чек-ина — тот же пропуск,
         # что у checkin_qr_broadcast_text выше.
         "checkin_volunteer_guide_text",
@@ -1112,11 +1122,15 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # срез расширен до 28; задача 1 (сброс зависшей анкеты) добавляет ещё один ключ — срез
     # расширен до 29. 01.10: checkin_qr_morning_text сразу после checkin_qr_broadcast_text —
     # срез расширен до 31.
-    assert admin_settings._settings_group_keys("apps")[-31:] == [
+    # 10.10: +4 ключа QR/«Не пришёл» внутри среза — срез расширен до 35.
+    assert admin_settings._settings_group_keys("apps")[-35:] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
-        "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_disabled_text",
+        "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_confirm_receipt_text",
+        "checkin_qr_disabled_text",
         "checkin_qr_broadcast_text", "checkin_qr_morning_text", "checkin_not_arrived_text",
+        "checkin_not_arrived_show_qr_hint_text", "checkin_not_arrived_coming_ack_text",
+        "checkin_not_arrived_cant_ack_text",
         "checkin_volunteer_guide_text",
         "forum_welcome_text", "checked_in_status_text",
         "forum_noshow_poll_question_text",
