@@ -67,7 +67,7 @@ against the prior 517-line snapshot -- pure insert, zero reorders: admin.router 
 
 Дрифт-нота (2026-09-15, правка «привязка через личку админа»): -6/+1 (523 -> 518).
 `handlers/admin_chat.py` снесён целиком (экран «💬 Чат» больше не существует — привязка
-чата идёт через личку промоутера, `handlers/group_chat.py`), из admin.router ушли все шесть
+чата идёт через личку промоутера, `handlers/chat/group_chat.py`), из admin.router ушли все шесть
 его хендлеров (пять из квика 260914-rgr + `chat_broadcast_out` отдельной задачи 3); взамен
 `handlers/admin_settings.py` получил один общий тумблер `toggle_chat_tracking_enabled`,
 вставший в хвост блока простых `_toggle_module_setting` тумблеров, сразу после
@@ -2332,17 +2332,17 @@ def test_snapshot_total_handler_count_is_292():
     # prog_fbday_open (та же точка регистрации, что у regreset_*/resumerep_*/sheetrec_* выше).
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая вставка (5 строк),
     # 0 удалений, 0 реордеров (862 -> 867).
-    # Квик 260927 (рейтинг чата): новый шов handlers/admin_chat_rating.py, импортирован в хвосте
+    # Квик 260927 (рейтинг чата): новый шов handlers/chat/admin_chat_rating.py, импортирован в хвосте
     # handlers/admin.py СРАЗУ ПОСЛЕ admin_forum_stats_card — семь callback_query-хендлеров
     # (admin_chat_rating + chrate:*) встали сразу после forumstats_send_go, message-хендлер ввода
     # (state:ChatRatingEdit:*) — хвостом message-хендлеров admin.router, после
     # resumerep_receive_other. Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистые
     # вставки (1 + 7 строк), 0 удалений, 0 реордеров (867 -> 875).
-    # Квик 260927 (автоочистка служебных уведомлений): шов handlers/admin_chat_cleanup.py сразу
+    # Квик 260927 (автоочистка служебных уведомлений): шов handlers/chat/admin_chat_cleanup.py сразу
     # после admin_chat_rating — три callback_query (admin_chat_cleanup/chclean:t:*/chclean:delay)
     # после chrate_task_toggle и message-хендлер ввода задержки после chrate_value. Две чистые
     # вставки (1 + 3 строки), 0 удалений, 0 реордеров (875 -> 879).
-    # Квик 260927 (пост рейтинга в чат): шов handlers/admin_chat_rating_post.py сразу после
+    # Квик 260927 (пост рейтинга в чат): шов handlers/chat/admin_chat_rating_post.py сразу после
     # admin_chat_cleanup — девять callback_query (chpost:*) после chclean_delay и message-хендлер
     # ввода (state:ChatRatingPostEdit:*) после chclean_delay_value. Две чистые вставки
     # (1 + 9 строк), 0 удалений, 0 реордеров (879 -> 889).
@@ -2351,7 +2351,7 @@ def test_snapshot_total_handler_count_is_292():
     # onsitereg_qr:*) после chpost_publish_go (шов импортируется после admin_chat_rating_post).
     # Одна чистая вставка (3 строки), 0 удалений, 0 реордеров (889 -> 892).
     # 29.09 (колонка «В чате»): кнопка «🔄 Сверить состав чата» — callback_query
-    # chat_reconcile_now (admin_chat_reconcile) хвостом шва handlers/admin_chat_cleanup.py, сразу
+    # chat_reconcile_now (admin_chat_reconcile) хвостом шва handlers/chat/admin_chat_cleanup.py, сразу
     # после chclean_delay. Одна чистая вставка, 0 удалений, 0 реордеров (892 -> 893).
     # 29.09 (квалифицированная амбассадорка СкиллАп 5): шов handlers/amb/admin_amb_tiers.py
     # хвостом мастера волн (admin_game_wave_wizard.py) — 3 admin.message (state:AmbExclude:*)

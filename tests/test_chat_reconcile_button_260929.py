@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import pytest
 
 from database import db
-from handlers import admin_chat_cleanup
+from handlers.chat import admin_chat_cleanup
 from handlers.admin_caps import required_capability
 from handlers.admin_sections import section_rows
 from services import chat_tracking

@@ -1579,7 +1579,7 @@ async def toggle_quiet_hours(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "toggle_chat_tracking_enabled")
 async def toggle_chat_tracking_enabled(callback: types.CallbackQuery):
-    # Правка 15.09: главный тумблер учёта чата делегатов (handlers/group_chat.py,
+    # Правка 15.09: главный тумблер учёта чата делегатов (handlers/chat/group_chat.py,
     # services/chat_tracking.py) — enum on/off, дефолт OFF. Экрана-хозяина у него больше нет
     # (снесён вместе с «💬 Чат»), поэтому используется общий хелпер, как у соседей-модулей.
     await _toggle_module_setting(callback, "chat_tracking_enabled", "💬 Учёт чата делегатов")

@@ -21,7 +21,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import get_setting_typed_for_city, per_city_key
 from handlers.admin import router
-from handlers.admin_chat_rating import _GLOBAL, _checked_city, _raw, _screen_city
+from handlers.chat.admin_chat_rating import _GLOBAL, _checked_city, _raw, _screen_city
 from domain.settings.validation import is_command_like, validate_setting_value
 from handlers.states import ChatRatingPostEdit
 from services import chat_rating_post as crp
@@ -172,7 +172,7 @@ async def chpost_toggle(callback: types.CallbackQuery):
     if on_post_screen:
         await _show(callback)
     else:
-        from handlers.admin_chat_rating import render_chat_rating_screen
+        from handlers.chat.admin_chat_rating import render_chat_rating_screen
         text, kb = await render_chat_rating_screen(callback.from_user.id)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     note = "Публикация включена" if on else "Публикация выключена"
