@@ -89,6 +89,7 @@ from domain.game.labels import category_label  # Phase 16 (16-01/16-03): RU labe
 from domain.game.labels import proof_types_label as _registry_proof_types_label
 from domain.game.labels import (  # Phase 32 (32-07, D-25/D-27/D-35): срок/подсказка штрафа
     task_deadline_admin,
+    task_deadline_short,
     task_has_deadline,
 )
 from services.game.game_award import award_for  # Phase 32 (фикс, CR-02): единая формула штрафа —
@@ -148,7 +149,11 @@ def _game_task_deadline_line(t: dict) -> str:
     Дата/литерал берутся из общего менеджерского помощника game_labels.task_deadline_admin —
     приватного разбора deadline_at в этом файле больше нет."""
     deadline = task_deadline_admin(t)
-    return f"до {deadline}" if task_has_deadline(t) else deadline
+    if not task_has_deadline(t):
+        return deadline
+    # Сдачи после срока принимаются (A-05), поэтому задание остаётся в «Активных» — но менеджер
+    # должен видеть, что срок прошёл (приёмка 10.10: просроченные стояли вперемешку с живыми).
+    return f"до {deadline} · ⌛ срок вышел" if task_deadline_short(t)[1] else f"до {deadline}"
 
 
 async def _game_task_line(t: dict, index: int) -> str:
@@ -186,6 +191,9 @@ async def _game_tasks_screen() -> tuple[str, InlineKeyboardMarkup]:
     the SQL-level gate in `delete_task` is the real defense, this is only the UX hint)."""
     all_tasks = await list_all_tasks()
     active = [t for t in all_tasks if not t.get("archived_at")]
+    # Просроченные — в хвост, порядок внутри групп прежний (sorted стабилен). №N кнопок идёт
+    # по этому же списку, так что номер строки и кнопки не расходятся.
+    active.sort(key=lambda t: task_deadline_short(t)[1])
     archived_count = sum(1 for t in all_tasks if t.get("archived_at"))
 
     buttons: list[list[InlineKeyboardButton]] = []
