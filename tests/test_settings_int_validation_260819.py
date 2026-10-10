@@ -101,6 +101,7 @@ def test_schema_has_no_min_max_fields():
         "quiz_points_max",  # 09.10: баллы варианта теста 1–10, 0 бессмыслен
         "wave_deadline_reminder_hours",  # 10.10: за 0 часов напоминать поздно, больше недели — бессмысленно
         "question_stuck_minutes",  # 10.10: «залип» через 0 минут — каждый взятый вопрос
+        "sos_escalation_minutes",  # 10.10: «напомнить через 0 мин» — не пауза
     }
     # `max` — у числа ступеней амбассадоров (1–5) и максимума баллов варианта теста (1–10).
     with_max = {key for key, entry in SETTINGS_SCHEMA.items() if "max" in entry}
