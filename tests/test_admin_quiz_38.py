@@ -313,13 +313,21 @@ def test_texts(tmp_path):
     assert bad.answers[0][1] is True
 
 
-def test_points_max_editable_from_texts_screen(tmp_path):
-    """10.10: «максимум баллов за вариант» правился только в приложении — теперь последней
-    строкой экрана текстов теста, ввод — общий редактор настроек (проверка числа там же)."""
+def test_points_max_editable_from_texts_screen_for_own_city_only(tmp_path):
+    """10.10: «максимум баллов за вариант» — на экране текстов теста; число у каждого города
+    своё, поэтому менеджер города, открывший экран, меняет только свой город."""
+    from handlers.admin_settings import settings_edit_value
+
     ready(tmp_path)
-    run(db.set_setting("event_city_enabled", "on"))  # городской ключ числу не положен даже с городами
+    run(db.set_setting("event_city_enabled", "on"))
     idx = lv._EDIT_KEYS.index("quiz_points_max")
     state = new_state()
-    cb = FakeCallback(f"prog_qzte:msk:{idx}")
+    cb = FakeCallback(f"prog_qzte:{CITY}:{idx}")
     run(lv.prog_qzte(cb, state))
-    assert run(state.get_data())["setting_key"] == "quiz_points_max"  # общий ключ, не городской
+    assert run(state.get_data())["setting_key"] == f"quiz_points_max__city__{CITY}"
+
+    msg = FakeMessage("8")
+    run(settings_edit_value(msg, state))
+    assert run(aq.points_max(CITY)) == 8
+    other = next(c for c in __import__("cities").city_codes() if c != CITY)
+    assert run(aq.points_max(other)) == 5  # чужой город не задет
