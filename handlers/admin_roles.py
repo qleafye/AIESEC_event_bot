@@ -9,7 +9,7 @@ shared-router seam-import technique) — imported in the aggregator's bottom sea
 BEFORE admin_gamification (guide+roles precede gamification in the original file order).
 
 `_resolve_staff_input`/`_STAFF_INPUT_ERROR` (this module's forward/@username person-lookup
-parser) are also reused by `handlers/admin_gamification.py`'s `coinsman_person_step` — that
+parser) are also reused by `handlers/game/admin_gamification.py`'s `coinsman_person_step` — that
 module imports them from HERE, not from the aggregator, since admin_roles is always imported
 first (see handlers/admin.py's bottom seam-import order).
 """

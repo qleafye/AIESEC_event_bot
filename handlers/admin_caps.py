@@ -988,13 +988,13 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_coins_journal": "moderate_game",
     "coinsjrn_page:*": "moderate_game",
     "coinsjrn_csv": "moderate_game",
-    # Разовый перенос старых баллов из Google-таблицы (handlers/admin_coins_transfer.py).
+    # Разовый перенос старых баллов из Google-таблицы (handlers/game/admin_coins_transfer.py).
     "admin_coins_transfer": "moderate_game",
     "cointr_*": "moderate_game",
     "state:CoinsTransfer:*": "moderate_game",
 
     # Phase 32 (32-10, D-06/D-09/D-10/D-11/D-13): экран «🌊 Волны» — список/создание/карточка/
-    # правка/копия/активация/удаление (handlers/admin_game_waves.py). WARNING: та же ловушка
+    # правка/копия/активация/удаление (handlers/game/admin_game_waves.py). WARNING: та же ловушка
     # префиксов, что у gtdelete:*/gtdelete_go:* — "wavedel:*" НЕ покрывает "wavedel_go:*",
     # "waveactivate:*" НЕ покрывает "waveactivate_go:*", обе пары нужны отдельными строками.
     "admin_game_waves": "moderate_game",
@@ -1010,7 +1010,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "wavedel_go:*": "moderate_game",
     # План 32-11 (D-16/D-17): экран итогов волны — кнопка приходит менеджеру ЛС (`services.
     # scheduler.send_wave_end_ping`), не с карточки волны, но обработчики живут в том же шве
-    # (handlers/admin_game_waves.py). Та же ловушка префиксов: "wavefin:*" НЕ покрывает
+    # (handlers/game/admin_game_waves.py). Та же ловушка префиксов: "wavefin:*" НЕ покрывает
     # "wavefin_go:*"/"wavefin_do:*" — три отдельные строки.
     "wavefin:*": "moderate_game",
     "wavefin_go:*": "moderate_game",

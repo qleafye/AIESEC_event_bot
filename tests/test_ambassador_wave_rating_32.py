@@ -394,7 +394,7 @@ def test_wave_rating_view_gap_to_prize_zero_in_zone_and_positive_below_cutoff(tm
 
 def test_wave_rating_view_negative_own_prize_places_treated_as_one(tmp_path):
     """32-FIX-common-2 (хвост IN-02): своё число призовых мест волны валидирует только визард
-    (`handlers/admin_game_wave_wizard.py`, `new_value <= 0` — отдельный шов, чинить не в этом
+    (`handlers/game/admin_game_wave_wizard.py`, `new_value <= 0` — отдельный шов, чинить не в этом
     плане); `database.db.update_wave` само значение не проверяет — кривая запись (миграция,
     прямой SQL) с отрицательным `prize_places` доходит до сервисного слоя как есть. Раньше
     голое вычисление `int(wave["prize_places"] or ...)` брало отрицательное число ЦЕЛИКОМ (оно

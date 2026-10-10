@@ -281,7 +281,7 @@ class RejectCond(StatesGroup):
 
 
 class WaveCreate(StatesGroup):
-    # Phase 32 (32-10, D-06/D-10/D-11): визард создания волны (handlers/admin_game_waves.py)
+    # Phase 32 (32-10, D-06/D-10/D-11): визард создания волны (handlers/game/admin_game_waves.py)
     # — даты (одной строкой через «;» или по одной), необязательный вводный текст, карточка
     # подтверждения. Право `moderate_game` ("state:WaveCreate:*" в handlers/admin_caps.py).
     # Тот же визард переиспользует «📋 Скопировать эту волну» (даты запрашиваются тем же

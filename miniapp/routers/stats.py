@@ -2,7 +2,7 @@
 
 `GET /app/api/stats/game` отдаёт результат `database.db.get_game_stats()` — той же и
 ЕДИНСТВЕННОЙ агрегирующей функции, что стоит за экраном 9 бота
-(`handlers/admin_gamification.py::show_game_stats`), поэтому числа совпадают до единицы.
+(`handlers/game/admin_gamification.py::show_game_stats`), поэтому числа совпадают до единицы.
 RU-подписи категорий — из корневого `game_labels.category_label` (реестр), порядок —
 фиксированный `GAME_CATEGORIES`, как у `render_category_bars`; нулевые категории тоже
 отдаются (фронт сам решает, рисовать ли полосу).

@@ -173,7 +173,7 @@ def _build_snapshot_lines():
 # re-captured by RUNNING `_build_snapshot_lines()` against HEAD after this plan's changes and
 # diffed against the prior 314-line snapshot -- every pre-existing line byte-for-byte identical
 # in the same relative order, no reorders, no key changes (pure appends). All 15 live in the
-# NEW seam module handlers/admin_game_tasks.py (imported in admin.py right after
+# NEW seam module handlers/game/admin_game_tasks.py (imported in admin.py right after
 # admin_gamification, so they land last among admin.router's handlers): message observers
 # `game_task_editdesc_step`/`game_task_editcoins_step`/`game_task_editdeadline_step`
 # (GameTaskEdit text/coins/deadline point-edits); callback observers
@@ -182,7 +182,7 @@ def _build_snapshot_lines():
 # deadline presets), `game_task_preview`/`game_task_preview_close` («👁 Как видит делегат»),
 # `game_task_deadline_preset`/`game_task_deadline_custom` (wizard deadline presets),
 # `game_task_wizard_edit_menu`/`game_task_wizard_back`/`game_task_wizard_edit_field` (final-step
-# «✏️ Изменить» field menu). handlers/game_task_wizard.py (extracted pure helpers) and the
+# «✏️ Изменить» field menu). handlers/game/game_task_wizard.py (extracted pure helpers) and the
 # admin_gamification.py rewrites (list/archive/edit-card/confirm-kb) add or reorder no handler.
 #
 # Drift note (2026-08-20, Phase 16-04, GAME-UI-03): 1 handler inserted (329 -> 330),
@@ -193,7 +193,7 @@ def _build_snapshot_lines():
 # `coinsman_amount_step` -- i.e. it lands at its registration position between
 # `coinsman_sign_step` and `coinsman_confirm` (an in-place insertion, not a tail append; its
 # filter literal is unique, so first-match semantics of every neighbour are unaffected).
-# handlers/game_review_render.py (extracted pure renders/keyboards, no router) and the
+# handlers/game/game_review_render.py (extracted pure renders/keyboards, no router) and the
 # seam-import chain change (admin_game_tasks is now imported from admin_gamification's tail,
 # not from admin.py -- makes the order identical for every module import order) add or
 # reorder no handler.
@@ -458,7 +458,7 @@ def _build_snapshot_lines():
 # 584 -> 595 handlers -- PURE APPEND, ДВЕ вставки): 2 message-хендлера
 # (`wave_create_dates_step`/`wave_create_intro_step`, state:WaveCreate:*) встали в
 # message-бакете СРАЗУ ПОСЛЕ `game_task_editdeadline_step` и ПЕРЕД `poll_wizard_cancel` —
-# та же точка, что и остальные хендлеры `handlers/admin_game_tasks.py` (правильная позиция
+# та же точка, что и остальные хендлеры `handlers/game/admin_game_tasks.py` (правильная позиция
 # определяется цепочкой импортов, а не позицией нового файла на диске: `handlers/
 # admin_game_waves.py` импортирован В ХВОСТЕ `admin_game_tasks.py`, значит его хендлеры
 # регистрируются сразу вслед за последним хендлером этого файла). 9 callback_query-хендлеров
@@ -479,16 +479,16 @@ def _build_snapshot_lines():
 #
 # Drift note (32-12, задача 1, D-12/D-28: шаги «Волна»/«Аудитория» визарда задания, 604 -> 606
 # handlers -- PURE APPEND): 2 новых callback_query-хендлера (`game_task_wave_step`/
-# `game_task_audience_step`, шов `handlers/admin_game_tasks.py`) физически определены СРАЗУ
+# `game_task_audience_step`, шов `handlers/game/admin_game_tasks.py`) физически определены СРАЗУ
 # ПОСЛЕ `game_task_wizard_edit_field` (последний хендлер этого шва) и ПЕРЕД хвостовым импортом
-# `handlers/admin_game_waves.py` — встали в тот же промежуток порядка, между
+# `handlers/game/admin_game_waves.py` — встали в тот же промежуток порядка, между
 # `game_task_wizard_edit_field` и `show_wave_card`. Пересчитано RUNNING
 # `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним 604-строчным
 # снимком: ровно одна вставка из 2 строк, 0 удалений, 0 реордеров.
 #
 # Drift note (план 32-11, D-16/D-17: экран итогов волны, 606 -> 609 handlers -- PURE APPEND):
 # 3 новых callback_query-хендлера (`wave_finish_screen`/`wave_finish_confirm`/`wave_finish_go`,
-# шов `handlers/admin_game_waves.py`) физически определены В ХВОСТЕ файла, СРАЗУ ПОСЛЕ
+# шов `handlers/game/admin_game_waves.py`) физически определены В ХВОСТЕ файла, СРАЗУ ПОСЛЕ
 # `wave_create_cancel` (последний хендлер этого шва) и ПЕРЕД `show_admin_polls`. Пересчитано
 # RUNNING `_build_snapshot_lines()` и сверено diff'ом (difflib.SequenceMatcher) с прежним
 # 606-строчным снимком: ровно одна вставка из 3 строк, 0 удалений, 0 реордеров.
@@ -496,7 +496,7 @@ def _build_snapshot_lines():
 # Drift note (ревизия 32-FIX, CR-04/WR-06: визард волны вынесен в handlers/admin_game_wave_
 # wizard.py, 609 -> 611 handlers -- INSERT + REORDER, ни один хендлер не потерян): визард
 # создания/копии/правки волны (`WaveCreate`/`WaveEdit`, `wavenew`/`wavecopy*`/`waveedit*`/
-# `wc*`) переехал из `handlers/admin_game_waves.py` в новый шов `handlers/admin_game_wave_
+# `wc*`) переехал из `handlers/game/admin_game_waves.py` в новый шов `handlers/admin_game_wave_
 # wizard.py`, импортированный В ХВОСТЕ первого файла (та же цепочка импортов, физическая
 # точка регистрации не изменилась). Message-бакет: 2 новые строки `wave_wizard_cancel`
 # (CR-04 — общий обработчик «Отмена»/любой команды для ОБЕИХ FSM-групп, зарегистрирован
@@ -2089,13 +2089,13 @@ def test_snapshot_total_handler_count_is_292():
     # 32-06 задача 3: путь/выход/возврат амбассадора, +5 user_actions.callback_query, хвост
     # user_actions.router (579 -> 584).
     # 32-10 задача 2: «🌊 Волны» — список + визард создания/копии, +2 admin.message
-    # (state:WaveCreate:*) + +9 admin.callback_query, handlers/admin_game_waves.py (584 -> 595).
+    # (state:WaveCreate:*) + +9 admin.callback_query, handlers/game/admin_game_waves.py (584 -> 595).
     # 32-10 задача 3: карточка волны, +3 admin.message (state:WaveEdit:*) + +6
     # admin.callback_query (595 -> 604).
     # 32-12 задача 1: шаги «Волна»/«Аудитория» визарда задания, +2 admin.callback_query
     # (game_task_wave_step/game_task_audience_step) (604 -> 606).
     # План 32-11 (D-16/D-17): экран итогов волны, +3 admin.callback_query
-    # (wave_finish_screen/wave_finish_confirm/wave_finish_go, handlers/admin_game_waves.py) —
+    # (wave_finish_screen/wave_finish_confirm/wave_finish_go, handlers/game/admin_game_waves.py) —
     # физически в хвосте файла, СРАЗУ ПОСЛЕ wave_create_cancel и ПЕРЕД show_admin_polls (та же
     # точка вставки, что и остальные хендлеры этого шва). Пересчитано RUNNING
     # `_build_snapshot_lines()` и сверено diff'ом с прежним 606-строчным снимком: ровно одна
@@ -2435,7 +2435,7 @@ def test_snapshot_total_handler_count_is_292():
     # две чистые вставки (1070 -> 1073).
     # 2026-10-09, квик 261009-1v0: делегации «✅ Включить делегации» — +3 admin.callback_query
     # (dlg_arm/dlg_arm_yes/dlg_disarm) сразу после dlg_apply; одна чистая вставка (1073 -> 1076).
-    # Перенос баллов из таблицы (handlers/admin_coins_transfer.py, хвост admin.py): +3 admin.message
+    # Перенос баллов из таблицы (handlers/game/admin_coins_transfer.py, хвост admin.py): +3 admin.message
     # (state:CoinsTransfer:* — отмена дважды/ссылка) и +4 admin.callback_query в хвосте; чистые
     # вставки (1076 -> 1083).
     # Enum-настройки кнопками (handlers/admin_settings_enum.py, хвост admin.py): +1

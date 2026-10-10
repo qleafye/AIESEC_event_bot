@@ -16,7 +16,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import user_actions as ua_mod
-from handlers import game_submit_counter as counter_mod
+from handlers.game import game_submit_counter as counter_mod
 from handlers.states import GameSubmit
 from tests._dbtpl import fast_init_db
 
@@ -195,7 +195,7 @@ def test_registry_has_two_new_game_keys_and_admin_order_lists_them():
 
 
 def test_counter_helpers_live_in_seam_module_and_are_the_same_objects():
-    """Вынесено в handlers/game_submit_counter.py из-за потолка размера user_actions.py --
+    """Вынесено в handlers/game/game_submit_counter.py из-за потолка размера user_actions.py --
     ua_mod._game_counter_* обязаны быть теми же объектами, не копиями."""
     assert ua_mod._game_counter_text is counter_mod.game_counter_text
     assert ua_mod._game_counter_kb is counter_mod.game_counter_kb

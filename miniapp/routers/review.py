@@ -1,7 +1,7 @@
 """Phase 19 (D-04 волна 2, D-07, D-09): очередь проверки сдач из Mini App.
 
 Единственное место фазы, где веб-процесс НАЧИСЛЯЕТ монеты. Порядок решения — строго как у
-`handlers/admin_gamification.py::grev_approve` (импортировать нельзя — aiogram):
+`handlers/game/admin_gamification.py::grev_approve` (импортировать нельзя — aiogram):
 
     проверка скоупа -> award_for (штраф за просрочку) -> claim_submission(...) -> ТОЛЬКО при won:
         add_coins(source="task", task_id=...) -> outbox submission_reviewed -> сообщение делегату
@@ -15,7 +15,7 @@
 (`database.db.sum_task_coins_for_wave`) джойнит `coins.task_id -> game_tasks.wave_id`, без
 этой ссылки одобренная здесь сдача не попадала в зачёт волны вовсе. Штраф за просрочку
 считает `services.game_award.award_for` — та же формула и тот же предикат просрочки, что у
-бота (`handlers/admin_gamification.py::_award_for`), иначе одна и та же просроченная сдача
+бота (`handlers/game/admin_gamification.py::_award_for`), иначе одна и та же просроченная сдача
 получала разные баллы в зависимости от того, где менеджер нажал «Одобрить».
 
 Очередь — по одной карточке (D-07): `GET /review/next?offset=N`; «⏭ Пропустить» — чисто

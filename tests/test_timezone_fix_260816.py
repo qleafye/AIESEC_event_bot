@@ -190,7 +190,7 @@ def test_broadcast_schedule_rejects_time_inside_utc_msk_window(tmp_path):
 
 def test_game_task_deadline_rejects_time_inside_utc_msk_window(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin_gamification  # Phase 13 (13-04): game_task_deadline_step moved here
+    from handlers.game import admin_gamification  # Phase 13 (13-04): game_task_deadline_step moved here
     from handlers.states import GameTaskCreate
 
     state = _new_state()
