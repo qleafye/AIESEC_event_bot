@@ -2004,8 +2004,9 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
         from handlers.admin_forum_date import show_forum_date_city_picker
         return await show_forum_date_city_picker(callback, state)
     text, cancel_kb = await _settings_edit_screen(key, header_code)
-    if all_cities := await gscope.is_global_in_city_context(key, header_code):  # город в шапке, настройка общая
-        text, cancel_kb = await gscope.warn_screen(key, header_code, text, cancel_kb)
+    denied = not (header_code and header_code != ALL_CITIES and is_per_city(key)) and await gscope.common_write_denied(admin_id, key)
+    if (all_cities := await gscope.is_global_in_city_context(key, header_code)) or denied:  # общая настройка
+        text, cancel_kb = await gscope.warn_screen(key, header_code, text, cancel_kb, denied)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=cancel_kb)
 
     # Branch (1) (header = real city AND key is per_city) never starts the FSM from here —
@@ -2019,7 +2020,7 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     own_city_context = bool(header_code and header_code != ALL_CITIES and is_per_city(key))
     is_list = SETTINGS_SCHEMA.get(key, {}).get("type") == "list"
     await state.clear()
-    if not own_city_context and not is_list and not (all_cities and gscope.needs_confirm(key)):
+    if not own_city_context and not is_list and not denied and not (all_cities and gscope.needs_confirm(key)):
         await state.set_state(EditSetting.waiting_for_value)
         await state.update_data(setting_key=key)
     await callback.answer()
@@ -2472,6 +2473,8 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     if data.get("forum_date_pick_city"):  # экран «для какого города?» — дата без города не пишется
         return await message.answer(_fdate.PICK_CITY_FIRST)
     key = data["setting_key"]
+    if await gscope.deny(message, key):  # привязанный к городу не пишет общее — и со старой клавиатуры
+        return await state.clear()
     if key == "reject_rules_enabled":  # то же правило, что в settings_edit_start
         from handlers.admin_reject_rules import MASTER_DENIED_TEXT
         from services.reject_rules import can_edit_city
