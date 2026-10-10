@@ -160,10 +160,13 @@ DIMS["shot.png"] = [800, 600];
   r.localUrl = [url.startsWith("blob:"), m.localPhotoUrl("FILE_A") === url, m.localPhotoUrl("UNKNOWN")];
   const replaced = m.rememberLocalPhoto("FILE_A", shrunk);
   r.replaceRevokesOld = log.revoked.includes(url) && m.localPhotoUrl("FILE_A") === replaced;
-  for (let i = 0; i < 6; i += 1) m.rememberLocalPhoto(`F${i}`, shrunk);
-  r.evicted = [m.localPhotoUrl("FILE_A"), log.revoked.includes(replaced), m.localPhotoUrl("F5") !== null];
-  m.forgetLocalPhoto("F5");
-  r.forgotten = m.localPhotoUrl("F5");
+  // показанная обложка черновика переживает 12 новых фото, непоказанная — вытесняется
+  const draft = m.rememberLocalPhoto("DRAFT", shrunk);
+  for (let i = 0; i < 12; i += 1) { m.rememberLocalPhoto(`F${i}`, shrunk); m.localPhotoUrl("DRAFT"); }
+  r.evicted = [m.localPhotoUrl("FILE_A"), log.revoked.includes(replaced), m.localPhotoUrl("F11") !== null];
+  r.draftKept = m.localPhotoUrl("DRAFT") === draft && !log.revoked.includes(draft);
+  m.forgetLocalPhoto("F11");
+  r.forgotten = m.localPhotoUrl("F11");
   r.nullSafe = [m.rememberLocalPhoto(null, shrunk), m.localPhotoUrl(null)];
 }
 // 13. декодер завис: по таймауту — оригинал, следующее фото очередь не держит
@@ -292,6 +295,7 @@ def test_local_preview_cache_reuses_and_revokes(result):
     assert result["localUrl"] == [True, True, None]
     assert result["replaceRevokesOld"] is True
     assert result["evicted"] == [None, True, True]
+    assert result["draftKept"] is True
     assert result["forgotten"] is None
     assert result["nullSafe"] == [None, None]
 
