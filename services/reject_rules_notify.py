@@ -171,6 +171,13 @@ async def _recompute_and_notify() -> None:
     сам сужает адресатов до привязанных к этому городу + непривязанных + суперадминов — держатель,
     привязанный к другому городу, сообщения не увидит); правило «все города» (`city is None`)
     уходит БЕЗ фильтра — всем держателям, включая городских (T-31-12-05)."""
+    if _sched._bot is None:
+        # Веб-процесс приложения: бота нет, а пересчёт ЗАПИСЫВАЕТ paused_reason — после него бот
+        # перехода уже не увидит и уведомление держателям права потеряется. Пересчёт и письмо
+        # делает бот, когда разберёт очередь `settings_changed`.
+        logger.info("services.reject_rules_notify: процесс без бота — пересчёт паузы оставлен боту")
+        return
+
     combos = await _combos_from_enabled_rules()
     if not combos:
         return
@@ -193,12 +200,6 @@ async def _recompute_and_notify() -> None:
         return
 
     bot = _sched._bot
-    if bot is None:
-        logger.error(
-            "services.reject_rules_notify: бот ещё не поднят — уведомление о паузе (%d правил) не отправлено",
-            len(newly_paused),
-        )
-        return
 
     by_city: dict[str | None, list[dict]] = {}
     for rule in newly_paused.values():

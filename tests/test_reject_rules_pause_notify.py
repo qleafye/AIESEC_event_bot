@@ -235,6 +235,25 @@ def test_preset_apply_pauses_rule_with_one_consolidated_message(tmp_path, monkey
     assert len(bot.sent) == 1
 
 
+def test_preset_in_web_process_leaves_pause_for_the_bot(tmp_path, monkeypatch):
+    """Веб-процесс приложения (бота нет): пресет не пересчитывает паузу — иначе paused_reason
+    записался бы, а письмо держателям права потерялось, и бот перехода бы не увидел."""
+    _ready(tmp_path)
+    _run(db.set_setting("reject_rules_enabled", "on"))
+    _run(db.set_setting("reg_q_course", "on"))
+    rule_id = _run(_create_course_rule())
+    monkeypatch.setattr(rrn._sched, "_bot", None)
+
+    _run(reg_presets.apply_reg_preset("conf"))
+    assert _run(db.get_reject_rule(rule_id))["paused_reason"] is None
+
+    bot = _FakeBot()
+    monkeypatch.setattr(rrn._sched, "_bot", bot)  # дальше — бот разбирает очередь
+    _run(rrn.on_settings_written_batch(["reg_q_course"]))
+    assert len(bot.sent) == 1
+    assert _run(db.get_reject_rule(rule_id))["paused_reason"] is not None
+
+
 def test_batch_irrelevant_keys_send_nothing(tmp_path, monkeypatch):
     _ready(tmp_path)
     _run(db.set_setting("reject_rules_enabled", "on"))
