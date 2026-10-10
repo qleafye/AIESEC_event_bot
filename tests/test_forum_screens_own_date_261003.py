@@ -10,8 +10,8 @@ import asyncio
 
 from config import config
 from database import db
-import handlers.admin_forum_functions as aff
-import handlers.admin_program as ap
+import handlers.forum.admin_forum_functions as aff
+import handlers.forum.admin_program as ap
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 261003101

@@ -6,17 +6,17 @@
 обе аудитории по плану), закрывает находку идемпотентно (`database.db.lost_found`).
 
 Мастер: фото → «где нашли/куда подойти» → предпросмотр («📢 Опубликовать»/«✖️ Отмена»);
-город резолвится тем же трёхветочным приёмом, что `handlers.admin_forum_functions.
-_resolve_screen_city`/`handlers.admin_volunteer_invite.volinvite_entry` (своя копия —
+город резолвится тем же трёхветочным приёмом, что `handlers.forum.admin_forum_functions.
+_resolve_screen_city`/`handlers.forum.admin_volunteer_invite.volinvite_entry` (своя копия —
 приватные хелперы не экспортируются между модулями). Тумблер per_city
 `lost_found_enabled` (дефолт OFF) — свой экран здесь (`lostfound_cfg:*`), статусная СТРОКА —
-хаб «🎪 Форум: функции» (`handlers/admin_forum_functions.py`, правка аддитивная — см. его
+хаб «🎪 Форум: функции» (`handlers/forum/admin_forum_functions.py`, правка аддитивная — см. его
 докстринг). Текст поста — общий текстовый редактор («📋 Заявки»,
 `handlers/admin_settings.py::_APPS_FIELD_ORDER`), group "apps" (НЕ переводится, см.
 докстринг `settings_schema.SETTINGS_SCHEMA["lost_found_post_text"]`).
 
 Своего `Router()` нет — декорирует `handlers.admin.router`, тот же приём, что
-`handlers/admin_volunteer_invite.py`; импортирован в ХВОСТЕ `handlers/admin.py`,
+`handlers/forum/admin_volunteer_invite.py`; импортирован в ХВОСТЕ `handlers/admin.py`,
 ПОСЛЕДНИМ (золотой снапшот — чистый аппенд).
 
 Право доступа — АСИММЕТРИЧНО, сознательно:
@@ -25,7 +25,7 @@ _resolve_screen_city`/`handlers.admin_volunteer_invite.volinvite_entry` (сво�
   «✅ Отметки на форуме»: ADMIN_CAPS несёт ровно одно значение на ключ (D-01/D-15).
 - Кнопка «✅ Нашёлся хозяин» живёт ПОД постом в ГРУППОВОМ чате делегатов — сматчится
   `admin.router`'ом независимо от чата (`CapabilityMiddleware` не различает тип чата, тот
-  же прецедент, что `sos_claim:*`/`sos_resolve:*` в `handlers/admin_sos.py`), и её видит
+  же прецедент, что `sos_claim:*`/`sos_resolve:*` в `handlers/forum/admin_sos.py`), и её видит
   ЛЮБОЙ участник чата, не только штат. План явно называет ДВЕ аудитории («checkin» И
   «moderate_reg»), а один ключ карты — одно значение; здесь запись ANY_CAPABILITY
   (навигационная, тот же приём, что «admin_city_pick:*» в `handlers/access/admin_caps.py`), а
@@ -50,7 +50,7 @@ from domain.cities import (
 from database.db import create_lost_found_item, get_lost_found_item, mark_lost_found_returned
 from handlers.admin import router
 from handlers.access.admin_caps import DENIAL_TEXT, resolve_capabilities
-from handlers.admin_checkin import (
+from handlers.forum.admin_checkin import (
     _CITY_FORBIDDEN_ALERT,
     _admin_city_scope,
     _city_allowed,
@@ -79,8 +79,8 @@ _WHERE_HINT = "Например: «Нашли у зала А, забрать н�
 
 
 async def _resolve_own_city(admin_id: int) -> str | None:
-    """Тот же трёхветочный резолвер «город из шапки», что `handlers.admin_forum_functions.
-    _resolve_screen_city`/`handlers.admin_volunteer_invite.volinvite_entry` (см. докстринг
+    """Тот же трёхветочный резолвер «город из шапки», что `handlers.forum.admin_forum_functions.
+    _resolve_screen_city`/`handlers.forum.admin_volunteer_invite.volinvite_entry` (см. докстринг
     модуля — приватная копия, не общий импорт)."""
     own_scope = await _admin_city_scope(admin_id)
     if own_scope is not None:
@@ -102,7 +102,7 @@ async def _chat_for_own_city(code: str | None) -> dict | None:
     """`services.chat_tracking.chat_for_city` сравнивает `entry["city"] == city` буквально —
     модуль городов выключен -> привязка всегда лежит под глобальными ключами (`city=None`),
     а `_resolve_own_city` в этом состоянии всё равно возвращает настоящий код
-    (`default_city_code()`, тот же приём, что `handlers.admin_forum_functions.
+    (`default_city_code()`, тот же приём, что `handlers.forum.admin_forum_functions.
     _resolve_screen_city`). Тот же трёхветочный «module off -> None» гейт, что и в
     остальных местах этого модуля (per_city_key при сохранении тумблера) — без него привязка
     глобального чата не находилась бы вовсе (см. `services.sos.sos_chat_for_city`, тот же

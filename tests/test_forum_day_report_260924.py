@@ -1,5 +1,5 @@
 """Идея №16 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): «📊 Отчёт дня
-форума» вечером — `services/forum_day_report.py` + экран `handlers/admin_forum_functions.py`.
+форума» вечером — `services/forum_day_report.py` + экран `handlers/forum/admin_forum_functions.py`.
 
 Стиль — `tests/test_checkin_volunteer_broadcast_260924.py` (реальный AsyncIOScheduler на
 временном jobstore, `asyncio.run`, шаблонная БД `tests/_dbtpl.fast_init_db`)."""
@@ -406,7 +406,7 @@ def _cbs(kb):
 
 
 def test_hub_shows_day_report_row_and_button(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     text, kb = _run(aff._render_hub(ADMIN_ID, "msk"))
@@ -415,7 +415,7 @@ def test_hub_shows_day_report_row_and_button(tmp_path):
 
 
 def test_cfg_screen_toggle_flips_global_setting(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     callback = FakeCallback("forumdayreport_toggle:_all", ADMIN_ID)
@@ -427,7 +427,7 @@ def test_cfg_screen_toggle_flips_global_setting(tmp_path):
 
 
 def test_manual_send_now_button_reports_delivery(tmp_path, monkeypatch):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     _with_bot(monkeypatch)
@@ -438,7 +438,7 @@ def test_manual_send_now_button_reports_delivery(tmp_path, monkeypatch):
 
 
 def test_csv_button_sends_document(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     class DocMessage(FakeMessage):
         def __init__(self):

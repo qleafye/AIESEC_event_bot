@@ -1,7 +1,7 @@
 """Делегатский поток теста компетенций: вход, гейт, вопросы, продолжение, результат, пересдача."""
 from domain.cities import per_city_key
 from database import db, quiz_db as qz, session_enroll_db as se
-from handlers import forum_deeplinks, quiz as h
+from handlers.forum import forum_deeplinks, quiz as h
 from services import quiz as svc
 from keyboards.menu_dynamic import DynamicMenuText
 from tests._enroll38 import CITY, add_user, ready, run
@@ -164,7 +164,7 @@ def test_deeplink_quiz(tmp_path):
 
     async def go():
         await seed_quiz()
-        assert forum_deeplinks.DEEPLINKS["quiz"] == "handlers.quiz:open_from_deeplink"
+        assert forum_deeplinks.DEEPLINKS["quiz"] == "handlers.forum.quiz:open_from_deeplink"
         m = FakeMessage(U, "/start quiz")
         assert await forum_deeplinks.try_forum_deeplink(m, make_state(U), "quiz")
         assert buttons(m.answers[-1][1])[0][1] == "qz:go"

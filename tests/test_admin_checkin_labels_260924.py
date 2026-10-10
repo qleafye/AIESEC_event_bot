@@ -13,7 +13,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from database.db import _connect
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 910301

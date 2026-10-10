@@ -417,7 +417,7 @@ def _cbs(kb):
 
 
 def test_hub_shows_welcome_row_and_button(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     text, kb = _run(aff._render_hub(ADMIN_ID, "msk"))
@@ -426,7 +426,7 @@ def test_hub_shows_welcome_row_and_button(tmp_path):
 
 
 def test_cfg_screen_toggle_flips_global_setting(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     callback = _FakeCallback("forumwelcome_toggle:_all")
@@ -438,7 +438,7 @@ def test_cfg_screen_toggle_flips_global_setting(tmp_path):
 
 
 def test_cfg_screen_writes_percity_key_when_module_on(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
     from handlers.access.admin_caps import role_caps_key
 
     _ready(tmp_path)
@@ -453,7 +453,7 @@ def test_cfg_screen_writes_percity_key_when_module_on(tmp_path):
 
 
 def test_cfg_screen_warns_when_text_empty(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     _run(db.set_setting("forum_welcome_text", ""))

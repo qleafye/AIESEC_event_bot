@@ -594,7 +594,7 @@ async def toggle_menu_button(callback: types.CallbackQuery):
         await callback.answer(f"{label}: {status}", show_alert=True)
 
     text = await render_menu_text(admin_id)
-    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    from handlers.forum.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     kb = keep_hub_back(callback.message, await build_menu_keyboard(admin_id))
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -656,7 +656,7 @@ async def menu_reset_city(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"menu_reset_city_go:{header_code}")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu_buttons")],
     ])
-    from handlers.admin_forum_hub_nav import hub_return  # из хаба: «Отмена» — на экран из хаба
+    from handlers.forum.admin_forum_hub_nav import hub_return  # из хаба: «Отмена» — на экран из хаба
     kb = hub_return(callback.message, kb, "admin_menu_buttons", "menu")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -682,7 +682,7 @@ async def menu_reset_city_go(callback: types.CallbackQuery):
     # T-093-26: freshness — the confirm screen named the header's city; if the header moved
     # on since, refuse and re-render the menu screen for the NEW header instead of deleting.
     current = await admin_selected_city(admin_id)
-    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    from handlers.forum.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     if code != current:
         await callback.answer("Город админки изменился — подтвердите заново.", show_alert=True)
         text = await render_menu_text(admin_id)

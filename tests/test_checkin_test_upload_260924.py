@@ -16,7 +16,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from handlers.states import CheckinTestUpload
 from services import checkin as checkin_mod
 from services.checkin import build_payload, current_event_tag

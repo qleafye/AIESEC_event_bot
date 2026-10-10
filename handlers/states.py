@@ -312,7 +312,7 @@ class AdminI18nEdit(StatesGroup):
 
 class CheckinImport(StatesGroup):
     # Phase 12 (FORUM-CHECKIN.md, D-09/D-10): загрузка выгрузки офлайн-приложения-сканера
-    # (handlers/admin_checkin.py) — один шаг ожидания файла; выбор точки («🚪 Вход») — кнопка
+    # (handlers/forum/admin_checkin.py) — один шаг ожидания файла; выбор точки («🚪 Вход») — кнопка
     # без текстового ввода, второго State не заводим (то же решение, что у CoinsManual/
     # CityForm: подтверждение — callback, читающий state.get_data(), а не отдельный State).
     waiting_file = State()
@@ -328,7 +328,7 @@ class CheckinTestUpload(StatesGroup):
 
 class CheckinQrTimeEdit(StatesGroup):
     # Форум-ночь п.3 (D-03, идея №2): ввод «ЧЧ:ММ» для вечерней рассылки/утреннего повтора QR
-    # (handlers/admin_checkin.py) — какое именно время правим (checkin_qr_broadcast_time /
+    # (handlers/forum/admin_checkin.py) — какое именно время правим (checkin_qr_broadcast_time /
     # checkin_qr_morning_repeat_time) и для какого города живёт в state.get_data(), тот же
     # приём, что AdminI18nEdit/CoinsManual (одно состояние, цель правки в данных, не в State).
     waiting_value = State()
@@ -336,7 +336,7 @@ class CheckinQrTimeEdit(StatesGroup):
 
 class CheckinVolGuideTimeEdit(StatesGroup):
     # D-36 (24.09, аудит форумных тумблеров): ввод «ЧЧ:ММ» для шпаргалки волонтёра накануне
-    # форума (handlers/admin_forum_functions.py, checkin_volunteer_guide_broadcast_time) — тот
+    # форума (handlers/forum/admin_forum_functions.py, checkin_volunteer_guide_broadcast_time) — тот
     # же приём, что CheckinQrTimeEdit выше, но один временной слот, не два (город — в
     # state.get_data()).
     waiting_value = State()
@@ -344,7 +344,7 @@ class CheckinVolGuideTimeEdit(StatesGroup):
 
 class ForumDayMenuTimeEdit(StatesGroup):
     # Идея №1 бэклога чек-ина (режим «день форума»): ввод «ЧЧ:ММ» для времени начала режима
-    # вечером накануне форума (handlers/admin_forum_functions.py,
+    # вечером накануне форума (handlers/forum/admin_forum_functions.py,
     # forum_day_menu_start_time) — тот же приём, что CheckinVolGuideTimeEdit выше, один
     # временной слот, город — в state.get_data().
     waiting_value = State()
@@ -352,7 +352,7 @@ class ForumDayMenuTimeEdit(StatesGroup):
 
 class ForumDayReportTimeEdit(StatesGroup):
     # Идея №16 бэклога чек-ина (отчёт дня форума вечером): ввод «ЧЧ:ММ» для времени ежедневной
-    # отправки (handlers/admin_forum_functions.py, forum_day_report_time) — тот же приём, что
+    # отправки (handlers/forum/admin_forum_functions.py, forum_day_report_time) — тот же приём, что
     # CheckinVolGuideTimeEdit/ForumDayMenuTimeEdit выше, один временной слот, город — в
     # state.get_data().
     waiting_value = State()
@@ -360,21 +360,21 @@ class ForumDayReportTimeEdit(StatesGroup):
 
 class ForumNoshowPollTimeEdit(StatesGroup):
     # Идея №23 бэклога чек-ина (опрос неявившихся): ввод «ЧЧ:ММ» для времени отправки на
-    # следующий день после форума (handlers/admin_forum_functions.py, forum_noshow_poll_time) —
+    # следующий день после форума (handlers/forum/admin_forum_functions.py, forum_noshow_poll_time) —
     # тот же приём, что ForumDayReportTimeEdit выше.
     waiting_value = State()
 
 
 class RegionalNoshowMoveTimeEdit(StatesGroup):
     # Трек «региональные форумы → Москва»: ввод «ЧЧ:ММ» для времени отправки предложения
-    # переноса на следующий день после форума (handlers/admin_forum_functions.py,
+    # переноса на следующий день после форума (handlers/forum/admin_forum_functions.py,
     # regional_noshow_offer_time) — тот же приём, что ForumNoshowPollTimeEdit выше.
     waiting_value = State()
 
 
 class ForumNoshowPollOther(StatesGroup):
     # Идея №23 бэклога чек-ина: делегат нажал «Другое» на опросе неявившихся — ждём свободный
-    # текст следующим сообщением (handlers/forum_noshow_poll.py). Право не нужно (delegate-side,
+    # текст следующим сообщением (handlers/forum/forum_noshow_poll.py). Право не нужно (delegate-side,
     # вне CapabilityMiddleware — тот же прецедент, что SosReport/SessionFeedbackComment выше).
     # Отмена — следующий /start (cmd_start чистит FSM, см. докстринг SosReport выше), своего
     # Command("cancel")/«Отмена»-хендлера не заводим (тот же приём, что SessionFeedbackComment).
@@ -382,7 +382,7 @@ class ForumNoshowPollOther(StatesGroup):
 
 
 class ProgramSessionField(StatesGroup):
-    # Форум-ночь п.4 (расписание форума в боте, handlers/admin_program.py) — ввод ОДНОГО
+    # Форум-ночь п.4 (расписание форума в боте, handlers/forum/admin_program.py) — ввод ОДНОГО
     # текстового поля сессии программы: и мастер создания идёт по этим же состояниям шаг за
     # шагом, и точечная правка карточки существующей сессии заходит в нужное состояние
     # напрямую. Режим (создание/правка), город/день/id сессии/какое поле правится — целиком в
@@ -433,7 +433,7 @@ class QuizImport(StatesGroup):
 
 class SosReport(StatesGroup):
     # D-31 (24.09, «SOS без категорий»): «🆘 SOS» создаёт заявку и публикует карточку МГНОВЕННО
-    # (handlers/sos.py::sos_start), без вопроса «что случилось» — категорийный визард (details/
+    # (handlers/forum/sos.py::sos_start), без вопроса «что случилось» — категорийный визард (details/
     # location/followup как отдельные шаги) снесён целиком. Единственное состояние —
     # `collecting` («дописываю SOS»): ЛЮБОЕ сообщение делегата (текст/фото/геопозиция) уходит в
     # тред карточки И дописывает саму карточку первым текстом/фото
@@ -447,7 +447,7 @@ class SosReport(StatesGroup):
 
 
 class SosChatBind(StatesGroup):
-    # Экран менеджера «🆘 SOS» (handlers/admin_sos.py), право `settings` ("state:SosChatBind:*"
+    # Экран менеджера «🆘 SOS» (handlers/forum/admin_sos.py), право `settings` ("state:SosChatBind:*"
     # в handlers/access/admin_caps.py — та же капа, что у остальной интеграционной привязки чата,
     # services/chat_tracking.py::is_bot_admin_user). Заявка (кто просил, для какого города)
     # живёт в `sos_chat_bind_pending` (services/sos.py), не в state.get_data() — вторая ветка
@@ -457,14 +457,14 @@ class SosChatBind(StatesGroup):
 
 class SessionFeedbackComment(StatesGroup):
     # Форум-ночь п.9 (идея №15, D-24): «✍️ Написать» под приглашением оценить сессию
-    # (handlers/session_feedback.py) — ОДНО состояние ожидания текста, session_id несёт
+    # (handlers/forum/session_feedback.py) — ОДНО состояние ожидания текста, session_id несёт
     # state.get_data() (sfb_session_id). Право не нужно (delegate-side, вне
     # CapabilityMiddleware — тот же прецедент, что SosReport выше).
     waiting = State()
 
 
 class VenueRevokeFind(StatesGroup):
-    # Идея №32 (снятие отметки менеджером, handlers/admin_venue.py): одно ожидание текста —
+    # Идея №32 (снятие отметки менеджером, handlers/forum/admin_venue.py): одно ожидание текста —
     # фамилия/@username делегата; дальше выбор человека и отметки идёт кнопками.
     waiting_query = State()
 
@@ -488,7 +488,7 @@ class VolunteerInviteWizard(StatesGroup):
 
 class LostFoundNew(StatesGroup):
     # Идея №20 бэклога чек-ина (бюро находок) — три шага мастера «🧳 Нашли вещь»
-    # (handlers/admin_lost_found.py): фото → «где нашли/куда подойти» → предпросмотр
+    # (handlers/forum/admin_lost_found.py): фото → «где нашли/куда подойти» → предпросмотр
     # («📢 Опубликовать»/«✖️ Отмена»). Город и черновик (photo/where) несут
     # state.get_data() — тот же приём, что RolesExpiryEdit/VolunteerInviteWizard выше.
     waiting_photo = State()
@@ -568,7 +568,7 @@ class AmbSlotsEdit(StatesGroup):
 
 
 class ProgramPhotoUpload(StatesGroup):
-    # Фото программы ДЛЯ ОДНОГО ГОРОДА (или общее) — handlers/admin_program_view.py; город и
+    # Фото программы ДЛЯ ОДНОГО ГОРОДА (или общее) — handlers/forum/admin_program_view.py; город и
     # экран возврата — в state.get_data().
     waiting = State()
 

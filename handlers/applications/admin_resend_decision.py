@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
-from handlers.admin_checkin import _city_allowed
+from handlers.forum.admin_checkin import _city_allowed
 from services import decision_delivery
 
 logger = logging.getLogger(__name__)

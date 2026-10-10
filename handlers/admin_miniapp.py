@@ -233,7 +233,7 @@ async def sync_all_chat_menu_buttons(bot, concurrency: int = _RESYNC_CONCURRENCY
 
 
 async def _rerender(callback: types.CallbackQuery):
-    from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
+    from handlers.forum.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     await callback.message.edit_text(
         await render_miniapp_settings_text(),
         parse_mode="HTML",

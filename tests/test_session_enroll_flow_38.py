@@ -1,7 +1,7 @@
 """Делегатский поток записи: слоты, выбор, замена, расписание, подтверждение, дедлайн, IDOR."""
 from domain.cities import per_city_key
 from database import db, session_enroll_db
-from handlers import session_enroll as h
+from handlers.forum import session_enroll as h
 from tests._enroll38 import CITY, add_user, ready, run
 from tests._enroll38_chat import FakeCallback, FakeMessage, buttons, setup_world
 

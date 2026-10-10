@@ -11,7 +11,7 @@ QR во ВСЕХ городах и выкидывал в раздел «📋 З�
 хаба» хранится в самой клавиатуре сообщения: перерисовка экрана после тумблера переносит кнопку
 (`keep_hub_back`), поэтому контекст переживает и тапы, и перезапуск бота.
 
-Форма шва — как у соседей (`handlers/admin_forum_ready.py`): своего `Router()` нет,
+Форма шва — как у соседей (`handlers/forum/admin_forum_ready.py`): своего `Router()` нет,
 `from handlers.admin import router`, импорт из хвоста `handlers/admin.py`. Право — `settings`,
 то же, что у самого тумблера в «📋 Заявки» (`ADMIN_CAPS["toggle_checkin_qr_enabled"]`)."""
 import html
@@ -25,7 +25,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.cities import cities_module_on, city_label, enabled_cities
 from database.db import checkin_qr_send_counts
 from handlers.admin import router
-from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
+from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 
@@ -103,11 +103,11 @@ _edit = edit_or_answer
 
 
 async def _hub(admin_id: int, code: str | None) -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_forum_functions import _render_hub, _resolve_screen_city
+    from handlers.forum.admin_forum_functions import _render_hub, _resolve_screen_city
     if code is None:
         code = await _resolve_screen_city(admin_id)
     if code is None:
-        from handlers.admin_forum_functions import _render_city_picker
+        from handlers.forum.admin_forum_functions import _render_city_picker
         return await _render_city_picker()
     return await _render_hub(admin_id, code)
 
@@ -206,7 +206,7 @@ async def forumfn_back(callback: types.CallbackQuery):
 
 async def _native_screen(target: str, admin_id: int, code: str | None):
     if target == "chk":
-        from handlers.admin_checkin import render_admin_checkin
+        from handlers.forum.admin_checkin import render_admin_checkin
         return await render_admin_checkin(admin_id, code)  # экран города хаба, не шапки
     if target == "app":
         from handlers.admin_miniapp import build_miniapp_settings_keyboard, render_miniapp_settings_text
@@ -220,7 +220,7 @@ async def _native_screen(target: str, admin_id: int, code: str | None):
         from handlers.regform.admin_reg_config import build_menu_keyboard, render_menu_text
         return await render_menu_text(admin_id), await build_menu_keyboard(admin_id)
     if target == "fb" and code:
-        from handlers.session_feedback import render_feedback_settings_screen
+        from handlers.forum.session_feedback import render_feedback_settings_screen
         return await render_feedback_settings_screen(code)
     return None
 

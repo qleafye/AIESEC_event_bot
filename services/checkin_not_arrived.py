@@ -7,7 +7,7 @@
 ТОЛЬКО ручной запуск, БЕЗ авто-рассылки и БЕЗ джобы APScheduler (владелец не ответил, можно ли
 доверять этому в CSV-режиме — регионы могут ещё догружать отметки файлами, часть пришедших
 получила бы сообщение по ошибке; риск явно называется в подтверждении менеджеру,
-`handlers/admin_checkin.py`). Идемпотентно по (делегат, день) —
+`handlers/forum/admin_checkin.py`). Идемпотентно по (делегат, день) —
 `checkin_not_arrived_mark_sent` пишет строку ПЕРЕД отправкой (не после): повторный тап «в
 процессе» не берёт того же человека дважды.
 
@@ -66,7 +66,7 @@ def _response_kb(day: str, lang: str = "ru", tr_map: dict | None = None,
 
 
 async def pending_count(*, city_scope=None) -> int:
-    """Превью «Уйдёт N делегатам» для экрана подтверждения (handlers/admin_checkin.py)."""
+    """Превью «Уйдёт N делегатам» для экрана подтверждения (handlers/forum/admin_checkin.py)."""
     ids = await checkin_not_arrived_pending_ids(city_scope=city_scope)
     return len(ids)
 
@@ -191,7 +191,7 @@ def report_text(result: dict, expected: int | None = None) -> str:
 
 async def summary_text(*, city_scope=None) -> str:
     """«Едут N · Не смогут M · Уже на месте K · без ответа R» за СЕГОДНЯ — строка экрана
-    «✅ Отметки на форуме» (handlers/admin_checkin.py). `0` по всем — ещё никому не слали
+    «✅ Отметки на форуме» (handlers/forum/admin_checkin.py). `0` по всем — ещё никому не слали
     шаблон сегодня, вызывающий сам решает, показывать ли строку вовсе."""
     s = await checkin_not_arrived_summary(city_scope=city_scope)
     return (

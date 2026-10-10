@@ -433,7 +433,7 @@ def test_get_main_menu_kb_shows_faq_button_once_item_exists(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 from handlers import admin as admin_mod  # noqa: E402 -- канонический порядок импорта хендлеров
-from handlers import admin_faq  # noqa: E402
+from handlers.forum import admin_faq  # noqa: E402
 from handlers.access.admin_caps import required_capability, role_caps_key, role_enabled_key
 import domain.cities as cities_mod
 

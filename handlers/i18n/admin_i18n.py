@@ -9,7 +9,7 @@
 очередь машинного перевода (граница `services/i18n_sources.py`), но обязаны быть доступны для
 правки здесь.
 
-Форма — Phase 13 (REFAC-01), тот же приём, что у `handlers/admin_faq.py`: своего `Router()`
+Форма — Phase 13 (REFAC-01), тот же приём, что у `handlers/forum/admin_faq.py`: своего `Router()`
 нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; `handlers.admin_sections` (`back_button`)
 импортируется ЛЕНИВО внутри функций — цикл на уровне модуля (admin_sections тянет
 admin_settings, тот — обратно к admin_core).
@@ -273,7 +273,7 @@ async def render_i18n_list(state_token: str = "all", page: int = 0) -> tuple[str
 
 async def render_i18n_card(state_token: str, page: int, idx: int) -> tuple[str, InlineKeyboardMarkup, dict] | None:
     """`None` — строка исчезла/сдвинулась между рендерами (стейл-клавиатура, тот же приём, что
-    у `handlers/admin_faq.py::render_faq_card`); вызывающий отвечает алертом, не правкой."""
+    у `handlers/forum/admin_faq.py::render_faq_card`); вызывающий отвечает алертом, не правкой."""
     rows, _total = await _load_page(state_token, page)
     if idx < 0 or idx >= len(rows):
         return None

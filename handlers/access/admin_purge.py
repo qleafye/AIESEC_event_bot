@@ -3,7 +3,7 @@
 ручного лазания в SQLite на сервере. Команда сознательно НЕ выведена ни в `/admin`, ни в
 `admin_sections.SECTIONS`, ни в меню, ни в подсказках — только по точному имени.
 
-Форма шва — эталон `handlers/admin_faq.py`: своего `Router()` нет, `from handlers.admin import
+Форма шва — эталон `handlers/forum/admin_faq.py`: своего `Router()` нет, `from handlers.admin import
 router`, каждый декоратор — в одну строку со строковым литералом (инвариант cap-теста
 `test_roles_phase8.py`). `admin_caps` импортируется на уровне модуля — цикла не образует
 (`handlers/access/admin_caps.py` сам не импортирует `handlers.admin`, см. его докстринг).

@@ -496,7 +496,7 @@ async def cmd_find_user(message: types.Message):
         forms_line, has_forms = await ext_forms_card_lines(user['telegram_id'])
         text += forms_line
         # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
-        # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
+        # handlers/forum/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
         # Phase 33 (delegate-card admin actions): рядом — «Перевести в город», сама операция и
         # подтверждение живут в handlers/cities/admin_city_move.py (citymv_*), здесь тоже только кнопка.
         rows = [
@@ -922,7 +922,7 @@ from handlers.comms import admin_questions  # noqa: E402
 # Quick 260906-8uq (FAQ-01..06): shared-router seam import for the manager FAQ screen
 # («❓ Частые вопросы») — registers admin_faq/afaq_*/FaqItem.* right after the questions
 # journal seam (golden snapshot: a clean insertion, no reorder of admin_questions handlers).
-from handlers import admin_faq  # noqa: E402
+from handlers.forum import admin_faq  # noqa: E402
 
 # Phase 27 (27-06, LANG-05/LANG-09): shared-router seam import for the manager screen
 # «🌐 Английские тексты» — registers admin_i18n/admin_i18n_*/AdminI18nEdit.* right after the
@@ -1047,41 +1047,41 @@ from handlers.comms import admin_polls  # noqa: E402
 from handlers.access import admin_purge  # noqa: E402
 
 # Phase 12 (FORUM-CHECKIN.md): shared-router seam import for «✅ Отметки на форуме»
-# (handlers/admin_checkin.py) — registers show_admin_checkin/checkin_upload_start/
+# (handlers/forum/admin_checkin.py) — registers show_admin_checkin/checkin_upload_start/
 # checkin_import_file_step/checkin_import_file_invalid/cancel_checkin_import/
 # checkin_point_pick in the very tail of admin.router (golden snapshot: a clean append).
-from handlers import admin_checkin  # noqa: E402
+from handlers.forum import admin_checkin  # noqa: E402
 
 # Форум-ночь п.8 (идея №19, SOS): shared-router seam import for «🆘 SOS»
-# (handlers/admin_sos.py) — registers admin_sos/asos_page/asos_bind_start/asos_bind_cancel/
+# (handlers/forum/admin_sos.py) — registers admin_sos/asos_page/asos_bind_start/asos_bind_cancel/
 # asos_bind_step/sos_claim/sos_resolve/admin_reply_to_sos in the very tail of admin.router
 # (golden snapshot: a clean append).
-from handlers import admin_sos  # noqa: E402
+from handlers.forum import admin_sos  # noqa: E402
 
 # D-36 (24.09, аудит форумных тумблеров): shared-router seam import for «🎪 Форум: функции»
-# (handlers/admin_forum_functions.py) — registers admin_forum_functions_entry/
+# (handlers/forum/admin_forum_functions.py) — registers admin_forum_functions_entry/
 # admin_forum_functions_city_pick/checkinvol_cfg_screen/checkinvol_toggle_go/
 # checkinvol_time_start/cancel_checkinvol_time_edit/checkinvol_time_step in the very tail of
 # admin.router (golden snapshot: a clean append, right after admin_sos).
-from handlers import admin_forum_functions  # noqa: E402
+from handlers.forum import admin_forum_functions  # noqa: E402
 
 # D-29 (24.09, «одна кнопка программы у делегата»): shared-router seam import for the
-# table/photo view cycle button (handlers/admin_program_view.py) — registers
+# table/photo view cycle button (handlers/forum/admin_program_view.py) — registers
 # prog_view_toggle_go in the very tail of admin.router (golden snapshot: a clean append,
 # right after admin_forum_functions). Not in admin_program.py itself (that module is at its
 # own size ceiling) and not in admin_forum_functions.py (the button is shared by BOTH
 # screens, one render function, not duplicated).
-from handlers import admin_program_view  # noqa: E402
+from handlers.forum import admin_program_view  # noqa: E402
 
 # Бэклог чек-ина п.10: shared-router seam import for «📊 Статистика прихода»
-# (handlers/admin_checkin_stats.py) — registers checkin_stats_open/checkin_stats_refresh/
+# (handlers/forum/admin_checkin_stats.py) — registers checkin_stats_open/checkin_stats_refresh/
 # checkin_stats_csv in the very tail of admin.router (golden snapshot: a clean append).
-from handlers import admin_checkin_stats  # noqa: E402
+from handlers.forum import admin_checkin_stats  # noqa: E402
 
 # Бэклог чек-ина №25: shared-router seam import for «🚦 Готовность к форуму»
-# (handlers/admin_forum_ready.py) — registers forum_ready_open/forum_ready_refresh in the very
+# (handlers/forum/admin_forum_ready.py) — registers forum_ready_open/forum_ready_refresh in the very
 # tail of admin.router (golden snapshot: a clean append, right after admin_checkin_stats).
-from handlers import admin_forum_ready  # noqa: E402
+from handlers.forum import admin_forum_ready  # noqa: E402
 
 
 # Phase 33 (delegate-card admin actions): shared-router seam import for «🏙 Перевести в город»
@@ -1091,29 +1091,29 @@ from handlers import admin_forum_ready  # noqa: E402
 from handlers.cities import admin_city_move  # noqa: E402
 
 # Бэклог чек-ина №12: shared-router seam import for «📍 Сейчас на площадке»
-# (handlers/admin_checkin_floor.py) — registers checkin_floor_open/checkin_floor_refresh in the
+# (handlers/forum/admin_checkin_floor.py) — registers checkin_floor_open/checkin_floor_refresh in the
 # very tail of admin.router (golden snapshot: a clean append, right after admin_forum_ready).
-from handlers import admin_checkin_floor  # noqa: E402
+from handlers.forum import admin_checkin_floor  # noqa: E402
 
 
 
 # Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): shared-router seam import for
-# «🔗 Пригласить волонтёров» (handlers/admin_volunteer_invite.py) — registers
+# «🔗 Пригласить волонтёров» (handlers/forum/admin_volunteer_invite.py) — registers
 # volinvite_entry/volinvite_city_pick/volinvite_cfg_screen/volinvite_toggle_go/
 # volinvite_new_start/volinv_link_expiry_pick/volunteer_invite_wizard_cancel/
 # volinv_link_date_step/volinv_rights_expiry_pick/volinv_rights_date_step/
 # volinv_limit_pick_and_create/volinv_revoke_confirm/volinv_revoke_go/volinv_revoke_no/
 # volinv_users_list/volinv_remove_user in the very tail of admin.router (golden snapshot: a
 # clean append, right after admin_program_view).
-from handlers import admin_volunteer_invite  # noqa: E402
+from handlers.forum import admin_volunteer_invite  # noqa: E402
 
 # Идея №20 бэклога чек-ина (бюро находок): shared-router seam import for «🧳 Нашли вещь»
-# (handlers/admin_lost_found.py) — registers lost_found_new_entry/lostfound_city_pick/
+# (handlers/forum/admin_lost_found.py) — registers lost_found_new_entry/lostfound_city_pick/
 # lost_found_cmd/lost_found_cancel_wizard/lost_found_photo_step/lost_found_photo_invalid/
 # lost_found_where_step/lost_found_cancel_preview/lost_found_publish/lostfound_return/
 # lostfound_cfg_screen/lostfound_toggle_go in the very tail of admin.router (golden
 # snapshot: a clean append, right after admin_volunteer_invite).
-from handlers import admin_lost_found  # noqa: E402
+from handlers.forum import admin_lost_found  # noqa: E402
 
 # Phase 33 (delegate-card admin actions): shared-router seam import for «↩️ Вернуть в ожидание»
 # (handlers/applications/admin_revert_pending.py) — registers revertp_start/revertp_toggle/revertp_apply/
@@ -1154,12 +1154,12 @@ from handlers.applications import admin_resume_replace  # noqa: E402
 from handlers.sheets import admin_sheet_reconcile  # noqa: E402
 
 # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): shared-router seam import for the
-# forum-stats-card broadcast screen (handlers/admin_forum_stats_card.py) — registers
+# forum-stats-card broadcast screen (handlers/forum/admin_forum_stats_card.py) — registers
 # forumstats_cfg/forumstats_toggle/forumstats_preview/forumstats_pick/forumstats_send_go in
 # the very tail of admin.router (golden snapshot: a clean append, right after
-# admin_sheet_reconcile). Hub row: handlers/admin_forum_functions.py, right after «🚌 Перенос
+# admin_sheet_reconcile). Hub row: handlers/forum/admin_forum_functions.py, right after «🚌 Перенос
 # неявившихся на форум в Москве».
-from handlers import admin_forum_stats_card  # noqa: E402
+from handlers.forum import admin_forum_stats_card  # noqa: E402
 
 # Квик 260927 (рейтинг чата): shared-router seam import экрана «🏆 Рейтинг чата»
 # (handlers/chat/admin_chat_rating.py) — admin_chat_rating/chrate:* и ввод ChatRatingEdit в самом
@@ -1172,15 +1172,15 @@ from handlers.chat import admin_chat_cleanup  # noqa: E402,F401
 # Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/chat/admin_chat_rating_post.py) —
 # golden append после admin_chat_cleanup: chpost:* и ввод ChatRatingPostEdit.
 from handlers.chat import admin_chat_rating_post  # noqa: E402,F401
-# D-41 (регистрация на месте): экран «📝 Регистрация на месте» (handlers/admin_onsite_reg.py) —
+# D-41 (регистрация на месте): экран «📝 Регистрация на месте» (handlers/forum/admin_onsite_reg.py) —
 # onsitereg_cfg_screen/onsitereg_toggle_go/onsitereg_qr_send в самом хвосте admin.router
 # (golden snapshot: чистое добавление после admin_chat_cleanup). Строка хаба —
-# handlers/admin_forum_functions.py, сразу после «🧳 Бюро находок».
-from handlers import admin_onsite_reg  # noqa: E402,F401
+# handlers/forum/admin_forum_functions.py, сразу после «🧳 Бюро находок».
+from handlers.forum import admin_onsite_reg  # noqa: E402,F401
 # Приёмка 03.10: хаб «🎪 Форум: функции» — подтверждение общего тумблера «🎟 Вход по QR» и
-# возврат в хаб с экранов, открытых из него (handlers/admin_forum_hub_nav.py). Golden snapshot:
+# возврат в хаб с экранов, открытых из него (handlers/forum/admin_forum_hub_nav.py). Golden snapshot:
 # чистое добавление в хвост admin.router.
-from handlers import admin_forum_hub_nav  # noqa: E402,F401
+from handlers.forum import admin_forum_hub_nav  # noqa: E402,F401
 # Роль «📣 Маркетинг (метки)»: экран «🔗 Ссылки с метками» и мастер новой ссылки
 # (handlers/applications/admin_source_links.py) — golden snapshot: чистое добавление в хвост admin.router.
 from handlers.applications import admin_source_links  # noqa: E402,F401
@@ -1188,20 +1188,20 @@ from handlers.applications import admin_source_links  # noqa: E402,F401
 from handlers.ext_forms import admin_ext_forms  # noqa: E402,F401
 # Экран «🏫 Делегации» в «📋 Заявки» (handlers/delegations/admin_delegations.py) — golden append в хвост.
 from handlers.delegations import admin_delegations  # noqa: E402,F401
-# Экран «🕐 Часовой пояс» города (handlers/admin_forum_tz.py) — golden append в хвост.
-from handlers import admin_forum_tz  # noqa: E402,F401
+# Экран «🕐 Часовой пояс» города (handlers/forum/admin_forum_tz.py) — golden append в хвост.
+from handlers.forum import admin_forum_tz  # noqa: E402,F401
 # «📥 Перенос баллов из таблицы» в «🎮 Геймификации» (handlers/game/admin_coins_transfer.py) — golden append в хвост.
 from handlers.game import admin_coins_transfer  # noqa: E402,F401
 # Enum-настройки кнопками в общем редакторе (handlers/admin_settings_enum.py) — golden append в хвост.
 from handlers import admin_settings_enum  # noqa: E402,F401
 # «👥 Список участников» в «📊 Данные» (handlers/applications/admin_participants.py) — golden append в хвост.
 from handlers.applications import admin_participants  # noqa: E402,F401
-# Треки, компетенции и запись у сессии (handlers/admin_enroll.py) — golden append в хвост.
-from handlers import admin_enroll  # noqa: E402,F401
-# Список записей, выгрузка и настройки записи (handlers/admin_enroll_list.py) — golden append в хвост.
-from handlers import admin_enroll_list  # noqa: E402,F401
-# Тест компетенций: настройки, вопросы, баллы (handlers/admin_quiz.py) — golden append в хвост.
-from handlers import admin_quiz  # noqa: E402,F401
+# Треки, компетенции и запись у сессии (handlers/forum/admin_enroll.py) — golden append в хвост.
+from handlers.forum import admin_enroll  # noqa: E402,F401
+# Список записей, выгрузка и настройки записи (handlers/forum/admin_enroll_list.py) — golden append в хвост.
+from handlers.forum import admin_enroll_list  # noqa: E402,F401
+# Тест компетенций: настройки, вопросы, баллы (handlers/forum/admin_quiz.py) — golden append в хвост.
+from handlers.forum import admin_quiz  # noqa: E402,F401
 # «🖼 Аватар бота» в «🎪 Событие» (handlers/admin_bot_avatar.py) — golden append в хвост.
 from handlers import admin_bot_avatar  # noqa: E402,F401
 

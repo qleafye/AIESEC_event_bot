@@ -844,7 +844,7 @@ def test_dashboard_pending_on_old_schema_without_onsite_column(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_toggle_without_city_asks_to_pick_city_when_cities_on(tmp_path):
-    from handlers import admin_onsite_reg as aor
+    from handlers.forum import admin_onsite_reg as aor
     from tests.test_onsite_reg_chat_260927 import _AdminCb, _Cities
     _chat_ready(tmp_path)
     with _Cities():
@@ -859,7 +859,7 @@ def test_toggle_without_city_asks_to_pick_city_when_cities_on(tmp_path):
 
 
 def test_bound_manager_cannot_toggle_without_city(tmp_path):
-    from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT
+    from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT
     from tests.test_onsite_reg_chat_260927 import MANAGER_ID, ADMIN_ID as CHAT_ADMIN, _Cities
     from tests.test_roles_phase8 import dispatch_callback
     _chat_ready(tmp_path)

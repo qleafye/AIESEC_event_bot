@@ -1,5 +1,5 @@
 """Идеи №31/№32: экраны бота «📓 Журнал площадки» и снятие отметки менеджером
-(`handlers/admin_venue.py`) + врезки журнала в `handlers/admin_checkin.py` (перевыпуск QR,
+(`handlers/forum/admin_venue.py`) + врезки журнала в `handlers/forum/admin_checkin.py` (перевыпуск QR,
 загрузка CSV, кнопка входа). Фейковая обвязка — та же, что `tests/test_checkin_reissue_260924.py`
 (хендлеры зовутся функцией, без Dispatcher)."""
 from __future__ import annotations
@@ -8,7 +8,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_checkin, admin_venue
+from handlers.forum import admin_checkin, admin_venue
 from services.checkin import ENTRY_POINT, record_arrival
 from tests._dbtpl import fast_init_db
 from tests.test_checkin_reissue_260924 import _FakeCallback, _FakeMessage, _insert_user

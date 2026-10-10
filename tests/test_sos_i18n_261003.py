@@ -9,7 +9,7 @@ EN_MAP = {i18n.src_hash(ru): en for ru, en in FORM_DEFAULT_EN.items()}
 
 
 def test_location_button_is_translated_for_english_delegate():
-    from handlers.sos import _collecting_kb
+    from handlers.forum.sos import _collecting_kb
 
     kb = reg_i18n.tr_kb(_collecting_kb(), "en", EN_MAP)
     assert isinstance(kb, ReplyKeyboardMarkup)
@@ -78,7 +78,7 @@ def test_sos_reply_header_in_english_keeps_followup_marker(monkeypatch):
     assert ok
     text = bot.sent[0][1]
     assert text.startswith("🆘 <b>Reply to SOS #8:</b>")
-    assert "🆘" in text and "SOS #" in text  # handlers/sos.py::_is_sos_followup
+    assert "🆘" in text and "SOS #" in text  # handlers/forum/sos.py::_is_sos_followup
 
 
 def test_question_reply_header_in_english(monkeypatch):

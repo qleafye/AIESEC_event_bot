@@ -23,7 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_sos, sos as sos_handlers
+from handlers.forum import admin_sos, sos as sos_handlers
 from handlers.chat import group_chat
 from handlers.states import SosChatBind, SosReport
 from services import sos as sos_service
@@ -177,7 +177,7 @@ def _fresh_state(user_id):
 
 def _collecting_state(user_id, report_id, city=None, started=None):
     """Сессия «дописываю SOS» уже открыта (карточка уже создана/отправлена) — та форма, что
-    сеет `handlers/sos.py::_enter_collecting`, без похода через `sos_start`."""
+    сеет `handlers/forum/sos.py::_enter_collecting`, без похода через `sos_start`."""
     state = _fresh_state(user_id)
     _run(state.set_state(SosReport.collecting))
     _run(state.update_data(
@@ -389,7 +389,7 @@ def test_set_sos_location_overwrites_on_repeat(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# handlers/sos.py — делегатский поток: мгновенная карточка + режим «дописываю SOS» (D-31)
+# handlers/forum/sos.py — делегатский поток: мгновенная карточка + режим «дописываю SOS» (D-31)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_sos_start_creates_report_and_card_instantly(tmp_path):

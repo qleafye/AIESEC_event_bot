@@ -513,7 +513,7 @@ def code_literals() -> list[tuple[str, str]]:
     ))
 
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа»
-    # (handlers/program.py) — тот же приём, что литералы user_actions выше (aiogram-зависимый
+    # (handlers/forum/program.py) — тот же приём, что литералы user_actions выше (aiogram-зависимый
     # модуль, i18n_sources.py его не импортирует, строки продублированы буквально).
     items.append(("lit:program.header", "Программа"))
     items.append(("lit:program.pick_day", "Выберите день:"))
@@ -562,7 +562,7 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:reg_schema.default_approve_auto_text", "Заявка принята ✅ Всё получили — ждём тебя!"))
     items.append(("lit:reg_schema.default_bonus_caption", "\U0001f381 Бонус за регистрацию!"))
 
-    # Форум-ночь п.8 (идея №19, SOS): делегатский экран «🆘 SOS» (`handlers/sos.py`) — подпись
+    # Форум-ночь п.8 (идея №19, SOS): делегатский экран «🆘 SOS» (`handlers/forum/sos.py`) — подпись
     # кнопки запроса геопозиции идёт через `reg_i18n.say(..., reply_markup=...)` -> `tr_kb`
     # (переводит ТОЛЬКО `.text` кнопок), АСТ-сторож `test_i18n_literal_corpus_guard_260906.py`
     # её не видит (тот смотрит на прямой текстовый аргумент вызова, не на кнопки внутри markup)
@@ -585,7 +585,7 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:services.sos.claim_status_fallback_name", "коллега"))
 
     # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — алерт «недоступна»
-    # (`handlers/session_feedback.py::sfb_rate`/`sfb_offer_comment`), делегат без отметки на
+    # (`handlers/forum/session_feedback.py::sfb_rate`/`sfb_offer_comment`), делегат без отметки на
     # сессии или с чужим/устаревшим callback_data.
     items.append(("lit:session_feedback.unavailable_alert", "Эта оценка тебе недоступна."))
 

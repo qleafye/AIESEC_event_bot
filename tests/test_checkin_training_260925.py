@@ -1,6 +1,6 @@
 """Бэклог чек-ина №7: тренировочный режим сканера и лист учебных QR
-(`services/checkin_training.py`, `miniapp/routers/checkin.py`, `handlers/admin_checkin.py`,
-`handlers/admin_checkin_training.py`).
+(`services/checkin_training.py`, `miniapp/routers/checkin.py`, `handlers/forum/admin_checkin.py`,
+`handlers/forum/admin_checkin_training.py`).
 
 Главное свойство: тренировка НИЧЕГО не пишет — ни `checkins`, ни `venue_log`, — но плашка та
 же, что дал бы вход. Учебный токен узнаётся через реестр резолверов (`kind="training"`)."""
@@ -13,7 +13,7 @@ import pytest
 
 from config import config as bot_config
 from database import db as bot_db
-from handlers import admin_checkin, admin_checkin_training
+from handlers.forum import admin_checkin, admin_checkin_training
 from handlers.states import CheckinImport
 from services import checkin as checkin_mod
 from services import checkin_training as training

@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 
 from database import db as bot_db
-from handlers import admin_venue
+from handlers.forum import admin_venue
 from services import venue_log
 from services.checkin import build_payload
 

@@ -380,7 +380,7 @@ def test_stats_card_empty_caption_sends_nothing(tmp_path, monkeypatch):
 # ── «📤 Разослать QR сейчас» проверяет дату форума города ────────────────────────────────────
 
 def test_manual_send_refused_without_city_date(tmp_path, monkeypatch):
-    from handlers import admin_checkin
+    from handlers.forum import admin_checkin
     from tests.test_roles_phase8 import FakeCallback
     config.ADMIN_IDS = [1]
     config.DB_PATH = str(tmp_path / "manual_send.db")
@@ -576,8 +576,8 @@ def test_city_manager_confirm_note_counts_dropped(tmp_path):
 
 def test_stats_card_empty_caption_explained_to_manager(tmp_path, monkeypatch):
     """Пустая подпись — не «✅ Отправлено 0 из 0», а объяснение, что заполнить."""
-    from handlers import admin_forum_stats_card as afsc
-    from handlers.admin_checkin import _NO_CITY
+    from handlers.forum import admin_forum_stats_card as afsc
+    from handlers.forum.admin_checkin import _NO_CITY
     import services.forum_stats_card as fsc
     from tests.test_roles_phase8 import FakeCallback
     _ready(tmp_path)

@@ -1,5 +1,5 @@
 """Ревью 24.09 (аудит ключей после 8c0d8af): экран «⭐ Отзывы о сессиях» —
-`handlers/session_feedback.py::render_feedback_settings_screen` + хендлеры
+`handlers/forum/session_feedback.py::render_feedback_settings_screen` + хендлеры
 `prog_fbset*/prog_fbtoggle/prog_fbdelay*/prog_fbtext*`. Пять ключей реестра
 (`session_feedback_enabled`, `session_feedback_delay_minutes` + четыре текста) жили ТОЛЬКО в
 Mini App (на проде выключен) — этот экран впервые делает их доступными в самом боте.
@@ -18,7 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import session_feedback as sf_handlers
+from handlers.forum import session_feedback as sf_handlers
 from handlers.access.admin_caps import role_caps_key
 from handlers.states import EditSetting
 from services.timeutil import msk_now
@@ -117,7 +117,7 @@ def test_screen_shows_default_off_and_default_delay(tmp_path):
 
 
 def test_prog_fbset_button_present_on_city_program_screen(tmp_path):
-    from handlers import admin_program
+    from handlers.forum import admin_program
     _ready(tmp_path)
     text, kb = _run(admin_program.render_city_program_screen(SUPERADMIN_ID, cities.default_city_code()))
     assert any(t == "⭐ Отзывы о сессиях" for t in _texts(kb))

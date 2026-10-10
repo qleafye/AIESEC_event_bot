@@ -1,5 +1,5 @@
 """Форум-ночь п.4 (расписание форума в боте, FORUM-CHECKIN.md D-18..D-20/D-24) — раздел
-«🗓 Программа форума»: handlers/admin_program.py + handlers/admin_program_halls.py.
+«🗓 Программа форума»: handlers/forum/admin_program.py + handlers/forum/admin_program_halls.py.
 
 pytest-asyncio недоступна в этом окружении — async через `asyncio.run()`, Fake-объекты
 callback/message — та же форма, что `tests/test_reject_rules_editor.py::_FakeCallback/
@@ -25,7 +25,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_program, admin_program_halls
+from handlers.forum import admin_program, admin_program_halls
 from handlers.access.admin_caps import role_caps_key
 from handlers.states import ProgramDayCustom, ProgramHallName, ProgramSessionField
 from tests._dbtpl import fast_init_db
