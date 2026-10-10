@@ -94,6 +94,7 @@ async def render_points_screen() -> tuple[str, InlineKeyboardMarkup]:
                               callback_data="ambpt_toggle:hide")],
         [InlineKeyboardButton(text=f"🏅 Имена в рейтинге волны: {_yes_no(names)}",
                               callback_data="ambpt_toggle:wavenames")],
+        [InlineKeyboardButton(text="🔁 Начислить за прошлых приглашённых", callback_data="ambpt_fill")],
         [await owner_back_button("admin_amb_points")],
     ])
     return text, kb
@@ -158,3 +159,7 @@ async def amb_points_toggle(callback: types.CallbackQuery):
     await callback.answer(on_note if new_val == "on" else off_note, show_alert=True)
     text, kb = await render_points_screen()
     await _edit_or_send(callback.message, text, kb)
+
+
+# «🔁 Начислить за прошлых приглашённых» (ambpt_fill*) — хвост admin.router после хендлеров этого файла.
+from handlers import admin_amb_backfill  # noqa: E402,F401
