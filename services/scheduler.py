@@ -1902,12 +1902,25 @@ def schedule_task_deadline_reminder(task_id: int, deadline: datetime) -> bool:
     «дедлайн слишком близко, реального пропуска нет»."""
     run_at = deadline - _deadline_lead()
     if run_at <= _now_moscow_naive():
+        # Ревью 10.10: срок напоминания увеличили — новый момент уже прошёл, а старая
+        # джоба стоит и сработала бы по прежнему сроку. Снимаем её и говорим в лог.
+        cancel_task_deadline_reminder(task_id)
+        logger.info(
+            "Напоминания о дедлайне задания %s не будет: до дедлайна меньше %s ч",
+            task_id, _deadline_reminder_hours,
+        )
         return False
     get_scheduler().add_job(
         send_task_deadline_reminder, "date", run_date=run_at, args=[task_id],
         id=f"task_deadline_reminder_{task_id}", replace_existing=True,
     )
     return True
+
+
+def _already_reminded(task: dict) -> bool:
+    """Напоминание по ТЕКУЩЕМУ сроку задания уже ушло (`game_tasks.deadline_reminded_for`)."""
+    sent_for = task.get("deadline_reminded_for")
+    return bool(sent_for) and sent_for == task.get("deadline_at")
 
 
 def cancel_task_deadline_reminder(task_id: int) -> None:
@@ -1997,6 +2010,8 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         deadline = game_labels.task_deadline(task)
         if deadline is None:
             return
+        if _already_reminded(task):
+            return  # по этому сроку уже напомнили — повтора нет (ревью 10.10)
         now = _now_moscow_naive()
         await load_deadline_reminder_hours()
         if deadline - _deadline_lead() > now:
@@ -2028,6 +2043,9 @@ async def send_task_deadline_reminder(task_id: int) -> None:
 
         template_raw = await get_setting_typed("wave_deadline_reminder_text")
         game_open = await _game_open_filter()
+        from database.db import mark_task_deadline_reminded
+        # Отметка ДО рассылки: лучше недослать одному при сбое, чем разослать всем дважды.
+        await mark_task_deadline_reminded(task_id, task.get("deadline_at") or "")
         title = task_title(task)
         deadline_txt = await game_labels.task_deadline_text(task)
 
@@ -2296,14 +2314,14 @@ async def reconcile_wave_jobs() -> None:
             tasks = await list_wave_tasks(wave_id, active_only=True)
             for t in tasks:
                 deadline = game_labels.task_deadline(t)
-                if deadline is not None:
+                if deadline is not None and not _already_reminded(t):
                     schedule_task_deadline_reminder(int(t["id"]), deadline)
 
         for t in await list_active_tasks():
             if t.get("wave_id"):
                 continue  # уже переармировано выше вместе со своей волной
             deadline = game_labels.task_deadline(t)
-            if deadline is not None:
+            if deadline is not None and not _already_reminded(t):
                 schedule_task_deadline_reminder(int(t["id"]), deadline)
 
         for wave in await list_waves(states=("announced",)):

@@ -1113,6 +1113,10 @@ async def init_db():
         # нет: у всех текущих заданий обе колонки пусты и читаются как «вне волн, всем».
         await _ensure_column(db, "game_tasks", "wave_id", "INTEGER")
         await _ensure_column(db, "game_tasks", "audience", "TEXT")
+        # 10.10: для какого срока задания уже ушло напоминание о дедлайне — повторной
+        # рассылки нет, даже если срок напоминания уменьшили после отправки; новый срок
+        # задания (другое deadline_at) снова разрешает напоминание.
+        await _ensure_column(db, "game_tasks", "deadline_reminded_for", "TEXT")
 
         # Phase 23.1-05 (D-10, 23.1-CONTEXT.md O-2): approval date for the delegate profile
         # («одобрена {date}», mockup 04-profile.png). Additive, no backfill — NULL means
@@ -8813,6 +8817,15 @@ async def list_wave_tasks(wave_id: int, *, active_only: bool = True) -> list[dic
             (wave_id,),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
+
+
+async def mark_task_deadline_reminded(task_id: int, deadline_at: str) -> None:
+    """Напоминание о дедлайне ушло для этого срока задания (см. `deadline_reminded_for`)."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE game_tasks SET deadline_reminded_for = ? WHERE id = ?", (deadline_at, task_id),
+        )
+        await db.commit()
 
 
 async def get_task(task_id: int) -> dict | None:
