@@ -1,5 +1,5 @@
 """Фильтр кнопок главного меню делегата: подпись — настройка (данные и правила —
-`services/menu_labels.py`, без aiogram).
+`services/bot/menu_labels.py`, без aiogram).
 
 `MenuButton("menu_x")` узнаёт нажатие по подписи, актуальной для ГОРОДА делегата (своя у
 города, общая, стандартная, прежняя). В состояниях делегата (анкета, вопрос организаторам,
@@ -17,8 +17,8 @@ from aiogram.types import Message
 
 from domain.cities import cities_module_on, default_city_code, normalize_city
 from database.db import get_user
-from services import menu_labels
-from services.menu_labels import (  # noqa: F401 — реэкспорт для прежних импортов
+from services.bot import menu_labels
+from services.bot.menu_labels import (  # noqa: F401 — реэкспорт для прежних импортов
     CONFERENCE_MENU_LABELS,
     LEGACY_MENU_TEXTS,
     MENU_LABEL_KEYS,

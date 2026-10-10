@@ -42,7 +42,10 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
     """Реакции бота на правку ключа. Зовётся и после записи из бота, и разборщиком очереди
     приложения (`settings_changed`): правка в приложении должна действовать так же сразу.
     Каждая реакция в своём try — сбой одной не отменяет остальные и не роняет запись."""
-    from services import bot_commands, bot_profile, daily_digest, menu_labels, reject_rules_notify, scheduler
+    from services.bot import bot_commands, bot_profile
+    from services import daily_digest
+    from services.bot import menu_labels
+    from services import reject_rules_notify, scheduler
     from services.settings.reschedule import reschedule_for_setting
 
     hooks = [bot_profile.on_setting_written, bot_commands.on_setting_written,
@@ -138,8 +141,8 @@ async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> No
     await run_setting_hooks(key)
     if key == "bot_name":
         # Имя бота ставится в Telegram ПОСЛЕ записи; отказ Telegram возвращает прежнее
-        # значение (`revert_setting` ниже) и сообщает менеджеру — services/bot_profile.py.
-        from services.bot_profile import after_name_saved_by_admin
+        # значение (`revert_setting` ниже) и сообщает менеджеру — services/bot/bot_profile.py.
+        from services.bot.bot_profile import after_name_saved_by_admin
 
         await after_name_saved_by_admin(admin_id, previous)
 

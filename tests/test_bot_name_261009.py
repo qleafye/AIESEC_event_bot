@@ -1,4 +1,4 @@
-"""Имя бота из админки (`bot_name`, services/bot_profile.py): без BotFather, сразу после
+"""Имя бота из админки (`bot_name`, services/bot/bot_profile.py): без BotFather, сразу после
 сохранения; отказ Telegram (лимит частоты смены имени) — человеческим текстом."""
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from aiogram.methods import SetMyName
 from config import config
 from database import db
 import services.scheduler as sched
-from services import bot_profile
+from services.bot import bot_profile
 from services.infra import miniapp_outbox
 import domain.settings.ops as settings_ops
 from services.settings.audit import set_setting_by_admin

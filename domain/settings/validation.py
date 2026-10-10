@@ -147,8 +147,8 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
     if is_menu_label and value.strip() != "-":
         # подпись кнопки меню не должна совпадать со стандартной подписью другой кнопки: бот
         # узнаёт кнопку по подписи. Настроенные подписи других кнопок (общие и всех городов)
-        # сверяет async-проверка settings_ops.cross_setting_error -> services/menu_labels.py.
-        from services.menu_labels import MENU_LABEL_KEYS, STATIC_MENU_TEXTS, conflict_text
+        # сверяет async-проверка settings_ops.cross_setting_error -> services/bot/menu_labels.py.
+        from services.bot.menu_labels import MENU_LABEL_KEYS, STATIC_MENU_TEXTS, conflict_text
         own = {mk for mk, lk in MENU_LABEL_KEYS.items() if lk == base}
         for mk, texts in STATIC_MENU_TEXTS.items():
             if mk not in own and value.strip() in texts:
