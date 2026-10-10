@@ -114,6 +114,9 @@ async def _resolve_target(admin_id: int, key: str) -> tuple[str | None, str | No
     `settings_edit_city`: город виден этому админу, код из реестра). Иначе — сам `key`."""
     header = await admin_selected_city(admin_id)
     if not header or header == ALL_CITIES or not is_per_city(key):
+        from settings_ops import COMMON_DENIED_TEXT, can_write_common
+        if not await can_write_common(admin_id):  # общий список — не для привязанного к городу
+            return None, None, COMMON_DENIED_TEXT
         return key, None, None
     if header not in await _per_city_visible_codes(admin_id):
         return None, None, "Этот город правит суперадмин"
@@ -355,6 +358,9 @@ async def settings_list_attr_toggle(callback: types.CallbackQuery):
     if attr_key not in SETTINGS_SCHEMA:
         await callback.answer("Атрибут не найден", show_alert=True)
         return
+    from settings_ops import COMMON_DENIED_TEXT, can_write_common
+    if not await can_write_common(callback.from_user.id):  # атрибут общий на все города
+        return await callback.answer(COMMON_DENIED_TEXT, show_alert=True)
     current = await get_setting_typed(attr_key) == "on"
     await set_setting_by_admin(callback.from_user.id, attr_key, "off" if current else "on")
     await _rerender(callback, list_key)
