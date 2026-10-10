@@ -759,10 +759,9 @@ async def _advance_impl(after_step: str, message: types.Message, state: FSMConte
     await _sync_draft_out(telegram_id, state, data, reg_engine.STEP_DONE if done else after_step, answered_col=cols)
 
     if next_idx < len(enabled):
-        step = data.get("_reg_step", 0) + 1
-        # WR-01: recompute total fresh each step. _reg_total was captured in process_full_name
-        # before edu_conditional questions were unlocked, so a cached value produces bogus
-        # progress numbers (e.g. "12/9"). Re-derive and re-persist from the live enabled count.
+        # Номер шага — его позиция в актуальном списке, тот же счёт, что «Продолжить с шага N
+        # из M» (reg_resume). Бегущий «+1 за ответ» врал после развилки резюме и «Исправить».
+        step = next_idx + 1
         total = len(enabled)
         await state.update_data(_reg_step=step, _reg_total=total)
         await _ask_step_or_recall(enabled[next_idx], message, state, step, total)
@@ -1265,6 +1264,14 @@ async def _city_fork_kb() -> InlineKeyboardMarkup:
 # test_city_fork_shown_for_short_mode (tests/test_content_percity_consumers.py).
 # _should_show_city_fork moved to domain/regform/engine.py (Phase 21, 21-01) as should_show_city_fork;
 # imported + aliased above.
+
+
+async def _step_number(step_key: str, data: dict) -> tuple[int, int] | None:
+    """(номер, всего) шага по его позиции в актуальном списке шагов; None — шага в списке нет."""
+    enabled = await _get_enabled_steps(data)
+    if step_key not in enabled:
+        return None
+    return enabled.index(step_key) + 1, len(enabled)
 
 
 async def _progress(step: int, total: int) -> str:
