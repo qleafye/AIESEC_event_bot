@@ -55,7 +55,7 @@ D-10 (владелец, `23.1-CONTEXT.md` O-2): `users.approved_at` проста
 атомарным `UPDATE` в `database.db.approve_user_atomic`/`approve_all_pending` — единственная
 точка правды для всех трёх путей одобрения (бот: карточка «✅ Одобрить» и «Принять всех»,
 веб: `miniapp/routers/applications.py`), т.к. бот кое-где зовёт `database.db.approve_all_pending`
-НАПРЯМУЮ, минуя `services.applications.claim_approve_all` (`handlers/admin_moderation.py`,
+НАПРЯМУЮ, минуя `services.applications.claim_approve_all` (`handlers/applications/admin_moderation.py`,
 `appr_all_yes`) — стамповать `approved_at` только в обёртках сервиса означало бы пропустить
 чатовое «Принять всех». Профиль здесь просто читает уже проставленную колонку.
 

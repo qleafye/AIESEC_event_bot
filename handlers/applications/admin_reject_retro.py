@@ -184,7 +184,7 @@ async def reject_retro_go(callback: types.CallbackQuery):
         )
     await callback.message.answer(text)
     try:
-        from handlers.admin_reject_rules import render_rules_screen
+        from handlers.applications.admin_reject_rules import render_rules_screen
         screen, kb = await render_rules_screen(callback.from_user.id)
         await callback.message.answer(screen, parse_mode="HTML", reply_markup=kb)
     except Exception:

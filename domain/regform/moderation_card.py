@@ -13,7 +13,7 @@ aiogram, БЕЗ импорта `miniapp.*`/`handlers.*`. Единственны�
 печатает свой блок в самом рендере карточки, здесь не дублируется).
 
 Приёмка 19.09 (review-260919, раздел «Модерация», находки №1/№2/№3): два фикса поверх схемы
-выше, оба — единая точка правды для бота (`handlers/admin_moderation.py`) и веба
+выше, оба — единая точка правды для бота (`handlers/applications/admin_moderation.py`) и веба
 (`services/applications.py::card_payload`), второй копии условий не заводим ни там, ни там.
 1. `_column_value` перестаёт печатать сентинел `"-"` (`reg_engine`'а «вопрос пропущен/выключен
    на анкете», см. `domain/regform/engine.py`, предикат `value not in (None, "", "-")`, использован
@@ -214,7 +214,7 @@ def mini_resume_fields(user: dict) -> list[tuple[str, str]]:
 
 def resume_summary(user: dict) -> dict:
     """Единая точка разбора «что делегат реально дал в резюме» — использует и карточка бота
-    (`handlers/admin_moderation.py`), и карточка веба (`services/applications.py::card_payload`),
+    (`handlers/applications/admin_moderation.py`), и карточка веба (`services/applications.py::card_payload`),
     чтобы поверхности не расходились (приёмка 19.09). Приоритет — файл → ссылка → текст →
     мини-профиль → нет (тот же порядок, что уже был у файла/ссылки/текста до этой приёмки).
 

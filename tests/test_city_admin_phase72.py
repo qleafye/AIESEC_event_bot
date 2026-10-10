@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_core  # Phase 13 (13-04): _admin_city_view moved here
 from handlers.cities import admin_cities  # Phase 13 (13-05): admin_city_switch/pick moved here

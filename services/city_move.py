@@ -30,7 +30,7 @@ msk «как есть, одобренной»). Единая точка прав
 Сообщение делегату НЕ шлётся ни при каком `status_mode` — перевод города осознанно тихое
 админ-действие (SEED прямо исключил уведомление делегата из объёма фазы).
 
-aiogram-free (тот же разрез, что `services/reject_journal.py` против `handlers/admin_moderation.py`
+aiogram-free (тот же разрез, что `services/reject_journal.py` против `handlers/applications/admin_moderation.py`
 — модуль ничего не знает про Bot/aiogram, вызывающий хендлер строит собственные сообщения)."""
 from __future__ import annotations
 

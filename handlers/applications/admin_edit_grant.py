@@ -204,7 +204,7 @@ async def editg_revoke(callback: types.CallbackQuery):
 async def _notify_delegate(bot, telegram_id: int, event_city: str | None) -> bool:
     """`True` — отправлено сейчас или поставлено в очередь тихих часов; `False` — сбой
     (fail-soft, не рвёт саму выдачу разрешения), тот же контракт, что
-    `handlers/admin_resubmit_grant.py::_notify_delegate`."""
+    `handlers/applications/admin_resubmit_grant.py::_notify_delegate`."""
     try:
         from domain.cities import get_setting_typed_for_city
         from services import quiet_hours

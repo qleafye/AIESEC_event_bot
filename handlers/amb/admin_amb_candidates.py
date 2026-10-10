@@ -522,7 +522,7 @@ async def candidates_csv(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("ambc_card:"))
 async def show_form_card(callback: types.CallbackQuery):
-    from handlers.admin_modcard_render import build_card_text
+    from handlers.applications.admin_modcard_render import build_card_text
 
     tid, _flt, _offset = _parse_person(callback.data)
     user = await _db.get_user(tid) if tid is not None else None

@@ -6,7 +6,7 @@
 `modcard_fields`), лимит длины ответа, балл, согласие и подгонка под лимит Telegram. Экрану
 кандидатов нужна та же карточка — не второй рендер, поэтому сборка вынесена сюда.
 
-Роутера нет. Помощники берутся из `handlers.admin_moderation` лениво и через атрибут модуля:
+Роутера нет. Помощники берутся из `handlers.applications.admin_moderation` лениво и через атрибут модуля:
 тот импортирует этот модуль, а тесты подменяют его атрибуты.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ class CardText(NamedTuple):
 async def build_card_text(user: dict, *, position: int | None = None, total: int | None = None,
                           city_label_text: str | None = None) -> CardText:
     """Карточка заявки `user`. Без `position`/`total` — шапка без «N/M»."""
-    from handlers import admin_moderation as am
+    from handlers.applications import admin_moderation as am
 
     # Одна выборка истории обслуживает и пометку карточки, и видимость кнопки «🕓 История».
     edited_line, resubmit_line, has_history = await am._edit_badges_for(user)

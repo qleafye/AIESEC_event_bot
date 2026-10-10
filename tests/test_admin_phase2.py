@@ -7,8 +7,8 @@ from aiogram import F
 from config import config
 from database import db
 from handlers import admin
-from handlers import admin_moderation
-from handlers.admin_moderation import (  # Phase 13 (13-06): moderation moved here
+from handlers.applications import admin_moderation
+from handlers.applications.admin_moderation import (  # Phase 13 (13-06): moderation moved here
     _parse_appr,
     _render_application_card,
 )

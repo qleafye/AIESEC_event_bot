@@ -375,7 +375,7 @@ def test_revert_source_admin_prefix_does_not_break_history_screen(tmp_path):
     history = _run(scenario())
     source = history[0]["source"]
     assert source == f"admin:{SUPERADMIN_ID}"
-    # Тот же приём, что handlers/admin_moderation.py::appr_history — не бросает исключение.
+    # Тот же приём, что handlers/applications/admin_moderation.py::appr_history — не бросает исключение.
     label = EDITED_SOURCE_LABELS.get(source, source)
     assert label == source
 
@@ -400,11 +400,11 @@ def test_checkin_denial_blocks_after_revert(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part B: handlers/admin_revert_pending.py — UI-слой Task 1
+# Part B: handlers/applications/admin_revert_pending.py — UI-слой Task 1
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_revertp_start_shows_confirm_screen_for_approved(tmp_path):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -426,7 +426,7 @@ def test_revertp_start_shows_confirm_screen_for_approved(tmp_path):
 def test_revertp_start_warns_about_confirmed_payment(tmp_path):
     """Ревью 25.09: экран подтверждения явно предупреждает «Оплата подтверждена — статус
     оплаты НЕ меняется» для одобренного делегата с payment_status='paid'."""
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -446,7 +446,7 @@ def test_revertp_start_warns_about_confirmed_payment(tmp_path):
 
 
 def test_revertp_start_no_payment_warning_when_not_paid(tmp_path):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -481,7 +481,7 @@ def test_revert_to_pending_does_not_touch_payment_status(tmp_path):
 
 
 def test_revertp_start_refuses_when_pending(tmp_path):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -497,7 +497,7 @@ def test_revertp_start_refuses_when_pending(tmp_path):
 
 
 def test_revertp_start_denied_when_city_out_of_scope(tmp_path):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -515,7 +515,7 @@ def test_revertp_start_denied_when_city_out_of_scope(tmp_path):
 
 
 def test_revertp_toggle_flips_notify_button(tmp_path):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -535,7 +535,7 @@ def test_revertp_toggle_flips_notify_button(tmp_path):
 
 
 def test_revertp_apply_uses_displayed_notify_state(tmp_path, monkeypatch):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
     calls = []
@@ -544,7 +544,7 @@ def test_revertp_apply_uses_displayed_notify_state(tmp_path, monkeypatch):
         calls.append(kw)
         return {"ok": True, "sheet_updated": True, "notified": True}
 
-    monkeypatch.setattr("handlers.admin_revert_pending.revert_to_pending", _fake_revert)
+    monkeypatch.setattr("handlers.applications.admin_revert_pending.revert_to_pending", _fake_revert)
 
     async def scenario():
         await _seed_user(DELEGATE_ID, status="approved")
@@ -561,7 +561,7 @@ def test_revertp_apply_uses_displayed_notify_state(tmp_path, monkeypatch):
 def test_revertp_apply_denies_forged_city_out_of_scope(tmp_path):
     """TOCTOU: право перепроверяется ЗАНОВО на шаге применения — тот же приём, что у
     admin_city_move.py."""
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -581,7 +581,7 @@ def test_revertp_apply_denies_forged_city_out_of_scope(tmp_path):
 
 
 def test_revertp_apply_reports_error_without_crashing_on_race(tmp_path):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -597,7 +597,7 @@ def test_revertp_apply_reports_error_without_crashing_on_race(tmp_path):
 
 
 def test_revertp_cancel_changes_nothing(tmp_path):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
 
@@ -868,11 +868,11 @@ def test_finalize_normal_edit_without_override_is_harmless(tmp_path):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part G: handlers/admin_resubmit_grant.py — UI-слой Task 2
+# Part G: handlers/applications/admin_resubmit_grant.py — UI-слой Task 2
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_resubg_start_shows_confirm_screen_for_rejected(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -891,7 +891,7 @@ def test_resubg_start_shows_confirm_screen_for_rejected(tmp_path):
 
 
 def test_resubg_start_refuses_when_not_rejected(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -907,7 +907,7 @@ def test_resubg_start_refuses_when_not_rejected(tmp_path):
 
 
 def test_resubg_start_denied_when_city_out_of_scope(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -925,7 +925,7 @@ def test_resubg_start_denied_when_city_out_of_scope(tmp_path):
 
 
 def test_resubg_apply_grants_and_sends_default_notify(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
     bot = _FakeBot()
@@ -946,7 +946,7 @@ def test_resubg_apply_grants_and_sends_default_notify(tmp_path):
 
 
 def test_resubg_apply_notify_off_sends_nothing_to_delegate(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
     bot = _FakeBot()
@@ -964,7 +964,7 @@ def test_resubg_apply_notify_off_sends_nothing_to_delegate(tmp_path):
 def test_resubg_apply_notify_send_failure_does_not_fail_the_grant(tmp_path):
     """Сбой отправки делегату — не повод откатывать саму выдачу разрешения (fail-soft, тот же
     приём, что у revert_pending)."""
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -988,7 +988,7 @@ def test_resubg_apply_notify_send_failure_does_not_fail_the_grant(tmp_path):
 def test_resubg_apply_refuses_forged_status(tmp_path):
     """Подделанный callback (uid другого статуса): резолв делегата по /find шёл, когда он
     был rejected, но к моменту тапа менеджер/делегат успели его сменить."""
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -1005,7 +1005,7 @@ def test_resubg_apply_refuses_forged_status(tmp_path):
 
 
 def test_resubg_apply_denies_forged_city_out_of_scope(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -1023,7 +1023,7 @@ def test_resubg_apply_denies_forged_city_out_of_scope(tmp_path):
 
 
 def test_resubg_revoke_closes_active_override(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -1042,7 +1042,7 @@ def test_resubg_revoke_closes_active_override(tmp_path):
 
 
 def test_resubg_cancel_changes_nothing(tmp_path):
-    from handlers import admin_resubmit_grant
+    from handlers.applications import admin_resubmit_grant
 
     _db_ready(tmp_path)
 
@@ -1276,11 +1276,11 @@ def test_finalize_edit_with_remoderation_on_moves_to_pending_and_consumes(tmp_pa
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part J: handlers/admin_edit_grant.py — UI-слой Task 3
+# Part J: handlers/applications/admin_edit_grant.py — UI-слой Task 3
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_editg_start_shows_confirm_screen_for_approved(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 
@@ -1299,7 +1299,7 @@ def test_editg_start_shows_confirm_screen_for_approved(tmp_path):
 
 
 def test_editg_start_refuses_when_not_approved(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 
@@ -1315,7 +1315,7 @@ def test_editg_start_refuses_when_not_approved(tmp_path):
 
 
 def test_editg_start_denied_when_city_out_of_scope(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 
@@ -1333,7 +1333,7 @@ def test_editg_start_denied_when_city_out_of_scope(tmp_path):
 
 
 def test_editg_apply_grants_and_sends_default_notify(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
     bot = _FakeBot()
@@ -1354,7 +1354,7 @@ def test_editg_apply_grants_and_sends_default_notify(tmp_path):
 
 
 def test_editg_apply_notify_off_sends_nothing_to_delegate(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
     bot = _FakeBot()
@@ -1372,7 +1372,7 @@ def test_editg_apply_notify_off_sends_nothing_to_delegate(tmp_path):
 def test_editg_apply_notify_send_failure_does_not_fail_the_grant(tmp_path):
     """Сбой отправки делегату — не повод откатывать саму выдачу разрешения (fail-soft, тот же
     приём, что у revert_pending/resubg)."""
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 
@@ -1394,7 +1394,7 @@ def test_editg_apply_notify_send_failure_does_not_fail_the_grant(tmp_path):
 
 
 def test_editg_apply_refuses_forged_status(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 
@@ -1411,7 +1411,7 @@ def test_editg_apply_refuses_forged_status(tmp_path):
 
 
 def test_editg_apply_denies_forged_city_out_of_scope(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 
@@ -1429,7 +1429,7 @@ def test_editg_apply_denies_forged_city_out_of_scope(tmp_path):
 
 
 def test_editg_revoke_closes_active_override(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 
@@ -1448,7 +1448,7 @@ def test_editg_revoke_closes_active_override(tmp_path):
 
 
 def test_editg_cancel_changes_nothing(tmp_path):
-    from handlers import admin_edit_grant
+    from handlers.applications import admin_edit_grant
 
     _db_ready(tmp_path)
 

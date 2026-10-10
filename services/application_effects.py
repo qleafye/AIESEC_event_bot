@@ -1,6 +1,6 @@
 """Phase 23 (23-02, APP-TINDER-01) — хвост решения по заявке, которому физически нужен `bot`.
 
-Перенесено из `handlers/admin_moderation.py` (Phase 23, план 23-02): тело `appr_approve`'s
+Перенесено из `handlers/applications/admin_moderation.py` (Phase 23, план 23-02): тело `appr_approve`'s
 эффект-хвоста + `appr_reject_reason`'s эффект-хвост -> `apply_decision_effects`; `_welcome_flipped`
 + хвост `appr_all_yes` -> `mass_approve_effects`.
 
@@ -10,11 +10,11 @@ aiogram-free»), а «отправить приветствие» и «отпр�
 объекта бота — тот же разрез, что `services/reg_finalize.py::finalize_data`/`post_finalize`.
 
 Зовёт эти две функции и чат (боту, напрямую после решения — `_spawn(apply_decision_effects(...))`
-в `handlers/admin_moderation.py`), и (со следующего плана) джоба очереди событий веба, когда
+в `handlers/applications/admin_moderation.py`), и (со следующего плана) джоба очереди событий веба, когда
 истечёт окно отмены (D-06) — один и тот же журнал вызовов и текстов для обеих поверхностей.
 
 Импорт `handlers.reg_schema` — ЛОКАЛЬНЫЙ внутри функции (тот же приём, что
-`services/reg_finalize.py::post_finalize`): `handlers/admin_moderation.py` импортирует ИЗ этого
+`services/reg_finalize.py::post_finalize`): `handlers/applications/admin_moderation.py` импортирует ИЗ этого
 модуля на своём верхнем уровне, обратный модульный импорт дал бы цикл при загрузке пакета
 `handlers`.
 """

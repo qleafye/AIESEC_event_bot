@@ -2,7 +2,7 @@
 ошибочной отметки менеджером — экраны бота. Домен — `services/venue_log.py`, БД —
 `database/db.py` (`venue_log`, `revoke_checkin`).
 
-Форма шва — та же, что `handlers/admin_reject_journal.py`: своего `Router()` нет, хендлеры
+Форма шва — та же, что `handlers/applications/admin_reject_journal.py`: своего `Router()` нет, хендлеры
 декорируют ОБЩИЙ `handlers.admin.router`, каждый декоратор — в одну строку (инвариант
 cap-теста). Право — `moderate_reg` (как у «⚙️ Настройки QR»/«Перевыпустить QR» — управление
 отметками, не рутинное сканирование волонтёра), и каждый хендлер перепроверяет его сам:

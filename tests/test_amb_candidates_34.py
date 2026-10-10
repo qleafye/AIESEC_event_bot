@@ -131,8 +131,8 @@ def _buttons(kb):
 # ── общая сборка карточки заявки ────────────────────────────────────────────────────────
 
 def test_build_card_text_matches_queue_card(tmp_path):
-    from handlers import admin_moderation
-    from handlers.admin_modcard_render import build_card_text
+    from handlers.applications import admin_moderation
+    from handlers.applications.admin_modcard_render import build_card_text
     _ready(tmp_path)
     _seed(500, status="pending", name="Иван <Петров>", username="ivan_p")
     msg = FakeMessage()
@@ -147,7 +147,7 @@ def test_build_card_text_matches_queue_card(tmp_path):
 
 
 def test_build_card_text_without_position_has_no_counter(tmp_path):
-    from handlers.admin_modcard_render import build_card_text
+    from handlers.applications.admin_modcard_render import build_card_text
     _ready(tmp_path)
     _seed(501, status="approved", name="Мария")
     user = _run(db.get_user(501))

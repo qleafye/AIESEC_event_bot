@@ -262,7 +262,7 @@ class MiniAppTheme(StatesGroup):
 
 
 class RejectRuleEdit(StatesGroup):
-    # Phase 31 (31-08, D-09/D-21): экран карточки правила (handlers/admin_reject_rules.py) —
+    # Phase 31 (31-08, D-09/D-21): экран карточки правила (handlers/applications/admin_reject_rules.py) —
     # правка имени и текста отказа. Правило id — в state.get_data() ("rre_rule_id"), тот же
     # приём, что FaqItem несёт item id. Право "settings" ("state:RejectRuleEdit:*" в
     # handlers/admin_caps.py).
@@ -271,7 +271,7 @@ class RejectRuleEdit(StatesGroup):
 
 
 class RejectCond(StatesGroup):
-    # Phase 31 (31-10, D-01): конструктор условия правила (handlers/admin_reject_cond.py) —
+    # Phase 31 (31-10, D-01): конструктор условия правила (handlers/applications/admin_reject_cond.py) —
     # состояние ставится ТОЛЬКО на шаге ввода числа/даты текстом (arc_num); выбор вопроса/
     # оператора/значений — чистые callback'и без ожидания сообщения, id правила/группы/шаг/
     # оператор/отмеченные индексы живут в state.get_data() (arc_rule/arc_group/arc_step/
@@ -498,7 +498,7 @@ class LostFoundNew(StatesGroup):
 
 class ResumeReplace(StatesGroup):
     # Phase 33 (delegate-card admin actions, задача 3): «📎 Заменить резюме» — менеджер шлёт
-    # файл в ответ на запрос бота (handlers/admin_resume_replace.py); telegram_id делегата
+    # файл в ответ на запрос бота (handlers/applications/admin_resume_replace.py); telegram_id делегата
     # несёт state.get_data() — тот же приём, что у StaffAdd выше.
     waiting_for_file = State()
 
@@ -574,7 +574,7 @@ class ProgramPhotoUpload(StatesGroup):
 
 
 class SourceLinkCreate(StatesGroup):
-    # «🔗 Ссылки с метками» → «➕ Новая ссылка» (handlers/admin_source_links.py): название метки.
+    # «🔗 Ссылки с метками» → «➕ Новая ссылка» (handlers/applications/admin_source_links.py): название метки.
     waiting_for_tag = State()
 
 

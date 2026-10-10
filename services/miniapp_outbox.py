@@ -44,7 +44,7 @@ Telegram или пересобирать таблицу самому — еди�
   ловится отдельным try/except и не должен приводить к ретраю сброса FSM.
 - `application_decided` -> `services.application_effects.apply_decision_effects(bot,
   telegram_id, status, reason)` (Phase 23, план 23-04, D-06) — приветствие/отказ делегату
-  по заявке отбора + лист, тот же хвост, что и прямой вызов из `handlers/admin_moderation.py`.
+  по заявке отбора + лист, тот же хвост, что и прямой вызов из `handlers/applications/admin_moderation.py`.
   Событие ставится не сразу: `miniapp/outbox.py::flush_application_decisions` переносит его
   из журнала `application_decisions` только после истечения окна отмены.
 - `application_mass_approved` -> `services.application_effects.mass_approve_effects(bot,

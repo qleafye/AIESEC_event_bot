@@ -8,9 +8,9 @@
 делегата — это гарантирует частичный уникальный индекс на стороне БД (план 31-02).
 
 Модуль aiogram-free: тот же разрез, что у `services/applications.py` против
-`handlers/admin_moderation.py` — сообщение делегату о возврате на модерацию
+`handlers/applications/admin_moderation.py` — сообщение делегату о возврате на модерацию
 (`reject_rules_return_text`) шлёт ВЫЗЫВАЮЩИЙ хендлер, не этот модуль. Свои копии `_short_stamp`/
-`_username_label` (не импорт из `handlers/admin_app_list.py`) — тот модуль тянет aiogram на
+`_username_label` (не импорт из `handlers/applications/admin_app_list.py`) — тот модуль тянет aiogram на
 уровне импорта, сервис обязан оставаться его свободным (сторож — grep в acceptance плана).
 
 Инцидент 06.09 (тихое массовое автоодобрение): в этом модуле сознательно НЕТ ни одной функции,
@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 # Сентинел `application_decisions.decided_by` для решения, принятого ПРАВИЛОМ, а не человеком
 # (планы 31-06/31-09 импортируют константу отсюда — второй копии литерала в проекте быть не
-# должно). Ровно `-1`, не `0` и не `NULL`: `handlers/admin_app_list.py::_decision_suffix` уже
+# должно). Ровно `-1`, не `0` и не `NULL`: `handlers/applications/admin_app_list.py::_decision_suffix` уже
 # трактует любое ложное значение (`0`, `None`) как «решения нет / решение отменено» и печатает
 # «автоматически» без указания менеджера — автоотказ слился бы с этой веткой и стал неотличим
 # от отменённого решения человека (T-31-05-07). Отрицательное значение никогда не совпадёт с
@@ -236,7 +236,7 @@ async def journal_page(admin_id: int, *, offset: int = 0, include_returned: bool
 
 def _short_stamp(raw) -> str:
     """`ДД.ММ ЧЧ:ММ` из метки, которая УЖЕ московская (`last_triggered_at` пишется `msk_now`,
-    второй сдвиг дал бы «будущее»). Собственная копия `handlers.admin_app_list._short_stamp`:
+    второй сдвиг дал бы «будущее»). Собственная копия `handlers.applications.admin_app_list._short_stamp`:
     тот модуль тянет aiogram на уровне импорта, сервис обязан оставаться его свободным.
     Фейл-софт: пустая или нераспознанная метка — «—»."""
     if not raw:
@@ -252,7 +252,7 @@ def _short_stamp(raw) -> str:
 
 
 def _username_label(raw) -> str:
-    """Собственная копия `handlers.admin_app_list._username` (тот же довод, что у
+    """Собственная копия `handlers.applications.admin_app_list._username` (тот же довод, что у
     `_short_stamp` выше)."""
     if not raw:
         return "(без ника)"

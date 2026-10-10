@@ -237,7 +237,7 @@ def test_registry_coverage_event():
         "miniapp",
         # "apps" added quick 260902-tzh: modcard_fields/modcard_answer_limit — набор вопросов
         # и лимит длины ответа для карточки заявки, свой экран «🧾 Поля карточки заявки»
-        # (handlers/admin_modcard.py) — вне SETTINGS_FIELDS, как dashboard/miniapp.
+        # (handlers/applications/admin_modcard.py) — вне SETTINGS_FIELDS, как dashboard/miniapp.
         "apps",
         # "reg_prompts" added Phase 25 (CITYQ-01): 44 текста вопросов анкеты, переопределяемые
         # по городу — свой экран «✏️ Тексты вопросов» (handlers/regform/admin_reg_config.py), вне

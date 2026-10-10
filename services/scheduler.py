@@ -1237,7 +1237,7 @@ async def sync_auto_reject_sheet_job() -> int:
     дело не доходит вовсе (D-E: событие без модуля автоотказа не получает лишней вкладки).
     Возвращает число строк (0 при пустом имени/пустом журнале), -1 при ошибке — тот же
     контракт, что у `services.sheets.sync_named_worksheet`, чтобы вызывающий (`arp_sync`,
-    handlers/admin_reject_reports.py) мог отличить «нечего было выгружать» от «сбой листа»."""
+    handlers/applications/admin_reject_reports.py) мог отличить «нечего было выгружать» от «сбой листа»."""
     try:
         tab = (await get_setting("auto_reject_sheet_tab") or "").strip()
         if not tab:

@@ -380,7 +380,7 @@ class _FakeState:
 
 
 def _receipt_ready(tmp_path, name, monkeypatch):
-    from handlers import admin_moderation
+    from handlers.applications import admin_moderation
     import services.scheduler as sched
 
     _ready(tmp_path, name)

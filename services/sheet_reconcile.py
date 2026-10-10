@@ -486,7 +486,7 @@ def chunk_report_lines(lines: list[str], limit: int = 4096) -> list[str]:
     """Режет готовые (уже HTML-эскейпленные) строки на части ≤`limit` символов, никогда не
     разрывая строку пополам — граница чанка всегда между строками. Не изобретаем свой резчик:
     `moderation_card.split_for_telegram` уже делает это (и уже покрыт тестами) для «📄 Полная
-    анкета» (handlers/admin_moderation.py::appr_full) — тот же класс задачи."""
+    анкета» (handlers/applications/admin_moderation.py::appr_full) — тот же класс задачи."""
     from domain.regform.moderation_card import split_for_telegram
 
     return split_for_telegram("\n".join(lines), limit=limit)

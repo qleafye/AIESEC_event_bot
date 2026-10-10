@@ -170,7 +170,7 @@ def test_revert_each_mode_without_admin_name_keeps_old_text(tmp_path, monkeypatc
 def test_revertp_apply_passes_admin_name_from_callback(tmp_path, monkeypatch):
     """UI-слой: `revertp_apply` вычисляет имя из `callback.from_user` тем же приёмом, что
     `admin_sos.py::sos_claim`/`sos_resolve` (full_name -> username -> код-фолбэк «Админ»)."""
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
     calls = []
@@ -179,7 +179,7 @@ def test_revertp_apply_passes_admin_name_from_callback(tmp_path, monkeypatch):
         calls.append(kw)
         return {"ok": True, "sheet_updated": True, "notified": False}
 
-    monkeypatch.setattr("handlers.admin_revert_pending.revert_to_pending", _fake_revert)
+    monkeypatch.setattr("handlers.applications.admin_revert_pending.revert_to_pending", _fake_revert)
 
     async def scenario():
         await _seed_user(DELEGATE_ID, status="approved")
@@ -194,7 +194,7 @@ def test_revertp_apply_passes_admin_name_from_callback(tmp_path, monkeypatch):
 
 
 def test_revertp_apply_admin_name_falls_back_to_username_then_code(tmp_path, monkeypatch):
-    from handlers import admin_revert_pending
+    from handlers.applications import admin_revert_pending
 
     _db_ready(tmp_path)
     calls = []
@@ -203,7 +203,7 @@ def test_revertp_apply_admin_name_falls_back_to_username_then_code(tmp_path, mon
         calls.append(kw)
         return {"ok": True, "sheet_updated": True, "notified": False}
 
-    monkeypatch.setattr("handlers.admin_revert_pending.revert_to_pending", _fake_revert)
+    monkeypatch.setattr("handlers.applications.admin_revert_pending.revert_to_pending", _fake_revert)
 
     async def scenario_username():
         await _seed_user(DELEGATE_ID, status="approved")
@@ -489,10 +489,10 @@ def test_reset_records_answer_history(tmp_path):
     assert history and history[0]["source"] == f"admin:{SUPERADMIN_ID}"
 
 
-# ── handlers/admin_reg_reset.py — UI-слой ───────────────────────────────────────────────────
+# ── handlers/applications/admin_reg_reset.py — UI-слой ───────────────────────────────────────────────────
 
 def test_regreset_start_shows_activity_line(tmp_path):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
 
@@ -515,7 +515,7 @@ def test_regreset_start_shows_activity_line(tmp_path):
 
 
 def test_regreset_start_warns_about_recent_activity(tmp_path):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
 
@@ -536,7 +536,7 @@ def test_regreset_start_warns_about_recent_activity(tmp_path):
 
 
 def test_regreset_start_no_draft_alert(tmp_path):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
 
@@ -552,7 +552,7 @@ def test_regreset_start_no_draft_alert(tmp_path):
 
 
 def test_regreset_toggle_flips_notify_button(tmp_path):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
 
@@ -572,7 +572,7 @@ def test_regreset_toggle_flips_notify_button(tmp_path):
 
 
 def test_regreset_apply_uses_displayed_notify_state(tmp_path, monkeypatch):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
     calls = []
@@ -581,7 +581,7 @@ def test_regreset_apply_uses_displayed_notify_state(tmp_path, monkeypatch):
         calls.append({"tid": tid, "by_admin": by_admin, "notify": notify})
         return {"ok": True, "kind": "new", "fsm_cleared": True, "notified": True}
 
-    monkeypatch.setattr("handlers.admin_reg_reset.reset_stuck_registration", _fake_reset)
+    monkeypatch.setattr("handlers.applications.admin_reg_reset.reset_stuck_registration", _fake_reset)
 
     async def scenario():
         await _seed_user(DELEGATE_ID, status="approved")
@@ -597,7 +597,7 @@ def test_regreset_apply_uses_displayed_notify_state(tmp_path, monkeypatch):
 
 
 def test_regreset_apply_denies_forged_city_out_of_scope(tmp_path):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
 
@@ -618,7 +618,7 @@ def test_regreset_apply_denies_forged_city_out_of_scope(tmp_path):
 
 
 def test_regreset_cancel_changes_nothing(tmp_path):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
 
@@ -1114,10 +1114,10 @@ def test_replace_resume_upload_failure_reports_cloud_error(tmp_path, monkeypatch
     assert report["cloud_error"] is not None
 
 
-# ── handlers/admin_resume_replace.py — UI-слой ──────────────────────────────────────────────
+# ── handlers/applications/admin_resume_replace.py — UI-слой ──────────────────────────────────────────────
 
 def test_resumerep_start_sets_state_and_shows_old_resume(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
 
     _db_ready(tmp_path)
     storage = MemoryStorage()
@@ -1149,7 +1149,7 @@ def test_resumerep_start_sets_state_and_shows_old_resume(tmp_path):
 
 
 def test_resumerep_start_denied_when_city_out_of_scope(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
 
     _db_ready(tmp_path)
     storage = MemoryStorage()
@@ -1171,7 +1171,7 @@ def test_resumerep_start_denied_when_city_out_of_scope(tmp_path):
 
 
 def test_resumerep_cancel_clears_state(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
     from handlers.states import ResumeReplace
 
     _db_ready(tmp_path)
@@ -1193,7 +1193,7 @@ def test_resumerep_cancel_clears_state(tmp_path):
 
 
 def test_resumerep_cancel_text_clears_state(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
     from handlers.states import ResumeReplace
 
     _db_ready(tmp_path)
@@ -1214,7 +1214,7 @@ def test_resumerep_cancel_text_clears_state(tmp_path):
 
 
 def test_resumerep_receive_file_rejects_wrong_type_keeps_state(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
     from handlers.states import ResumeReplace
 
     _db_ready(tmp_path)
@@ -1238,7 +1238,7 @@ def test_resumerep_receive_file_rejects_wrong_type_keeps_state(tmp_path):
 
 
 def test_resumerep_receive_file_success(tmp_path, monkeypatch):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
     from handlers.states import ResumeReplace
 
     _db_ready(tmp_path)
@@ -1264,7 +1264,7 @@ def test_resumerep_receive_file_success(tmp_path, monkeypatch):
 
 
 def test_resumerep_receive_file_denies_forged_city_out_of_scope(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
     from handlers.states import ResumeReplace
 
     _db_ready(tmp_path)
@@ -1289,7 +1289,7 @@ def test_resumerep_receive_file_denies_forged_city_out_of_scope(tmp_path):
 
 
 def test_resumerep_receive_other_reminds(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
 
     _db_ready(tmp_path)
 
@@ -1351,7 +1351,7 @@ def test_find_card_shows_resume_replace_button_for_submitted_delegate(tmp_path):
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_regreset_parse_tid_rejects_negative_id(tmp_path):
-    from handlers import admin_reg_reset
+    from handlers.applications import admin_reg_reset
 
     _db_ready(tmp_path)
 
@@ -1366,7 +1366,7 @@ def test_regreset_parse_tid_rejects_negative_id(tmp_path):
 
 
 def test_resumerep_parse_tid_rejects_negative_id(tmp_path):
-    from handlers import admin_resume_replace
+    from handlers.applications import admin_resume_replace
 
     _db_ready(tmp_path)
     storage = MemoryStorage()

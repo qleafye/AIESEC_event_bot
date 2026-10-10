@@ -20,7 +20,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin_reject_cond as arc
+from handlers.applications import admin_reject_cond as arc
 from handlers.admin_caps import required_capability
 from handlers.states import RejectCond
 from tests._dbtpl import fast_init_db
@@ -329,7 +329,7 @@ def test_card_shows_group_layout_after_building_via_handlers(tmp_path):
     _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1))
     cb2 = _FakeCallback(f"arc_op:{rule_id}:-1:no_file", user_id=SUPERADMIN_ID)
     _run(arc._finish_condition(cb2, state, rule_id, -1, "resume", "no_file", []))
-    from handlers.admin_reject_rules import render_rule_card
+    from handlers.applications.admin_reject_rules import render_rule_card
     text, _kb = _run(render_rule_card(SUPERADMIN_ID, rule_id))
     assert "Группа 1 (все условия сразу):" in text
     assert "— ИЛИ —" in text
@@ -351,7 +351,7 @@ def test_preset_new_creates_disabled_rule_with_condition_and_text(tmp_path):
 def test_card_buttons_no_longer_stub_lead_to_arc_add(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(city="msk"))
-    from handlers.admin_reject_rules import render_rule_card
+    from handlers.applications.admin_reject_rules import render_rule_card
     _text, kb = _run(render_rule_card(SUPERADMIN_ID, rule_id))
     cbs = _cbs(kb)
     assert not any(cb == "arr_noop" for cb in cbs)
@@ -422,7 +422,7 @@ def _conds(rule_id):
 def test_add_button_carries_fingerprint_within_64_bytes(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(city="msk", reject_text="x", conditions=json.dumps(_TWO_GROUPS)))
-    from handlers.admin_reject_rules import render_rule_card
+    from handlers.applications.admin_reject_rules import render_rule_card
     _text, kb = _run(render_rule_card(SUPERADMIN_ID, rule_id))
     cbs = [b.callback_data for row in kb.inline_keyboard for b in row
            if b.callback_data and b.callback_data.startswith("arc_add:")]

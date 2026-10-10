@@ -381,7 +381,7 @@ def test_move_records_custom_history_source(tmp_path, monkeypatch):
 
 
 def test_edit_history_screen_does_not_crash_on_unfamiliar_source(tmp_path, monkeypatch):
-    """Экран «История правок» (`handlers/admin_moderation.py::appr_history`) строит подпись
+    """Экран «История правок» (`handlers/applications/admin_moderation.py::appr_history`) строит подпись
     источника через `_EDITED_SOURCE_LABELS.get(source, html_escape(source))` — незнакомый
     `source` (не `"admin"`/`"miniapp"`) не роняет построение, просто печатается сырым текстом."""
     import html as html_module
@@ -407,7 +407,7 @@ def test_edit_history_screen_does_not_crash_on_unfamiliar_source(tmp_path, monke
     assert rows
     source = rows[0]["source"]
     assert source == "system:regional_offer"
-    # То же построение подписи, что появляется в handlers/admin_moderation.py::appr_history —
+    # То же построение подписи, что появляется в handlers/applications/admin_moderation.py::appr_history —
     # незнакомый source не бросает исключение, отдаёт экранированный сырой текст.
     label = EDITED_SOURCE_LABELS.get(source, html_module.escape(str(source or "")))
     assert label == "system:regional_offer"

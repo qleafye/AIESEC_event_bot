@@ -1,6 +1,6 @@
 """Ядро отбора заявок — общее для бота и веб-слоя Mini App, БЕЗ aiogram.
 
-Перенесено из `handlers/admin_moderation.py` byte-for-byte (Phase 23, план 23-02, D-06/D-08):
+Перенесено из `handlers/applications/admin_moderation.py` byte-for-byte (Phase 23, план 23-02, D-06/D-08):
 `_EDITED_SOURCE_LABELS` -> `EDITED_SOURCE_LABELS`, `_format_edited_date` -> `format_edited_date`,
 `_edit_badges_for` -> `edit_badges_for`, словарь подписей треков из `_render_application_card`
 -> модульная константа `TRACK_LABELS`. `admin_moderation.py` импортирует отсюда и держит
@@ -70,7 +70,7 @@ logger = logging.getLogger(__name__)
 EDITED_SOURCE_LABELS = {"miniapp": "в приложении", "bot": "в чате"}
 
 # Plan 23-06 (Known Stub #1 из 23-05): column (users row) -> человеческая подпись, дословно
-# перенесено из `handlers/admin_moderation.py::_COLUMN_TO_LABEL` (та же формула через
+# перенесено из `handlers/applications/admin_moderation.py::_COLUMN_TO_LABEL` (та же формула через
 # `reg_engine.label_for` в обратную сторону от `STEP_TO_COLUMN`) — единственная точка правды,
 # бот теперь импортирует её отсюда, а не строит вторую копию (T-23-28: второй источник правды
 # рано или поздно разъедется). Карточка веба использует её же для `history[].changes[].label`.
@@ -132,7 +132,7 @@ def format_edited_date(raw: str | None, *, stored_utc: bool = False) -> str:
     локальным временем контейнера), сдвигать их повторно в МСК было бы новым багом, а не
     фиксом — `stored_utc=False` значит «значение уже московское». `stored_utc=True`
     используют только вызывающие `changed_at` (`_history_entry` здесь и `appr_history` в
-    `handlers/admin_moderation.py`) — им поле приходит в UTC. Ветки «пусто» и «не разобралось»
+    `handlers/applications/admin_moderation.py`) — им поле приходит в UTC. Ветки «пусто» и «не разобралось»
     флаг не трогает — fail-soft остаётся как был."""
     if not raw:
         return ""
@@ -361,7 +361,7 @@ async def _referrer_badge_line(user: dict) -> str | None:
 
 def _history_changes(raw_changes: list[dict] | None) -> list[dict]:
     """Одна запись `reg_answer_history.changes` -> `[{label, old, new}]` для «было → стало»
-    (D-03, Known Stub #1 из 23-05). Дословно правило `handlers/admin_moderation.py::appr_history`:
+    (D-03, Known Stub #1 из 23-05). Дословно правило `handlers/applications/admin_moderation.py::appr_history`:
     служебный маркер повторной подачи (`column == "status"`) не поле анкеты — пропускается (D-10,
     уже показан отдельным бейджем `resubmit`); колонка без подписи в `COLUMN_TO_LABEL` тоже
     пропускается — показать код менеджеру вместо слова запрещает CLAUDE.md, а не показать одну
@@ -551,7 +551,7 @@ async def card_payload(user: dict) -> dict:
 
     # Приёмка 17.09 (п.2)/19.09 (находки №2/№3): порядок — файл (самый информативный артефакт)
     # -> ссылка (R2b) -> текст -> мини-профиль -> нет; `moderation_card.resume_summary` —
-    # единая точка правды (та же, что зовёт `handlers/admin_moderation.py`, паритет бот/веб).
+    # единая точка правды (та же, что зовёт `handlers/applications/admin_moderation.py`, паритет бот/веб).
     # `url` для "file" — прямая Nextcloud-ссылка (`resume_url`), если загрузка удалась; `None`,
     # если файл лежит только в Telegram (`resume_file_id`) — веб-роутер тогда соберёт безопасную
     # ссылку через file-токен (`miniapp/file_tokens.py`), сюда сырой `file_id` НЕ подмешивается
@@ -627,7 +627,7 @@ async def claim_reject(telegram_id: int) -> bool:
 
 async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
     """Массовое одобрение + начисление рефералки ОДНИМ швом (32-05, D-20/D-22) — единственная
-    точка, которую зовут И бот (`handlers/admin_moderation.py::appr_all_yes`), И веб, так что
+    точка, которую зовут И бот (`handlers/applications/admin_moderation.py::appr_all_yes`), И веб, так что
     бот-путь и веб-путь структурно не могут разъехаться по начислению (раньше бот звал
     `approve_all_pending` напрямую, минуя `claim_approve_all`). approved_at ставит
     `approve_all_pending` в той же атомарной записи, что и status (D-10). Здесь же — проверка
@@ -661,7 +661,7 @@ async def record_decision(telegram_id: int, decision: str, reason: str | None, b
     (приветствие/отказ/лист) остаются отложенными до истечения окна отмены.
 
     `effects_already_sent` (quick 260904-liz, keyword-only) — для бот-пути
-    (`handlers/admin_moderation.py::appr_reject_reason`/`appr_approve`): бот применяет эффекты
+    (`handlers/applications/admin_moderation.py::appr_reject_reason`/`appr_approve`): бот применяет эффекты
     СИНХРОННО и САМ (`_spawn(apply_decision_effects(...))`), ДО вызова этой функции, поэтому
     строка журнала обязана родиться УЖЕ помеченной отправленной (`effects_sent_at = _stamp(now)`)
     — живая строка (`effects_sent_at IS NULL`) означала бы, что `claim_due_application_decisions`

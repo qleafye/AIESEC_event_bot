@@ -33,7 +33,7 @@ SEAMS = [
     "handlers.cities.admin_cities",
     "handlers.comms.admin_broadcasts",
     "handlers.regform.admin_reg_config",
-    "handlers.admin_moderation",
+    "handlers.applications.admin_moderation",
     "handlers.admin_roles",
     "handlers.game.admin_gamification",
     "handlers.game.admin_game_tasks",

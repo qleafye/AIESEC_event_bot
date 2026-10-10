@@ -61,7 +61,7 @@ from keyboards.builders import get_cancel_kb, get_main_menu_kb
 import domain.regform.moderation_card as moderation_card
 from domain.settings.schema import get_setting_typed
 from domain.cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
-from handlers.admin_modcard_render import build_card_text
+from handlers.applications.admin_modcard_render import build_card_text
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
 from services.ru_plural import ru_plural
 from handlers.admin import router
@@ -948,12 +948,12 @@ async def appr_full(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# Quick 260902-tzh: handlers/admin_modcard.py (экран «🧾 Поля карточки заявки» — тумблеры
+# Quick 260902-tzh: handlers/applications/admin_modcard.py (экран «🧾 Поля карточки заявки» — тумблеры
 # вопросов + пресеты лимита) decorates the same admin.router. Imported LAST, right after
 # every handler above, so its handlers land right after this module at any import order —
 # same seam-import technique as admin_gamification/admin_polls at the tail of admin.py.
 # Golden snapshot: tests/test_refac_snapshot_260816.py.
-from handlers import admin_modcard  # noqa: E402,F401
+from handlers.applications import admin_modcard  # noqa: E402,F401
 
 # Phase 28 (28-08, SU-08): handlers/regform/admin_reg_scoring.py (экран «🧮 Правила балла» — чекбокс-
 # пикеры скоринговых множеств) decorates the same admin.router. Imported right after

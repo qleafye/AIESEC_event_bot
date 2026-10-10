@@ -6364,7 +6364,7 @@ SETTINGS_SCHEMA = {
     # → 30-UI-SPEC.md § «Экран статуса заявки», карточка причины без подписи менеджера). Один
     # ключ на ОБЕ поверхности: placeholder текстового поля в шторке отказа Mini App
     # (`miniapp/routers/page.py::APPLICATIONS_TEXT_KEYS`, `screens/applications.js`) и приписка
-    # к тому же вопросу в чате бота (`handlers/admin_moderation.py::appr_reject_start`) — вторым
+    # к тому же вопросу в чате бота (`handlers/applications/admin_moderation.py::appr_reject_start`) — вторым
     # источником текста не заводим, менеджер правит подсказку один раз для обеих.
     "miniapp_applications_reject_hint_text": {
         "type": "text", "group": "miniapp", "label": "🗂 Подсказка у поля причины отказа",
@@ -6962,7 +6962,7 @@ SETTINGS_SCHEMA = {
 
     # ── Quick 260902-tzh: «🧾 Поля карточки заявки» — какие ответы анкеты показывать
     # менеджеру в карточке отбора и до какой длины обрезать длинный ответ. Own group "apps"
-    # (как dashboard/miniapp выше): свой экран `handlers/admin_modcard.py`, эти два ключа
+    # (как dashboard/miniapp выше): свой экран `handlers/applications/admin_modcard.py`, эти два ключа
     # НЕ добавляются в handlers.admin_settings.SETTINGS_FIELDS/SETTINGS_GROUPS — второй
     # конкурирующей поверхности правки не заводим. Дефолт modcard_fields ПОВТОРЯЕТ
     # moderation_card.DEFAULT_CARD_STEPS литералом (import domain.regform.moderation_card as moderation_card сюда даёт цикл:
@@ -7101,7 +7101,7 @@ SETTINGS_SCHEMA = {
     # status='rejected' (`services/scheduler.py::sync_auto_reject_sheet_job`). Пустое значение
     # (default) — вкладка НЕ ведётся и не создаётся: событие без модуля автоотказа не получает
     # лишней вкладки в своей таблице. Правится ТОЛЬКО с экрана «🚫 Правила автоотказа» →
-    # «📊 Отчётность» (handlers/admin_reject_reports.py) — в _APPS_FIELD_ORDER ключ НЕ входит
+    # «📊 Отчётность» (handlers/applications/admin_reject_reports.py) — в _APPS_FIELD_ORDER ключ НЕ входит
     # (тот же приём, что у reject_rules_enabled выше: экран уже под потолком размера, а этот
     # ключ логически принадлежит новому маленькому экрану отчётности, не общим настройкам).
     "auto_reject_sheet_tab": {
@@ -7324,7 +7324,7 @@ SETTINGS_SCHEMA = {
     # Phase 33 (delegate-card admin actions): три сообщения делегату от карточки `/find` —
     # каждое уходит ТОЛЬКО если менеджер включил тумблер «🔔 Сообщить делегату» на экране
     # подтверждения (дефолт для «вернуть в ожидание» — не сообщать, для остальных двух —
-    # сообщить, см. докстринги handlers/admin_revert_pending.py/admin_resubmit_grant.py/
+    # сообщить, см. докстринги handlers/applications/admin_revert_pending.py/admin_resubmit_grant.py/
     # admin_edit_grant.py). Та же группа "apps" + per_city, что у reg_edit_closed_text/
     # reg_resubmit_closed_text выше (соседние делегатские тексты того же экрана «📋 Заявки»).
     "revert_pending_notify_text": {
@@ -7423,7 +7423,7 @@ SETTINGS_SCHEMA = {
     # Квик 260923 (AUTOREJ-REPORT, D-C): поток заявок может не стихать вечером мероприятия
     # (окно тишины постоянно сдвигается) — потолок гарантирует, что сводка всё равно уйдёт не
     # позже стольки-то минут от ПЕРВОЙ неотправленной строки очереди. Правится ТОЛЬКО с экрана
-    # «🚫 Правила автоотказа» → «📊 Отчётность» (handlers/admin_reject_reports.py) — в
+    # «🚫 Правила автоотказа» → «📊 Отчётность» (handlers/applications/admin_reject_reports.py) — в
     # _APPS_FIELD_ORDER ключ НЕ входит (D-I: тот же приём, что у reg_submit_digest_minutes
     # выше не про этот экран, а reject_rules_enabled — единственный сосед вне общих тумблеров).
     # default=0 (без потолка, поведение прежнее) — владелец задаёт 30 на проде ПОСЛЕ выката, не

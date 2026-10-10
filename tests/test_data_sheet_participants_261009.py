@@ -7,7 +7,7 @@ import io
 from config import config
 from database import db
 from handlers import admin_sections as sec
-from handlers import admin_participants as ap
+from handlers.applications import admin_participants as ap
 from handlers.admin_caps import required_capability, resolve_capabilities
 from tests._dbtpl import fast_init_db
 
@@ -65,7 +65,7 @@ def _parse(doc):
 
 
 def test_rows_are_approved_current_season_only_without_phone(tmp_path):
-    from handlers.admin_participants import _city_label
+    from handlers.applications.admin_participants import _city_label
     _use_tmp_db(tmp_path)
     _set("event_season", "YL 26/2")
     _user(1, "Анна Иванова", username="anna")

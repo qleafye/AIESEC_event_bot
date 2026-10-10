@@ -3,7 +3,7 @@
 `tests/test_reject_rules_service.py::test_reject_rules_module_does_not_load_aiogram`, тот же
 приём, что `services/applications.py`).
 
-Разрез — ровно тот же, что у `services/applications.py` против `handlers/admin_moderation.py`,
+Разрез — ровно тот же, что у `services/applications.py` против `handlers/applications/admin_moderation.py`,
 и по той же причине: чистый оценщик (`reg_engine.evaluate_reject_rules`, план 31-01) ничего не
 знает про базу и реестр; экраны редактора (планы 31-08/31-10 — чат, будущий Mini App —
 `.planning/backlog.md`) — это кнопки и текст, им нельзя нести бизнес-правила. Между ними обязан

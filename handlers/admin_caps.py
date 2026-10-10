@@ -359,7 +359,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Источники видны и маркетологу: та же статистика «метка -> число заявок», без людей.
     "admin_source_stats": ("stats", "source_links"),
     "admin_stats": "stats",
-    # «🔗 Ссылки с метками» (handlers/admin_source_links.py): экран и мастер новой ссылки.
+    # «🔗 Ссылки с метками» (handlers/applications/admin_source_links.py): экран и мастер новой ссылки.
     "admin_source_links": "source_links",
     "srclink_new": "source_links",
     "srclink_cancel": "source_links",
@@ -669,7 +669,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_reject_rules": "settings",
     "arr_*": "settings",
     "state:RejectRuleEdit:*": "settings",
-    # Phase 31 (31-10, D-01/D-13/D-16): конструктор условий (handlers/admin_reject_cond.py) —
+    # Phase 31 (31-10, D-01/D-13/D-16): конструктор условий (handlers/applications/admin_reject_cond.py) —
     # тот же класс экрана, тем же правом; один префиксный ключ на всё пространство callback'ов
     # (arc_add/arc_steppage/arc_step/arc_op/arc_val/arc_valpage/arc_valdone/arc_num/arc_del/
     # arc_dellist/arc_preset/arc_dry/arc_gate/arc_dry_go/arc_cancel — все начинаются с "arc_").
@@ -1299,38 +1299,38 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "citymv_notify:*": "moderate_reg",
 
     # Phase 33 (delegate-card admin actions): «↩️ Вернуть в ожидание» — та же капа «moderate_reg»,
-    # что у соседнего «🏙 Перевести в город» выше (handlers/admin_revert_pending.py).
+    # что у соседнего «🏙 Перевести в город» выше (handlers/applications/admin_revert_pending.py).
     "revertp_start:*": "moderate_reg",
     "revertp_toggle:*": "moderate_reg",
     "revertp_apply:*": "moderate_reg",
     "revertp_cancel:*": "moderate_reg",
-    # «📨 Отправить решение заново» — кнопка карточки /find (handlers/admin_resend_decision.py).
+    # «📨 Отправить решение заново» — кнопка карточки /find (handlers/applications/admin_resend_decision.py).
     # Префикс decresend_ не пересекается ни с одним существующим ключом.
     "decresend_start:*": "moderate_reg",
     "decresend_go:*": "moderate_reg",
     "decresend_cancel:*": "moderate_reg",
     # Phase 33 (задача 2): «🔁 Разрешить повторную подачу» / отзыв — та же капа, что у соседних
-    # карточных действий (handlers/admin_resubmit_grant.py).
+    # карточных действий (handlers/applications/admin_resubmit_grant.py).
     "resubg_start:*": "moderate_reg",
     "resubg_toggle:*": "moderate_reg",
     "resubg_apply:*": "moderate_reg",
     "resubg_cancel:*": "moderate_reg",
     "resubg_revoke:*": "moderate_reg",
     # Phase 33 (задача 3): «✏️ Открыть правку после решения» / отзыв — та же капа, что у
-    # соседних карточных действий (handlers/admin_edit_grant.py).
+    # соседних карточных действий (handlers/applications/admin_edit_grant.py).
     "editg_start:*": "moderate_reg",
     "editg_toggle:*": "moderate_reg",
     "editg_apply:*": "moderate_reg",
     "editg_cancel:*": "moderate_reg",
     "editg_revoke:*": "moderate_reg",
     # Phase 33 (delegate-card admin actions, задача 1): «🧹 Сбросить зависшую анкету» — та же
-    # капа, что у соседних карточных действий (handlers/admin_reg_reset.py).
+    # капа, что у соседних карточных действий (handlers/applications/admin_reg_reset.py).
     "regreset_start:*": "moderate_reg",
     "regreset_toggle:*": "moderate_reg",
     "regreset_apply:*": "moderate_reg",
     "regreset_cancel:*": "moderate_reg",
     # Phase 33 (delegate-card admin actions, задача 3): «📎 Заменить резюме» — та же капа, что
-    # у соседних карточных действий (handlers/admin_resume_replace.py); FSM-ожидание файла —
+    # у соседних карточных действий (handlers/applications/admin_resume_replace.py); FSM-ожидание файла —
     # тот же приём group-wide wildcard, что у state:StaffAdd:* выше.
     "resumerep_start:*": "moderate_reg",
     "resumerep_cancel:*": "moderate_reg",
