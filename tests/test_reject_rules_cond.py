@@ -21,7 +21,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers.applications import admin_reject_cond as arc
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import RejectCond
 from tests._dbtpl import fast_init_db
 

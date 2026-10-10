@@ -10,7 +10,7 @@ from aiogram.methods import SetMyProfilePhoto
 from aiogram.types import BufferedInputFile, InputProfilePhotoStatic
 
 from handlers import admin_bot_avatar as ava
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.admin_sections import SECTIONS, section_of
 
 

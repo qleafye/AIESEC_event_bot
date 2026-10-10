@@ -7,7 +7,7 @@ import asyncio
 from database import db
 from handlers.amb import admin_amb_backfill as h
 from handlers.amb.admin_amb_points import render_points_screen
-from handlers.admin_caps import ADMIN_CAPS, required_capability
+from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 from tests.test_amb_tiers_admin_su5 import FakeCallback
 from tests.test_referral_credit_32 import _make_ambassador, _ready, _run, _seed_user, db_rows
 

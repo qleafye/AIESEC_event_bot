@@ -46,7 +46,7 @@ from handlers.amb.admin_amb_candidates import (
     render_person,
     take_and_notify,
 )
-from handlers.admin_caps import has_capability
+from handlers.access.admin_caps import has_capability
 from handlers.states import AmbAppoint
 from services import amb_status, person_search
 from services.background import spawn

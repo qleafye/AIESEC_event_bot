@@ -44,7 +44,7 @@ def _env(tmp_path):
 
 
 def _h():
-    from handlers import uat_seed
+    from handlers.access import uat_seed
     return uat_seed
 
 
@@ -173,7 +173,7 @@ def test_go_without_city_for_forum_state_changes_nothing():
 # ── Исполнение: состояния ──────────────────────────────────────────────────────────────────
 
 def test_superadmin_seeds_approved_spb_keeps_admin_and_gets_qr_token():
-    from handlers.admin_caps import ALL_CAPABILITIES, resolve_capabilities
+    from handlers.access.admin_caps import ALL_CAPABILITIES, resolve_capabilities
     from services.checkin import checkin_denial
 
     uat = _h()
@@ -231,7 +231,7 @@ def test_forum_city_is_set_even_with_cities_module_off():
 # ── Исполнение: роли ───────────────────────────────────────────────────────────────────────
 
 def test_volunteer_tyumen_gets_checkin_and_city():
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     uat = _h()
     _cb(uat.uat_execute, "uat_go:fresh:vol:tyumen")
@@ -242,7 +242,7 @@ def test_volunteer_tyumen_gets_checkin_and_city():
 
 
 def test_sos_duty_spb_receives_spb_sos_only():
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
 
     uat = _h()
     _cb(uat.uat_execute, "uat_go:fappr:sos:spb")
@@ -254,7 +254,7 @@ def test_sos_duty_spb_receives_spb_sos_only():
 
 
 def test_forum_manager_gets_forum_caps_bound_to_city():
-    from handlers.admin_caps import resolve_capabilities
+    from handlers.access.admin_caps import resolve_capabilities
 
     uat = _h()
     _cb(uat.uat_execute, "uat_go:fresh:fmgr:tyumen")
@@ -285,7 +285,7 @@ def test_switch_between_city_roles_replaces_roles_and_city():
 
 def test_role_prompt_has_no_service_words():
     """Приёмка 01.10: экран роли не говорит служебного «.env»."""
-    from handlers import uat_seed
+    from handlers.access import uat_seed
 
     assert ".env" not in uat_seed._ROLE_PROMPT
     assert "админ" in uat_seed._ROLE_PROMPT.lower()

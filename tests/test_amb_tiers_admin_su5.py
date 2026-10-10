@@ -364,7 +364,7 @@ def test_stale_confirm_button(tmp_path):
 # ── права ───────────────────────────────────────────────────────────────────────────────
 
 def test_all_amb_tiers_callbacks_require_moderate_game():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     for data in ("admin_amb_tiers", "ambt_toggle:program", "ambt_toggle:hide", "ambt_csv",
                  "ambt_excl", "ambt_excl_go", "ambt_excl_cancel", "ambt_excl_list:10",
                  "ambt_unexcl:5", "ambt_unexcl_go:5"):

@@ -21,7 +21,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers import admin_settings, admin_settings_lists
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import EditSetting
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from tests._dbtpl import fast_init_db

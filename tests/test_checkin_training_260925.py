@@ -278,13 +278,13 @@ def test_sheet_button_requires_checkin_or_moderate_reg(tmp_path):
 
 
 def test_sheet_callback_key_is_mapped():
-    from handlers.admin_caps import ANY_CAPABILITY, required_capability
+    from handlers.access.admin_caps import ANY_CAPABILITY, required_capability
 
     assert required_capability(callback_data="checkin_training_sheet") == ANY_CAPABILITY
 
 
 def _staff_with(caps: str):
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
 
     _run(bot_db.set_setting(role_caps_key("stats_manager"), caps))
     _run(bot_db.add_staff(951099, "stats_manager", 1))

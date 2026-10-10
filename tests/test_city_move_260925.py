@@ -29,7 +29,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers.cities import admin_city_move
-from handlers.admin_caps import role_caps_key
+from handlers.access.admin_caps import role_caps_key
 import services.sheets as sheets_mod
 from services.checkin import record_arrival
 from services.city_move import (

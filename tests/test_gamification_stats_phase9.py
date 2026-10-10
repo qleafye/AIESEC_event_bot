@@ -16,7 +16,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.game import admin_gamification
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from tests._dbtpl import fast_init_db
 
 

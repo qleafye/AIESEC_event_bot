@@ -25,7 +25,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers.applications import admin_reject_rules
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import RejectRuleEdit
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed

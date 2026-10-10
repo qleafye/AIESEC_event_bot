@@ -8,7 +8,7 @@ from __future__ import annotations
 from database import amb_tiers_db as tdb
 from database import db
 from handlers.amb import admin_amb_tiers as h
-from handlers.admin_caps import ADMIN_CAPS
+from handlers.access.admin_caps import ADMIN_CAPS
 from tests.test_amb_tiers_admin_su5 import ADMIN_ID, FakeCallback, FakeMessage, _new_state, _run
 from tests.test_amb_tiers_dashboard_backfill_su5 import (
     _outbox_events,
@@ -184,7 +184,7 @@ def test_new_callbacks_have_moderate_game_caps():
 
 
 def test_cap_resolver_covers_new_callbacks():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
 
     assert required_capability(callback_data="ambt_excl_l") == "moderate_game"
     assert required_capability(callback_data="ambt_fill") == "moderate_game"

@@ -13,7 +13,7 @@ from database import db
 from domain.settings.ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 
 
 ADMIN_ID = 900002

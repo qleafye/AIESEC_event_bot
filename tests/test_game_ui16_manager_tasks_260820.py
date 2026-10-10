@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import GameTaskCreate, GameTaskEdit
 
 
@@ -96,7 +96,7 @@ def test_new_manager_task_callbacks_require_moderate_game():
 def test_deadline_preset_key_does_not_shadow_point_edit_key():
     """`gteditdeadline:*` и `gteditdeadline_preset:*` — разные ключи (префикс «gteditdeadline:»
     не покрывает «gteditdeadline_preset:», как gtdelete:* не покрывает gtdelete_go:*)."""
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
     assert "gteditdeadline:*" in ADMIN_CAPS
     assert "gteditdeadline_preset:*" in ADMIN_CAPS
 

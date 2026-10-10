@@ -12,7 +12,7 @@
 
 `LookupAdmin` — `StatesGroup` в `handlers/states.py` (не локально в шве): `tests/test_roles_phase8.py`'s автовывод capability-ключа для message-хендлеров admin-роутера находит группу состояний ТОЛЬКО там (`hasattr(states_mod, group_name)`), в отличие от `handlers/reg_types_lookup.py` (30-06, чат-роутер регистрации, другая проверка).
 
-Callback-схема — один префикс `admin_lookup` (капабилити `settings`, `handlers/admin_caps.py`:
+Callback-схема — один префикс `admin_lookup` (капабилити `settings`, `handlers/access/admin_caps.py`:
 `admin_lookup` + `admin_lookup:*`):
   admin_lookup                     -> выбор вида справочника (ВУЗы/Города)
   admin_lookup:kind:{kind}         -> сводка вида (счётчик очереди/чипов)

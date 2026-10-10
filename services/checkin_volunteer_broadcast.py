@@ -1,5 +1,5 @@
 """D-33 (решение владельца 24.09, `.planning/FORUM-CHECKIN.md`): шпаргалка волонтёра чек-ина
-(`checkin_volunteer_guide_text` — тот же текст, что `handlers/admin_roles.py::roles_assign`
+(`checkin_volunteer_guide_text` — тот же текст, что `handlers/access/admin_roles.py::roles_assign`
 шлёт ПРИ НАЗНАЧЕНИИ роли) ЕЩЁ раз — за день до форума ГОРОДА, всем держателям capability
 `checkin` этого города.
 
@@ -11,7 +11,7 @@ True`, джоба перечитывает состояние (аудитори�
 тот же трёхточечный шов, что у `services.checkin_broadcast.schedule_city_jobs`/
 `reconcile_broadcasts`.
 
-Аудитория — `handlers.admin_caps.capability_holders("checkin", city=city)`: тот же примитив,
+Аудитория — `handlers.access.admin_caps.capability_holders("checkin", city=city)`: тот же примитив,
 что D-13 (notification fan-out), уже умеет и суперадминов (всегда), и привязанных/непривязанных
 держателей права, и fallback «никто не привязан к этому городу -> все держатели» — свой второй
 резолвер аудитории заводить незачем.
@@ -271,7 +271,7 @@ async def send_guide(city: str | None) -> dict:
     except (TypeError, ValueError, AttributeError):
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "bad_date"}
 
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
 
     holders = await capability_holders(_CAP, city=city)
     already = await checkin_volunteer_guide_sent_ids(day)
@@ -382,7 +382,7 @@ async def greet_new_holders(bot, before: set[int]) -> None:
     """После правки прав роли / её включения: всем, у кого checkin появился только сейчас.
     `before` — `capability_holders("checkin")` до правки. Суперадмины держат право всегда."""
     from config import config
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
     for tid in await capability_holders(_CAP):
         if tid in before or tid in config.ADMIN_IDS:
             continue

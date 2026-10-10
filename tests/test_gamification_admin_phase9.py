@@ -22,7 +22,7 @@ from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES
 from handlers import admin as admin_mod
 from handlers.game import admin_gamification
 from handlers.game import admin_game_tasks
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import GameTaskCreate
 from tests._dbtpl import fast_init_db
 

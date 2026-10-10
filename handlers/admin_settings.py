@@ -223,7 +223,7 @@ _APPS_FIELD_ORDER = [
     "checkin_not_arrived_text", "checkin_not_arrived_show_qr_hint_text",  # и ответы на кнопки шаблона
     "checkin_not_arrived_coming_ack_text", "checkin_not_arrived_cant_ack_text",
     # Форум-ночь B3 (идея №22): шпаргалка волонтёра чек-ина — уходила личным сообщением
-    # (handlers/admin_roles.py::roles_assign), но в боте её было негде поправить (только
+    # (handlers/access/admin_roles.py::roles_assign), но в боте её было негде поправить (только
     # Mini App) — тот же пропуск, что у checkin_qr_broadcast_text выше.
     "checkin_volunteer_guide_text",
     # Идея №3 бэклога чек-ина: текст приветствия после первой отметки входа делегата (тумблер

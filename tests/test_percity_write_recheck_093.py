@@ -16,7 +16,7 @@ import inspect
 from config import config
 from database import db
 from handlers import admin_settings
-from handlers.admin_caps import role_caps_key, role_enabled_key
+from handlers.access.admin_caps import role_caps_key, role_enabled_key
 import domain.cities as cities
 from tests._dbtpl import fast_init_db
 

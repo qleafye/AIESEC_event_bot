@@ -25,6 +25,6 @@ async def miniapp_open_for(telegram_id: int | None) -> bool:
         return True
     if telegram_id is None:
         return False
-    from handlers.admin_caps import resolve_capabilities  # ленивый: тянет aiogram, нужен только боту
+    from handlers.access.admin_caps import resolve_capabilities  # ленивый: тянет aiogram, нужен только боту
 
     return is_app_staff(await resolve_capabilities(telegram_id))

@@ -27,7 +27,7 @@ from database.db import (
     checkin_qr_send_counts, get_staff_city, sheet_arrival_count_with_error, sheet_arrival_queue_stats,
 )
 from handlers.admin import router
-from handlers.admin_caps import _holds, capability_holders, required_capability, resolve_capabilities
+from handlers.access.admin_caps import _holds, capability_holders, required_capability, resolve_capabilities
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.checkin_arrival import count_program_sessions
 from services.program import own_program_photo, resolve_program_photo

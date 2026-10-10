@@ -15,7 +15,7 @@ from config import config
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from handlers.delegations import admin_delegations_review as mod
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import DelegationLink
 from services import delegations as dlg
 from services.checkin import checkin_denial

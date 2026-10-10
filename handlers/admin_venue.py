@@ -28,7 +28,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from domain.cities import city_label_or_none
 from database.db import get_checkin, get_user, list_checkins_for_user, venue_log_page, venue_log_staff
 from handlers.admin import router
-from handlers.admin_caps import has_capability
+from handlers.access.admin_caps import has_capability
 from handlers.admin_core import _admin_city_view, _card_out_of_scope
 from handlers.states import VenueRevokeFind
 from keyboards.builders import get_cancel_kb

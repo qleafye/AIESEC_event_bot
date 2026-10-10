@@ -17,7 +17,7 @@ import pytest
 
 from database import db
 from handlers.chat import admin_chat_cleanup
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.admin_sections import section_rows
 from services import chat_tracking
 from tests.test_chat_refresh_admin_260914 import ADMIN_ID, FakeBot, _ready, _seed_approved

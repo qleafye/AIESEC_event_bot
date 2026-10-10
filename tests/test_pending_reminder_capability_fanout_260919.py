@@ -322,7 +322,7 @@ def test_blocked_staff_recipient_does_not_stop_others(tmp_path, monkeypatch):
 
 def test_summary_has_open_applications_button():
     """09.10: вместо «Открой /admin → Заявки» (новичок отправлял строку целиком) — кнопка."""
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     from services import reminders
 
     button = reminders._OPEN_APPS_KB.inline_keyboard[0][0]
