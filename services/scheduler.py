@@ -627,8 +627,8 @@ _JOURNAL_FLUSH_EVERY = 25
 MUTE_TODAY_CALLBACK = "bc_mute_today"
 UNMUTE_TODAY_CALLBACK = "bc_unmute_today"
 
-# Публичные — используются и здесь, и в handlers/user_actions.py (свап кнопки на тапе), одна
-# точка правды на подпись обеих кнопок.
+# Подписи по умолчанию; сами подписи — настройки `broadcast_(un)mute_button_text` (экран
+# «📋 Заявки»), читаются в `mute_button`/`unmute_button`/`load_recipient_langs`.
 MUTE_BUTTON_TEXT = "🔕 Не присылать сегодня"
 UNMUTE_BUTTON_TEXT = "🔔 Присылать всё"
 
@@ -663,7 +663,8 @@ async def _translated_button(text: str, callback_data: str, chat_id: int) -> Inl
 
 
 async def mute_button(chat_id: int) -> InlineKeyboardButton:
-    return await _translated_button(MUTE_BUTTON_TEXT, MUTE_TODAY_CALLBACK, chat_id)
+    from settings_ui_text_fields import ui_text  # подпись — настройка «📋 Заявки»
+    return await _translated_button(await ui_text("broadcast_mute_button_text"), MUTE_TODAY_CALLBACK, chat_id)
 
 
 class RecipientLangs:
@@ -675,7 +676,9 @@ class RecipientLangs:
     запросом, английская карта — один раз, кнопка «🔕» — одна на язык. Язык, сменённый делегатом
     во время самой рассылки, до конца этой рассылки не подхватывается."""
 
-    def __init__(self, module_on: bool, stored: dict[int, str], tr_map_en: dict[str, str]):
+    def __init__(self, module_on: bool, stored: dict[int, str], tr_map_en: dict[str, str],
+                 mute_text: str = MUTE_BUTTON_TEXT):
+        self._mute_text = mute_text
         self._module_on = module_on
         self._stored = stored
         self._tr_map_en = tr_map_en
@@ -693,7 +696,7 @@ class RecipientLangs:
         button = self._buttons.get(lang)
         if button is None:
             button = InlineKeyboardButton(
-                text=reg_i18n.tr_text(MUTE_BUTTON_TEXT, lang, tr_map),
+                text=reg_i18n.tr_text(self._mute_text, lang, tr_map),
                 callback_data=MUTE_TODAY_CALLBACK,
             )
             self._buttons[lang] = button
@@ -718,11 +721,18 @@ async def load_recipient_langs() -> RecipientLangs:
     except Exception:  # noqa: BLE001 — тот же широкий fail-soft, что у delegate_lang
         logger.error("load_recipient_langs: сбой чтения языков получателей", exc_info=True)
         return RecipientLangs(False, {}, {})
-    return RecipientLangs(module_on, stored, tr_map_en)
+    from settings_ui_text_fields import ui_text  # подпись «🔕» — настройка «📋 Заявки»
+    try:
+        mute_text = await ui_text("broadcast_mute_button_text")
+    except Exception:  # noqa: BLE001 — без настройки кнопка с подписью по умолчанию
+        logger.error("load_recipient_langs: сбой чтения подписи «🔕»", exc_info=True)
+        mute_text = MUTE_BUTTON_TEXT
+    return RecipientLangs(module_on, stored, tr_map_en, mute_text)
 
 
 async def unmute_button(chat_id: int) -> InlineKeyboardButton:
-    return await _translated_button(UNMUTE_BUTTON_TEXT, UNMUTE_TODAY_CALLBACK, chat_id)
+    from settings_ui_text_fields import ui_text
+    return await _translated_button(await ui_text("broadcast_unmute_button_text"), UNMUTE_TODAY_CALLBACK, chat_id)
 
 
 async def recipient_markup(

@@ -10,6 +10,7 @@ import asyncio
 
 from config import config
 from database import db
+from settings_ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability
@@ -595,6 +596,8 @@ def test_render_snapshot_apps(tmp_path):
         # новый хвост группы (тумблер forum_stats_card_enabled и фон — не здесь, живут на
         # своём экране handlers/admin_forum_stats_card.py).
         "forum_stats_card_caption_text",
+        # 10.10 (бэклог «🛠» P1): подписи кнопок фоновых сообщений — новый хвост группы.
+        *BACKGROUND_BUTTON_FIELD_ORDER,
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -1126,7 +1129,11 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # расширен до 29. 01.10: checkin_qr_morning_text сразу после checkin_qr_broadcast_text —
     # срез расширен до 31.
     # 10.10: +4 ключа QR/«Не пришёл» внутри среза — срез расширен до 35.
-    assert admin_settings._settings_group_keys("apps")[-35:] == [
+    # 10.10: хвост — подписи кнопок фоновых сообщений (BACKGROUND_BUTTON_FIELD_ORDER), срез
+    # прежних ключей сдвинут на их число.
+    _bg = len(BACKGROUND_BUTTON_FIELD_ORDER)
+    assert admin_settings._settings_group_keys("apps")[-_bg:] == BACKGROUND_BUTTON_FIELD_ORDER
+    assert admin_settings._settings_group_keys("apps")[-35 - _bg:-_bg] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_confirm_receipt_text",

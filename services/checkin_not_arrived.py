@@ -34,20 +34,34 @@ from database.db import (
 )
 from services import scheduler as _sched
 from services.timeutil import city_offset_hours, msk_now, shift_hours
+from settings_ui_text_fields import UI_TEXT_SCHEMA, ui_text
 
 logger = logging.getLogger(__name__)
 
+_BUTTON_KEYS = (
+    (CNA_COMING, "checkin_not_arrived_coming_button_text"),
+    (CNA_CANT, "checkin_not_arrived_cant_button_text"),
+    (CNA_HERE, "checkin_not_arrived_here_button_text"),
+)
 
-def _response_kb(day: str, lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:
-    """Три кнопки ответа — на языке получателя. Ленивый импорт (Pitfall циклического импорта
-    на уровне модуля, см. докстринг `services/checkin_broadcast.py`)."""
+
+async def button_labels() -> list[str]:
+    """Подписи трёх кнопок из настроек — читаются один раз на рассылку."""
+    return [await ui_text(key) for _, key in _BUTTON_KEYS]
+
+
+def _response_kb(day: str, lang: str = "ru", tr_map: dict | None = None,
+                 labels: list[str] | None = None) -> InlineKeyboardMarkup:
+    """Три кнопки ответа — на языке получателя; `labels` — из `button_labels()`, без них
+    подписи по умолчанию. Ленивый импорт (Pitfall циклического импорта на уровне модуля, см.
+    докстринг `services/checkin_broadcast.py`)."""
     from handlers.reg_i18n import tr_text
 
     m = tr_map or {}
+    labels = labels or [UI_TEXT_SCHEMA[key]["default"] for _, key in _BUTTON_KEYS]
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=tr_text("🚶 Уже еду", lang, m), callback_data=f"cna:{CNA_COMING}:{day}")],
-        [InlineKeyboardButton(text=tr_text("😔 Не смогу прийти", lang, m), callback_data=f"cna:{CNA_CANT}:{day}")],
-        [InlineKeyboardButton(text=tr_text("📍 Я на месте", lang, m), callback_data=f"cna:{CNA_HERE}:{day}")],
+        [InlineKeyboardButton(text=tr_text(label, lang, m), callback_data=f"cna:{code}:{day}")]
+        for label, (code, _) in zip(labels, _BUTTON_KEYS)
     ])
 
 
@@ -102,6 +116,7 @@ async def send(*, city: str | None, city_scope=None) -> dict:
 
     sent = quiet = failed = 0
     tr_maps: dict[str, dict] = {}
+    labels = await button_labels()
     # День форума — по календарю города (Тюмень МСК+2 уже на следующих сутках в 22:00 МСК).
     forum_today = await is_forum_day(city, shift_hours(now, await city_offset_hours(city)))
     for tid in ids:
@@ -120,7 +135,7 @@ async def send(*, city: str | None, city_scope=None) -> dict:
             continue
         lang, tr_map = await i18n_service.context_cached(tid, tr_maps)
         text = tr_text(base_text, lang, tr_map)
-        kb = _response_kb(day, lang, tr_map)
+        kb = _response_kb(day, lang, tr_map, labels)
         # 429 — один ретрай внутри `_safe_send`. Временный сбой снимает отметку: иначе делегат
         # навсегда выпадал из повторного нажатия. Заблокировавший бота остаётся отмеченным —
         # повтор ему всё равно не дойдёт.

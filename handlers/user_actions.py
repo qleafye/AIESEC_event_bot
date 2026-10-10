@@ -50,6 +50,7 @@ from handlers.registration import DEFAULT_START_RETURNING_TEXT
 # Квик 260915-skg (P7): перевод входа в приложение при lang=en — тот же общий механизм, что
 # reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
 from handlers import reg_i18n
+from settings_ui_text_fields import ui_text  # подписи, вынесенные из кода в настройки
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
     category_label, proof_types_label, sort_tasks_for_delegate,
     render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
@@ -2102,8 +2103,8 @@ async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
 
 async def _rnm_confirm_kb(lang: str, tr_map: dict):
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, перенести", callback_data="rnm_confirm")],
-        [InlineKeyboardButton(text="Нет, спасибо", callback_data="rnm_decline")],
+        [InlineKeyboardButton(text=await ui_text("regional_noshow_confirm_button_text"), callback_data="rnm_confirm")],
+        [InlineKeyboardButton(text=await ui_text("regional_noshow_decline_button_text"), callback_data="rnm_decline")],
     ])
     return reg_i18n.tr_kb(kb, lang, tr_map)
 
