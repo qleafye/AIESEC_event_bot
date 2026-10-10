@@ -513,7 +513,7 @@ def _confirm_kb(lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardM
     Ленивый импорт: этот модуль зовётся из джоб-таргетов `services/scheduler.py`, которые уже
     лениво тянут `handlers.*` внутри функций (Pitfall циклического импорта на уровне модуля,
     см. докстринг `services/reg_digest.py`)."""
-    from handlers.reg_i18n import tr_text
+    from handlers.i18n.reg_i18n import tr_text
 
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(
@@ -542,7 +542,7 @@ async def _render_for(
     telegram_id: int, text: str, maps: dict[str, dict], *, forum_day: bool = False,
 ):
     """Подпись и клавиатура на языке получателя — тот же перевод, что у остальных ответов
-    делегату (`handlers.reg_i18n.tr_text`, `show_my_checkin_qr`). `maps` — карты переводов
+    делегату (`handlers.i18n.reg_i18n.tr_text`, `show_my_checkin_qr`). `maps` — карты переводов
     на всю рассылку (`services.i18n.context_cached`), не выборка на каждого.
 
     В день форума вместо инлайн-кнопки «✅ Сохранил» QR приходит с главным меню делегата:
@@ -550,7 +550,7 @@ async def _render_for(
     кнопка «🆘 SOS» (она видна только в дни форума). У сообщения одна клавиатура — либо
     инлайн, либо меню; в день форума подтверждение «сохранил» уже ничего не меняет (повторов
     больше не будет), а SOS нужен."""
-    from handlers.reg_i18n import tr_kb, tr_text
+    from handlers.i18n.reg_i18n import tr_kb, tr_text
     from services import i18n as i18n_service
 
     lang, tr_map = await i18n_service.context_cached(telegram_id, maps)

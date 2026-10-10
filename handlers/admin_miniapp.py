@@ -164,7 +164,7 @@ async def sync_chat_menu_button(bot, chat_id: int | None = None, lang: str = "ru
     if enabled and url:
         button_text = await get_setting_typed("miniapp_open_button")
         if lang == "en":
-            from handlers import reg_i18n
+            from handlers.i18n import reg_i18n
             from services import i18n as i18n_service
             tr_map = await i18n_service.load_map("en")
             button_text = reg_i18n.tr_text(button_text, "en", tr_map)

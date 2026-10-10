@@ -271,7 +271,7 @@ def test_program_day_alerts_are_translated_for_english_delegate(tmp_path, monkey
     """Оба алерта идут через перевод делегатского чата (словарь — services/i18n_form_manual.py,
     корпус — services/i18n_sources.py «lit:program.*»); раньше уходили сырым русским."""
     from handlers import program as program_handlers
-    from handlers import reg_i18n
+    from handlers.i18n import reg_i18n
     from services import i18n
     from services.i18n_form_manual import _CODE_LITERALS_EN
 

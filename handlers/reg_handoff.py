@@ -32,7 +32,7 @@ from handlers.registration import router
 from handlers.reg_resume import resume_from_draft
 # Phase 27 (27-05, LANG-02): say()/tr_for() переводят делегатские отправки этого шва (гвард
 # держит event = реальный Message/CallbackQuery делегата, ctx_for резолвит личность и по нему).
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 
 logger = logging.getLogger(__name__)
 

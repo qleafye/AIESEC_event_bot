@@ -55,7 +55,7 @@ def _response_kb(day: str, lang: str = "ru", tr_map: dict | None = None,
     """Три кнопки ответа — на языке получателя; `labels` — из `button_labels()`, без них
     подписи по умолчанию. Ленивый импорт (Pitfall циклического импорта на уровне модуля, см.
     докстринг `services/checkin_broadcast.py`)."""
-    from handlers.reg_i18n import tr_text
+    from handlers.i18n.reg_i18n import tr_text
 
     m = tr_map or {}
     labels = labels or [UI_TEXT_SCHEMA[key]["default"] for _, key in _BUTTON_KEYS]
@@ -111,7 +111,7 @@ async def send(*, city: str | None, city_scope=None) -> dict:
     base_text = await get_setting_typed_for_city("checkin_not_arrived_text", city)
     now = msk_now()
     day = now.strftime("%Y-%m-%d")
-    from handlers.reg_i18n import tr_text
+    from handlers.i18n.reg_i18n import tr_text
     from services import i18n as i18n_service
 
     sent = quiet = failed = 0

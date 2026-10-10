@@ -18,7 +18,7 @@ CLAUDE.md) — см. `_title_text`/`_footer_line`. Не задано — ней�
 
 Подписи карточки (шесть коротких фраз) — код-литералы ЭТОГО модуля, не реестр и не
 `services/i18n_form_manual.py`: текст рисуется ПИКСЕЛЯМИ, никогда не идёт через
-`handlers.reg_i18n.tr_text`/`services.i18n.tr`, поэтому DB-перевод (ярус B) здесь не участвует
+`handlers.i18n.reg_i18n.tr_text`/`services.i18n.tr`, поэтому DB-перевод (ярус B) здесь не участвует
 — задание допускало оба варианта («ключи реестра или литералы с ручным EN»), решение
 зафиксировано как деviation в отчёте исполнителя. ПОДПИСЬ к самому фото (сообщение, которое
 реально уходит боту делегата) — обычный реестровый ключ `forum_stats_card_caption_text`,
@@ -689,7 +689,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
 
         from aiogram.types import BufferedInputFile
         from database.db import get_muted_today_ids
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         from services import i18n as i18n_service
         from services import quiet_hours
         from domain.cities import get_setting_typed_for_city

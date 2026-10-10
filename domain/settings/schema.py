@@ -8097,7 +8097,7 @@ SETTINGS_SCHEMA = {
     # group "reg" — тот же довод, что у checkin_qr_broadcast_text/checkin_not_arrived_text выше:
     # делегатский текст, корпус машинного перевода (services/i18n_sources.py) подхватывает сам,
     # отдельной записи в i18n_form_manual.py не требует. Подстановка `{time}` — ПОСЛЕ перевода
-    # (`handlers.reg_i18n.tr_fmt`, тот же порядок, что у `{claim_status}`/`{title}` — см.
+    # (`handlers.i18n.reg_i18n.tr_fmt`, тот же порядок, что у `{claim_status}`/`{title}` — см.
     # `handlers/sos.py`/`services/session_feedback.py`), время скана ЧЧ:ММ по Москве.
     "forum_welcome_text": {
         "type": "text", "group": "reg", "label": "👋 Текст приветствия после отметки на входе",
@@ -8118,7 +8118,7 @@ SETTINGS_SCHEMA = {
     # САМИ»). НЕ per_city — ответ не зависит от города форума (тот же довод, что у
     # checkin_not_arrived_coming_ack_text выше). Подстановка `{time}`/`{sessions}` — ПОСЛЕ
     # перевода (тот же порядок, что у соседа forum_welcome_text выше). Дефолт БЕЗ ведущего
-    # эмодзи-префикса намеренно (не «✅ Отмечен...») — `handlers.reg_i18n.tr_text` отделяет
+    # эмодзи-префикса намеренно (не «✅ Отмечен...») — `handlers.i18n.reg_i18n.tr_text` отделяет
     # ведущий символьный префикс ДО перевода и клеит его назад нетронутым (`services/
     # i18n_glossary.py::split_leading_symbols`); текст без эмодзи в начале строки не создаёт
     # расхождения между ключом словаря ручного перевода и реально переводимым остатком.

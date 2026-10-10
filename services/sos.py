@@ -1026,9 +1026,9 @@ def _fill(template: str, **subs) -> str:
 
 async def _translated_for(telegram_id: int, template: str, **subs) -> str:
     """Шаблон реестра -> язык получателя (шаблон переводится ДО подстановки, как везде в чате —
-    `handlers.reg_i18n.tr_fmt`). Сбой перевода -> русский шаблон с подстановкой."""
+    `handlers.i18n.reg_i18n.tr_fmt`). Сбой перевода -> русский шаблон с подстановкой."""
     try:
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         from services import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(telegram_id)
@@ -1151,7 +1151,7 @@ def claim_status_parts(report: dict) -> tuple[str, str | None]:
     уходил сырой русской строкой, потому что `{claim_status}` собирался ЗДЕСЬ, ДО перевода
     шаблона) — шаблон переводится словарём (`services/i18n_form_manual.py::FORM_DEFAULT_EN`,
     ярус B), имя — собственное, НЕ участвует в переводе шаблона, подставляется ПОСЛЕ
-    (`handlers/reg_i18n.py::tr_fmt`, тот же порядок «шаблон сначала», что везде в чате).
+    (`handlers/i18n/reg_i18n.py::tr_fmt`, тот же порядок «шаблон сначала», что везде в чате).
     `who is None` -> шаблон без плейсхолдера («ещё не взяли»); иначе — имя держателя ИЛИ
     переводимый фолбэк «коллега» (нет отображаемого имени у самого держателя в БД) — фолбэк
     тоже переводится вызывающим (`reg_i18n.tr_text` на `who`, дословное имя просто не найдётся
@@ -1196,7 +1196,7 @@ async def close_delegate_collecting(bot, storage, report: dict) -> None:
     except Exception as e:
         logger.error("sos.close_delegate_collecting(%s): FSM делегата не сброшен: %s", report.get("id"), e)
     try:
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         from services import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(tid)

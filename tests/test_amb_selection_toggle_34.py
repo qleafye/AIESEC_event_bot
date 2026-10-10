@@ -158,7 +158,7 @@ def _screen(uid):
 
 def _base_link_text(uid):
     """Текст «Моя ссылка» до модуля: шаблон реестра с подставленной ссылкой, и всё."""
-    from handlers import reg_i18n
+    from handlers.i18n import reg_i18n
     link = f"https://t.me/{BOT}?start=amb_{uid}"
     return reg_i18n.tr_fmt(_default("referral_link_prompt_text"), "ru", {}, link=link)
 

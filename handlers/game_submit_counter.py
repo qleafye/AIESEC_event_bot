@@ -21,10 +21,10 @@ PART_KIND_EMOJI = {"photo": "📸", "document": "📄", "text": "✍️", "link"
 
 
 async def game_counter_text(parts: list[dict], lang: str = "ru", tr_map: dict | None = None) -> str:
-    # Ленивый импорт: handlers.reg_i18n импортирует handlers.registration лениво внутри say()
+    # Ленивый импорт: handlers.i18n.reg_i18n импортирует handlers.registration лениво внутри say()
     # (не на уровне модуля) — цикла нет, но держим импорт рядом с использованием, как и другие
     # швы этого файла (docstring модуля: чистый рендер, минимум связей).
-    from handlers import reg_i18n
+    from handlers.i18n import reg_i18n
     tr_map = tr_map or {}
     counts = {kind: 0 for kind in PART_KIND_ORDER}
     for part in parts:
@@ -49,7 +49,7 @@ async def game_counter_text(parts: list[dict], lang: str = "ru", tr_map: dict | 
 async def game_counter_kb(parts: list[dict], lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:
     """Ряд 1: «✅ Готово» (+ «🗑 Убрать последнее», только когда есть что убирать);
     ряд 2: «❌ Отмена» — тот же литерал, что у reply-клавиатуры get_cancel_kb()."""
-    from handlers import reg_i18n
+    from handlers.i18n import reg_i18n
     tr_map = tr_map or {}
     row = [InlineKeyboardButton(
         text=reg_i18n.tr_text(await get_setting_typed("game_proof_done_button"), lang, tr_map),

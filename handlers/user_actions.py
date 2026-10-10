@@ -49,7 +49,7 @@ from handlers.admin_caps import notify_by_capability  # D-13: fan out by capabil
 from handlers.registration import DEFAULT_START_RETURNING_TEXT
 # Квик 260915-skg (P7): перевод входа в приложение при lang=en — тот же общий механизм, что
 # reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from domain.settings.ui_text_fields import ui_text, ui_tr  # подписи, вынесенные из кода в настройки
 from domain.game.labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
     category_label, proof_types_label, sort_tasks_for_delegate,

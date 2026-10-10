@@ -304,7 +304,7 @@ def test_echo_choice_sends_plain_text_without_entities(tmp_path):
     _use_tmp_db(tmp_path, "uat261009_c5c.db")
 
     async def go():
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         msg = _KBCapturingMessage(USER_ID, "delegate")
         await reg_i18n.echo_choice(msg, ["Маркетинг & PR <онлайн>"])
         return msg

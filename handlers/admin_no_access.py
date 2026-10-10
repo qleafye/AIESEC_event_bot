@@ -11,7 +11,7 @@ import logging
 from aiogram import F, Router, types
 from aiogram.filters import Command
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.reg_silence_fallback import _is_staff_or_admin
 
 logger = logging.getLogger(__name__)
