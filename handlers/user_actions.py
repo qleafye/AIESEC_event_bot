@@ -1795,6 +1795,7 @@ from handlers import session_enroll  # noqa: E402,F401
 # Тест компетенций (кнопка меню, qz:*) — там же, до фолбэка.
 from handlers import quiz as quiz_handlers  # noqa: E402,F401
 from handlers import menu_edit_anketa  # noqa: E402,F401  -- «✏️ Изменить анкету», до фолбэка
+from handlers import menu_tap_escape  # noqa: E402,F401  -- кнопка меню посреди ответа делегата
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
