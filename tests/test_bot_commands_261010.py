@@ -1,4 +1,4 @@
-"""Команды кнопки «Меню» из настроек (`services/bot_commands.py`): /start всем, /admin только
+"""Команды кнопки «Меню» из настроек (`services/bot/bot_commands.py`): /start всем, /admin только
 организаторам (личный список), английская версия через language_code, не задано/пусто — не
 трогать; 429 — повтор, правки склеиваются, бывшим организаторам /admin снимается."""
 from __future__ import annotations
@@ -12,7 +12,7 @@ from aiogram.types import BotCommandScopeChat, BotCommandScopeDefault
 from config import config
 from database import db
 import services.scheduler as sched
-from services import bot_commands
+from services.bot import bot_commands
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db

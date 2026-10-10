@@ -1,4 +1,4 @@
-"""Описание бота из настроек (`services.bot_profile`): запрос РилТолка 04.10 — менеджер сам
+"""Описание бота из настроек (`services.bot.bot_profile`): запрос РилТолка 04.10 — менеджер сам
 задаёт текст пустого чата до /start и строку «О боте», без BotFather."""
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import asyncio
 from config import config
 from database import db
 import services.scheduler as sched
-from services import bot_profile
+from services.bot import bot_profile
 from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 
