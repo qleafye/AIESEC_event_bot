@@ -25,9 +25,9 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from database.db import get_setting, settings_snapshot
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from services.settings.audit import set_setting_by_admin, delete_setting_by_admin
 from handlers.states import EditSetting
 from handlers.reg_schema import REG_FLOW, REG_LABELS, REG_CATEGORIES
 from cities import (

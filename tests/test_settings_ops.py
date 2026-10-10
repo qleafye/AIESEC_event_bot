@@ -1,8 +1,8 @@
 """Phase 22 План 01 (WEB-SET-01/04, D-12): снимок поведения переносимых функций —
 написан ДО переноса `_apply_event_type_preset`/`_SHEET_TAB_WRITE_MODE`/`HTML_SETTINGS`/
-`_tab_confirm_text`/... из `handlers/admin_settings.py` в корневой aiogram-free `settings_ops.py`.
+`_tab_confirm_text`/... из `handlers/admin_settings.py` в корневой aiogram-free `domain/settings/ops.py`.
 
-Пока `settings_ops.py` не создан (задача 2 плана), импорт на уровне модуля падает
+Пока `domain/settings/ops.py` не создан (задача 2 плана), импорт на уровне модуля падает
 `ModuleNotFoundError` — это и есть Wave 0 RED-снимок.
 
 pytest-asyncio недоступен в этом окружении (см. tests/test_db_phase5.py) — асинхронные
@@ -12,8 +12,8 @@ import asyncio
 
 import pytest
 
-import settings_ops
-from settings_schema import SETTINGS_SCHEMA
+import domain.settings.ops as settings_ops
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_miniapp_labels_drift import _loaded_aiogram
 from tests._dbtpl import fast_init_db
 
@@ -29,7 +29,7 @@ def _use_tmp_db(tmp_path):
 # ── модуль aiogram-free (сторож T-22-06 / D-12) ──────────────────────────────────────────
 
 def test_settings_ops_module_does_not_load_aiogram():
-    loaded = _loaded_aiogram("import settings_ops")
+    loaded = _loaded_aiogram("import domain.settings.ops as settings_ops")
     assert loaded == [], f"settings_ops потянул aiogram: {loaded}"
 
 
@@ -300,7 +300,7 @@ def test_reg_preset_returns_every_written_key_with_author(tmp_path, caplog):
 
 
 def test_batch_hooks_run_per_key_but_reject_rules_once(monkeypatch):
-    import settings_audit
+    import services.settings.audit as settings_audit
     from services import reject_rules_notify
 
     seen, per_key, batch = [], [], []
@@ -324,8 +324,8 @@ def test_batch_hooks_run_per_key_but_reject_rules_once(monkeypatch):
 def test_batch_reschedules_once_per_module_not_per_key(monkeypatch):
     """Пакет из ключей одного модуля — одна перепланировка, а не по ключу; голый ключ
     покрывает городские того же модуля."""
-    import settings_audit
-    import settings_reschedule
+    import services.settings.audit as settings_audit
+    import services.settings.reschedule as settings_reschedule
     from cities import per_city_key
 
     got = []

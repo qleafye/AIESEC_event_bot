@@ -43,7 +43,7 @@ from __future__ import annotations
 import logging
 
 import reg_engine
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)

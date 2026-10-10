@@ -38,7 +38,7 @@ import gspread
 from config import config
 from services import sheet_target as _sheet_target
 from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from reg_engine import is_past_season_row
 from reg_labels import STATUS_LABELS
 from services.decision_delivery import summarize_deliveries

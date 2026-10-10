@@ -19,9 +19,9 @@ from handlers.admin import router
 from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.states import EditSetting
 from services.session_enroll import ENROLL_TEXT_KEYS, deadline_label, module_enabled, session_open_state
-from settings_audit import set_setting_by_admin
-from settings_placeholders import hint
-from settings_schema import SETTINGS_SCHEMA
+from services.settings.audit import set_setting_by_admin
+from domain.settings.placeholders import hint
+from domain.settings.schema import SETTINGS_SCHEMA
 
 _PAGE = 8
 _TEXT_PAGE = 8

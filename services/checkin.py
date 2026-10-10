@@ -50,7 +50,7 @@ from database.db import (
 )
 from reg_engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
 from services.timeutil import aware_to_msk, msk_from_timestamp
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ async def foreign_qr_reason(code: str) -> str:
     «пропуск» нельзя — падеж сломается)."""
     if code != "not_our_qr":
         return DENIAL_REASON_TEXT.get(code, code)
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     try:
         genitive = (await get_setting_typed("event_name_genitive") or "").strip()

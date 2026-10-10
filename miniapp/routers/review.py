@@ -51,7 +51,7 @@ from database.db import (
 from game_labels import category_label, penalized_coins, proof_types_label
 from services import quiet_hours
 from services.game_award import award_for
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp import telegram_api
 from miniapp.deps import Principal, require_cap, require_section

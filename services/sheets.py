@@ -79,7 +79,7 @@ async def _tab_explicitly_configured() -> bool:
     cached right now — so destructive-op refusal (rebuild/dedupe, see REFUSED_UNPINNED_TAB
     above) and the startup warning below both reflect the CURRENT settings, not stale
     in-process cache state."""
-    from settings_schema import get_setting_typed  # local import: settings_schema has no
+    from domain.settings.schema import get_setting_typed  # local import: settings_schema has no
     # reverse dependency on this module, so this is safe, but keeping it local avoids widening
     # this module's top-level import surface for a single call site.
     main_tab = await get_setting_typed(_MAIN_TAB_SETTING_KEY)

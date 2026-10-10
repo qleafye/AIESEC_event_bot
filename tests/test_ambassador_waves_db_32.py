@@ -52,7 +52,7 @@ def test_precondition_phase_31_landed(tmp_path):
     """Фаза 31 (тип настройки date_only + колонки автоотказа users) обязана быть в базе,
     иначе набор тестов должен падать с прямым человеческим объяснением, а не путаным
     KeyError где-то в середине другого теста (D-01)."""
-    import settings_schema
+    import domain.settings.schema as settings_schema
 
     has_date_only = any(
         entry.get("type") == "date_only" for entry in settings_schema.SETTINGS_SCHEMA.values()

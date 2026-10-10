@@ -4,10 +4,10 @@ admin_volunteer_invite.py`). Единая точка:
 
 - разбора даты «ДД.ММ.ГГГГ» -> ISO «YYYY-MM-DD» (то, что хранится в `staff.expires_at`/
   `volunteer_invites.link_expires_at`/`volunteer_invites.rights_expires_at`) — тот же реальный
-  `strptime`, что `settings_validation.py` использует для типа `date_only` (31.02 отбрасывается
+  `strptime`, что `domain/settings/validation.py` использует для типа `date_only` (31.02 отбрасывается
   так же честно, как «abc»), не переиспользован напрямую: та функция завязана на ключ реестра
   (`SETTINGS_SCHEMA[key]`), а эти значения в реестре не лежат;
-- «до конца форума города» — `forum_date` + `sos_active_days` (per_city, `settings_schema.py`)
+- «до конца форума города» — `forum_date` + `sos_active_days` (per_city, `domain/settings/schema.py`)
   дают последний день форума (та же формула, что `services.sos.is_sos_active_for_city`:
   `[start, start + days - 1]`), плюс ОДИН день (D-6: «последний день форума + 1, если даты
   заданы») — чтобы разбор после закрытия последней сессии не упёрся в уже истёкшее право;

@@ -35,10 +35,10 @@ from cities import (
 from database.db import get_setting, get_task, list_all_tasks, task_title
 from handlers.admin import router
 from handlers.admin_settings import _per_city_visible_codes
-from handlers.settings_validation import is_command_like, validate_setting_value
+from domain.settings.validation import is_command_like, validate_setting_value
 from handlers.states import ChatRatingEdit
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

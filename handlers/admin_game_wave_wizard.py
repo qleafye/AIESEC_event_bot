@@ -51,7 +51,7 @@ from services.scheduler import (
     schedule_wave_end,
     schedule_wave_start_for_all,
 )
-from settings_validation import validate_setting_value
+from domain.settings.validation import validate_setting_value
 from handlers.states import WaveCreate, WaveEdit
 from handlers.admin import router
 # Модульная ссылка (не `from ... import name`): та же осторожность с порядком импорта, что у

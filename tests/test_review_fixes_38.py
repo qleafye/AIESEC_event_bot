@@ -197,8 +197,8 @@ def test_unavailable_session_has_own_text(tmp_path):
 
 
 def test_hint_not_duplicated_when_prompt_lists_placeholders():
-    import settings_placeholders as sp
-    from settings_schema import SETTINGS_SCHEMA
+    import domain.settings.placeholders as sp
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     prompt = SETTINGS_SCHEMA["session_enroll_slot_text"]["prompt"]
     assert "Подстановки:" in prompt and sp.hint("session_enroll_slot_text", prompt) == ""
@@ -206,7 +206,7 @@ def test_hint_not_duplicated_when_prompt_lists_placeholders():
 
 
 def test_menu_label_cannot_equal_other_button():
-    from settings_validation import validate_setting_value
+    from domain.settings.validation import validate_setting_value
 
     value, error = validate_setting_value("quiz_menu_label", "📞 Контакты")
     assert value is None and "уже у кнопки «📞 Контакты»" in error

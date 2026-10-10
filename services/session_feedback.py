@@ -35,7 +35,7 @@ from database.db import (
     set_session_feedback_comment,
     set_session_feedback_rating,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

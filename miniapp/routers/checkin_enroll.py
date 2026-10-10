@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from cities import get_setting_typed_for_city
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.routers.checkin import _CAP, _SECTION, _bound_city, _point_city_denial
 from services.session_enroll import enroll_by_staff, scan_hint

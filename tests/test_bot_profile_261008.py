@@ -8,7 +8,7 @@ from config import config
 from database import db
 import services.scheduler as sched
 from services import bot_profile
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 
 

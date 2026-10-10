@@ -29,8 +29,8 @@ from services.program import (
     resolve_program_view,
 )
 from database.db import get_setting
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA
 
 _CYCLE = {"table": "photo", "photo": "table"}
 

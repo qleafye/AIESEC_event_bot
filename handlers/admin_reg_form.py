@@ -13,7 +13,7 @@ from aiogram import F, types
 
 from handlers.admin import router
 from handlers.admin_settings import _toggle_module_setting
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 
 @router.callback_query(F.data == "toggle_reg_form_v2")

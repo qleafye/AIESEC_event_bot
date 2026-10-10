@@ -18,7 +18,7 @@ import html as html_module
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import GAME_CATEGORIES, parse_proof_types, task_title
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from handlers.game_labels import category_label, penalized_coins
 

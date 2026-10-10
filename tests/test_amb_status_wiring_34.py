@@ -275,7 +275,7 @@ def _fakes():
 
 
 def _schema_default(key):
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     return SETTINGS_SCHEMA[key]["default"]
 
 

@@ -225,7 +225,7 @@ def test_preset_leaves_promises_and_tiers_to_manager(tmp_path):
 
 
 def test_confirm_text_says_where_to_set_rewards():
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     text = SETTINGS_SCHEMA["skillup_preset_confirm_text"]["default"]
     for part in ("«🎁 Текст предложения реф-ссылки»", "«🎓 Ступени амбассадоров»",
                  "«🪜 Лестница ступеней»", "«🎓 Программа»"):
@@ -250,14 +250,14 @@ def test_preset_does_not_touch_scoring_sets(tmp_path):
 
 
 def test_event_type_has_four_options():
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     assert SETTINGS_SCHEMA["event_type"]["options"] == [
         "forum", "conference", "custom", "skillup",
     ]
 
 
 def test_web_and_bot_apply_same_preset(tmp_path):
-    import settings_ops
+    import domain.settings.ops as settings_ops
     from handlers.admin_reg_config import _apply_event_preset
 
     async def _snapshot():
@@ -278,7 +278,7 @@ def test_web_and_bot_apply_same_preset(tmp_path):
 
 
 def test_settings_ops_still_aiogram_free():
-    loaded = _loaded_aiogram("import settings_ops")
+    loaded = _loaded_aiogram("import domain.settings.ops as settings_ops")
     assert loaded == [], f"settings_ops потянул aiogram: {loaded}"
 
 

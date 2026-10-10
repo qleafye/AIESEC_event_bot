@@ -51,9 +51,9 @@ from handlers.admin import router
 from handlers.admin_core import _admin_city_scope
 from handlers.states import CheckinImport, CheckinQrTimeEdit, CheckinTestUpload
 from keyboards.builders import get_cancel_kb
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
-from settings_validation import validate_setting_value
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
+from domain.settings.validation import validate_setting_value
 from services.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
@@ -808,7 +808,7 @@ async def _city_allowed(admin_id: int, code: str | None) -> bool:
     существует."""
     if code is None:
         return True
-    import settings_ops
+    import domain.settings.ops as settings_ops
     return code in await settings_ops.per_city_visible_codes(admin_id)
 
 

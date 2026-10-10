@@ -8,7 +8,7 @@ import asyncio
 
 from aiogram.types import MenuButtonDefault, MenuButtonWebApp
 
-import settings_audit
+import services.settings.audit as settings_audit
 from config import config
 from database import db
 from tests._dbtpl import fast_init_db

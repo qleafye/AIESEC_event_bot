@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from services.i18n_form_manual import _REGISTRY_TEXTS_EN
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_form import client, db_path  # noqa: F401 — фикстуры подтягиваются по имени
 from tests.test_miniapp_frontend import _js_without_comments

@@ -14,7 +14,7 @@ import asyncio
 
 from config import config
 from database import db
-import settings_schema
+import domain.settings.schema as settings_schema
 from tests._dbtpl import fast_init_db
 
 
@@ -257,7 +257,7 @@ def test_main_tab_active_sheet_row_keeps_all_injection_look_alike_prefixes_raw(t
     _db_ready(tmp_path, name="test_config_audit_260818_csv.db")
 
     async def go():
-        # phone/comments are OFF by default (settings_schema.py); flip them on so their cells
+        # phone/comments are OFF by default (domain/settings/schema.py); flip them on so their cells
         # actually land in the projected row for this test.
         await db.set_setting("reg_q_phone", "on")
         await db.set_setting("reg_q_comments", "on")

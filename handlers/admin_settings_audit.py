@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.admin import router
 from handlers.admin_caps import notify_by_capability
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 
 # Одна человеческая формулировка на три места (экран подтверждения, тост, алерт держателям
 # moderate_reg) — второй копии текста нет. (родительный падеж, предложный падеж).

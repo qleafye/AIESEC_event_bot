@@ -41,8 +41,8 @@ from cities import cities_module_on, get_setting_typed_for_city, per_city_key
 from database.db import advance_sos_claimed_remind, get_sos_report, set_sos_escalated
 from services.questions import format_stamp
 from services.timeutil import city_offset_hours, msk_now, shift_hours
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ DEFAULT_COLLECTING_TIMEOUT_MINUTES = 30
 
 
 async def is_sos_active_for_city(city: str | None) -> bool:
-    """`forum_date` (пункт settings_schema.py, «Дата начала форума») + `sos_active_days`
+    """`forum_date` (пункт domain/settings/schema.py, «Дата начала форума») + `sos_active_days`
     (per_city, дефолт 2 — большинство форумов идут 1-2 дня, см. память «Forum plan deck»:
     «Москва 30-31.10») дают окно `[forum_date, forum_date + days - 1]`. Форум-дата не задана
     ИЛИ не парсится -> False (fail-soft = кнопки нет, тот же баланс, что у menu_program/

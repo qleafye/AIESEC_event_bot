@@ -16,8 +16,8 @@ from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.admin_quiz import _STALE, _btn, _cancel_kb, ask_value, deny, quiz_by_code
 from handlers.states import EditSetting
 from services import quiz as quiz_service
-from settings_placeholders import hint
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.placeholders import hint
+from domain.settings.schema import SETTINGS_SCHEMA
 
 _TEXT_PAGE = 8
 # Тексты теста и «максимум баллов за вариант» (число правилось только в приложении) — один экран.

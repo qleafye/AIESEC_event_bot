@@ -18,7 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import reg_engine
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 UID = 261009300

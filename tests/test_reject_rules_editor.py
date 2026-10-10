@@ -27,8 +27,8 @@ from database import db
 from handlers import admin_reject_rules
 from handlers.admin_caps import required_capability
 from handlers.states import RejectRuleEdit
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 from tests._dbtpl import fast_init_db
 
 

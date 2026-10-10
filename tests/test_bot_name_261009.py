@@ -12,9 +12,9 @@ from config import config
 from database import db
 import services.scheduler as sched
 from services import bot_profile, miniapp_outbox
-import settings_ops
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+import domain.settings.ops as settings_ops
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 

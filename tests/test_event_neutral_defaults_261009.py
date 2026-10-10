@@ -16,7 +16,7 @@ import re
 from config import config
 from database import db
 from services.text_fill import EVENT_FALLBACK, event_label, event_name, fill_event
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 261009001
@@ -84,7 +84,7 @@ def test_forum_word_left_only_where_module_is_forum_only():
 
 
 def test_event_placeholder_defaults_and_hints():
-    from settings_placeholders import PLACEHOLDER_LABELS, expected_placeholders
+    from domain.settings.placeholders import PLACEHOLDER_LABELS, expected_placeholders
 
     assert PLACEHOLDER_LABELS["event"] == "название мероприятия"
     for key in ("forum_welcome_text", "regional_noshow_offer_text",
@@ -191,7 +191,7 @@ def test_stats_card_caption_default_has_no_brand_after_fill():
 
 def test_preview_shows_event_name_or_neutral_word(tmp_path):
     """Превью текста в настройках подставляет {event} так же, как доставка делегату."""
-    import settings_ops
+    import domain.settings.ops as settings_ops
 
     _ready(tmp_path)
     text = SETTINGS_SCHEMA["forum_welcome_text"]["default"]

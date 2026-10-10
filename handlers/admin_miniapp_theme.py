@@ -33,8 +33,8 @@ from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarku
 import shared.favicon as dashboard_favicon
 import shared.web_theme as web_theme
 from database.db import get_setting
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
-from settings_schema import get_setting_typed, option_label, option_labels
+from services.settings.audit import set_setting_by_admin, delete_setting_by_admin
+from domain.settings.schema import get_setting_typed, option_label, option_labels
 from handlers.admin import router
 from handlers.states import EditSetting, MiniAppTheme
 

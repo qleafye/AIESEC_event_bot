@@ -253,7 +253,7 @@ def test_toggle_short_question_city_explicit_on_off_no_delete(tmp_path, monkeypa
     composed = cities.per_city_key(f"{SETTING_KEY}__short", "spb")
 
     deleted = []
-    from settings_audit import delete_setting_by_admin as real_delete_by_admin
+    from services.settings.audit import delete_setting_by_admin as real_delete_by_admin
 
     async def _tracking_delete(admin_id, key):
         deleted.append(key)

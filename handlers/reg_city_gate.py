@@ -53,7 +53,7 @@ async def send_city_closed(message, closed_code: str | None) -> None:
 async def _show_city_fork(message) -> None:
     """Тот же экран выбора города, что у /start (`city_fork_text` + кнопки открытых городов),
     с тем же переводом текста и кнопок."""
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     text = await get_setting_typed("city_fork_text")
     lang, tr_map = await reg_i18n.ctx_for(message)
     await message.answer(
@@ -93,7 +93,7 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     if city:
         try:
             from database.db import get_user
-            from settings_schema import get_setting_typed
+            from domain.settings.schema import get_setting_typed
             season = (await get_setting_typed("event_season") or "").strip() or None
             is_edit = reg_engine.has_submitted_anketa(await get_user(uid), season)
         except Exception:

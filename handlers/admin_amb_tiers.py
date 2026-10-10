@@ -37,8 +37,8 @@ from database import amb_tiers_db
 from database import db
 from reg_labels import STATUS_LABELS
 from services import amb_tiers
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.states import AmbExclude
 from handlers.admin import router
 

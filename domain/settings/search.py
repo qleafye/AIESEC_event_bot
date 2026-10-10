@@ -22,7 +22,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from settings_synonyms import BOT_ONLY_SYNONYMS, SETTINGS_SYNONYMS
+from domain.settings.synonyms import BOT_ONLY_SYNONYMS, SETTINGS_SYNONYMS
 
 # Опечатка допускается только у слов от этой длины — короче слишком много ложных попаданий
 # (то же значение, что SEARCH_FUZZY_MIN_LEN в form.js).
@@ -47,7 +47,7 @@ def search_terms(key: str, *, bot: bool = False) -> list[str]:
     """Слова-синонимы настройки (композитный ключ города сводится к базовому).
 
     `bot=True` — поиск бота: к веб-синонимам добавляются `BOT_ONLY_SYNONYMS` (ключи, которые
-    правятся только в боте). Веб-поиску они не отдаются — правило `settings_synonyms.py`:
+    правятся только в боте). Веб-поиску они не отдаются — правило `domain/settings/synonyms.py`:
     карта веб-подсказок совпадает с `editable_keys()`."""
     base = _base(key)
     terms = SETTINGS_SYNONYMS.get(base)

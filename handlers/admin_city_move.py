@@ -26,7 +26,7 @@ from services.city_move import (
     move_user_city,
     preview_city_move,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

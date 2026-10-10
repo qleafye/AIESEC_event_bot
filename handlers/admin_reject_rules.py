@@ -38,8 +38,8 @@ from services.reject_rules import (
     rules_for_admin,
     save_rule,
 )
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 RULES_PAGE = 8
 

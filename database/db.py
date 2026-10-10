@@ -2742,7 +2742,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
     моменту УЖЕ закоммичена, сбой очереди (или движка перевода, которого этот модуль даже не
     импортирует) не имеет права её откатить или уронить вызывающего. Ленивые импорты
     `settings_schema`/`services.*` — `database.db` низкий слой, `settings_schema` САМ
-    импортирует `database.db` на уровне модуля (см. `settings_schema.py:30`), статический
+    импортирует `database.db` на уровне модуля (см. `domain/settings/schema.py:30`), статический
     импорт назад создал бы цикл.
 
     Две независимые ветки:
@@ -2771,7 +2771,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
         if not value:
             return
 
-        from settings_schema import get_setting_typed
+        from domain.settings.schema import get_setting_typed
 
         if await get_setting_typed("delegate_lang_enabled") != "on":
             return
@@ -2798,7 +2798,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
 # Задача «делегатский интерфейс на английском»: событийные тексты, которые делегат видит на
 # хабе Mini App (`miniapp/routers/hub.py`) ДО начала анкеты и вне её — `event_date`/
 # `event_place_name` и их пара `event_time`/`event_place_address` — свободный текст без
-# дефолта (менеджер печатает даты/адрес каждый сезон заново, `settings_schema.py: default:
+# дефолта (менеджер печатает даты/адрес каждый сезон заново, `domain/settings/schema.py: default:
 # None`), группа `event` НЕ входит в `DELEGATE_GROUPS` (LANG-08, `services/i18n_sources.py`
 # — намеренная граница для КОРПУСА АНКЕТЫ, трогать её нельзя, `tests/test_i18n_sources_27.py
 # ::test_non_delegate_groups_excluded`). Этот список — НЕ расширение той границы, а отдельный
@@ -10223,7 +10223,7 @@ async def _maybe_enqueue_city_label_translation(label: str, *, origin_key: str) 
     try:
         if not label:
             return
-        from settings_schema import get_setting_typed
+        from domain.settings.schema import get_setting_typed
 
         if await get_setting_typed("delegate_lang_enabled") != "on":
             return

@@ -38,8 +38,8 @@ from database.db import (
     CHAT_PRESENT_STATUSES,
 )
 from services.timeutil import msk_now
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 # Итог сверки состава чата: отдельный именованный логгер, который `main._configure_logging`
@@ -57,7 +57,7 @@ REFRESH_PAUSE_SECONDS = 1.0
 REFRESH_MAX_CALLS = 500
 
 # Квик 260915-twr (D2): ключи реестра для личных сообщений админу вокруг разовой сверки
-# после привязки чата — group "system" в settings_schema.py, НЕ в _SYSTEM_FIELD_ORDER
+# после привязки чата — group "system" в domain/settings/schema.py, НЕ в _SYSTEM_FIELD_ORDER
 # (тот же прецедент, что у CHAT_ID_KEY/CHAT_TITLE_KEY: это служебные сообщения о фоновом
 # прогоне, не делегатская копирайтинг-копия, экран настроек их не показывает).
 CHAT_BIND_RECONCILE_START_KEY = "chat_bind_reconcile_start_text"

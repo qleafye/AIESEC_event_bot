@@ -43,7 +43,7 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
     приложения (`settings_changed`): правка в приложении должна действовать так же сразу.
     Каждая реакция в своём try — сбой одной не отменяет остальные и не роняет запись."""
     from services import bot_commands, bot_profile, daily_digest, menu_labels, reject_rules_notify, scheduler
-    from settings_reschedule import reschedule_for_setting
+    from services.settings.reschedule import reschedule_for_setting
 
     hooks = [bot_profile.on_setting_written, bot_commands.on_setting_written,
              daily_digest.on_setting_written,
@@ -119,7 +119,7 @@ async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True)
     for key in unique:
         await run_setting_hooks(key, reject_rules=False, reschedule=False)
     # Перепланировка — одна на модуль и город за всю пачку, а не по ключу.
-    from settings_reschedule import reschedule_for_settings
+    from services.settings.reschedule import reschedule_for_settings
 
     try:
         await reschedule_for_settings(unique)

@@ -543,7 +543,7 @@ def test_applications_next_empty_queue_with_flagged_filter_active_uses_filtered_
 
 
 def test_settings_schema_flagged_filter_key_matches_neighbour_shape():
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     changed = SETTINGS_SCHEMA["miniapp_applications_filter_changed"]
     flagged = SETTINGS_SCHEMA["miniapp_applications_filter_flagged"]

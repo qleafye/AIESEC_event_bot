@@ -9,9 +9,9 @@
 """
 from __future__ import annotations
 
-from settings_ops import editable_keys
-from settings_schema import SETTINGS_SCHEMA
-from settings_synonyms import SETTINGS_SYNONYMS
+from domain.settings.ops import editable_keys
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.synonyms import SETTINGS_SYNONYMS
 
 EDITABLE_KEYS = set(editable_keys())
 
@@ -131,11 +131,11 @@ def test_synonym_hygiene_lowercase_no_empty_no_dup_no_key_codes():
 
 
 def test_settings_synonyms_module_has_no_handlers_import():
-    """Docstring-контракт: `settings_synonyms.py` не импортирует ничего из `handlers/` —
-    он живёт в корне рядом с `settings_schema.py`, до aiogram-слоя (D-15)."""
+    """Docstring-контракт: `domain/settings/synonyms.py` не импортирует ничего из `handlers/` —
+    он живёт в корне рядом с `domain/settings/schema.py`, до aiogram-слоя (D-15)."""
     import inspect
 
-    import settings_synonyms
+    import domain.settings.synonyms as settings_synonyms
 
     src = inspect.getsource(settings_synonyms)
     assert "handlers" not in src

@@ -83,7 +83,7 @@ async def _submit(bot, telegram_id, city_raw=None, is_new=True):
 # ── Реестр и UI ───────────────────────────────────────────────────────────────
 
 def test_schema_keys_present_with_human_labels():
-    from settings_schema import SETTINGS_SCHEMA, REG_SUBMIT_NOTIFY_MODE_LABELS
+    from domain.settings.schema import SETTINGS_SCHEMA, REG_SUBMIT_NOTIFY_MODE_LABELS
     mode = SETTINGS_SCHEMA["reg_submit_notify_mode"]
     assert mode["type"] == "enum" and mode["group"] == "apps"
     assert mode["options"] == ["each", "digest"] and mode["default"] == "each"
@@ -99,7 +99,7 @@ def test_schema_keys_present_with_human_labels():
 
 def test_schema_key_max_minutes_defaults_to_zero_uncapped():
     """Квик 260923 (D-C): дефолт 0 = без потолка — поведение прежнее для остальных событий."""
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     cap = SETTINGS_SCHEMA["reg_submit_digest_max_minutes"]
     assert cap["type"] == "int" and cap["group"] == "apps" and cap["default"] == 0
     assert "не ограничивать" in cap["prompt"].lower()

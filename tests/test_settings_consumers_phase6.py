@@ -37,7 +37,7 @@ def _flat_button_texts(kb):
 
 def test_reminders_interval_via_registry_matches_oracle(tmp_path):
     _db_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     from services.reminders import _reminder_interval
 
     for raw in [None, "900", "0", "abc"]:
@@ -54,7 +54,7 @@ def test_reminders_interval_via_registry_matches_oracle(tmp_path):
 
 def test_scheduler_date_via_registry_matches_oracle(tmp_path):
     _db_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     from services.scheduler import _parse_schedule_dt
 
     for raw in [None, "garbage", "15.08.2026 23:59"]:
@@ -696,7 +696,7 @@ def test_full_approval_gate_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     for raw in [None, "", "manual", "auto"]:
         asyncio.run(delete_setting("full_approval"))
@@ -723,7 +723,7 @@ def test_short_approval_and_party_approval_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     for raw in [None, "", "manual", "auto"]:
         asyncio.run(delete_setting("short_approval"))
@@ -769,7 +769,7 @@ def test_pending_notify_mode_gate_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     for raw in [None, "", "instant", "batched"]:
         asyncio.run(delete_setting("pending_notify_mode"))
@@ -806,7 +806,7 @@ def test_raw_read_sites_preserved(tmp_path):
     import handlers.registration as reg_mod
     # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py.
     import handlers.reg_steps as reg_steps_mod
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     # Site 1: registration_mode raw read (process_full_name) -- branch is `mode != "full"`.
     # Migrating to get_setting_typed (default "short") cannot change this branch: None and ""

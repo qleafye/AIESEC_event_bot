@@ -9,7 +9,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
 import cities
-import settings_ops
+import domain.settings.ops as settings_ops
 from database import db
 from handlers import admin_settings as st
 from handlers import admin_settings_enum as se

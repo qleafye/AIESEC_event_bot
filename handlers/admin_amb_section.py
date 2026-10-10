@@ -34,8 +34,8 @@ from handlers.admin import router
 from handlers.admin_caps import has_capability
 from handlers.states import AmbSlotsEdit
 from services import amb_status
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

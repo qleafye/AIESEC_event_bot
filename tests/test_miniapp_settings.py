@@ -20,7 +20,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers import admin_miniapp
 from handlers import admin_miniapp_theme
 from handlers.states import MiniAppTheme

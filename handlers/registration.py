@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from config import config
 from database.db import add_user, get_user, get_setting, set_setting, mark_reg_started, clear_reg_started, set_reg_step, set_user_subscribed, set_user_status, record_user_consent, get_user_consents, get_reg_started_track, get_reg_started_city, has_short_incomplete, _sheet_safe, get_incomplete_rows_with_city, reset_payment_for_new_season, record_reg_event, backfill_reg_event_city, claim_reg_draft, get_reg_draft, upsert_reg_draft, delete_reg_draft, touch_reg_draft_activity, settings_snapshot  # Phase 15 (STAT-03, D-06): funnel event log; backfill_reg_event_city дозаполняет город на шаге form_started; Phase 21 (21-08): claim_reg_draft/get_reg_draft feed finalize_registration's thin wrapper; Phase 21 (21-09): upsert/delete/touch feed the draft-sync points below; квик 260919: _csv_safe -> _sheet_safe (08-sheets-dashboard) — Sheets-строки больше не нейтрализуются, gspread пишет явным RAW
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # REG-01/D-06 (06-04): REG_DEFAULTS derivation source; get_setting_typed (06-06 gate migration)
 # Идея №5 бэклога чек-ина (приглашение волонтёров ссылкой): свой маленький импорт, не в общий
 # список выше — тот уже стоит на потолке читаемости одной строки, а этот шов самодостаточен
 # (используется ровно в одном месте, _handle_volunteer_invite ниже).

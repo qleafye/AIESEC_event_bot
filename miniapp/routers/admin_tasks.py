@@ -56,7 +56,7 @@ from game_labels import (
     task_deadline_short,
     task_has_deadline,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue

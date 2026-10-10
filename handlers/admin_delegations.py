@@ -37,8 +37,8 @@ from handlers.states import DelegationEdit
 from moderation_card import EMPTY_SENTINEL
 from services import delegations
 from services.background import spawn
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

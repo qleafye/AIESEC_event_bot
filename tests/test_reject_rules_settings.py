@@ -18,8 +18,8 @@ from datetime import datetime
 from config import config
 from database import db
 from services.i18n_sources import delegate_registry_keys
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
-from settings_validation import validate_setting_value
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
+from domain.settings.validation import validate_setting_value
 from tests._dbtpl import fast_init_db
 
 

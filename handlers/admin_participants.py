@@ -15,7 +15,7 @@ from database.db import export_participants_csv
 
 from handlers.admin import router
 from handlers.admin_core import _admin_city_view
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.timeutil import msk_now
 
 

@@ -43,7 +43,7 @@ from reg_engine import (
     label_for,
     studying_statuses,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 
 class _CompositeChat(StatesGroup):

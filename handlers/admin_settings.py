@@ -27,23 +27,23 @@ from aiogram.dispatcher.event.bases import SkipHandler
 
 import shared.chat_score as chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
 import shared.favicon as dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
-import settings_ui_text_fields as _UI  # подписи, вынесенные из кода: хвосты экранов групп
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed, option_label
+import domain.settings.ui_text_fields as _UI  # подписи, вынесенные из кода: хвосты экранов групп
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
     export_users_csv,
     get_setting,
     get_dropout_step_stats,
     settings_snapshot,
 )
-from settings_audit import after_save_note, set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
+from services.settings.audit import after_save_note, set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
 from services.sheets import (
     sync_named_worksheet,
     tab_row_count,
 )
 from handlers.states import EditSetting
 from handlers import admin_forum_date as _fdate  # дата форума — только своя у города
-from handlers.settings_validation import validate_setting_value, is_command_like
-from settings_ops import (
+from domain.settings.validation import validate_setting_value, is_command_like
+from domain.settings.ops import (
     apply_event_type_preset as _apply_event_type_preset,
     per_city_visible_codes as _per_city_visible_codes,
     HTML_SETTINGS,
@@ -330,8 +330,8 @@ _GAME_FIELD_ORDER = [
     *_UI.GAME_SCREEN_FIELD_ORDER,  # 10.10: кнопки экранов «🪙 Баланс»
 ]
 
-from settings_amb_fields import AMB_FIELD_ORDER as _AMB_FIELD_ORDER  # порядок ключей группы «🤝 Амбассадоры»
-from settings_chat_fields import CHAT_TEXT_GROUPS  # тексты чата, правившиеся только в приложении
+from domain.settings.amb_fields import AMB_FIELD_ORDER as _AMB_FIELD_ORDER  # порядок ключей группы «🤝 Амбассадоры»
+from domain.settings.chat_fields import CHAT_TEXT_GROUPS  # тексты чата, правившиеся только в приложении
 
 # Phase 14 (CFG-01): group «🔧 Система» — proxy timings that used to live only in .env.
 _SYSTEM_FIELD_ORDER = [
@@ -361,7 +361,7 @@ _SYSTEM_FIELD_ORDER = [
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
 # таблицы». short_sheet_tab/party_sheet_tab moved here from reg/party (physically relocated in
-# settings_schema.py, not duplicated). Order is the on-screen order, not registry insertion order.
+# domain/settings/schema.py, not duplicated). Order is the on-screen order, not registry insertion order.
 _SHEETS_FIELD_ORDER = [
     "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
     "game_matrix_tab", "game_history_tab", "preselect_tab",
@@ -2621,7 +2621,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             return await message.answer(screen[0], parse_mode="HTML", reply_markup=screen[1])
 
     # Quick 260819: type-aware validation (int / enum) BEFORE any write — see
-    # handlers/settings_validation.py. On failure nothing is written and the FSM stays in
+    # domain/settings/validation.py. On failure nothing is written and the FSM stays in
     # waiting_for_value so the admin just retypes. "-" (reset) bypasses validation.
     if value != "-":
         value, error = validate_setting_value(key, value)

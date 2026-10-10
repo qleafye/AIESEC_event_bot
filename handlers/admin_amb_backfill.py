@@ -59,7 +59,7 @@ async def _global_only(callback: types.CallbackQuery) -> bool:
 
 
 async def _show_preview(callback: types.CallbackQuery) -> None:
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     if int(await get_setting_typed("ambassador_referral_coins") or 0) <= 0:
         await _edit(

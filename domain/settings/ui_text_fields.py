@@ -200,7 +200,7 @@ INFO_SCREEN_FIELD_ORDER = [
     "info_date_pending_text", "info_venue_title_text", "info_address_label_text",
     "info_place_pending_text", "contacts_person_label_text", "contacts_groups_label_text",
 ]
-# Экран «🎮 Геймификация» — кнопки «🪙 Баланс». Кнопка волны — в settings_amb_fields.py.
+# Экран «🎮 Геймификация» — кнопки «🪙 Баланс». Кнопка волны — в domain/settings/amb_fields.py.
 GAME_SCREEN_FIELD_ORDER = [
     "balance_history_button_text", "balance_top_button_text", "balance_back_button_text",
     "balance_history_prev_button_text", "balance_history_next_button_text",
@@ -209,7 +209,7 @@ GAME_SCREEN_FIELD_ORDER = [
 
 async def ui_text(key: str) -> str:
     """Значение подписи; пустое — подпись по умолчанию (пустую кнопку Telegram не примет)."""
-    from settings_schema import get_setting_typed  # ленивый: settings_schema импортирует этот модуль
+    from domain.settings.schema import get_setting_typed  # ленивый: settings_schema импортирует этот модуль
 
     return (await get_setting_typed(key) or "").strip() or UI_TEXT_SCHEMA[key]["default"] or ""
 

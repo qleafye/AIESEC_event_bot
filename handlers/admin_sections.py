@@ -79,7 +79,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_reg_skip_source_for_referred"),
         ("toggle", "toggle_reg_referrer_must_be_ambassador"),
         ("toggle", "toggle_reg_offer_ref_link"),
-        # Тексты этого предложения (settings_chat_fields.py) — сразу под его тумблером.
+        # Тексты этого предложения (domain/settings/chat_fields.py) — сразу под его тумблером.
         ("group", "ref_offer"),
         # Phase 28 (28-09, SU-10): имя файла резюме в облаке — рядом с реф-механикой выше.
         ("toggle", "toggle_resume_filename_short_mode"),

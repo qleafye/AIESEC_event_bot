@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 
 from config import config
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 ROOT = REPO_ROOT

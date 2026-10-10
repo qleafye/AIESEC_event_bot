@@ -60,9 +60,9 @@ from database.db import (
     get_user,
     is_active_task_cover,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
-import settings_ops
+import domain.settings.ops as settings_ops
 import shared.web_theme as web_theme
 from miniapp import telegram_api
 from miniapp.deps import Principal, principal

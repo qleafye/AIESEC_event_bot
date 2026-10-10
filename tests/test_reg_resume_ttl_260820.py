@@ -20,7 +20,7 @@ from datetime import timedelta
 from config import config
 from database import db
 from services.timeutil import msk_now
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 from tests._dbtpl import fast_init_db
 
 USER_ID = 703402465  # тот самый делегат из разбора

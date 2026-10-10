@@ -17,8 +17,8 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 from services.consent import (
     purpose_reminder_text, PURPOSE_REMINDER_BUTTON, PURPOSE_REMINDER_CALLBACK,
 )

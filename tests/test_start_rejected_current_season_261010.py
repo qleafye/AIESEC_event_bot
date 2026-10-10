@@ -12,7 +12,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from database import db
 from handlers import registration as reg
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 from tests.test_returning_delegate_073 import (
     UID, FakeCommand, _KBCapturingMessage, _callback_datas, _new_state, _register, _texts,

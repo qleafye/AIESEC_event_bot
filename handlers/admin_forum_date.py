@@ -31,7 +31,7 @@ from cities import (
     set_admin_city,
 )
 from services.reject_rules import forum_date_for
-from settings_ops import per_city_visible_codes
+from domain.settings.ops import per_city_visible_codes
 
 # Ключи, которые светофор и выбор города правят «для города»: оба per_city в реестре.
 CITY_FORUM_KEYS = ("forum_date", "sos_active_days")

@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from config import config
 from database.db import get_user, has_faq_for_city, has_important_today
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from cities import default_city_code, get_setting_typed_for_city, cities_module_on, normalize_city
 # Квик 260912 (W5, Задача 2/3): i18n_ui_en — литеральный модуль-словарь, ни одного импорта
 # проекта (инвариант), цикла тут нет. services.i18n — aiogram-free/handlers-free (см. его
@@ -72,7 +72,7 @@ MENU_BUTTONS = [
     ("menu_miniapp", "📱 Приложение"),
     # Phase 27 (27-04, LANG-01): переключатель языка анкеты в главном меню. Default этого
     # ключа — "off" (единственное исключение из конвенции menu_* default "on", см.
-    # settings_schema.py) И доп. гейт ниже (тот же приём, что у menu_miniapp/menu_faq):
+    # domain/settings/schema.py) И доп. гейт ниже (тот же приём, что у menu_miniapp/menu_faq):
     # кнопка не появится ни от одного включения по отдельности — нужны оба, менеджер
     # включает модуль («📝 Анкета» → «Английский язык анкеты») и саму кнопку («🔘 Кнопки
     # меню»), иначе тап по показанной, но мёртвой кнопке (модуль ещё выключен) был бы

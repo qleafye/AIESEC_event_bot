@@ -181,7 +181,7 @@ async def revert_to_pending(
             from services import quiet_hours
             from services.i18n import context as _i18n_context, tr as _i18n_tr
             from services.scheduler import _now_moscow_naive
-            from settings_schema import SETTINGS_SCHEMA
+            from domain.settings.schema import SETTINGS_SCHEMA
 
             template = await get_setting_typed_for_city("revert_pending_notify_text", user.get("event_city"))
             if not template:

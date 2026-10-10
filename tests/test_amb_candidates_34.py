@@ -389,7 +389,7 @@ def test_take_deferred_by_quiet_hours(tmp_path, monkeypatch):
 def test_take_message_in_delegate_language(tmp_path, monkeypatch):
     from handlers import admin_amb_candidates as h
     from services import i18n
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
     ru = SETTINGS_SCHEMA["amb_taken_text"]["default"]
@@ -456,7 +456,7 @@ def test_give_slot_and_refusals(tmp_path):
 
 def test_remove_confirm_texts(tmp_path):
     from handlers import admin_amb_candidates as h
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     _ready(tmp_path)
     _seed(10, amb_status="active", slot=True, name="Иван Петров")
     _seed(11, amb_status="active", slot=True, pack=True, name="Мария")

@@ -42,7 +42,7 @@ from database.db import (
 )
 from services.reject_rules import rule_summary
 from services.timeutil import msk_now
-from settings_ops import per_city_visible_codes
+from domain.settings.ops import per_city_visible_codes
 
 logger = logging.getLogger(__name__)
 

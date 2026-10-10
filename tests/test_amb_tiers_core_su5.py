@@ -17,8 +17,8 @@ import sqlite3
 from config import config
 from database import amb_tiers_db as tdb
 from database import db
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import validate_setting_value
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.validation import validate_setting_value
 from tests._dbtpl import fast_init_db
 
 SEASON = "SU26"
@@ -641,7 +641,7 @@ def test_zero_to_seven_backfill_notify_sends_o2o_message(tmp_path):
 # ── Квота 0 и пороги ─────────────────────────────────────────────────────────────────────
 
 def test_quota_zero_means_no_slots(tmp_path):
-    from settings_schema import _parse_setting
+    from domain.settings.schema import _parse_setting
 
     assert validate_setting_value("amb_o2o_quota", "0") == ("0", None)
     assert _parse_setting("amb_o2o_quota", "0") == 0
@@ -658,7 +658,7 @@ def test_quota_zero_means_no_slots(tmp_path):
 
 def test_other_int_keys_zero_still_default():
     """allow_zero — только у квоты: у прочих int 0 по-прежнему = значение по умолчанию."""
-    from settings_schema import _parse_setting
+    from domain.settings.schema import _parse_setting
 
     assert _parse_setting("amb_tier2_threshold", "0") == 3
 
@@ -671,7 +671,7 @@ def test_threshold_zero_rejected_with_hint():
 
 
 def test_threshold_order_pure_check():
-    from settings_validation import amb_threshold_order_error
+    from domain.settings.validation import amb_threshold_order_error
 
     current = {"amb_tier1_threshold": 1, "amb_tier2_threshold": 3, "amb_tier3_threshold": 7}
     assert amb_threshold_order_error("amb_tier2_threshold", "5", current) is None
@@ -683,7 +683,7 @@ def test_threshold_order_pure_check():
 
 
 def test_threshold_order_checked_on_save_bot_and_web(tmp_path):
-    import settings_ops
+    import domain.settings.ops as settings_ops
 
     _ready(tmp_path)
     assert _run(settings_ops.cross_setting_error("amb_tier2_threshold", "1")) is not None

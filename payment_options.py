@@ -1,5 +1,5 @@
 """Квик-фикс 260913: парсер настройки `payment_options` — корневой модуль без зависимости
-на бот-фреймворк (aiogram), сосед `reg_options.py`/`settings_ops.py`.
+на бот-фреймворк (aiogram), сосед `reg_options.py`/`domain/settings/ops.py`.
 
 Перенос из `handlers/payment.py::_parse_options` (Phase 4/5, D-16) — Mini App
 (`miniapp/routers/hub.py`) собирает карточку оплаты экрана «Одобрена» (30-05) и раньше

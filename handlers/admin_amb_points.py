@@ -23,8 +23,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.admin import router
 from handlers.states import AmbPointsEdit
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

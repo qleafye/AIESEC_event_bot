@@ -17,7 +17,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import get_setting, get_user, update_payment_status, set_payment_due
 from payment_options import parse_options as _parse_options  # квик-фикс 260913: см. ниже
-from settings_schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
+from domain.settings.schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS

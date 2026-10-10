@@ -20,8 +20,8 @@ import pytest
 import reg_engine
 from config import config
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA
-from settings_synonyms import SETTINGS_SYNONYMS
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.synonyms import SETTINGS_SYNONYMS
 from services.i18n_form_manual import _REGISTRY_TEXTS_EN
 
 from tests.test_miniapp_form import (  # noqa: F401 — фикстуры подтягиваются по имени

@@ -42,7 +42,7 @@ from reg_engine import (
     lookup_render_flags, prompt, validate_answer,
 )
 from services.lookup import enqueue_merge, search_lookup, top_chips
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 _LOOKUP_LIMIT = 5
 

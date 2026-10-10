@@ -12,7 +12,7 @@ from aiogram.types import ReplyKeyboardMarkup
 from config import config
 from database import db
 from handlers import reg_silence_fallback
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_reg_handoff_260904 import USER_ID, _FakeMessage2, _ready
 from tests.test_uat_clickthrough_submitted_text_261009 import SUBMITTED_TEXT, _seed_user
 

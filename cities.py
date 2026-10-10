@@ -5,7 +5,7 @@ It must never be confused with the existing `city` registration question, which 
 DELEGATE's own home city. See .planning/phases/07.1-.../07.1-CONTEXT.md for the full
 naming rationale — this is documented as the most expensive mistake this phase could make.
 
-Design (mirrors settings_schema.py's one-directional dependency, D-01):
+Design (mirrors domain/settings/schema.py's one-directional dependency, D-01):
 - Lives in its own top-level module — imports ONLY `config.config`,
   `database.db.get_setting` and `settings_schema.get_setting_typed`. No `handlers.*`
   import — settings_schema does not import cities, so there is no cycle.
@@ -27,7 +27,7 @@ from database.db import (
     get_setting, set_setting, get_staff_city,
     list_cities_rows, count_cities, insert_city,
 )
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
 # Квик 260923-p37 (D-02): импорт МОДУЛЬНЫМ именем (не `from services.timeutil import msk_now as
 # _msk_now`) — тест закрытия города монки-патчит именно `cities.msk_now`, чтобы заморозить
 # «сейчас» без правки системных часов.

@@ -42,7 +42,7 @@ from datetime import timedelta
 
 from cities import cities_module_on, city_label, city_scope, enabled_cities
 from database.db import auto_reject_summary, daily_digest_stats, get_display_names
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.timeutil import msk_now
 from services import staff_reach
 
@@ -63,7 +63,7 @@ async def on_setting_written(key: str) -> None:
     if key != "daily_digest_time":
         return
     from services.scheduler import get_scheduler
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     hour, minute = parse_time(await get_setting_typed("daily_digest_time"))
     try:

@@ -8,10 +8,10 @@
 import asyncio
 from datetime import datetime
 
-import settings_ops
+import domain.settings.ops as settings_ops
 from config import config
 from services.i18n_form_manual import FORM_DEFAULT_EN
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
 from tests._dbtpl import fast_init_db
 
 SERVICE_KEYS = (
@@ -71,7 +71,7 @@ def test_ta_cutoff_default_parses_both_ways():
     assert (parsed.day, parsed.month, parsed.year) == (23, 9, 2026)
     # …а при незаполненном ключе (raw None) ветка date_only отдаёт default КАК ЕСТЬ — строкой.
     # Это зафиксированное поведение `_parse_setting`: потребители обязаны принимать и datetime,
-    # и строку «ДД.ММ.ГГГГ» (см. комментарий у ключа в settings_schema.py).
+    # и строку «ДД.ММ.ГГГГ» (см. комментарий у ключа в domain/settings/schema.py).
     assert _parse_setting("delegation_ta_cutoff", None) == "23.09.2026"
 
 

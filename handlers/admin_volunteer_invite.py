@@ -42,7 +42,7 @@ from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _admin_city_scope, _ci
 from handlers.states import VolunteerInviteWizard
 from keyboards.builders import get_cancel_kb
 from services.staff_expiry import format_ddmmyyyy, forum_end_date_iso, is_expiry_active, parse_ddmmyyyy, relative_days_iso
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 
 VOLUNTEER_ROLE = "volunteer"  # handlers.admin_caps.ROLES — держит ровно "checkin"
 # Ревью 28.09 (D-41): ссылка «с одобрением на месте» выдаёт роль волонтёра регистрации —

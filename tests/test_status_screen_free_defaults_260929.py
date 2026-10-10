@@ -12,7 +12,7 @@ import asyncio
 import pytest
 
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from services.text_fill import fill_collapsing
 
 from tests.test_miniapp_routes import (

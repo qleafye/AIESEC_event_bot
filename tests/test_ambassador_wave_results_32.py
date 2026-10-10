@@ -98,7 +98,7 @@ def test_prize_places_for_uses_wave_override_then_setting_then_floor_at_one(tmp_
     assert _run(aw.prize_places_for({"prize_places": None})) == 3  # дефолт настройки
     assert _run(aw.prize_places_for({"prize_places": 0})) == 3  # 0 -> falsy -> настройка
     assert _run(aw.prize_places_for({"prize_places": -2})) == 1  # кривое значение -> 1
-    # `get_setting_typed` для типа "int" САМА возвращает дефолт при <=0 (settings_schema.py
+    # `get_setting_typed` для типа "int" САМА возвращает дефолт при <=0 (domain/settings/schema.py
     # `_parse_setting`) — "0" в настройке читается как дефолт 3, не как 0; собственный пол
     # `prize_places_for` в единицу защищает только от волнового `prize_places` (нет такой
     # проверки типа у override-поля), проверено выше отдельным кейсом (-2 -> 1).

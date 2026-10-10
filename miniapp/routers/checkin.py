@@ -78,7 +78,7 @@ from services.onsite_reg import (
     walkin_qr_png,
 )
 from services.person_search import search_people
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.program import checkin_session_points
 
 from miniapp.deps import Principal, require_cap, require_section

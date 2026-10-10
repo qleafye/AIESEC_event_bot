@@ -21,7 +21,7 @@
 import logging
 import sys
 
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,7 @@ async def apply_saved_name(bot, previous: str | None, author_id: int | None) -> 
     настройки возвращается (если её не успели поменять ещё раз), автору — сообщение.
     Возвращает текст ошибки или `None`."""
     from database import db
-    from settings_audit import revert_setting  # ленивый: settings_audit лениво зовёт этот модуль
+    from services.settings.audit import revert_setting  # ленивый: settings_audit лениво зовёт этот модуль
 
     attempted = await db.get_setting(NAME_KEY)
     error = await apply_bot_name(bot, attempted)

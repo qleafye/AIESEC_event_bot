@@ -37,8 +37,8 @@ from handlers.admin_caps import has_capability, required_capability
 from handlers.admin_core import _admin_city_view
 from handlers.states import EditSetting, SosChatBind
 from keyboards.builders import get_cancel_kb
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 from services import sos as sos_service
 from services.questions import format_stamp
 from services.timeutil import city_offset_hours, msk_now
@@ -656,7 +656,7 @@ async def _sos_settings_city_scope(admin_id: int) -> tuple[bool, str | None]:
     code = await admin_selected_city(admin_id)
     if code in (None, ALL_CITIES):
         return True, None
-    import settings_ops
+    import domain.settings.ops as settings_ops
     if code not in await settings_ops.per_city_visible_codes(admin_id):
         return True, None
     return True, code

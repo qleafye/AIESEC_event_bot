@@ -40,7 +40,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
@@ -459,7 +459,7 @@ def test_admin_screens_have_no_percity_rows_when_module_off(tmp_path):
 
     # group screens -- no «🏙 N» override-count marker anywhere. NOTE: the "reg" group
     # legitimately contains an UNRELATED pre-existing field literally labeled
-    # "🏙 Города (варианты)" (settings_schema.py, city-selector question OPTIONS list, not
+    # "🏙 Города (варианты)" (domain/settings/schema.py, city-selector question OPTIONS list, not
     # this phase's per_city mechanism) -- so the check must target the marker's exact
     # " · 🏙 {N}" shape, not bare 🏙 presence.
     for token in ("event", "reg"):

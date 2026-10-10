@@ -28,7 +28,7 @@ from handlers import payment as pay_mod
 from handlers import registration as reg_mod
 from handlers import user_actions as ua_mod
 from handlers.states import Registration
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_registration_phase5 import _CapturingMessage as _RegCapturingMessage
 from tests._dbtpl import fast_init_db
 
@@ -959,7 +959,7 @@ def test_preselect_enabled_default_off_keeps_gate_closed(tmp_path, monkeypatch):
 # ── 17.1-03: полнота реестра — каждый литеральный ключ bot_settings в коде объявлен ──────
 
 # Служебные значения bot_settings, которые НАМЕРЕННО не в SETTINGS_SCHEMA (менеджеру их не
-# редактировать) — см. комментарий у блока предотбора в settings_schema.py.
+# редактировать) — см. комментарий у блока предотбора в domain/settings/schema.py.
 _SERVICE_KEYS = {
     "sheet_header_schema",        # снимок заголовков вкладки регистраций (JSON, пишет reg_schema)
     "preselect_manual_ids",       # ручные исключения предотбора по telegram_id

@@ -17,7 +17,7 @@ from config import config
 from database import db
 from handlers import reg_i18n
 from handlers import user_actions as ua_mod
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_core_su5 import seed_journal_row
 
@@ -362,7 +362,7 @@ def test_hub_progress_ignores_menu_invites_toggle(client):
 
 
 def test_hub_program_off_keeps_old_counter_acceptance_11(client):
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
     _seed_http_invitees(2)
@@ -373,7 +373,7 @@ def test_hub_program_off_keeps_old_counter_acceptance_11(client):
 
 
 def test_hub_non_ambassador_keeps_old_counter(client):
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     _set("amb_qualified_program", "on")
     _seed_http_invitees(2)
@@ -387,7 +387,7 @@ def test_hub_progress_db_error_falls_back_to_old_counter(client, monkeypatch):
     import sqlite3
 
     from services import amb_progress
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     _set("amb_qualified_program", "on")
     _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
@@ -454,7 +454,7 @@ def test_offer_body_default_unchanged_and_no_preset_writes_it():
     предложения менеджер задаёт сам."""
     import reg_presets
     from services.i18n_miniapp_manual import MANUAL_EN
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     entry = SETTINGS_SCHEMA["miniapp_form_ambassador_offer_body_text"]
     old = "Каждый, кто зарегистрируется по твоей ссылке, будет засчитан тебе как приглашённый."

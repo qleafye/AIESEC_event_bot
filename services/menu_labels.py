@@ -28,7 +28,7 @@ from cities import city_codes, get_setting_typed_for_city, per_city_key, split_p
 from database import db
 from i18n_ui_en import MENU_EN
 from services.i18n import src_hash
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

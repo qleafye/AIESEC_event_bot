@@ -13,10 +13,10 @@ import logging
 
 import pytest
 
-import settings_ops
+import domain.settings.ops as settings_ops
 from cities import ALL_CITIES, PER_CITY_SEP
 from database import db as bot_db
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp.routers import settings as settings_router
 
@@ -390,7 +390,7 @@ def test_validate_batch_item_mirrors_bot_check_order(tmp_path):
 
 import re
 
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from miniapp.deps import Principal
 from miniapp.routers.files import can_read_file

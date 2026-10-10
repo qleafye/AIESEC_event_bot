@@ -45,7 +45,7 @@ def test_scan_other_event_tag_still_other_event(tmp_path):
 
 
 def test_wrong_city_texts_have_no_broken_case():
-    for rel in ("miniapp/routers/checkin.py", "services/checkin.py", "services/checkin_forum_day.py", "settings_schema.py"):
+    for rel in ("miniapp/routers/checkin.py", "services/checkin.py", "services/checkin_forum_day.py", "domain/settings/schema.py"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert "Делегат с форума в {" not in text, rel
 

@@ -1015,7 +1015,7 @@ SETTINGS_SCHEMA = {
         # Phase 28 (28-10, SU-11): четвёртый вариант "skillup" — применяет ВЕСЬ пресет
         # «СкиллАп» (reg_presets.apply_reg_preset), не только модули оплаты/согласий, как
         # forum/conference. Подтверждение — свой текст skillup_preset_confirm_text
-        # (dangerous_confirm_key в settings_ops.py различает направление по next_value).
+        # (dangerous_confirm_key в domain/settings/ops.py различает направление по next_value).
         "options": ["forum", "conference", "custom", "skillup"],
         # UAT 07.09 (T-d6t, деривация плана — грепом планировщика этот ключ был пропущен, но
         # правило то же): Mini App рисует эти 4 варианта чипами (settingSpec: ≤4 -> choice-chips)
@@ -2893,9 +2893,9 @@ SETTINGS_SCHEMA = {
     # 13): человеческие подписи/пояснения экрана менеджера Mini App для девяти тумблеров выше
     # — отдельные ключи-подписи, НЕ сами настройки (те заведены планом 30-01 и не трогаются
     # здесь). Группа `reg_prompts` (не `toggles`) — это тексты, а не булевы значения; группа
-    # уже маршрутизируется в раздел «form» (`settings_ops.py::SECTION_GROUPS`), второй
+    # уже маршрутизируется в раздел «form» (`domain/settings/ops.py::SECTION_GROUPS`), второй
     # регистрации раздела не требуется. Дефолты — дословно из принятого макета. `per_city` не
-    # указан (= False, `bool(entry.get("per_city"))` в settings_ops.py) — это тексты
+    # указан (= False, `bool(entry.get("per_city"))` в domain/settings/ops.py) — это тексты
     # менеджерского экрана настроек, не тексты, которые видит делегат по городам. Читает
     # `miniapp/routers/page.py::FORM_V2_TEXT_KEYS` → `screens/settings.js` (та же схема
     # публикации, что подписи обзора/поповера плана 30-05, второй копии механизма не заводим).
@@ -3088,7 +3088,7 @@ SETTINGS_SCHEMA = {
     # Публикуются в `spec["v2_texts"]` (`reg_engine.py::_v2_texts_for`), читает
     # `form_types.js`. Дефолты — дословно из принятого макета, `per_city` — колонка-в-колонку
     # из таблицы UI-SPEC. Группа `reg_prompts` уже маршрутизируется в раздел «📝 Анкета»
-    # (`settings_ops.py::SECTION_GROUPS`), второй регистрации раздела не требуется.
+    # (`domain/settings/ops.py::SECTION_GROUPS`), второй регистрации раздела не требуется.
     "reg_form_optional_badge_text": {
         "type": "text", "group": "reg_prompts", "label": "🏷 Бейдж «необязательно» (новая анкета)",
         "prompt": "Подпись рядом с лейблом любого необязательного поля новой анкеты.",
@@ -7249,7 +7249,7 @@ SETTINGS_SCHEMA = {
 
     # Quick 260904-dq1: «с»/«до» тихих часов — per_city (часы тишины у Владивостока и Москвы
     # разные), время московское, как везде в боте (см. services/quiet_hours.py). Метка
-    # "format": "time" — новая необязательная мета, читает settings_validation.py.
+    # "format": "time" — новая необязательная мета, читает domain/settings/validation.py.
     "quiet_hours_start": {
         "type": "text", "group": "apps", "label": "🌙 Тихие часы: с",
         "prompt": (
@@ -8922,7 +8922,7 @@ del _W, _R
 
 # Подписи, вынесенные из кода (команды кнопки «Меню», инфо-экраны, кнопки фоновых сообщений) —
 # записи живут в своём модуле, здесь только вливаются в общий реестр.
-from settings_ui_text_fields import UI_TEXT_SCHEMA as _UI_TEXT_SCHEMA  # noqa: E402
+from domain.settings.ui_text_fields import UI_TEXT_SCHEMA as _UI_TEXT_SCHEMA  # noqa: E402
 
 SETTINGS_SCHEMA.update(_UI_TEXT_SCHEMA)
 

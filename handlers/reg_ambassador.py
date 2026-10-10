@@ -28,7 +28,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_user
 from cities import get_setting_typed_for_city
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from handlers.registration import router
 from handlers import reg_i18n
 from reg_engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде

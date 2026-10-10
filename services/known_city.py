@@ -37,7 +37,7 @@ async def known_city(telegram_id: int) -> str | None:
     from database.db import (
         get_last_reg_event_city, get_reg_draft, get_reg_started_city, get_user,
     )
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     try:
         draft = await get_reg_draft(telegram_id)

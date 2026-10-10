@@ -6,7 +6,7 @@
 - новые ключи группы `game` видны на экране «🎮 Геймификация» (`_GAME_FIELD_ORDER`) — КРОМЕ
   `wave_rating_show_names`, который редактируется отдельной кнопкой-тумблером (CLAUDE.md:
   выбор из готового набора — кнопкой, а не вводом кода "on"/"off"; см. докстринг ключа в
-  settings_schema.py и `handlers.admin_settings.toggle_wave_rating_show_names`);
+  domain/settings/schema.py и `handlers.admin_settings.toggle_wave_rating_show_names`);
 - `dashboard_block_ambassadors` НЕ попал ни в `_GAME_FIELD_ORDER`, ни куда-либо ещё в
   handlers/admin_settings.py — свой экран у группы `dashboard` (handlers/admin_dashboard.py,
   план 32-09);
@@ -21,7 +21,7 @@ import services.i18n_sources as i18n_sources
 from config import config
 from database import db
 from handlers.admin_settings import _GAME_FIELD_ORDER
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from tests._dbtpl import fast_init_db
 
 

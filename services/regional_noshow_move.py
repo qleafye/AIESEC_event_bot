@@ -297,14 +297,14 @@ OFFER_BUTTON_KEYS = ("regional_noshow_accept_button_text", "regional_noshow_decl
 
 async def offer_button_labels() -> tuple[str, str]:
     """Подписи «Перенести»/«Нет, спасибо» из настроек — один раз на рассылку."""
-    from settings_ui_text_fields import ui_text
+    from domain.settings.ui_text_fields import ui_text
 
     return await ui_text(OFFER_BUTTON_KEYS[0]), await ui_text(OFFER_BUTTON_KEYS[1])
 
 
 def offer_keyboard(labels: tuple[str, str] | None = None):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    from settings_ui_text_fields import UI_TEXT_SCHEMA
+    from domain.settings.ui_text_fields import UI_TEXT_SCHEMA
 
     accept, decline = labels or tuple(UI_TEXT_SCHEMA[key]["default"] for key in OFFER_BUTTON_KEYS)
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -339,7 +339,7 @@ async def send_offers(city: str | None) -> dict:
     """Отправляет предложение всем кандидатам региона (`city=None` — все города, модуль
     выключен). Троттлинг/мут/тихие часы — тот же приём, что `forum_noshow_poll.send_poll`."""
     from database.db import get_muted_today_ids, get_user, regional_noshow_move_mark_sent, regional_noshow_move_pending_ids
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     from services import quiet_hours
     import cities as _cities
 
@@ -446,7 +446,7 @@ async def record_decline(telegram_id: int) -> bool:
 
 
 async def _current_season() -> str:
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     return (await get_setting_typed("event_season") or "").strip()
 

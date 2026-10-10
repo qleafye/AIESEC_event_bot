@@ -15,8 +15,8 @@ from database import ext_forms_db as ef
 from handlers import admin_delegations as mod
 from handlers import admin_delegations_review as review
 from services import delegations as dlg
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 from tests.test_delegations_admin import (
     _FakeCallback, _callbacks, _last_edit, _run, _state,
 )

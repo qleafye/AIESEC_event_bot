@@ -26,7 +26,7 @@ from config import config
 from database.db import get_setting
 from handlers.admin import router
 from miniapp.setup_wizard import STEPS, TEXTS, WizardStep, step_done, visible_steps
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 ONLY_SUPERADMIN = "Первую настройку проходит суперадмин."
 NOT_IN_BOT = "в приложении"

@@ -24,9 +24,9 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import get_setting_typed, option_label
+from domain.settings.schema import get_setting_typed, option_label
 from database.db import get_setting
-from settings_audit import set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
+from services.settings.audit import set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
 from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS, menu_hidden_reason
@@ -258,7 +258,7 @@ async def _refresh_short_sheet_header(city_code: str | None = None, setting_key:
 
 async def _apply_event_preset(preset_key: str, admin_id: int | None = None) -> None:
     """Thin wrapper over the shared bulk-writer (Phase 28, 28-10, SU-11) — body moved to
-    `reg_presets.apply_reg_preset` verbatim so the web path (settings_ops.py) can call the
+    `reg_presets.apply_reg_preset` verbatim so the web path (domain/settings/ops.py) can call the
     same writer without importing this aiogram module."""
     keys = await apply_reg_preset(preset_key, admin_id)
     await run_setting_hooks_batch(keys, reject_rules=False)  # автоотказ пресет уже пересчитал
