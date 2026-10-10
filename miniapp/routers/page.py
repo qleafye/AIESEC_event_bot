@@ -177,6 +177,8 @@ SCREEN_TEXT_KEYS = {
     # Квик 12.09 (UI-аудит, пункт 3): обрыв сети на любом шаге анкеты — общий фоллбэк вместо
     # пустой плашки (12 мест в screens/form.js звали errorText(err, "")).
     "network_error": "miniapp_network_error_text",
+    # Приёмка 10.10: «N операций» на главной (делегат и менеджер) — склонение по числу.
+    "coins_ops_count": "miniapp_coins_ops_count_text",
 }
 
 
