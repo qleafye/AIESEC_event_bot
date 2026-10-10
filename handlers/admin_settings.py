@@ -1091,7 +1091,10 @@ async def _render_settings_group_text_impl(token: str, admin_id: int | None) -> 
     # of city names lives on the per-key editor screen (settings_edit callback family), not
     # here — this screen deliberately never shows raw values inline (quick 260724-c0x contract).
     city_module_on = await cities_module_on()
+    uni_hidden = await uni_controls_hidden_by_v2()
     for key in _settings_group_keys(token):
+        if uni_hidden and key == UNI_LIST_KEY:
+            continue
         label = field_labels.get(key, key)
         if per_city_ctx and is_per_city(key):
             # Phase 09.3 (05, CITY-09, CONTEXT B): flag relative to the header's city —
@@ -1144,6 +1147,20 @@ async def _render_settings_group_text_impl(token: str, admin_id: int | None) -> 
     return "\n".join(lines)
 
 
+UNI_LIST_KEY = "university_options"
+UNI_LIST_EMPTY_WARNING = (
+    "🏫 Список вузов пуст — делегаты всё равно будут вводить вуз текстом. "
+    "Добавьте вузы: Анкета → «📝 Регистрация» → «🏫 Список ВУЗов»."
+)
+UNI_V2_NOTE = "🏫 В Анкете 2.0 вуз ищется по общей базе вузов"
+
+
+async def uni_controls_hidden_by_v2() -> bool:
+    """В «Анкете 2.0» вуз ищется по общей базе (lookup), поэтому «Список ВУЗов» и режим выбора
+    вуза не нужны: кнопки прячутся, вместо них одна пояснительная строка."""
+    return await get_setting_typed("reg_form_v2_enabled") == "on"
+
+
 async def build_settings_group_keyboard(token: str, admin_id: int | None = None):
     """Reuses the existing settings_edit/settings_photo/settings_file callbacks unchanged —
     only the button placement changes. Configured fields first, then a noop section-header
@@ -1170,8 +1187,13 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
     field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
     configured: list[InlineKeyboardButton] = []
     unconfigured: list[InlineKeyboardButton] = []
+    uni_hidden = await uni_controls_hidden_by_v2()
+    uni_note = False
 
     for key in _settings_group_keys(token):
+        if uni_hidden and key == UNI_LIST_KEY:
+            uni_note = True
+            continue
         label = field_labels.get(key, key)
         btn = InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")
         if per_city_ctx and is_per_city(key):
@@ -1197,6 +1219,8 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
             (configured if (photo or doc) else unconfigured).append(btn)
 
     buttons = [[b] for b in configured]
+    if uni_note:
+        buttons.append([InlineKeyboardButton(text=UNI_V2_NOTE, callback_data="settings_group_noop")])
     if unconfigured:
         buttons.append([InlineKeyboardButton(text="── не настроено ──", callback_data="settings_group_noop")])
         buttons.extend([[b] for b in unconfigured])
@@ -1778,6 +1802,19 @@ async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, t
 
 @router.callback_query(F.data == "toggle_uni_mode")
 async def toggle_uni_mode(callback: types.CallbackQuery):
+    if await uni_controls_hidden_by_v2():
+        await callback.answer(UNI_V2_NOTE, show_alert=True)
+        return
+    switching_to_list = await get_setting_typed("reg_university_mode") != "list"
+    if switching_to_list:
+        uni_opts = await get_setting(UNI_LIST_KEY)
+        if not (uni_opts and uni_opts.strip()):
+            await set_setting_by_admin(callback.from_user.id, "reg_university_mode", "list")
+            await callback.answer(UNI_LIST_EMPTY_WARNING, show_alert=True)
+            from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+            text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
+            await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+            return
     await _toggle_value_setting(
         callback, "reg_university_mode", "list", "text", "text",
         "🏫 ВУЗ: выбор из списка", "🏫 ВУЗ: свободный ввод",
