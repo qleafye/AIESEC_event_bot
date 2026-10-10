@@ -17,6 +17,10 @@ export const MAX_SIDE = 1600;
 // хранит у фото сам, — сжатие не делает их хуже того, что покажет бот.
 export const MAX_SIDE_ASSET = 2560;
 export const JPEG_QUALITY = 0.82;
+// Потолок на одно сжатие. Часть вебвью на HEIC не присылает ни onload, ни onerror, и
+// createImageBitmap тоже может не ответить никогда — без потолка промис висел бы, а общая
+// очередь держала бы все следующие фото до конца сессии. По таймауту уходит оригинал.
+export const SHRINK_TIMEOUT_MS = 12000;
 
 const KEEP_AS_IS = new Set(["image/gif", "image/svg+xml"]);
 const IMAGE_EXT_RE = /\.(jpe?g|png|webp|heic|heif|avif|bmp)$/i;
@@ -111,6 +115,14 @@ async function shrinkNow(file, maxSide, quality) {
   }
 }
 
+// Не дождались — `fallback`. Зависшее сжатие доработает (или не доработает) в фоне, его
+// результат никто не ждёт; очередь идёт дальше.
+function withTimeout(promise, ms, fallback) {
+  let timer = null;
+  const expired = new Promise((resolve) => { timer = setTimeout(() => resolve(fallback), ms); });
+  return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
+}
+
 // Фото сжимаются по одному: десять снимков, выбранных разом, не декодируются в память
 // одновременно (на слабом телефоне это вылет вебвью). Сами загрузки по-прежнему параллельны.
 let queue = Promise.resolve();
@@ -119,13 +131,13 @@ let queue = Promise.resolve();
  * Ужатая копия фото (JPEG, длинная сторона ≤ maxSide) или сам `file`, если сжимать нечего
  * или не получилось. Никогда не бросает.
  * @param {File} file
- * @param {{maxSide?: number, quality?: number}} [opts]
+ * @param {{maxSide?: number, quality?: number, timeoutMs?: number}} [opts]
  * @returns {Promise<File>}
  */
-export function shrinkPhoto(file, { maxSide = MAX_SIDE, quality = JPEG_QUALITY } = {}) {
+export function shrinkPhoto(file, { maxSide = MAX_SIDE, quality = JPEG_QUALITY, timeoutMs = SHRINK_TIMEOUT_MS } = {}) {
   // PDF/документ, выбранный вместе с фото, не ждёт в очереди их сжатия.
   if (!file || typeof file.size !== "number" || !looksLikeImage(file)) return Promise.resolve(file);
-  const run = queue.then(() => shrinkNow(file, maxSide, quality));
+  const run = queue.then(() => withTimeout(shrinkNow(file, maxSide, quality), timeoutMs, file));
   queue = run.catch(() => null);
   return run;
 }
