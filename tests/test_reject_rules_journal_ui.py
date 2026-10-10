@@ -76,7 +76,7 @@ async def _create_rule(**overrides):
 
 
 async def _trigger(tid, rule_id, *, texts=("Причина отказа.",)):
-    from services.reject_journal import record_auto_reject
+    from services.applications.reject_journal import record_auto_reject
     return await record_auto_reject(tid, [rule_id], list(texts))
 
 
@@ -181,7 +181,7 @@ def test_render_journal_screen_pagination_at_twelve_records(tmp_path):
 
 def test_render_journal_screen_include_returned_toggles_count(tmp_path):
     _ready(tmp_path)
-    from services.reject_journal import return_to_moderation
+    from services.applications.reject_journal import return_to_moderation
     rule_id = _run(_create_rule(city="msk"))
     _seed_user(3200, event_city="msk")
     entry_id = _run(_trigger(3200, rule_id))
@@ -346,7 +346,7 @@ def test_arj_csv_with_entries_sends_document_with_content(tmp_path):
 
 
 def test_no_update_user_answers_or_set_user_status_calls_in_journal_handler():
-    """T-31-11-03: единственная дверь мутации — `services.reject_journal.return_to_moderation`,
+    """T-31-11-03: единственная дверь мутации — `services.applications.reject_journal.return_to_moderation`,
     не прямой UPDATE из хендлера."""
     import inspect
     source = inspect.getsource(j)
@@ -378,7 +378,7 @@ def test_journal_line_uses_autodescription_when_rule_has_no_own_name(tmp_path):
 
 def test_journal_line_falls_back_to_reject_text_snapshot_when_rule_deleted(tmp_path):
     _ready(tmp_path)
-    from services.reject_rules import delete_rule
+    from services.applications.reject_rules import delete_rule
     rule_id = _run(_create_rule(city="msk", name="Временное правило", reject_text="Слишком юн."))
     _seed_user(3602, event_city="msk")
     _run(_trigger(3602, rule_id, texts=("Слишком юн.",)))

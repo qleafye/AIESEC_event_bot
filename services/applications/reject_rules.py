@@ -1,15 +1,15 @@
 """Служебный слой правил автоотказа — единственная дверь между базой и всем остальным (Phase 31,
 план 31-04, D-08). БЕЗ aiogram (сторож `tests/test_reject_rules_i18n.py`/
 `tests/test_reject_rules_service.py::test_reject_rules_module_does_not_load_aiogram`, тот же
-приём, что `services/applications.py`).
+приём, что `services/applications/applications.py`).
 
-Разрез — ровно тот же, что у `services/applications.py` против `handlers/applications/admin_moderation.py`,
+Разрез — ровно тот же, что у `services/applications/applications.py` против `handlers/applications/admin_moderation.py`,
 и по той же причине: чистый оценщик (`reg_engine.evaluate_reject_rules`, план 31-01) ничего не
 знает про базу и реестр; экраны редактора (планы 31-08/31-10 — чат, будущий Mini App —
 `.planning/backlog.md`) — это кнопки и текст, им нельзя нести бизнес-правила. Между ними обязан
 стоять aiogram-free сервис: веб-процесс Mini App (редактор правил появится следующей фазой, D-08)
 не имеет права импортировать aiogram, а второго формата правил/второй копии логики заводить
-нельзя (та же формула, что закрыла `domain/settings/ops.py`/`services/applications.py` для своих
+нельзя (та же формула, что закрыла `domain/settings/ops.py`/`services/applications/applications.py` для своих
 экранов).
 
 Отвечает за:
@@ -107,7 +107,7 @@ async def forum_date_for(event_city: str | None, *, inherit_common: bool = False
             value = await _city_own_forum_date(event_city)
     except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (D-31)
         logger.error(
-            "services.reject_rules.forum_date_for: сбой чтения даты форума города %r (%s)",
+            "services.applications.reject_rules.forum_date_for: сбой чтения даты форума города %r (%s)",
             event_city, exc,
         )
         return None
@@ -157,7 +157,7 @@ async def active_rules(*, event_city: str | None = None, participant_type: str |
             skip_city_rules = True
         if skip_city_rules:
             logger.warning(
-                "services.reject_rules.active_rules: город анкеты не известен (%r) — "
+                "services.applications.reject_rules.active_rules: город анкеты не известен (%r) — "
                 "правила конкретных городов не применяются", event_city,
             )
     else:
@@ -172,7 +172,7 @@ async def active_rules(*, event_city: str | None = None, participant_type: str |
             conditions = json.loads(row.get("conditions") or "[]") or []
         except (TypeError, ValueError) as exc:
             logger.error(
-                "services.reject_rules.active_rules: правило id=%s пропущено — битые условия (%s)",
+                "services.applications.reject_rules.active_rules: правило id=%s пропущено — битые условия (%s)",
                 row.get("id"), exc,
             )
             continue
@@ -222,7 +222,7 @@ async def active_rules(*, event_city: str | None = None, participant_type: str |
                     await update_reject_rule(rule["id"], paused_reason=new_reason)
                 except Exception as exc:  # noqa: BLE001
                     logger.error(
-                        "services.reject_rules.active_rules: не удалось записать паузу правила id=%s (%s)",
+                        "services.applications.reject_rules.active_rules: не удалось записать паузу правила id=%s (%s)",
                         rule["id"], exc,
                     )
                 if new_reason and not old_reason:
@@ -232,7 +232,7 @@ async def active_rules(*, event_city: str | None = None, participant_type: str |
             rule["paused_reason"] = new_reason
     except Exception as exc:  # noqa: BLE001 — пересчёт паузы не имеет права уронить оценку
         logger.error(
-            "services.reject_rules.active_rules: пересчёт паузы сорвался, правила отданы как есть (%s)",
+            "services.applications.reject_rules.active_rules: пересчёт паузы сорвался, правила отданы как есть (%s)",
             exc,
         )
 
@@ -465,7 +465,7 @@ async def _maybe_enqueue_rule_text_translation(text: str | None, rule_id: int | 
         )
     except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (T-31-04-05)
         logger.error(
-            "services.reject_rules._maybe_enqueue_rule_text_translation: очередь перевода не "
+            "services.applications.reject_rules._maybe_enqueue_rule_text_translation: очередь перевода не "
             "приняла текст правила id=%s (%s)",
             rule_id, exc,
         )

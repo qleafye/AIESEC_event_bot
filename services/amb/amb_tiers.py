@@ -9,11 +9,11 @@
 `ambassador_referral_coins = 0` (дефолт), а ступени от баллов не зависят. Поэтому проверку
 зовут РЯДОМ с начислением, ленивым импортом, в каждом пути одобрения заявки:
 
-- `services.applications.record_decision(..., effects_already_sent=True)` — одиночное
+- `services.applications.applications.record_decision(..., effects_already_sent=True)` — одиночное
   одобрение в боте и вход на площадке (`services/forum/onsite_reg.py`);
-- `services.applications.flush_due_decisions` — одиночное одобрение в Mini App, только когда
+- `services.applications.applications.flush_due_decisions` — одиночное одобрение в Mini App, только когда
   окно «Отменить» прошло (отменённое решение туда не доходит — ступени за него нет);
-- `services.applications.claim_approve_all_with_credits` — «Принять всех» в боте и Mini App;
+- `services.applications.applications.claim_approve_all_with_credits` — «Принять всех» в боте и Mini App;
 - `services/reg_finalize.py` — авто-одобрение на финале анкеты.
 
 И отдельно — при вступлении в амбассадоры (`check_tiers_for_new_ambassador`: бот

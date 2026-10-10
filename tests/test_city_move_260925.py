@@ -385,7 +385,7 @@ def test_edit_history_screen_does_not_crash_on_unfamiliar_source(tmp_path, monke
     источника через `_EDITED_SOURCE_LABELS.get(source, html_escape(source))` — незнакомый
     `source` (не `"admin"`/`"miniapp"`) не роняет построение, просто печатается сырым текстом."""
     import html as html_module
-    from services.applications import EDITED_SOURCE_LABELS
+    from services.applications.applications import EDITED_SOURCE_LABELS
 
     _db_ready(tmp_path)
     store = _install_fake_sheets(monkeypatch)

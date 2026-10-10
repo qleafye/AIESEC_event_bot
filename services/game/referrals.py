@@ -1,9 +1,9 @@
 """Авто-баллы амбассадору за одобренного приглашённого (Phase 32, план 32-05, D-20/D-21/D-22/D-37).
 
 32-RESEARCH.md (Pitfall 2) нашёл главную ловушку фазы: единого шва «заявку одобрили» в проекте
-не существует. Одиночное одобрение идёт через `services.applications.claim_approve`, массовое —
+не существует. Одиночное одобрение идёт через `services.applications.applications.claim_approve`, массовое —
 через `database.db.approve_all_pending` (у которого раньше было ДВА независимых вызывающих — бот
-напрямую и веб через `services.applications.claim_approve_all`), а авто-одобрение на финале
+напрямую и веб через `services.applications.applications.claim_approve_all`), а авто-одобрение на финале
 анкеты вообще пишет статус в `services/reg_finalize.py`, минуя оба. Побочный эффект, повешенный
 только на один из этих путей, — ровно класс инцидента 06.09 (см.
 `.planning/.../auto-approve-incident-260906.md`): молчаливое массовое действие без видимого следа
@@ -30,7 +30,7 @@
 
 Зависимости — ТОЛЬКО `database.db`, `services.amb.ambassador_waves`, `settings_schema` (плюс
 стандартная библиотека). Телеграм-фреймворк и `handlers.*` на уровне модуля не импортируются —
-три врезки (`services/applications.py`, `services/reg_finalize.py`) тянут этот модуль ЛЕНИВЫМ
+три врезки (`services/applications/applications.py`, `services/reg_finalize.py`) тянут этот модуль ЛЕНИВЫМ
 импортом внутри функции именно поэтому: не тащить новый модуль в цепочку импортов веб-процесса
 Mini App.
 """

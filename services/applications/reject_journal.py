@@ -7,7 +7,7 @@
 срабатывания. Живая строка журнала (`returned_to_moderation_at IS NULL`) ровно одна на
 делегата — это гарантирует частичный уникальный индекс на стороне БД (план 31-02).
 
-Модуль aiogram-free: тот же разрез, что у `services/applications.py` против
+Модуль aiogram-free: тот же разрез, что у `services/applications/applications.py` против
 `handlers/applications/admin_moderation.py` — сообщение делегату о возврате на модерацию
 (`reject_rules_return_text`) шлёт ВЫЗЫВАЮЩИЙ хендлер, не этот модуль. Свои копии `_short_stamp`/
 `_username_label` (не импорт из `handlers/applications/admin_app_list.py`) — тот модуль тянет aiogram на
@@ -40,7 +40,7 @@ from database.db import (
     update_user_answers,
     upsert_auto_reject_log,
 )
-from services.reject_rules import rule_summary
+from services.applications.reject_rules import rule_summary
 from services.infra.timeutil import msk_now
 from domain.settings.ops import per_city_visible_codes
 
@@ -133,7 +133,7 @@ async def return_to_moderation(admin_id: int, entry_id: int) -> tuple[dict | Non
         # Гонка статусов (например, делегата параллельно тронул другой менеджер) — claim
         # журнала уже выигран и не откатывается: строка закрыта, это факт истории. Признак
         # автоотказа всё равно снимается ниже — предупреждение только в лог, не исключение,
-        # тот же fail-soft приём, что у `services.applications.undo_decision`.
+        # тот же fail-soft приём, что у `services.applications.applications.undo_decision`.
         logger.warning(
             "reject_journal.return_to_moderation: revert_user_to_pending(%s) вернул False "
             "(запись журнала %s уже закрыта)", telegram_id, entry_id,
@@ -288,9 +288,9 @@ def _rule_label(entry: dict) -> str:
 
 async def _resolve_rule_display(entry: dict) -> str:
     """План 31-11 (orchestrator finding 1): имя правила для строки журнала — если правило
-    ЕЩЁ существует, собственное имя (D-10) или его автоописание `services.reject_rules.
+    ЕЩЁ существует, собственное имя (D-10) или его автоописание `services.applications.reject_rules.
     rule_summary` («Москва · Курс — один из: 1, 2 → отказ»), резолвится ЗАНОВО через
-    `database.db.get_reject_rule` (та же дисциплина, что `services.applications.
+    `database.db.get_reject_rule` (та же дисциплина, что `services.applications.applications.
     _resolve_rule_label` для бейджей карточки) — правило могло быть переименовано после
     срабатывания. Правило удалено (или снимок вообще не нёс id — записи, посеянные до этой
     правки) -> единственный оставшийся источник `_rule_label` (снимок `reject_texts`)."""
@@ -327,7 +327,7 @@ def journal_line(entry: dict) -> str:
     курс» — попыток: 2» (+ «— возвращена на модерацию»/причина «стейл»-закрытия, если строке
     больше нечего предлагать). ВСЕ подставляемые значения экранированы через `html.escape`
     здесь — вызывающий печатает строку как есть с `parse_mode="HTML"` и повторно экранировать
-    не должен (T-31-05-04, тот же контракт, что у `services.applications.prev_reject_line`/
+    не должен (T-31-05-04, тот же контракт, что у `services.applications.applications.prev_reject_line`/
     `edited_line`). `rule_display` (если строка пришла из `journal_page`, план 31-11) уже
     готова и экранирована — второй раз не обрабатывается; прямые вызовы (тесты плана 31-05,
     строка без `rule_display`) падают в прежний `_rule_label`."""

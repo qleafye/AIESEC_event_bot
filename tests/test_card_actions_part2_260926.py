@@ -16,7 +16,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers.access.admin_caps import role_caps_key
-from services.revert_pending import revert_to_pending
+from services.applications.revert_pending import revert_to_pending
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 260926201

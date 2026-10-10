@@ -1,4 +1,4 @@
-"""Правила амбассадорской волны — БЕЗ aiogram, тот же разрез, что `services/applications.py`
+"""Правила амбассадорской волны — БЕЗ aiogram, тот же разрез, что `services/applications/applications.py`
 против `handlers/applications/admin_moderation.py` (Phase 23, D-06/D-08): экраны (бот сейчас, Mini App
 следующей фазой, D-36) не имеют права нести бизнес-правило дважды.
 

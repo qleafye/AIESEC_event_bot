@@ -10,7 +10,7 @@
 Набор операторов и список значений вопроса НИКОГДА не хардкодятся здесь — обе таблицы читаются
 из `reg_engine` на каждый вызов (`condition_operators`/`options`), иначе конструктор разъедется
 с анкетой, которую менеджер уже отредактировал в реестре (тот же анти-паттерн, которого избегает
-`services.reject_rules.RULE_PRESETS`).
+`services.applications.reject_rules.RULE_PRESETS`).
 
 Значения условия уезжают в `callback_data` ИНДЕКСОМ, не текстом (кириллица не влезает в 64
 байта Telegram — тот же приём, что `admin_broadcasts._value_picker_kb`); индекс разрешается
@@ -45,7 +45,7 @@ from domain.regform.engine import (
     options,
     reject_condition_category,
 )
-from services.reject_rules import (
+from services.applications.reject_rules import (
     RULE_PRESETS,
     can_edit_city,
     dry_run_count,

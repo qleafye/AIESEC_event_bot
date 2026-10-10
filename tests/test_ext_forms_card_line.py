@@ -5,7 +5,7 @@ import asyncio
 
 from database import ext_forms_db as efd
 from handlers import admin as admin_mod
-from services.delegate_card import ext_forms_card_lines
+from services.applications.delegate_card import ext_forms_card_lines
 from tests.test_checkin_reissue_260924 import (
     ADMIN_ID, DELEGATE_ID, _FakeMessage, _db_ready, _insert_user,
 )

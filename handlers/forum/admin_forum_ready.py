@@ -31,7 +31,7 @@ from handlers.access.admin_caps import _holds, capability_holders, required_capa
 from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
 from services.forum.checkin_arrival import count_program_sessions
 from services.forum.program import own_program_photo, resolve_program_photo
-from services.reject_rules import forum_date_for
+from services.applications.reject_rules import forum_date_for
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 

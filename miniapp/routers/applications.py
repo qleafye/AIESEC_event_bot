@@ -3,10 +3,10 @@
 Зеркалит форму `miniapp/routers/review.py` (очередь сдач геймификации — СОСЕДНЯЯ, её не
 трогаем), но с ДВУМЯ отличиями, продиктованными D-06/D-07:
 
-1. Решение веб-слой пишет в `users.status` сразу (атомарно, `services.applications.
+1. Решение веб-слой пишет в `users.status` сразу (атомарно, `services.applications.applications.
    claim_approve/claim_reject`), но его ПОБОЧНЫЕ эффекты (приветствие/отказ делегату, строка
    в Sheets) откладываются на `UNDO_WINDOW_SECONDS` — веб-процесс НЕ имеет права слать
-   приветствие делегату сам (см. `services/application_effects.py`: welcome-хвост — aiogram-
+   приветствие делегату сам (см. `services/applications/application_effects.py`: welcome-хвост — aiogram-
    путь бота, единственное место, где он отправляется РОВНО один раз). Эффекты уходят через
    `miniapp_outbox` — тот же транспорт, что и остальные исходящие Mini App (план 19-04).
 2. Массовое одобрение (`approve_all`) необратимо и без окна отмены (D-07) — эффекты ставятся
@@ -20,7 +20,7 @@
     -> ПРОИГРАВШИЙ: {ok: false, "already"}, без единой записи
     -> ПОБЕДИТЕЛЬ: {ok: true, decision_id, undo_seconds}
 
-Домен целиком в `services/applications.py` (тонкие обёртки над атомарными UPDATE,
+Домен целиком в `services/applications/applications.py` (тонкие обёртки над атомарными UPDATE,
 очередь/карточка/журнал отмены) — здесь нет ни одного SQL и ни одной копии правила; аватар —
 `miniapp/avatars.py` (план 23-03).
 
@@ -41,7 +41,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from domain.cities import ALL_CITIES, cities_module_on, city_label, city_label_or_none, normalize_city
-from services import applications, quiet_hours
+from services.applications import applications
+from services import quiet_hours
 from domain.settings.schema import get_setting_typed
 
 from miniapp import file_tokens, outbox

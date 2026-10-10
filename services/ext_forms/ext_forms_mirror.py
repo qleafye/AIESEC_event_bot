@@ -55,7 +55,7 @@ def _create_tab_sync(title: str, cols: int):
 
 
 def _status_label(status: str | None) -> str:
-    from services.delegate_card import STATUS_LABELS
+    from services.applications.delegate_card import STATUS_LABELS
     return STATUS_LABELS.get(status) or str(status or "—")
 
 

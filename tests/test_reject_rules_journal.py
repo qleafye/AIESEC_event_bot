@@ -1,4 +1,4 @@
-"""Phase 31 Plan 05 (D-18/D-19/D-24/D-29): `services/reject_journal.py` — сервисный слой
+"""Phase 31 Plan 05 (D-18/D-19/D-24/D-29): `services/applications/reject_journal.py` — сервисный слой
 журнала автоотказов поверх аксессоров плана 31-02.
 
 Два пласта, по задаче плана:
@@ -18,7 +18,7 @@ import io
 
 from config import config
 from database import db
-from services import reject_journal as rj
+from services.applications import reject_journal as rj
 from tests._dbtpl import fast_init_db
 
 

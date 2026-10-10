@@ -10,7 +10,7 @@
 admin`/`handlers.settings.admin_core`); `handlers.settings.admin_sections` (`back_button`) — лениво внутри функции,
 тот же приём, что у каждого соседнего шва этого раздела.
 
-Запись — ТОЛЬКО через `services.reject_journal` (`journal_page`/`journal_entry_detail`/
+Запись — ТОЛЬКО через `services.applications.reject_journal` (`journal_page`/`journal_entry_detail`/
 `return_to_moderation`/`export_csv`) — единственная дверь мутации возврата; в этом файле нет ни
 одной прямой записи полей делегата в обход сервиса (акцептанс-тест плана держит это grep'ом).
 
@@ -38,7 +38,7 @@ from handlers.admin import router
 from handlers.access.admin_caps import has_capability
 from handlers.settings.admin_core import _admin_city_view
 from services import quiet_hours
-from services.reject_journal import (
+from services.applications.reject_journal import (
     JOURNAL_PAGE,
     export_csv,
     journal_entry_detail,
@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 
 _NO_ACCESS = "Недостаточно прав"
 
-# Дефолт текста делегату при возврате — тот же приём, что `reject_text`/`services.applications.
+# Дефолт текста делегату при возврате — тот же приём, что `reject_text`/`services.applications.applications.
 # reject_message_text` (план 31-03/31-11): пустой ключ реестра не значит «ничего не отправлять».
 DEFAULT_RETURN_TEXT = "Ваша заявка возвращена на обычную модерацию — её пересмотрит менеджер."
 
@@ -88,7 +88,7 @@ async def render_journal_screen(admin_id: int, offset: int = 0, include_returned
                                  ) -> tuple[str, InlineKeyboardMarkup]:
     """(text, kb) — та же идиома, что `render_app_list_screen`/`render_faq_screen`. Счётчик
     «Всего: N» и строки списка идут из ОДНОГО вызова `journal_page` (тот же принцип, что у
-    `services.applications.queue_page`) — второго запроса ради счётчика нет."""
+    `services.applications.applications.queue_page`) — второго запроса ради счётчика нет."""
     _scope, label = await _admin_city_view(admin_id)
     rows, total = await journal_page(admin_id, offset=offset, include_returned=include_returned)
     module_on = await get_setting_typed("reject_rules_enabled")
@@ -236,7 +236,7 @@ async def arj_back_confirm(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("arj_backgo:"))
 async def arj_back_go(callback: types.CallbackQuery):
-    """Единственная дверь мутации — `services.reject_journal.return_to_moderation` (атомарный
+    """Единственная дверь мутации — `services.applications.reject_journal.return_to_moderation` (атомарный
     `claim`, второй тап проигрывает). Сбой отправки делегату — только в лог, возврат НЕ
     откатывается (T-31-11-04): заявка обязана вернуться в очередь даже если делегат заблокировал
     бота."""

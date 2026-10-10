@@ -24,7 +24,7 @@
 анкеты. Экранов, где менеджер трогает вопросы анкеты и списки вариантов ответа, несколько
 (общие настройки, per-city переопределения, списки вариантов), а воронка записи одна — второго
 места, которое пришлось бы синхронно поддерживать при появлении нового экрана, не заводим.
-Импорт `services.reject_rules_notify` — ЛЕНИВЫЙ, внутри каждой функции (корневой модуль не
+Импорт `services.applications.reject_rules_notify` — ЛЕНИВЫЙ, внутри каждой функции (корневой модуль не
 должен тянуть `services/*` на уровне модуля и рисковать циклом), и в собственном
 `try/except` — сохранение настройки менеджера важнее реакции на неё и не имеет права упасть
 из-за её сбоя. Поведение самой записи (сигнатуры, `admin_id=None`, строка лога) не меняется.
@@ -45,7 +45,8 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
     from services.bot import bot_commands, bot_profile
     from services import daily_digest
     from services.bot import menu_labels
-    from services import reject_rules_notify, scheduler
+    from services.applications import reject_rules_notify
+    from services import scheduler
     from services.settings.reschedule import reschedule_for_setting
 
     hooks = [bot_profile.on_setting_written, bot_commands.on_setting_written,
@@ -129,7 +130,7 @@ async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True)
     except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
         logger.error("settings_audit: перепланировка пачки сорвалась: %s", exc)
     if reject_rules:
-        from services import reject_rules_notify
+        from services.applications import reject_rules_notify
 
         await reject_rules_notify.on_settings_written_batch(list(keys))
 

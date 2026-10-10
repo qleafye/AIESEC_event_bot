@@ -46,7 +46,7 @@ DEFAULT_FILES = [
     "handlers/reg/reg_types_lookup.py",
     "handlers/reg/reg_types_repeatable.py",
     "handlers/game/game_submit_counter.py",
-    "services/application_effects.py",
+    "services/applications/application_effects.py",
 ]
 
 # Методы отправки делегату, за которыми следим — первый АРГУМЕНТ метода (не self/message)

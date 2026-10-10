@@ -14,7 +14,7 @@ from config import config
 from database import db
 import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
-import services.reject_rules as reject_rules_mod
+import services.applications.reject_rules as reject_rules_mod
 from handlers import registration as reg_mod
 from services.sheets import sheets as sheets_service
 from tests._dbtpl import fast_init_db
@@ -454,7 +454,7 @@ def test_application_decisions_row_has_auto_sentinel_and_effects_sent(tmp_path, 
         return await db.get_last_application_decision(UID)
 
     decision = asyncio.run(go())
-    from services.reject_journal import AUTO_DECIDED_BY
+    from services.applications.reject_journal import AUTO_DECIDED_BY
     assert decision is not None
     assert decision["decision"] == "rejected"
     assert decision["decided_by"] == AUTO_DECIDED_BY
@@ -825,7 +825,7 @@ def test_no_batch_sweep_functions_exist():
     структурная проверка отсутствия таких функций (то же, что grep-акцептанс плана)."""
     import re
 
-    for path in ("services/reject_rules.py", "services/reject_journal.py", "services/reg_finalize.py"):
+    for path in ("services/applications/reject_rules.py", "services/applications/reject_journal.py", "services/reg_finalize.py"):
         with open(path, encoding="utf-8") as f:
             src = f.read()
         assert not re.search(r"def .*(apply_rules_to_queue|apply_to_pending|sweep)", src), path

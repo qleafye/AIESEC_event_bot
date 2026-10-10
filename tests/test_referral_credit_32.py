@@ -3,7 +3,7 @@
 
 Три раздела — по одному на задачу плана:
 - Задача 1: `services/game/referrals.py` (`credit_for_approved`) + одиночное одобрение
-  (`services.applications.claim_approve`).
+  (`services.applications.applications.claim_approve`).
 - Задача 2: массовое одобрение (`claim_approve_all_with_credits`) и авто-одобрение
   (`services/reg_finalize.py`) — плюс тест-сторож швов (список мест, где статус становится
   `'approved'`).
@@ -26,7 +26,7 @@ from datetime import datetime
 
 from config import config
 from database import db
-from services import applications
+from services.applications import applications
 from services.game import referrals
 from tests._dbtpl import fast_init_db
 
@@ -376,7 +376,7 @@ _SET_STATUS_CALL_RE = re.compile(r"\bset_user_status\(")
 _EXPECTED_APPROVAL_WRITERS = {
     "database/db.py": (
         "боевой шов: approve_user_atomic + approve_all_pending (RAW UPDATE) — их зовут "
-        "services.applications.claim_approve / claim_approve_all_with_credits, которые сами "
+        "services.applications.applications.claim_approve / claim_approve_all_with_credits, которые сами "
         "зовут credit_for_approved(_bulk) и рядом check_tiers_for_invitees (ступени амбассадоров)"
     ),
     "services/reg_finalize.py": (
@@ -386,7 +386,7 @@ _EXPECTED_APPROVAL_WRITERS = {
     "services/delegations/delegations.py": (
         "боевой шов делегаций вузов: set_user_status(..., 'pending') только как ступень перед "
         "approve_user_atomic (новый делегат без анкеты / ранее отклонённый с решением менеджера); "
-        "при реальном перевороте зовёт services.applications.record_decision, а тот — services.amb.amb_journal.on_invitees_approved (зачёт амбассадору ровно один раз)"
+        "при реальном перевороте зовёт services.applications.applications.record_decision, а тот — services.amb.amb_journal.on_invitees_approved (зачёт амбассадору ровно один раз)"
     ),
     "handlers/access/uat_seed.py": (
         "осознанное исключение (T-32-05-07): сидер состояний команды /uat на стенде — "
@@ -501,7 +501,7 @@ def test_nobody_calls_credit_or_tier_hooks_directly():
 def test_every_approval_path_calls_journal_entry_point():
     """Все известные пути одобрения зовут on_invitees_approved (сторож не пустой)."""
     seen: set[str] = set()
-    for rel in ("services/applications.py", "services/reg_finalize.py"):
+    for rel in ("services/applications/applications.py", "services/reg_finalize.py"):
         tree = ast.parse((_REPO_ROOT / rel).read_text(encoding="utf-8"))
         for fn in ast.walk(tree):
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):

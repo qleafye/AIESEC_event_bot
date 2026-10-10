@@ -1,7 +1,7 @@
 """Дата и длина форума — всегда для конкретного города.
 
 Форумные джобы (QR накануне, утренний повтор, шпаргалка волонтёрам, опрос неявившихся, отчёт
-дня, меню дня форума, SOS) читают ТОЛЬКО свою дату города (`services.reject_rules.forum_date_for`).
+дня, меню дня форума, SOS) читают ТОЛЬКО свою дату города (`services.applications.reject_rules.forum_date_for`).
 Раньше «🗓 Задать дату форума» с шапкой «🌍 Все города» молча писала общий `forum_date`, и его
 наследовал каждый город без своей даты — Москве уходил QR «Завтра форум!» за чужой
 региональный форум. Поэтому:
@@ -30,7 +30,7 @@ from domain.cities import (
     enabled_cities,
     set_admin_city,
 )
-from services.reject_rules import forum_date_for
+from services.applications.reject_rules import forum_date_for
 from domain.settings.ops import per_city_visible_codes
 
 # Ключи, которые светофор и выбор города правят «для города»: оба per_city в реестре.

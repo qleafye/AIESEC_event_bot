@@ -20,7 +20,7 @@ import logging
 from config import config
 from database import db
 import domain.regform.presets as reg_presets
-import services.reject_rules_notify as rrn
+import services.applications.reject_rules_notify as rrn
 import services.settings.audit as settings_audit
 from tests._dbtpl import fast_init_db
 
@@ -213,7 +213,7 @@ def test_on_setting_written_no_bot_yet_logs_and_does_not_raise(tmp_path, monkeyp
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # on_settings_written_batch — пресет типа события (мимо воронки, см. докстринг
-# services/reject_rules_notify.py и .planning FIX-заметку про пресет типа события)
+# services/applications/reject_rules_notify.py и .planning FIX-заметку про пресет типа события)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_preset_apply_pauses_rule_with_one_consolidated_message(tmp_path, monkeypatch):

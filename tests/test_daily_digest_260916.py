@@ -269,7 +269,7 @@ def test_undone_decision_is_not_counted(tmp_path):
 def test_auto_rejected_decision_is_excluded_from_manager_stats(tmp_path):
     """decided_by = AUTO_DECIDED_BY (-1) не входит ни в apps_rejected, ни в app_managers —
     «менеджер #-1» никогда не должен появиться в «Итогах дня»."""
-    from services.reject_journal import AUTO_DECIDED_BY
+    from services.applications.reject_journal import AUTO_DECIDED_BY
     _db_ready(tmp_path)
     _add_delegate(DELEGATE_MSK, "msk", "Делегат Раз", status="rejected")
     _add_delegate(DELEGATE_SPB, "spb", "Делегат Два", status="approved")
@@ -293,7 +293,7 @@ def _seed_reject_rule(**overrides):
 
 
 def _log_auto_reject(telegram_id, rule_ids):
-    from services.reject_journal import record_auto_reject
+    from services.applications.reject_journal import record_auto_reject
     return asyncio.run(record_auto_reject(telegram_id, rule_ids, ["текст"] * len(rule_ids)))
 
 
