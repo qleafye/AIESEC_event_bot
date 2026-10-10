@@ -265,7 +265,7 @@ async def reconcile_all() -> dict:
     # Делегации вузов: страховка хука приёма — оценить ответы без оценки и снова поискать людей.
     swept: dict = {}
     try:
-        from services.delegations import sweep_pending
+        from services.delegations.delegations import sweep_pending
         swept = await sweep_pending()
     except Exception as e:  # noqa: BLE001
         logger.warning("delegations: sweep после сверки: %s", type(e).__name__)

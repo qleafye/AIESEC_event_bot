@@ -35,7 +35,7 @@ from database import ext_forms_db as ef
 from handlers.admin import router
 from handlers.states import DelegationEdit
 from domain.regform.moderation_card import EMPTY_SENTINEL
-from services import delegations
+from services.delegations import delegations
 from services.infra.background import spawn
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed

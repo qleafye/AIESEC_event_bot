@@ -2063,8 +2063,8 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
 
     # Делегации вузов: человек из формы, нажавший /start раньше синка, — одобряем сразу,
-    # после funnel-лога и до гейтов подписки/предотбора. Вся логика — в services/delegations.py.
-    from services.delegations import try_delegate_start
+    # после funnel-лога и до гейтов подписки/предотбора. Вся логика — в services/delegations/delegations.py.
+    from services.delegations.delegations import try_delegate_start
     if await try_delegate_start(message, state, bot):
         return
 

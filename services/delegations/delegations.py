@@ -6,7 +6,7 @@
 (одобряет и пишет людям модуль только после «✅ Включить делегации» — `is_armed()`):
 
 1. **Вердикт ЦА** (`evaluate`): курс из свободного текста разбирает
-   `services.delegations_course`, отсечка и список курсов «не ЦА» берутся из реестра. Исходов
+   `services.delegations.delegations_course`, отсечка и список курсов «не ЦА» берутся из реестра. Исходов
    три: `ok` — целевая аудитория, `no` — нет, `check` — бот не берётся решать, менеджер нажимает
    «ЦА / не ЦА» сам. Ручное решение менеджера переоценка не перетирает (`upsert_eval`).
 2. **Поиск человека** (`find_person`): только по нику из формы — сначала `users`, потом
@@ -41,7 +41,7 @@ from database.db import (
     get_setting, get_user, get_user_by_username, record_reg_event, set_user_status, store_username,
     update_user_answers, username_needle,
 )
-from services.delegations_course import _cutoff_dt, evaluate_ta, parse_course
+from services.delegations.delegations_course import _cutoff_dt, evaluate_ta, parse_course
 from services.ext_forms_match import username_from_value
 from services.reg_stuck_reset import _is_registration_state
 from services.reject_journal import AUTO_DECIDED_BY

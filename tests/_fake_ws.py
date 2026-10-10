@@ -1,6 +1,6 @@
 """Фейковый лист gspread для тестов зеркала «как выгрузка Яндекса» (вкладка `UR REGS`).
 
-Повторяет ровно те методы Worksheet, которыми пользуется `services/delegations_mirror.py`:
+Повторяет ровно те методы Worksheet, которыми пользуется `services/delegations/delegations_mirror.py`:
 `row_values`, `col_values`, `batch_update` (любой A1-диапазон `X{r}:Y{r}`), `batch_format`
 (цвет строки из диапазона), `add_rows`/`add_cols`, `row_count`/`col_count`, `title`,
 `spreadsheet.fetch_sheet_metadata` (JSON формы Google с `effectiveFormat.backgroundColor`

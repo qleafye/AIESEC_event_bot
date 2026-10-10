@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from services import delegations_mirror as dm
+from services.delegations import delegations_mirror as dm
 from services import ext_forms_mirror as mir
 from tests._fake_ws import GREEN, GREY, PROBE_HEADER, WHITE, FakeWS, probe_sheet
 
@@ -235,7 +235,7 @@ def test_column_map_label_normalisation_and_positional_fallback():
 
 def test_duplicate_ids_in_sheet(ws, caplog):
     ws.rows[6][0] = "2516200002"  # строка 7 дублирует ID строки 3
-    with caplog.at_level(logging.WARNING, logger="services.delegations_mirror"):
+    with caplog.at_level(logging.WARNING, logger="services.delegations.delegations_mirror"):
         dm.write_export_sync(TAB, _columns(), [(1, _answer("2516200002", {"q1": "X"}), _st("no"))])
     assert ws.rows[2][12] == "— не ЦА" and (len(ws.rows[6]) < 13 or ws.rows[6][12] != "— не ЦА")
     dup_logs = [r for r in caplog.records if "дубл" in r.getMessage().lower()]
