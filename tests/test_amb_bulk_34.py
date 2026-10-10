@@ -1,4 +1,4 @@
-"""Раздел «🤝 Амбассадоры» → массовые действия (handlers/admin_amb_bulk.py).
+"""Раздел «🤝 Амбассадоры» → массовые действия (handlers/amb/admin_amb_bulk.py).
 
 - «🙅 Вежливо отказать всем оставшимся»: подтверждение с числом и текстом реестра, сверка
   числа, фоновая рассылка через тихие часы с отметкой до отправки, отчёт менеджеру;
@@ -32,7 +32,7 @@ DECLINE_DEFAULT = SETTINGS_SCHEMA["amb_decline_all_text"]["default"]
 
 
 def _fast(monkeypatch):
-    from handlers import admin_amb_bulk
+    from handlers.amb import admin_amb_bulk
     monkeypatch.setattr(admin_amb_bulk, "_PAUSE", 0)
 
 
@@ -42,7 +42,7 @@ async def _drain():
 
 
 def _go_and_wait(cb):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
 
     async def run():
         await b.decline_all_go(cb)
@@ -61,7 +61,7 @@ def _delegate_messages(bot):
 # ── вежливый отказ всем оставшимся ───────────────────────────────────────────────────────
 
 def test_decline_no_candidates_alerts(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     cb = _cb("ambc_decl")
     _run(b.decline_all_confirm(cb))
@@ -69,7 +69,7 @@ def test_decline_no_candidates_alerts(tmp_path):
 
 
 def test_list_shows_decline_button_only_with_candidates(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     cb = _cb("ambc:candidates:0")
     _run(h.candidates_page(cb))
@@ -82,7 +82,7 @@ def test_list_shows_decline_button_only_with_candidates(tmp_path):
 
 
 def test_decline_confirm_states_count_text_and_consequences(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     for tid in range(100, 112):
         _seed(tid, amb_status="candidate", reserve=tid % 2 == 0)
@@ -102,7 +102,7 @@ def test_decline_confirm_states_count_text_and_consequences(tmp_path):
 
 
 def test_decline_confirm_hides_edit_without_settings_right(tmp_path, monkeypatch):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
 
@@ -116,7 +116,7 @@ def test_decline_confirm_hides_edit_without_settings_right(tmp_path, monkeypatch
 
 
 def test_decline_text_escaped_html(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
     _run(db.set_setting("amb_decline_all_text", "Спасибо <3 & до встречи"))
@@ -163,7 +163,7 @@ def test_decline_go_stale_count_sends_nothing(tmp_path, monkeypatch):
 
 def test_decline_repeat_after_crash_sends_only_tail(tmp_path, monkeypatch):
     from database import amb_status_db
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _fast(monkeypatch)
     _ready(tmp_path)
     for tid in range(100, 105):
@@ -231,7 +231,7 @@ def test_decline_quiet_hours_counted_as_deferred(tmp_path, monkeypatch):
 
 def test_decline_city_scoped_admin_refused(tmp_path, monkeypatch):
     from handlers import admin_core
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
 
@@ -250,7 +250,7 @@ def test_decline_city_scoped_admin_refused(tmp_path, monkeypatch):
 
 
 def test_declined_cannot_rejoin_but_manager_can_take(tmp_path, monkeypatch):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     from services import amb_status
     _fast(monkeypatch)
     _ready(tmp_path)
@@ -267,7 +267,7 @@ def test_declined_cannot_rejoin_but_manager_can_take(tmp_path, monkeypatch):
 
 
 def test_decline_cancel_returns_to_list(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
     cb = _cb("ambc_decl_no")
@@ -302,7 +302,7 @@ def _appoint_state():
 
 
 def test_list_has_appoint_and_archive_buttons(tmp_path):
-    from handlers import admin_amb_candidates as h
+    from handlers.amb import admin_amb_candidates as h
     _ready(tmp_path)
     cb = _cb("admin_amb_candidates")
     _run(h.show_candidates(cb))
@@ -312,7 +312,7 @@ def test_list_has_appoint_and_archive_buttons(tmp_path):
 
 
 def test_appoint_start_prompt_and_state(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     from tests.test_amb_candidates_34 import _new_state
     _ready(tmp_path)
     state = _new_state()
@@ -326,7 +326,7 @@ def test_appoint_start_prompt_and_state(tmp_path):
 
 
 def test_appoint_by_username_confirm_then_take(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, status="pending", name="Иван Петров", username="ivan_p")
     state = _appoint_state()
@@ -354,7 +354,7 @@ def test_appoint_by_username_confirm_then_take(tmp_path):
 
 
 def test_appoint_by_forward(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, name="Мария")
     state = _appoint_state()
@@ -367,7 +367,7 @@ def test_appoint_by_forward(tmp_path):
 
 
 def test_appoint_already_active_and_not_found(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, amb_status="active", username="ivan_p")
     state = _appoint_state()
@@ -390,7 +390,7 @@ def test_appoint_already_active_and_not_found(tmp_path):
 
 
 def test_appoint_several_matches_pick(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     for tid in (10, 11, 12):
         _seed(tid, name=f"Анна Смирнова {tid}")
@@ -408,7 +408,7 @@ def test_appoint_several_matches_pick(tmp_path):
 
 
 def test_appoint_command_exits_fsm(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     state = _appoint_state()
     msg = _person_msg("/admin")
@@ -418,7 +418,7 @@ def test_appoint_command_exits_fsm(tmp_path):
 
 
 def test_appoint_cancel_button(tmp_path):
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     state = _appoint_state()
     cb = _cb("ambc_add_cancel")
@@ -429,7 +429,7 @@ def test_appoint_cancel_button(tmp_path):
 
 def test_appoint_go_out_of_city_scope_refused(tmp_path, monkeypatch):
     from handlers import admin_core
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, city="spb")
 
@@ -488,7 +488,7 @@ def test_season_screen_without_ambassadors_has_no_line(tmp_path):
 
 def test_season_reset_archives_and_clears(tmp_path):
     from handlers import admin_cities
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     from handlers.states import SeasonReset
     state = _season_wizard(tmp_path)
     _run(state.set_state(SeasonReset.passphrase))
@@ -537,7 +537,7 @@ def test_season_reset_survives_amb_failure(tmp_path, monkeypatch):
 
 def test_archive_csv_empty_and_formula_safe(tmp_path):
     from database import amb_status_db
-    from handlers import admin_amb_bulk as b
+    from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     cb = _cb("ambc_arch_csv")
     _run(b.archive_csv(cb))

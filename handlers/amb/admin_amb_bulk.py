@@ -13,7 +13,7 @@
   сбросом (`season_reset_line` / `season_reset_apply` зовёт мастер сезона в admin_cities).
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
-импортом `handlers/admin_amb_candidates.py`.
+импортом `handlers/amb/admin_amb_candidates.py`.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from domain.cities import city_label_or_none
 from database import amb_status_db
 from database import db as _db
 from handlers.admin import router
-from handlers.admin_amb_candidates import (
+from handlers.amb.admin_amb_candidates import (
     AMB_STATUS_LABELS,
     APP_STATUS_LABELS,
     _alert,
@@ -475,4 +475,4 @@ async def season_reset_apply(old_season: str) -> str:
 
 
 # «Закрепить приглашённого» (admin_amb_journal: admin_amb_attach, ambj_*) - хвост admin.router.
-from handlers import admin_amb_journal  # noqa: E402,F401
+from handlers.amb import admin_amb_journal  # noqa: E402,F401

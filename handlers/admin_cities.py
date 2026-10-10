@@ -557,7 +557,7 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
     old = data.get("season_old") or ""
     n = await count_current_season_users(old or None)
     from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
-    from handlers.admin_amb_bulk import season_reset_line  # сбой чтения — пустая строка
+    from handlers.amb.admin_amb_bulk import season_reset_line  # сбой чтения — пустая строка
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➡️ Продолжить", callback_data="season_reset_go")],
         # Цель берётся из реестра разделов: кнопка «🔄 Новый сезон» уехала из группы
@@ -624,7 +624,7 @@ async def season_reset_passphrase_step(message: types.Message, state: FSMContext
     # as the old value, then flip event_season last — makes the switch atomic from a delegate's
     # point of view.
     affected = await mark_season_ended(old or None)
-    from handlers.admin_amb_bulk import season_reset_apply  # сбой — лог, сезон всё равно меняется
+    from handlers.amb.admin_amb_bulk import season_reset_apply  # сбой — лог, сезон всё равно меняется
     amb_note = await season_reset_apply(old)
     await set_setting_by_admin(message.from_user.id, "event_season", new)
     logger.warning(
