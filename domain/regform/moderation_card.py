@@ -2,7 +2,7 @@
 как их читать из `users`, как обрезать длинные значения и не влезающую в лимит Telegram
 карточку.
 
-Корневой модуль (сосед `reg_engine.py`/`reg_labels.py`/`domain/settings/schema.py`) — БЕЗ импорта
+Корневой модуль (сосед `domain/regform/engine.py`/`domain/regform/labels.py`/`domain/settings/schema.py`) — БЕЗ импорта
 aiogram, БЕЗ импорта `miniapp.*`/`handlers.*`. Единственный источник схемы анкеты —
 `reg_engine.STEP_TO_COLUMN`/`reg_engine.label_for`; второй карты «шаг → подпись» здесь нет и
 не будет (план 21-13 закрыл алиасы, заводить их заново запрещено).
@@ -16,7 +16,7 @@ aiogram, БЕЗ импорта `miniapp.*`/`handlers.*`. Единственны�
 выше, оба — единая точка правды для бота (`handlers/admin_moderation.py`) и веба
 (`services/applications.py::card_payload`), второй копии условий не заводим ни там, ни там.
 1. `_column_value` перестаёт печатать сентинел `"-"` (`reg_engine`'а «вопрос пропущен/выключен
-   на анкете», см. `reg_engine.py`, предикат `value not in (None, "", "-")`, использован
+   на анкете», см. `domain/regform/engine.py`, предикат `value not in (None, "", "-")`, использован
    ~десяток раз) как настоящий ответ — карточка печатала «Поле: -» для КАЖДОГО выключенного
    вопроса, чей столбец получил сентинел при финализации анкеты (34/34 заявок в очереди).
 2. `age`/`birth_date` — тот же вопрос, переключённый 16-17.09 (`age` off, `birth_date` on):
@@ -33,8 +33,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-import reg_engine
-from reg_labels import REG_LABELS
+import domain.regform.engine as reg_engine
+from domain.regform.labels import REG_LABELS
 from services.timeutil import msk_now
 
 # Вопрос анкеты (step_key) -> человеческая подпись, ТОЛЬКО через reg_engine.label_for —
@@ -99,7 +99,7 @@ def enabled_steps(raw: list[str] | None) -> list[str]:
 def _column_value(user: dict, column: str) -> str | None:
     """Почти дословное поведение `miniapp/routers/profile.py::_value` — с ОДНИМ расхождением
     (приёмка 19.09, review-260919 «Модерация» находка №1): `"-"` — сентинел `reg_engine`'а
-    «вопрос анкеты пропущен/выключен» (`reg_engine.py`, предикат `value not in (None, "", "-")`,
+    «вопрос анкеты пропущен/выключен» (`domain/regform/engine.py`, предикат `value not in (None, "", "-")`,
     используется там же ~десяток раз), а не настоящий ответ делегата. Без фильтра карточка
     печатала «Лок. комитет: -»/«Позиция: -»/… для КАЖДОГО выключенного вопроса, чей столбец
     получил сентинел при финализации анкеты — 5 таких строк на всех 34 заявках в очереди прода.

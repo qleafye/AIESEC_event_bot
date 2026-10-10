@@ -107,7 +107,7 @@ def test_render_questions_text_at_city_header_names_city_and_marks_own_row(tmp_p
     assert spb_label in text.splitlines()[0]
     assert "spb" not in text
 
-    from reg_labels import REG_LABELS
+    from domain.regform.labels import REG_LABELS
     age_label = REG_LABELS[SETTING_KEY]
     age_line = [ln for ln in text.splitlines() if age_label in ln][0]
     assert age_line.startswith("❌")
@@ -130,7 +130,7 @@ def test_build_questions_keyboard_at_city_header_no_city_code_in_labels(tmp_path
     kb = asyncio.run(admin_reg_percity.build_questions_keyboard("full", ADMIN_ID))
     texts = _kb_texts(kb)
     assert not any("spb" in t for t in texts)
-    from reg_labels import REG_LABELS
+    from domain.regform.labels import REG_LABELS
     age_text = [t for t in texts if REG_LABELS[SETTING_KEY] in t][0]
     assert age_text.startswith("❌")
     assert "•" in age_text  # own-value bullet marker

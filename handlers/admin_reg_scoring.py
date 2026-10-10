@@ -27,8 +27,8 @@ from __future__ import annotations
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import reg_engine
-from moderation_card import EMPTY_SENTINEL
+import domain.regform.engine as reg_engine
+from domain.regform.moderation_card import EMPTY_SENTINEL
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router

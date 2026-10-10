@@ -41,7 +41,7 @@ from domain.settings.schema import _parse_setting
 from miniapp.auth import verify_init_data
 # Квик 260922-wrg (задача 2, B-1): is_past_season_row — тот же предикат, что бот использует
 # в ветке возвращенца /start; reg_engine уже используется миниапп-роутерами (aiogram-free).
-import reg_engine
+import domain.regform.engine as reg_engine
 
 logger = logging.getLogger(__name__)
 

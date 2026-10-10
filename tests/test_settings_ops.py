@@ -286,7 +286,7 @@ def test_event_type_preset_returns_keys_and_logs_author(tmp_path, caplog):
 
 
 def test_reg_preset_returns_every_written_key_with_author(tmp_path, caplog):
-    import reg_presets
+    import domain.regform.presets as reg_presets
 
     async def _run():
         _use_tmp_db(tmp_path)

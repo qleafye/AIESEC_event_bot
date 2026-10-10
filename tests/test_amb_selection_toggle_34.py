@@ -225,7 +225,7 @@ def _offer(tid):
 
 
 def test_question_shown_despite_full_limit(off):
-    import reg_engine
+    import domain.regform.engine as reg_engine
     assert "ambassador" in _run(reg_engine.enabled_steps({}, None))
 
 

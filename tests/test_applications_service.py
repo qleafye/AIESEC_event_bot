@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta
 
-import moderation_card
+import domain.regform.moderation_card as moderation_card
 import services.applications as applications
 from config import config
 from database import db

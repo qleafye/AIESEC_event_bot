@@ -21,7 +21,7 @@ import inspect
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

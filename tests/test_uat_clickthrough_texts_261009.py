@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA

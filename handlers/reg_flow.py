@@ -43,23 +43,23 @@ from handlers.registration import (
     _is_allowed_resume, _resume_too_large, _err_kb,
 )
 # Phase 21 (21-06, FORM-SYNC-01): validate_answer — единая проверка для чата бота и Mini App.
-from reg_engine import validate_answer, validate_date_range as _validate_date_range
+from domain.regform.engine import validate_answer, validate_date_range as _validate_date_range
 # Квик 260914-k74 (LEAK-01): карта step_key -> колонка users для снимка process_confirm_edit —
 # тот же источник, что у reg_engine.prior_answers_for/recall_keep, второй литерал не заводим.
-from reg_engine import STEP_TO_COLUMN
+from domain.regform.engine import STEP_TO_COLUMN
 # Квик 260919-u7e (находка #2): набор колонок шага резюме (включая `resume_file_name`, которой
 # нет в `RESUME_RECALL_COLUMNS` — она никогда не жила в `users`, только в reg_drafts/FSM) для
 # того же снимка -- см. докстринг ниже у `recall_columns`.
-from reg_engine import columns_for_step, get_consent_steps
+from domain.regform.engine import columns_for_step, get_consent_steps
 # Gap closure фазы 21: тексты ошибок тапа по развилке — из движка (те же, что получает PATCH
 # из Mini App), не локальные литералы.
-from reg_engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
+from domain.regform.engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PARTY_CLOSED_TEXT
 # Phase 25 (CITYQ-02): режим приёма резюме («файл или текст» / «только текст») по городу
 # делегата — общий резолвер движка, гейт на входе в шаг документа.
-from reg_engine import resume_mode
+from domain.regform.engine import resume_mode
 # Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — читает движок, текст ошибки из реестра
 # (не второй литерал рядом с reg_multi_limit_error_text).
-from reg_engine import multi_max
+from domain.regform.engine import multi_max
 # Phase 27 (27-05, LANG-02/LANG-06/LANG-08): say()/tr_for() переводят делегатские отправки
 # этого шва на отправке; служебные слова фильтров (CANCEL_WORDS/CONFIRM_WORDS/EDIT_WORDS) —
 # ярус A i18n_ui_en, не второй список литералов.
@@ -396,7 +396,7 @@ async def start_confirm_edit(message: types.Message, state: FSMContext) -> None:
 @router.message(Registration.resume, F.document)
 async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
     # Файл резюме — своя форма входа (имя файла/размер, не «сырой текст»), поэтому не через
-    # validate_answer: is_allowed_resume/resume_too_large — прямой перенос в reg_engine.py.
+    # validate_answer: is_allowed_resume/resume_too_large — прямой перенос в domain/regform/engine.py.
     # Phase 25 (CITYQ-02): режим «только текст» по городу делегата — гейт ДО проверок формата
     # и размера, файл не принимается вовсе, resume_file_id в FSM не пишется, шаг остаётся на
     # месте — делегат отвечает текстом, его ловит process_resume_text ниже.

@@ -519,7 +519,7 @@ def test_counter_defaults_carry_three_plural_forms(key):
 
 # ── quick 260906-6xe: «🧾 Поля карточки заявки» — чекбоксы с подписями, не коды ─────────────
 
-import moderation_card as mc
+import domain.regform.moderation_card as mc
 from domain.settings.schema import multi_options as _multi_options
 
 
@@ -529,7 +529,7 @@ def test_multi_item_never_leaks_step_codes(tmp_path):
     item = _item(body, "modcard_fields")
     assert item["type"] == "multi"
     # Phase 28 (28-01): CARD_STEPS растёт АВТОМАТИЧЕСКИ из STEP_TO_COLUMN/REG_LABELS — 43 + 8
-    # новых шагов СкиллАпа (RESEARCH Pattern 1 п.12), без единой правки moderation_card.py.
+    # новых шагов СкиллАпа (RESEARCH Pattern 1 п.12), без единой правки domain/regform/moderation_card.py.
     assert len(item["options"]) == 51
     assert set(item["options"]) == set(mc.CARD_STEPS.values())
     assert item["options"] == [label for _code, label in _multi_options("modcard_fields")]

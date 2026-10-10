@@ -47,8 +47,8 @@ import logging
 import os
 from datetime import datetime, timedelta
 
-import reg_engine
-from reg_labels import REG_LABELS
+import domain.regform.engine as reg_engine
+from domain.regform.labels import REG_LABELS
 from cities import get_setting_for_city
 from config import config
 from database.db import (

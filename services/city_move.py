@@ -47,7 +47,7 @@ from database.db import (
     update_unsent_reg_digest_city,
     update_user_answers,
 )
-from reg_engine import _is_party_track, _is_short_track
+from domain.regform.engine import _is_party_track, _is_short_track
 import services.sheets as sheets_service
 from database.session_enroll_db import (
     count_enrollments_for_user,

@@ -15,7 +15,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-import reg_presets
+import domain.regform.presets as reg_presets
 from shared.amb_tier_keys import MAX_TIERS, _LEGACY_TIER_KEYS, tier_key
 from config import config
 from database import amb_tiers_db

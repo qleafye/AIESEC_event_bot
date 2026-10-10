@@ -22,7 +22,7 @@ import logging
 import os
 
 from database.db import get_user, record_answer_history, update_user_answers
-from reg_engine import RESUME_MAX_BYTES, is_allowed_resume, resume_too_large
+from domain.regform.engine import RESUME_MAX_BYTES, is_allowed_resume, resume_too_large
 from services.reg_finalize import _apply_resume_url, _resume_file_stem, _resume_filename_mode
 
 logger = logging.getLogger(__name__)

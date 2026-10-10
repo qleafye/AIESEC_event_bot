@@ -27,7 +27,7 @@ from handlers import reg_i18n
 from handlers.registration import _advance, _sync_draft_out, router
 from handlers.states import Registration
 from keyboards.builders import get_cancel_kb, get_skip_kb
-from reg_engine import (
+from domain.regform.engine import (
     STEP_TO_COLUMN,
     _REPEATABLE_NOUNS,
     _SKIP_ALLOWED_STEPS,

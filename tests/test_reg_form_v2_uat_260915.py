@@ -14,8 +14,8 @@ from config import config
 from database import db as bot_db
 from database.db import init_db, set_setting
 
-import reg_engine
-from reg_engine import (
+import domain.regform.engine as reg_engine
+from domain.regform.engine import (
     advance_anchor,
     composite_absorbed_steps,
     form_spec,

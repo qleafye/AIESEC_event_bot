@@ -848,7 +848,7 @@ def test_patch_resume_type_text_persists_and_keeps_resume_step(http_client):
 
 
 def test_patch_resume_text_after_text_branch_lands_in_resume_text_column(http_client):
-    """`column_to_step("resume_text") == "resume"` (легаси-алиас, reg_engine.py) — PATCH с
+    """`column_to_step("resume_text") == "resume"` (легаси-алиас, domain/regform/engine.py) — PATCH с
     колонкой `resume_text` обязан пройти `validate_answer("resume", …)`, а не 400 bad_field."""
     _set("reg_resume_mode", "fork")
     _set("reg_q_resume", "on")

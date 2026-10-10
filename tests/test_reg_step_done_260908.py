@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from database import db
 from config import config
 

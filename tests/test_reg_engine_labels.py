@@ -19,10 +19,10 @@ import asyncio
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from config import config
 from database.db import init_db
-from reg_labels import DELEGATE_LABELS, REG_LABELS
+from domain.regform.labels import DELEGATE_LABELS, REG_LABELS
 from tests._dbtpl import fast_init_db
 
 _DRIFTED = [

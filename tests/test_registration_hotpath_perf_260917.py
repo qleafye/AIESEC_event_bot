@@ -209,7 +209,7 @@ _HOTPATH_FILES = [
     "handlers/reg_types_composite.py",
     "handlers/reg_types_repeatable.py",
     "services/reg_finalize.py",
-    "reg_engine.py",
+    "domain/regform/engine.py",
 ]
 
 _TASK_SPAWN_RE = re.compile(r"create_task\(|ensure_future\(|\.spawn\(")

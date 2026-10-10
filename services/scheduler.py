@@ -1431,7 +1431,7 @@ async def _nudge_remaining_for(tid: int) -> int | None:
     нейтральное слово вместо числа, а не пустые фигурные скобки (T-28-09-04)."""
     try:
         from database.db import get_reg_draft
-        import reg_engine
+        import domain.regform.engine as reg_engine
         draft = await get_reg_draft(tid)
         if not draft:
             return None
@@ -1947,7 +1947,7 @@ async def _game_open_filter():
     pending/rejected, строка текущего сезона, делегации вуза — только при включённой игре.
     Жалоба 08.10: напоминание о дедлайне «Задания 15» ушло всем делегатам города, включая
     ~1000 отклонённых и только что подавших — им задания закрыты, а письмо «не сдано» пришло."""
-    from reg_engine import is_past_season_row
+    from domain.regform.engine import is_past_season_row
 
     event_season = await get_setting_typed("event_season") or None
     delegation_on = await get_setting_typed("delegation_game_enabled") == "on"

@@ -14,7 +14,7 @@ from config import config
 from database import db as bot_db
 from services import reg_handoff
 from services.reg_handoff import SURFACE_BOT, SURFACE_APP, draft_holder
-import reg_engine
+import domain.regform.engine as reg_engine
 
 USER_ID = 910100200
 

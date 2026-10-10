@@ -343,7 +343,7 @@ async def convert_to_delegate(
     Шага оплаты нет: `approve_user` не вызывается, напоминания не ставятся. В лист города
     строка не пишется; у бывшего pending/rejected обновляется статус существующей строки.
     """
-    import reg_engine
+    import domain.regform.engine as reg_engine
     from cities import default_city_code
 
     answer_id = str(row["answer_id"])
@@ -475,7 +475,7 @@ async def convert_to_delegate(
             logger.exception("delegations: событие воронки не записано (tid=%s)", tid)
         if prev_status in ("pending", "rejected"):
             try:
-                from reg_labels import STATUS_LABELS
+                from domain.regform.labels import STATUS_LABELS
                 from services.sheets import update_status_in_sheet
                 await update_status_in_sheet(tid, STATUS_LABELS["approved"])
             except Exception:

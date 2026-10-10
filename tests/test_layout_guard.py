@@ -24,12 +24,7 @@ PENDING_ROOT_MODULES = {
     "cities.py",
     "game_labels.py",
     "i18n_ui_en.py",
-    "moderation_card.py",
     "payment_options.py",
-    "reg_engine.py",
-    "reg_labels.py",
-    "reg_options.py",
-    "reg_presets.py",
 }
 
 # Нарушения, которые пока терпим: (файл относительно корня, импортируемый модуль).

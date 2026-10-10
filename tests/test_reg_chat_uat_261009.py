@@ -17,7 +17,7 @@ from database import db
 from handlers import registration as reg
 from handlers.states import Registration
 
-import reg_engine
+import domain.regform.engine as reg_engine
 
 from tests.test_reg_resume_draft import (
     USER_ID,

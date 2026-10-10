@@ -1,7 +1,7 @@
 """Phase 19.1 Plan 02 (D-03/D-04/D-07): пресеты оформления Mini App и дашборда.
 
 Единственное место в проекте, где живёт знание о пресетах — модуль ЧИСТЫЙ (только stdlib),
-без импортов из `handlers/`, `database/`, aiogram или FastAPI, ровно как `reg_labels.py`/
+без импортов из `handlers/`, `database/`, aiogram или FastAPI, ровно как `domain/regform/labels.py`/
 `game_labels.py` в корне (вынесены туда ради aiogram-free потребителей: `miniapp/` и
 `dashboard/` импортируют его напрямую, тест на «не тянет aiogram» — тот же приём, что у
 `tests/test_miniapp_labels_drift.py::test_root_label_modules_do_not_load_aiogram`).

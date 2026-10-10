@@ -1,4 +1,4 @@
-"""Phase 21 (21-01, FORM-SYNC-01): reg_engine.py — корневое ядро анкеты без зависимости на
+"""Phase 21 (21-01, FORM-SYNC-01): domain/regform/engine.py — корневое ядро анкеты без зависимости на
 бот-фреймворк. Одна функция обслуживает и текстовый чат бота (`handlers/registration.py`),
 и (с плана 21-10) Mini App — «второго движка» с копией схемы анкеты быть не должно.
 
@@ -11,12 +11,12 @@ Behavior перенесённых кусков byte-for-byte unchanged от ко
 ВАЖНО (не нарушать): этот модуль не должен импортировать НИЧЕГО из пакета `handlers` — любой
 `import handlers.x` исполняет `handlers/__init__.py`, который тянет `registration, user_actions,
 admin, payment` (полный бот на бот-фреймворке, см. докстринг `handlers/__init__.py` и
-`reg_labels.py`). Разрешённые импорты «наверх»: `settings_schema`, `database.db` (только
+`domain/regform/labels.py`). Разрешённые импорты «наверх»: `settings_schema`, `database.db` (только
 функции без бот-фреймворка), `reg_labels`, `reg_options`, `cities`, `config`. Поэтому `REG_FLOW` и его ближайшие зависимости
 (`_is_party_track`/`_is_short_track`/`REG_DEFAULTS`/`_is_step_enabled`/`_is_module_enabled`),
 раньше жившие в `handlers/reg_schema.py`, переехали СЮДА; `handlers/reg_schema.py` теперь
 реэкспортирует их обратно (тот же приём, каким она уже реэкспортирует `REG_LABELS` из
-корневого `reg_labels.py` — комментарий там же).
+корневого `domain/regform/labels.py` — комментарий там же).
 
 Phase 27 (27-04, LANG-06): к разрешённым импортам «наверх» добавляются `services.i18n` (сама
 функция `tr()` — чистая, зависит только от `database.db`/`i18n_ui_en`/`settings_schema`, из
@@ -44,8 +44,8 @@ from cities import (
     get_setting_typed_for_city, is_city_registration_open,
     normalize_city, open_cities, per_city_key,
 )
-from reg_labels import DELEGATE_LABELS, REG_LABELS
-import reg_options as _opts
+from domain.regform.labels import DELEGATE_LABELS, REG_LABELS
+import domain.regform.options as _opts
 from services.i18n import tr as _tr
 from i18n_ui_en import EN_TO_RU as _EN_TO_RU
 
@@ -358,7 +358,7 @@ async def option_list_for(setting_key: str, defaults: list[str]) -> list[str]:
     return list(defaults)
 
 
-# Литеральные списки без реестрового override — reg_options.py (перенесены туда планом 21-01
+# Литеральные списки без реестрового override — domain/regform/options.py (перенесены туда планом 21-01
 # Task 2). university не входит: у него собственная ветка (см. options() ниже) — список
 # зависит от reg_university_mode.
 _LITERAL_OPTIONS = {
@@ -1380,7 +1380,7 @@ _STEP_TYPE_V2_OVERRIDES = {
     "phone": "text",
 }
 
-# Единственная composite-группа фазы — «Образование» (условная развилка reg_engine.py:467-624,
+# Единственная composite-группа фазы — «Образование» (условная развилка domain/regform/engine.py:467-624,
 # читать `enabled_steps`/`_is_step_enabled` для контекста веток). Формат — на случай, если
 # будущая фаза заведёт вторую композитную группу: имя группы -> список входящих step_key.
 _COMPOSITE_GROUPS: dict[str, list[str]] = {

@@ -1,7 +1,7 @@
 """Phase 28 Plan 10 (SU-11, СкиллАп 5): пресет события «СкиллАп» + корневой aiogram-free
-`reg_presets.py`.
+`domain/regform/presets.py`.
 
-Задача 1: `REG_PRESETS`/`apply_reg_preset` переехали в `reg_presets.py` дословно — старые
+Задача 1: `REG_PRESETS`/`apply_reg_preset` переехали в `domain/regform/presets.py` дословно — старые
 четыре пресета не изменились ни на байт, старый путь импорта (`handlers.reg_schema`)
 продолжает работать, модуль не тянет aiogram, bulk-writer умеет писать произвольные ключи
 реестра из необязательного поля пресета `"settings"`.
@@ -15,7 +15,7 @@ pytest-asyncio недоступен в этом окружении — async ч�
 """
 import asyncio
 
-import reg_presets
+import domain.regform.presets as reg_presets
 from config import config
 from database import db
 from database.db import get_setting
@@ -103,7 +103,7 @@ EXPECTED_PRESET_SETTINGS = {"forum": {"event_type": "forum"}, "conf": {"event_ty
 # ── Задача 1: перенос модуля ──────────────────────────────────────────────────────────────
 
 def test_reg_presets_module_is_aiogram_free():
-    loaded = _loaded_aiogram("import reg_presets")
+    loaded = _loaded_aiogram("import domain.regform.presets as reg_presets")
     assert loaded == [], f"reg_presets потянул aiogram: {loaded}"
 
 

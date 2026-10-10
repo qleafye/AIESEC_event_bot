@@ -20,7 +20,7 @@ import re
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from reg_options import COURSE_OPTIONS
+from domain.regform.options import COURSE_OPTIONS
 
 _MAX_LEN = 200                       # защита регулярок от километровых ответов
 _FMT = "%Y-%m-%d %H:%M:%S"           # так пишет answered_at services/ext_forms_parse._to_msk

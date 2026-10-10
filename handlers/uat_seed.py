@@ -65,7 +65,7 @@ from cities import (
 )
 from handlers import admin_caps
 from handlers.admin_purge import _footprint_lines
-from reg_engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
+from domain.regform.engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
 from services.checkin import ENTRY_POINT
 from services.scheduler import cancel_payment_reminders
 from services.timeutil import msk_now

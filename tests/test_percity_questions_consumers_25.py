@@ -30,8 +30,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 
-import moderation_card
-import reg_engine as e
+import domain.regform.moderation_card as moderation_card
+import domain.regform.engine as e
 from handlers import registration as reg
 from handlers import reg_flow
 

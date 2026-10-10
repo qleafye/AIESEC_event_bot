@@ -12,7 +12,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-import reg_engine
+import domain.regform.engine as reg_engine
 from handlers import registration as reg
 from tests._dbtpl import fast_init_db
 

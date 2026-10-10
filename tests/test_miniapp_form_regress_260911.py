@@ -16,7 +16,7 @@ import asyncio
 import json
 import re
 
-import reg_engine
+import domain.regform.engine as reg_engine
 import domain.settings.schema as settings_schema
 import domain.settings.synonyms as settings_synonyms
 from database import db as bot_db

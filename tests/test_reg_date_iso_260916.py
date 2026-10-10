@@ -3,7 +3,7 @@
 from tests._paths import REPO_ROOT
 from pathlib import Path
 
-import reg_engine
+import domain.regform.engine as reg_engine
 
 
 def test_iso_birth_date_is_accepted_and_stored_like_chat():

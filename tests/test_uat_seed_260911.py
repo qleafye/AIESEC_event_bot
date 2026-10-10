@@ -332,7 +332,7 @@ def test_go_draft_leaves_reg_started_and_draft_at_resume_step_empty(tmp_path):
     draft = asyncio.run(db.get_reg_draft(TESTER_ID))
     assert draft is not None
     assert draft["step"] == "resume"
-    from reg_engine import columns_for_step
+    from domain.regform.engine import columns_for_step
     for col in columns_for_step("resume"):
         assert not draft["answers"].get(col)
 
@@ -409,7 +409,7 @@ def test_go_draft_records_consent_when_module_on(tmp_path):
     _open_gate()
     _consents_configured()
     uat_seed = _import_handlers()
-    from reg_engine import consent_entries
+    from domain.regform.engine import consent_entries
     from services.consent import outstanding_consents
 
     _go(uat_seed, "draft", "none")
@@ -423,7 +423,7 @@ def test_go_pending_records_consent_when_module_on(tmp_path):
     _open_gate()
     _consents_configured()
     uat_seed = _import_handlers()
-    from reg_engine import consent_entries
+    from domain.regform.engine import consent_entries
     from services.consent import outstanding_consents
 
     _go(uat_seed, "pending", "none")
@@ -505,6 +505,6 @@ def test_cancel_erases_nothing(tmp_path):
 # ── Инвариант _SEED_ANSWERS ⊆ answer_columns() ──────────────────────────────────────────────
 
 def test_seed_answers_keys_are_all_real_answer_columns():
-    from reg_engine import answer_columns
+    from domain.regform.engine import answer_columns
     from handlers import uat_seed
     assert set(uat_seed._SEED_ANSWERS) <= set(answer_columns())

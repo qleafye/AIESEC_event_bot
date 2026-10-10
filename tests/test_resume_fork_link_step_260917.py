@@ -2,7 +2,7 @@
 шаг resume_link жил за отдельным тумблером reg_q_resume_link (по умолчанию выключен)."""
 import asyncio
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from tests._dbtpl import fast_init_db

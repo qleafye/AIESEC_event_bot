@@ -27,7 +27,7 @@ import pytest
 from config import config
 from database.db import init_db, set_setting
 
-from reg_engine import FORM_V2_TOGGLE_KEYS, degrade_kind, form_spec, form_v2_flags
+from domain.regform.engine import FORM_V2_TOGGLE_KEYS, degrade_kind, form_spec, form_v2_flags
 from tests._dbtpl import fast_init_db
 
 CANONICAL_KINDS = ("select", "lookup", "composite", "link", "multi", "repeatable", "text")
@@ -195,7 +195,7 @@ def test_header_settings_toggle_reflected_in_form_v2_flags(tmp_path):
 
 def test_pending_projections_is_empty():
     """Фаза не оставила ни одного типа без обеих проекций — план 30-06 уже опустошил
-    `PENDING_PROJECTIONS` (`reg_engine.py`), это финальная приёмочная проверка замка фазы."""
+    `PENDING_PROJECTIONS` (`domain/regform/engine.py`), это финальная приёмочная проверка замка фазы."""
     import tests.test_reg_step_type_v2_260912 as sibling
 
     assert sibling.PENDING_PROJECTIONS == {}

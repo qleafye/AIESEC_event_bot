@@ -5,7 +5,7 @@
 
 Модуль aiogram-free: из `handlers` не импортирует НИЧЕГО (любой `import handlers.x` тянет
 `handlers/__init__.py`, а тот — `registration, user_actions, admin, payment`, то есть весь бот
-на бот-фреймворке; докстринг `reg_engine.py:11-19` держит тот же инвариант, и этот модуль ему
+на бот-фреймворке; докстринг `domain/regform/engine.py:11-19` держит тот же инвариант, и этот модуль ему
 следует). Разрешённые импорты — `settings_schema`, `reg_engine`, `reg_labels`, `reg_options`,
 `cities`, `config`, `database.db`, `payment_options` (Квик 260917-en — тот же aiogram-free
 корневой модуль, что использует `handlers/payment.py`, нужен для разбора `payment_options`
@@ -94,9 +94,9 @@ from cities import CITIES, split_per_city_key
 import cities
 from config import config
 from domain.settings.schema import SETTINGS_SCHEMA
-import reg_engine
-import reg_labels
-import reg_options
+import domain.regform.engine as reg_engine
+import domain.regform.labels as reg_labels
+import domain.regform.options as reg_options
 import payment_options
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,7 @@ _NON_DELEGATE_TEXT_KEYS: frozenset[str] = (
 )
 
 # Динамические ключи вне SETTINGS_SCHEMA — только эти два префикса (help_text/prompt
-# докстринги reg_engine.py явно говорят «в SETTINGS_SCHEMA НЕ заводится»).
+# докстринги domain/regform/engine.py явно говорят «в SETTINGS_SCHEMA НЕ заводится»).
 _DYNAMIC_PREFIXES = ("reg_prompt_", "reg_help_")
 _TRACK_SUFFIXES = ("__party", "__short")
 
@@ -256,7 +256,7 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:reg_engine.summary_fields.resume_attached", "прикреплено файлом"))
 
     # Все UPPERCASE-списки reg_options — перебор через vars(), а не 18 имён руками: новый
-    # список вариантов, добавленный когда-нибудь в reg_options.py, попадёт в корпус сам.
+    # список вариантов, добавленный когда-нибудь в domain/regform/options.py, попадёт в корпус сам.
     # Большинство элементов — простые строки; PARTY_TRACK_OPTIONS — список (код, подпись) —
     # берём только строковые «хвостовые» элементы кортежа (подпись), не код.
     for name, value in vars(reg_options).items():
@@ -279,7 +279,7 @@ def code_literals() -> list[tuple[str, str]]:
     # Quick 260906 (UAT-фикс 27-05): /start-литералы handlers/registration.py, найденные
     # стендовым UAT (делегат видел русский, даже когда bulk_seed уже перевёл весь остальной
     # корпус) — этот модуль НЕ импортирует handlers ни при каких условиях (докстринг модуля
-    # выше, тот же инвариант, что у reg_engine.py) -> строки продублированы буквально, а не
+    # выше, тот же инвариант, что у domain/regform/engine.py) -> строки продублированы буквально, а не
     # импортированы из DEFAULT_START_REGISTERED_TEXT/DEFAULT_START_RETURNING_TEXT. Правка
     # текста в registration.py без зеркальной правки здесь тихо расходится с корпусом —
     # `tests/test_i18n_sources_27.py` держит обе строки байт-в-байт списком, «сверено на дату

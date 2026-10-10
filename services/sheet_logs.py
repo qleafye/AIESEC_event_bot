@@ -25,7 +25,7 @@ from database.db import (
 )
 from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
 from services.questions import format_stamp as _fmt_dt, status_label
-import reg_engine
+import domain.regform.engine as reg_engine
 
 logger = logging.getLogger(__name__)
 

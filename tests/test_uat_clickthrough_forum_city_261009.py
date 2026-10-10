@@ -12,7 +12,7 @@ from database import db
 from handlers import reg_flow
 from handlers.reg_city_gate import summary_data
 from handlers import registration as reg
-from reg_engine import summary_fields
+from domain.regform.engine import summary_fields
 from tests._dbtpl import fast_init_db
 from tests.test_city_flow_phase71 import _FakeCallback, _new_state, _use_tmp_db
 

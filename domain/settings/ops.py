@@ -44,7 +44,7 @@ from cities import (
     tab_suffix,
 )
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
-from reg_presets import apply_reg_preset
+from domain.regform.presets import apply_reg_preset
 from services.sheets import _reset_sheet_cache
 import domain.settings.placeholders as settings_placeholders
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options

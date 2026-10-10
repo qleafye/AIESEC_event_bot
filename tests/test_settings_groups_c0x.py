@@ -917,7 +917,7 @@ def test_toggle_keys_coverage():
     # it doesn't mention. See reg_engine.MODULE_SWITCH_TOGGLES for the explicit allowlist that
     # replaces this blanket rule.
     from handlers.reg_schema import REG_DEFAULTS
-    from reg_engine import MODULE_SWITCH_TOGGLES
+    from domain.regform.engine import MODULE_SWITCH_TOGGLES
 
     toggle_keys_in_schema = {k for k, v in SETTINGS_SCHEMA.items() if v["type"] == "toggle"}
     assert set(REG_DEFAULTS.keys()) <= toggle_keys_in_schema, (

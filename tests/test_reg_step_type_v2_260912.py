@@ -18,7 +18,7 @@ import pytest
 from config import config
 from database.db import init_db, set_setting
 
-from reg_engine import (
+from domain.regform.engine import (
     APP_PROJECTION,
     CHAT_PROJECTION,
     FORM_V2_TOGGLE_KEYS,
@@ -253,7 +253,7 @@ def test_composite_sub_spec_university_keeps_its_own_lookup_kind(tmp_path):
 
 
 def test_composite_sub_specs_do_not_recurse_into_their_own_composite_field(tmp_path):
-    """Защита от бесконечной рекурсии (`step_spec(_in_composite=True)`, docstring reg_engine.py)
+    """Защита от бесконечной рекурсии (`step_spec(_in_composite=True)`, docstring domain/regform/engine.py)
     — course/study_field/education_status сами имеют `kind == "composite"`, но их под-спеки
     внутри карточки НЕ несут собственный `spec["composite"]`."""
     _ready(tmp_path)

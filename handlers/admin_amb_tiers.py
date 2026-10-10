@@ -35,7 +35,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from database import amb_journal_db
 from database import amb_tiers_db
 from database import db
-from reg_labels import STATUS_LABELS
+from domain.regform.labels import STATUS_LABELS
 from services import amb_tiers
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
