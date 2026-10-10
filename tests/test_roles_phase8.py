@@ -496,7 +496,7 @@ def _admin_module_files():
     real map (ADMIN_CAPS) `test_menu_has_no_second_map` guards against being duplicated, so it
     legitimately contains the literal pairs the other files must never hand-roll."""
     return sorted(
-        p for p in Path(admin_mod.__file__).parent.glob("admin*.py")
+        p for p in Path(admin_mod.__file__).parent.rglob("admin*.py")
         if p.name != "admin_caps.py"
     )
 
@@ -1444,7 +1444,7 @@ def test_gate_single_capability_map():
     handlers_dir = repo_root / "handlers"
 
     definitions = [
-        path.name for path in sorted(handlers_dir.glob("*.py"))
+        path.name for path in sorted(handlers_dir.rglob("*.py"))
         if re.search(r"^ADMIN_CAPS\s*[:=]", _non_comment_source(path), re.MULTILINE)
     ]
     assert definitions == ["admin_caps.py"], (

@@ -55,7 +55,7 @@ def test_db_module_has_no_bare_aiosqlite_connect():
 def test_no_bare_db_path_connects_outside_db_module():
     root = Path(db.__file__).resolve().parent.parent
     offenders = []
-    for py in list((root / "services").glob("*.py")) + list((root / "handlers").glob("*.py")) \
+    for py in list((root / "services").rglob("*.py")) + list((root / "handlers").rglob("*.py")) \
             + list((root / "scripts").glob("*.py")) + [root / "main.py"]:
         for ln in py.read_text(encoding="utf-8").splitlines():
             if re.search(r"aiosqlite\.connect\(\s*config\.DB_PATH\s*\)", ln):

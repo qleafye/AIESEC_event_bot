@@ -374,7 +374,7 @@ def test_admin_guide_documents_the_city_switcher_and_its_scope():
     # handlers/admin*.py file concatenated, not just the aggregator.
     guide = _read("docs/ADMIN_GUIDE.md")
     admin_src = "".join(
-        _read(str(p)) for p in sorted(Path("handlers").glob("admin*.py"))
+        _read(str(p)) for p in sorted(Path("handlers").rglob("admin*.py"))
     )
     # Экран переключателя, описанный в гайде, существует в коде
     assert "admin_city_switch" in admin_src

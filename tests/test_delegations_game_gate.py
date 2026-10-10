@@ -233,7 +233,7 @@ def test_every_game_entry_point_is_gated():
 
 
 def test_chat_rating_untouched():
-    for p in Path("services").glob("chat_*.py"):
+    for p in Path("services").rglob("chat_*.py"):
         src = p.read_text(encoding="utf-8")
         assert "ensure_game_allowed" not in src and "delegation_game" not in src, p
 
