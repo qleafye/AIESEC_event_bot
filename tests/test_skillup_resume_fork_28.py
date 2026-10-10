@@ -1,7 +1,7 @@
 """Phase 28 (28-04, SU-04, СкиллАп 5): сторожа серверной половины развилки резюме — третье
 значение режима `fork`, редактируемый вайтлист доменов, чистая проверка ссылки
 (`reg_engine.validate_resume_link`), спека развилки для обеих поверхностей (`step_spec`),
-3-way тумблер режима резюме (`handlers/admin_reg_percity.py`, задача 2) и запись
+3-way тумблер режима резюме (`handlers/regform/admin_reg_percity.py`, задача 2) и запись
 `resume_type`/`resume_link`/`link_verified` на финале + два столбца листа (задача 3).
 
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, фикстура временной
@@ -183,7 +183,7 @@ def _admin_ready(tmp_path, name="test_skillup_resume_fork_28_admin.db"):
 def test_resume_mode_toggle_cycles_three_values(tmp_path):
     """Три тапа глобального тумблера возвращают исходное значение — цикл ровно из трёх, не
     жёсткий двузначный флип."""
-    from handlers import admin_reg_percity
+    from handlers.regform import admin_reg_percity
 
     _admin_ready(tmp_path)
 
@@ -201,7 +201,7 @@ def test_resume_mode_toggle_cycles_three_values(tmp_path):
 def test_resume_mode_label_shows_human_words(tmp_path):
     """Подпись «текущее → новое» — только человеческие слова, ни один код (`file_or_text`/
     `text_only`/`fork`) делегату/менеджеру не показывается."""
-    from handlers import admin_reg_percity as p
+    from handlers.regform import admin_reg_percity as p
 
     for current in ("file_or_text", "text_only", "fork", None, "garbage"):
         label = p._resume_mode_toggle_label(current)
@@ -215,7 +215,7 @@ def test_resume_mode_label_shows_human_words(tmp_path):
 def test_resume_mode_percity_override_cycles_too(tmp_path):
     """Городская ветка тумблера ведёт себя как глобальная — тот же цикл из трёх, свой
     композитный ключ, глобальный ключ не тронут."""
-    from handlers import admin_reg_percity
+    from handlers.regform import admin_reg_percity
     import domain.cities as cities
 
     _admin_ready(tmp_path)

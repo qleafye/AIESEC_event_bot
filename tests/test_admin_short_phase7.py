@@ -13,7 +13,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
-from handlers import admin_reg_percity  # module-size split: per-city questions/prompts screens
+from handlers.regform import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.admin_caps import required_capability
 from handlers.reg_schema import REG_FLOW, REG_PRESETS, _apply_short_preset
 from tests._dbtpl import fast_init_db

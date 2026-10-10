@@ -1,7 +1,7 @@
 """Phase 21 (gap closure, FORM-SYNC-01): сторож паритета подписей шагов анкеты.
 
 Подпись шага в мастере Mini App и в профиле — та же строка, которой бот подписывает этот
-шаг в админке (`handlers/admin_reg_config.py`: `REG_LABELS.get(setting_key, setting_key)`).
+шаг в админке (`handlers/regform/admin_reg_config.py`: `REG_LABELS.get(setting_key, setting_key)`).
 Ключ подписи в `reg_labels.REG_LABELS` — это `setting_key` из тройки `REG_FLOW`
 (`reg_q_education`, `reg_q_lc`, ...), а НЕ `reg_q_{step_key}`: для девяти шагов
 (`education_status`, `local_committee`, `work_status`, `missing_skills`, `attendance_format`,

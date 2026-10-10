@@ -402,7 +402,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "хендлеров, только импорт). "
         "Phase 30 (30-01, A2-08): девять строк тумблеров новой анкеты в settings_toggle_rows "
         "(текст «подпись: Вкл → Выкл» на каждый плюс option_labels-текст мастер-тумблера "
-        "reg_form_v2_enabled) — сами хендлеры в шве handlers/admin_reg_form.py, здесь только "
+        "reg_form_v2_enabled) — сами хендлеры в шве handlers/regform/admin_reg_form.py, здесь только "
         "общий источник строки кнопки (сторож tests/test_admin_sections_ia20.py::"
         "test_toggle_rows_are_shared_with_the_settings_screen); потолок поднят до фактического "
         "размера (2185 -> 2256). "

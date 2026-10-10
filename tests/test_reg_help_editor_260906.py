@@ -25,7 +25,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_reg_percity
+from handlers.regform import admin_reg_percity
 from handlers import admin_settings
 from handlers.admin_caps import required_capability, role_caps_key, role_enabled_key
 import domain.cities as cities

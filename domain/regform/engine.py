@@ -222,7 +222,7 @@ MINI_RESUME_STEPS = ("mini_projects", "mini_portfolio", "mini_direction")
 STEP_DONE = "__done__"
 
 # Phase 21 (gap closure, FORM-SYNC-01): ключ подписи шага в REG_LABELS — это setting_key из
-# тройки REG_FLOW (так бот подписывает шаг в `handlers/admin_reg_config.py`:
+# тройки REG_FLOW (так бот подписывает шаг в `handlers/regform/admin_reg_config.py`:
 # `REG_LABELS.get(setting_key, setting_key)`), а НЕ `reg_q_{step_key}`. Для девяти шагов
 # (education_status→reg_q_education, local_committee→reg_q_lc, work_status→reg_q_work,
 # missing_skills→reg_q_skills, attendance_format→reg_q_attendance, needs_certificate→
@@ -1629,7 +1629,7 @@ _REPEATABLE_NOUNS: dict[str, str] = {"mini_portfolio": "проект"}
 # Phase 30 (30-01, A2-08): девять тумблеров группы «📝 Анкета» — имена без префикса `reg_form_`
 # (сам префикс добавляет `form_v2_flags` при чтении реестра), порядок — как в артборде 13
 # (мастер первым). Единственное место, откуда обе поверхности (Mini App/чат) читают набор имён —
-# `domain/settings/schema.py`/`handlers/admin_reg_form.py` строят свои списки из тех же девяти строк.
+# `domain/settings/schema.py`/`handlers/regform/admin_reg_form.py` строят свои списки из тех же девяти строк.
 FORM_V2_TOGGLE_KEYS = (
     "v2_enabled", "chips", "lookup_search", "edu_card", "repeatable",
     "limit_counter", "status_screen", "header_settings", "haptics",

@@ -240,7 +240,7 @@ def test_registry_coverage_event():
         # (handlers/admin_modcard.py) — вне SETTINGS_FIELDS, как dashboard/miniapp.
         "apps",
         # "reg_prompts" added Phase 25 (CITYQ-01): 44 текста вопросов анкеты, переопределяемые
-        # по городу — свой экран «✏️ Тексты вопросов» (handlers/admin_reg_config.py), вне
+        # по городу — свой экран «✏️ Тексты вопросов» (handlers/regform/admin_reg_config.py), вне
         # SETTINGS_FIELDS, как reg_questions.
         "reg_prompts",
         # "chat" added quick 260927: веса формулы рейтинга чата (экран «💬 Чат делегатов» раздела

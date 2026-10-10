@@ -17,7 +17,7 @@ from config import config
 from database import db
 from handlers import reg_schema
 from handlers import registration as reg
-from handlers import admin_reg_config
+from handlers.regform import admin_reg_config
 import services.sheets as sheets_mod
 from tests._dbtpl import fast_init_db
 

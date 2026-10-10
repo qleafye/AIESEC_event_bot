@@ -19,7 +19,7 @@ from database import db
 import domain.cities as cities
 import domain.regform.engine as e
 import domain.settings.ops as settings_ops
-from handlers import admin_reg_config
+from handlers.regform import admin_reg_config
 from handlers import reg_schema
 from tests._dbtpl import fast_init_db
 
