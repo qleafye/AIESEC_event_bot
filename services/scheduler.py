@@ -253,6 +253,12 @@ async def _apply_setting_interval(key: str) -> None:
 async def on_setting_written(key: str) -> None:
     """Хук записи настройки (`settings_audit.run_setting_hooks` — и из бота, и из Mini App
     через очередь): новый интервал фоновой джобы действует сразу, без перезапуска бота."""
+    if key == DEADLINE_REMINDER_HOURS_KEY and _scheduler is not None:
+        # Срок напоминания о дедлайне: переставить уже стоящие джобы заданий на новый момент.
+        await load_deadline_reminder_hours()
+        await reconcile_wave_jobs()
+        logger.info("Срок напоминания о дедлайне обновлён без перезапуска")
+        return
     if key not in _setting_interval_jobs() or _scheduler is None:
         return  # не тайминг, или планировщика нет (веб-процесс, тесты) — интервал возьмёт старт
     await _apply_setting_interval(key)
@@ -427,6 +433,7 @@ async def init_scheduler(bot):
     # Phase 32 (32-08, T-32-08-07): то же самое для трёх джоб амбассадорских волн (старт,
     # напоминание о дедлайне, конец волны) — вызывается ПОСЛЕДНЕЙ из реконсиляций namespace'а
     # (после опросов), тот же порядок, что у остальных «дослать пропущенное на старте» шагов.
+    await load_deadline_reminder_hours()
     await reconcile_wave_jobs()
     # Форум-ночь п.3 (D-03, идея №2): (пере)ставить джобы рассылки QR перед форумом на каждый
     # город — ленивый импорт, тот же приём, что у соседей выше (services.checkin_broadcast сама
@@ -1865,13 +1872,35 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
 
 # ── Phase 32 (32-08, D-26): напоминание за сутки до дедлайна задания ─────────────────────
 
+# Ночь 10.10: за сколько часов до дедлайна — настройка `wave_deadline_reminder_hours` (было 24 ч
+# литералом). `schedule_task_deadline_reminder` синхронная (её зовут визард и сверка), поэтому
+# значение держится здесь: читается на старте планировщика и в хуке записи настройки.
+DEADLINE_REMINDER_HOURS_KEY = "wave_deadline_reminder_hours"
+_deadline_reminder_hours = 24
+
+
+async def load_deadline_reminder_hours() -> int:
+    global _deadline_reminder_hours
+    try:
+        hours = int(await get_setting_typed(DEADLINE_REMINDER_HOURS_KEY))
+    except (TypeError, ValueError):
+        hours = 24
+    _deadline_reminder_hours = hours if hours >= 1 else 24
+    return _deadline_reminder_hours
+
+
+def _deadline_lead() -> timedelta:
+    return timedelta(hours=_deadline_reminder_hours)
+
+
 def schedule_task_deadline_reminder(task_id: int, deadline: datetime) -> bool:
-    """Разовая джоба напоминания за сутки до дедлайна ОДНОГО задания, на `deadline - 24h`.
+    """Разовая джоба напоминания до дедлайна ОДНОГО задания, на `deadline - N ч` (N —
+    `wave_deadline_reminder_hours`, по умолчанию 24).
     Момент уже в прошлом — напоминать поздно, джоба НЕ ставится вовсе (не «догоняющая»
     отправка задним числом, в отличие от рассылки старта волны). Возвращает признак,
     поставлена ли она — `reconcile_wave_jobs` использует его, чтобы отличить «уже стоит» от
     «дедлайн слишком близко, реального пропуска нет»."""
-    run_at = deadline - timedelta(hours=24)
+    run_at = deadline - _deadline_lead()
     if run_at <= _now_moscow_naive():
         return False
     get_scheduler().add_job(
@@ -1969,7 +1998,8 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         if deadline is None:
             return
         now = _now_moscow_naive()
-        if deadline - timedelta(hours=24) > now:
+        await load_deadline_reminder_hours()
+        if deadline - _deadline_lead() > now:
             schedule_task_deadline_reminder(task_id, deadline)
             return
         if deadline <= now:
