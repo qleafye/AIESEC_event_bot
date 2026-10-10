@@ -696,7 +696,7 @@ def test_threshold_order_checked_on_save_bot_and_web(tmp_path):
 
     import inspect
 
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     assert "cross_setting_error" in inspect.getsource(admin_settings.settings_edit_value)
 
 

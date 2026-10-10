@@ -204,7 +204,7 @@ def test_required_capability_covers_every_new_callback_prefix():
 
 
 def test_admin_reject_rules_wired_into_apps_section():
-    from handlers import admin_sections as sec
+    from handlers.settings import admin_sections as sec
     apps_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "apps")
     assert any(row[0] == "screen" and row[1] == "admin_reject_rules" for row in apps_rows)
 
@@ -500,7 +500,7 @@ def test_master_switch_turn_on_needs_no_confirmation(tmp_path):
 
 
 def test_master_switch_generic_settings_edit_closed_for_bound(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     _run(_setup_staff())
     cb = _FakeCallback("settings_edit:reject_rules_enabled", user_id=BOUND_MSK_ID)

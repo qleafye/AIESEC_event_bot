@@ -7,7 +7,7 @@ from aiogram.dispatcher.event.bases import SkipHandler
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_settings
+from handlers.settings import admin_settings
 from handlers.access.admin_caps import required_capability
 from keyboards.menu_dynamic import (
     DynamicMenuText,

@@ -62,6 +62,6 @@ def test_preview_samples_cover_new_placeholders():
 
 
 def test_not_in_event_field_order():
-    from handlers.admin_settings import _EVENT_FIELD_ORDER
+    from handlers.settings.admin_settings import _EVENT_FIELD_ORDER
 
     assert not [k for k in _PHASE_KEYS if k in _EVENT_FIELD_ORDER]

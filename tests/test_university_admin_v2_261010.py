@@ -5,8 +5,8 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_sections as sec
-from handlers import admin_settings
+from handlers.settings import admin_sections as sec
+from handlers.settings import admin_settings
 from tests._dbtpl import fast_init_db
 from tests.test_settings_groups_c0x import ADMIN_ID, FakeCallback, _flat_callback_data
 

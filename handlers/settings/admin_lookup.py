@@ -7,7 +7,7 @@
 Форма шва — `handlers/forum/admin_faq.py` (постраничный список + карточка), точная копия приёма:
 свой класс роутера не заводится, хендлеры декорируют ОБЩИЙ `handlers.admin.router`, каждый
 декоратор — в одну строку (инвариант cap-теста `tests/test_roles_phase8.py`).
-`handlers.admin_sections.back_button` — ленивый импорт внутри функций (D-03: цикл на уровне
+`handlers.settings.admin_sections.back_button` — ленивый импорт внутри функций (D-03: цикл на уровне
 модуля, admin_sections импортирует этот шов хвостом).
 
 `LookupAdmin` — `StatesGroup` в `handlers/states.py` (не локально в шве): `tests/test_roles_phase8.py`'s автовывод capability-ключа для message-хендлеров admin-роутера находит группу состояний ТОЛЬКО там (`hasattr(states_mod, group_name)`), в отличие от `handlers/reg/reg_types_lookup.py` (30-06, чат-роутер регистрации, другая проверка).
@@ -59,7 +59,7 @@ async def render_lookup_home() -> tuple[str, InlineKeyboardMarkup]:
         "Здесь можно (но не обязательно) навести порядок в справочнике ВУЗов и городов: "
         "разобрать очередь «Другое» и закрепить свои чипы наверху списка."
     )
-    from handlers.admin_sections import back_button  # ленивый шов (D-03)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (D-03)
 
     buttons = [
         [InlineKeyboardButton(text=label, callback_data=f"admin_lookup:kind:{kind}")]
@@ -95,7 +95,7 @@ async def render_lookup_kind(kind: str) -> tuple[str, InlineKeyboardMarkup]:
     )
     text = "\n".join(lines)
 
-    from handlers.admin_sections import back_button  # ленивый шов (D-03)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (D-03)
 
     buttons = [
         [InlineKeyboardButton(

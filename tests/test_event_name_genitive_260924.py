@@ -11,7 +11,7 @@ import asyncio
 
 from config import config
 from database.db import set_setting
-from handlers import admin_settings
+from handlers.settings import admin_settings
 from domain.regform.engine import _default_prompt_text
 from domain.settings.schema import SETTINGS_SCHEMA
 from domain.settings.synonyms import SETTINGS_SYNONYMS

@@ -410,7 +410,7 @@ def test_count_applications_empty_db_returns_zeros(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 import domain.cities as cities_mod
-import handlers.admin_sections as sec
+import handlers.settings.admin_sections as sec
 from handlers.applications import admin_app_list
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 from tests.test_admin_sections_ia20 import FakeCallback

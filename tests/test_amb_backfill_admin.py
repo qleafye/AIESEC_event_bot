@@ -87,7 +87,7 @@ def test_city_scoped_manager_cannot_credit_all_cities(tmp_path, monkeypatch):
     async def scoped(admin_id):
         return ("moscow", ("moscow",)), "Москва"
 
-    monkeypatch.setattr("handlers.admin_core._admin_city_view", scoped)
+    monkeypatch.setattr("handlers.settings.admin_core._admin_city_view", scoped)
     pv = FakeCallback("ambpt_fill")
     _run(h.amb_backfill_preview(pv))
     assert pv.answers[0][1] is True and "Все города" in pv.answers[0][0] and pv.message.edits == []

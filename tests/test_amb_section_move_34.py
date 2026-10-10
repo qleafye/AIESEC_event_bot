@@ -10,7 +10,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_sections as sec
+from handlers.settings import admin_sections as sec
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 1
@@ -102,7 +102,7 @@ def test_waves_screen_back_follows_toggle(tmp_path):
 
 def test_moderate_game_holder_sees_both_sections(tmp_path):
     _ready(tmp_path, selection=True)
-    kb = _run(__import__("handlers.admin_core", fromlist=["x"]).build_admin_keyboard(ADMIN_ID))
+    kb = _run(__import__("handlers.settings.admin_core", fromlist=["x"]).build_admin_keyboard(ADMIN_ID))
     flat = _callbacks(kb)
     assert "admin_sec:game" in flat and "admin_sec:amb" in flat
 

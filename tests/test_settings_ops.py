@@ -1,6 +1,6 @@
 """Phase 22 План 01 (WEB-SET-01/04, D-12): снимок поведения переносимых функций —
 написан ДО переноса `_apply_event_type_preset`/`_SHEET_TAB_WRITE_MODE`/`HTML_SETTINGS`/
-`_tab_confirm_text`/... из `handlers/admin_settings.py` в корневой aiogram-free `domain/settings/ops.py`.
+`_tab_confirm_text`/... из `handlers/settings/admin_settings.py` в корневой aiogram-free `domain/settings/ops.py`.
 
 Пока `domain/settings/ops.py` не создан (задача 2 плана), импорт на уровне модуля падает
 `ModuleNotFoundError` — это и есть Wave 0 RED-снимок.
@@ -36,7 +36,7 @@ def test_settings_ops_module_does_not_load_aiogram():
 # ── перенос, а не копия: HTML_SETTINGS — тот же объект, что видит бот ────────────────────
 
 def test_html_settings_is_same_object_as_bot():
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     assert admin_settings.HTML_SETTINGS is settings_ops.HTML_SETTINGS
 
 

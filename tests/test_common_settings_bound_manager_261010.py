@@ -11,10 +11,10 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 import domain.settings.ops as settings_ops
 from database import db
-from handlers import admin_settings as st
-from handlers import admin_settings_enum as se
-from handlers import admin_settings_global as gscope
-from handlers import admin_settings_lists as sl
+from handlers.settings import admin_settings as st
+from handlers.settings import admin_settings_enum as se
+from handlers.settings import admin_settings_global as gscope
+from handlers.settings import admin_settings_lists as sl
 from handlers.states import EditSetting
 from tests.test_admin_sections_ia20 import FakeCallback, _enable_cities
 from tests.test_roles_phase8 import ADMIN_ID, MANAGER_ID, _flat_callback_data, _roles_ready

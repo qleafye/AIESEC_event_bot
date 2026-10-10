@@ -548,7 +548,7 @@ async def main():
     # NEXT admin visit to the settings screen, not on restart. Fail-soft: unreachable Telegram
     # must not block startup.
     try:
-        from handlers.admin_miniapp import sync_chat_menu_button
+        from handlers.settings.admin_miniapp import sync_chat_menu_button
         await sync_chat_menu_button(bot)
     except Exception:
         logger.warning("sync_chat_menu_button failed at startup", exc_info=True)

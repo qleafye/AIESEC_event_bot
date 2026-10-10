@@ -253,7 +253,7 @@ def test_registry_delegate_lang_toggles_are_reachable_from_admin_ui(tmp_path):
     текстом — прямое нарушение CLAUDE.md («кодовые значения человеку не показываем и ввести
     не просим»). Вместо этого — тот же паттерн, что у соседних модульных тумблеров
     (party_enabled/consent_enabled/quiet_hours_enabled): group="toggles",
-    settings_toggle_rows()-строка и кнопка в разделе «📝 Анкета» (handlers/admin_sections.py),
+    settings_toggle_rows()-строка и кнопка в разделе «📝 Анкета» (handlers/settings/admin_sections.py),
     рядом с toggle_party_enabled/toggle_consent_enabled — тот же принцип, что уже применён к
     toggle_reg_edit_remoderation (group="reg", тоже НЕ в _REG_FIELD_ORDER).
 
@@ -262,8 +262,8 @@ def test_registry_delegate_lang_toggles_are_reachable_from_admin_ui(tmp_path):
     прогона, падает на "no such table: bot_settings" запущенный в одиночку)."""
     _use_tmp_db(tmp_path)
 
-    from handlers import admin_sections as sec
-    from handlers.admin_settings import settings_toggle_rows
+    from handlers.settings import admin_sections as sec
+    from handlers.settings.admin_settings import settings_toggle_rows
 
     assert SETTINGS_SCHEMA["delegate_lang_enabled"]["group"] == "toggles"
     assert SETTINGS_SCHEMA["delegate_lang_ask_on_start"]["group"] == "toggles"

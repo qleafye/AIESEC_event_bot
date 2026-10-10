@@ -77,7 +77,7 @@ from domain.cities import (
     get_setting_typed_for_city,
     PER_CITY_SEP,
 )
-from handlers.admin_core import admin_keyboard_for, _admin_city_view
+from handlers.settings.admin_core import admin_keyboard_for, _admin_city_view
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)
@@ -522,7 +522,7 @@ def _group_of_setting_key(key: str) -> str | None:
     """Обратный индекс «ключ настройки -> токен группы», ВЫВЕДЕННЫЙ из SETTINGS_GROUPS
     (+ leftover-группа «misc»), а не второй литеральный словарь: он разъехался бы с
     группировкой при первой же перекладке ключа, и менеджер после правки значения уезжал бы
-    на чужой экран. Нужен `handlers/admin_sections.py::settings_return_screen`, чтобы понять,
+    на чужой экран. Нужен `handlers/settings/admin_sections.py::settings_return_screen`, чтобы понять,
     с какого экрана менеджер правил значение.
 
     Композитный per-city ключ («{base}__city__{code}») приводится к базе — своей группы у
@@ -551,7 +551,7 @@ def _group_of_setting_key(key: str) -> str | None:
 # of render_settings_text/build_settings_keyboard remains in this file).
 #
 # Phase 20 (20-04): ЭТА ФУНКЦИЯ БОЛЬШЕ НЕ ЯВЛЯЕТСЯ ЭКРАНОМ. Плоский лендинг настроек заменён
-# восемью разделами (handlers/admin_sections.py), ни один хендлер её не рисует. Она и её пара
+# восемью разделами (handlers/settings/admin_sections.py), ни один хендлер её не рисует. Она и её пара
 # `build_settings_keyboard` сохранены как снапшот-контракт раскладки тумблеров
 # (tests/test_settings_groups_c0x.py::test_settings_toggle_button_snapshot) и как потребитель
 # `settings_toggle_rows` — не мёртвый код, удалять нельзя.
@@ -657,7 +657,7 @@ async def render_settings_text(admin_id: int | None = None) -> str:
 
 # Phase 20 (20-01, ADMIN-IA-01): ЕДИНСТВЕННЫЙ источник строк-тумблеров настроек. Отсюда их
 # берёт и старый лендинг (`build_settings_keyboard` ниже), и экраны разделов
-# (`handlers/admin_sections.py`) — иначе один и тот же тумблер имел бы две разные подписи в
+# (`handlers/settings/admin_sections.py`) — иначе один и тот же тумблер имел бы две разные подписи в
 # двух местах. Ключ словаря — callback_data тумблера; значение — СТРОКИ клавиатуры (список
 # списков кнопок): у `settings_toggle_reg` их две, когда у города шапки есть собственное
 # значение registration_mode и показывается «↩️ Как везде», иначе одна.
@@ -1232,7 +1232,7 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
         # Phase 32 (32-02, D-29): «Показывать имена в рейтинге волны» — тумблер, тот же приём.
         buttons.append([InlineKeyboardButton(text=await _wave_rating_show_names_button_text(), callback_data="toggle_wave_rating_show_names")])
     # Phase 20 (20-01): «🔄 Новый сезон» и «📥 Импорт прошлого события» съехали с экрана
-    # группы «🎪 Событие/Медиа» в раздел «🔧 Управление» (handlers/admin_sections.py) — это
+    # группы «🎪 Событие/Медиа» в раздел «🔧 Управление» (handlers/settings/admin_sections.py) — это
     # операции над всем событием, а не тексты и медиа. Условие суперадмина для «Нового
     # сезона» переехало вместе с кнопкой (тип строки `screen_admin` в реестре разделов);
     # настоящий гейт — прежняя перепроверка config.ADMIN_IDS внутри самих хендлеров визарда,
@@ -1244,8 +1244,8 @@ async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
     # Phase 20 (20-04): «Назад» с экрана группы ведёт в РАЗДЕЛ-владелец этой группы
     # («🎪 Событие/Медиа» -> «🎪 Событие», «📋 Заявки» -> «📋 Заявки»), а не на исчезнувший
     # плоский лендинг. Цель считает `section_of` из реестра SECTIONS — второй карты нет.
-    from handlers.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
-    from handlers.admin_sections import owner_back_button  # тот же шов: «Назад» из «🤝 Амбассадоры» при выключенном модуле — в «🎮 Геймификацию»
+    from handlers.settings.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
+    from handlers.settings.admin_sections import owner_back_button  # тот же шов: «Назад» из «🤝 Амбассадоры» при выключенном модуле — в «🎮 Геймификацию»
     buttons.append([await owner_back_button(f"settings_group:{token}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -1256,7 +1256,7 @@ async def show_admin_settings(callback: types.CallbackQuery):
     клавиатур, отрисованных ДО фазы 20 и живущих в чатах вечно. Плоского лендинга больше нет,
     поэтому кнопка приземляется на КОРЕНЬ разделов с объяснением переезда — тупика и
     необработанного callback'а не возникает."""
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -1309,7 +1309,7 @@ async def toggle_registration_mode(callback: types.CallbackQuery):
     # Phase 20 (20-04): тумблер перерисовывает РАЗДЕЛ, с которого его нажали. Раздел не
     # задаётся, а выводится: `callback.data` тумблера и есть строка ("toggle", …) реестра
     # SECTIONS, `section_of` найдёт владельца — словаря «тумблер -> раздел» нет.
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(admin_id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     # Phase 7 (SHORT-03, gate #5): materialize the short tab the moment the manager flips
@@ -1355,7 +1355,7 @@ async def settings_regmode_reset(callback: types.CallbackQuery):
     # чья условная вложенная строка «↩️ Как везде» и открыла этот экран (своей записи в
     # SECTIONS у экрана подтверждения нет и быть не должно). Подпись остаётся «← Отмена»:
     # это отказ от действия, а не навигация.
-    from handlers.admin_sections import back_button  # ленивый шов
+    from handlers.settings.admin_sections import back_button  # ленивый шов
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"settings_regmode_reset_go:{header_code}")],
         [back_button("settings_toggle_reg", text="← Отмена")],
@@ -1370,7 +1370,7 @@ async def settings_regmode_reset_go(callback: types.CallbackQuery):
     # в «📝 Анкета». Подсказка — `settings_toggle_reg`, а НЕ собственный callback хендлера:
     # `settings_regmode_reset_go:{code}` в SECTIONS не объявлен, кнопка «↩️ Как везде» —
     # условная вложенная строка тумблера регистрации, и раздел у неё тот же.
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     admin_id = callback.from_user.id
     code = callback.data.split(":", 1)[1]
     # Fail-closed (RESEARCH Pattern 2 / review WR-02): module off never deletes a per-city
@@ -1419,14 +1419,14 @@ async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, defa
     if new_val == "auto":
         # Квик 260913-16o: выключение модерации требует подтверждения + шлёт алерт держателям
         # moderate_reg — сам экран и запись живут в шве, ничего не пишем до «Да».
-        from handlers.admin_settings_audit import ask_auto_confirm  # ленивый шов
+        from handlers.settings.admin_settings_audit import ask_auto_confirm  # ленивый шов
         return await ask_auto_confirm(callback, key, title)
     await set_setting_by_admin(callback.from_user.id, key, new_val)
     await callback.answer(f"{title}: {'👮 Ручная' if new_val == 'manual' else '⚡ Авто'}", show_alert=True)
     # Phase 20 (20-04): одна правка на generic-хелпер покрывает все его callback'и — раздел
     # выводится из `callback.data` через SECTIONS, а не задаётся словарём (см. комментарий
     # у toggle_registration_mode).
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -1498,7 +1498,7 @@ async def _cycle_enum_setting(callback: types.CallbackQuery, key: str, hints: di
             hint = hints.get(new_val, "")
             city_txt = await city_label(header_code)
             await callback.answer(f"{label} — {city_txt}: {human}\n\n{hint}", show_alert=True)
-            from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+            from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
             text, kb = await settings_return_screen(admin_id, callback_data=callback.data)
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
             return
@@ -1508,7 +1508,7 @@ async def _cycle_enum_setting(callback: types.CallbackQuery, key: str, hints: di
     human = option_label(key, new_val)
     hint = hints.get(new_val, "")
     await callback.answer(f"{label}: {human}\n\n{hint}", show_alert=True)
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(admin_id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -1524,7 +1524,7 @@ async def _toggle_module_setting(callback: types.CallbackQuery, key: str, title:
     await set_setting_by_admin(callback.from_user.id, key, new_val)
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{title}: {label}", show_alert=True)
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await remind_consent_purposes_if_widened(callback.message, key, new_val)
@@ -1716,7 +1716,7 @@ async def toggle_reg_scoring_enabled(callback: types.CallbackQuery):
     label = SETTINGS_SCHEMA["reg_scoring_enabled"]["label"]
     status = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"{label}: {status}", show_alert=True)
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -1795,7 +1795,7 @@ async def _toggle_value_setting(callback, key, val_a, val_b, default, title_a, t
     new_val = val_b if current == val_a else val_a
     await set_setting_by_admin(callback.from_user.id, key, new_val)
     await callback.answer(title_a if new_val == val_a else title_b, show_alert=True)
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -1811,7 +1811,7 @@ async def toggle_uni_mode(callback: types.CallbackQuery):
         if not (uni_opts and uni_opts.strip()):
             await set_setting_by_admin(callback.from_user.id, "reg_university_mode", "list")
             await callback.answer(UNI_LIST_EMPTY_WARNING, show_alert=True)
-            from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+            from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
             text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
             await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
             return
@@ -1844,7 +1844,7 @@ async def toggle_notify_mode(callback: types.CallbackQuery):
     new_val = "batched" if current == "instant" else "instant"
     await set_setting_by_admin(callback.from_user.id, "pending_notify_mode", new_val)
     await callback.answer(f"О новых заявках: {'📨 О каждой' if new_val == 'instant' else '🕒 Сводкой по таймеру'}", show_alert=True)
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -1859,7 +1859,7 @@ async def toggle_bonus(callback: types.CallbackQuery):
     label = "✅ Вкл" if new_val == "on" else "❌ Выкл"
     await callback.answer(f"Бонус за регистрацию: {label}", show_alert=True)
 
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=callback.data)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -1928,13 +1928,13 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
     prompt = prompts.get(key) or SETTINGS_SCHEMA.get(key, {}).get("prompt") or "Введите значение"
     prompt += ph.hint_line(key, prompt)
     per_city_ctx = bool(header_code and header_code != ALL_CITIES)
-    # Quick 260822: списочный ключ правится по пунктам (handlers/admin_settings_lists.py) —
+    # Quick 260822: списочный ключ правится по пунктам (handlers/settings/admin_settings_lists.py) —
     # кнопки ➕/🗑/✏️ вместо ввода, FSM с этого экрана не стартует (см. settings_edit_start).
     entry = SETTINGS_SCHEMA.get(_base_setting_key(key), {})
     is_list, label = entry.get("type") == "list", entry.get("label", key)
-    # enum — кнопками (handlers/admin_settings_enum.py), свой у города — в settings_edit_city.
+    # enum — кнопками (handlers/settings/admin_settings_enum.py), свой у города — в settings_edit_city.
     is_enum = entry.get("type") == "enum" and bool(entry.get("options"))
-    from handlers.admin_settings_enum import ENUM_HINT, enum_label, enum_now_line, enum_rows  # ленивый шов
+    from handlers.settings.admin_settings_enum import ENUM_HINT, enum_label, enum_now_line, enum_rows  # ленивый шов
 
     if per_city_ctx and is_per_city(key):
         city_label_txt = await city_label(header_code)
@@ -2100,7 +2100,7 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     current = await get_setting(composed)
     city_txt = await city_label(header_code)
     text = f"🏙 {html_module.escape(city_txt)}\n\n"
-    from handlers.admin_settings_enum import ENUM_HINT, city_now_line, enum_rows  # enum — кнопками, пишут в ключ города
+    from handlers.settings.admin_settings_enum import ENUM_HINT, city_now_line, enum_rows  # enum — кнопками, пишут в ключ города
     text += f"{await city_now_line(key, current)}\n\n"
     rows = enum_rows(key, current)
     text += html_module.escape(prompt) + (ENUM_HINT if rows else _fdate.clear_hint(key))
@@ -2256,7 +2256,7 @@ def _return_hint_from_state(data: dict, raw_state: str | None = None) -> dict:
 
 @router.callback_query(F.data == "settings_cancel")
 async def cancel_edit_setting_callback(callback: types.CallbackQuery, state: FSMContext):
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     # Данные и состояние читаются ДО очистки — после неё подсказку взять уже неоткуда.
     hint = _return_hint_from_state(await state.get_data(), await state.get_state())
     await state.clear()
@@ -2295,7 +2295,7 @@ def _parse_consent_list(raw: str) -> list[tuple[str, str]]:
 @router.callback_query(F.data == "admin_consent_pdfs")
 async def admin_consent_pdfs(callback: types.CallbackQuery):
     # Phase 20 (20-04): «Назад» ведёт в раздел-владелец этого экрана — «📝 Анкета».
-    from handlers.admin_sections import back_button  # ленивый шов
+    from handlers.settings.admin_sections import back_button  # ленивый шов
     items = _parse_consent_list(await get_setting("consent_list") or "")
     if not items:
         await callback.answer()
@@ -2353,7 +2353,7 @@ async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
 @router.message(StateFilter(EditSetting), Command("cancel"))
 @router.message(StateFilter(EditSetting), F.text == "Отмена")
 async def cancel_edit_setting(message: types.Message, state: FSMContext):
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     hint = _return_hint_from_state(await state.get_data(), await state.get_state())  # ДО очистки
     await state.clear()
     text, kb = await settings_return_screen(message.from_user.id, **hint)
@@ -2377,7 +2377,7 @@ async def settings_receive_photo(message: types.Message, state: FSMContext):
     await message.answer("✅ Фото обновлено!")
     # Phase 20 (20-04): возврат на экран группы, где живёт эта кнопка «📷 …» — подсказка —
     # ключ, который только что записан. Подтверждение остаётся отдельным сообщением выше.
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(message.from_user.id, setting_key=f"{prefix}_photo_file_id")
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
@@ -2412,14 +2412,14 @@ async def settings_receive_file_photo(message: types.Message, state: FSMContext)
     await message.answer("✅ Файл обновлён!")
     # Фото, присланное файлом, пишется в тот же «{prefix}_photo_file_id» — и экран возврата
     # тот же, что у обычного фото (20-04).
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(message.from_user.id, setting_key=f"{prefix}_photo_file_id")
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.message(EditSetting.waiting_for_file, F.document)
 async def settings_receive_file_doc(message: types.Message, state: FSMContext):
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (20-04)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (20-04)
     data = await state.get_data()
 
     # Квик 260921: иконка вкладки дашборда — тот же raw_file_key-путь, что у PDF согласия
@@ -2438,8 +2438,8 @@ async def settings_receive_file_doc(message: types.Message, state: FSMContext):
         await message.answer(dashboard_favicon.SUCCESS_MESSAGE)
         # Возврат НА ТОТ ЖЕ экран «🎭 Пресеты и ручки», а не через settings_return_screen
         # (у него нет своего раздела-строки) — тот же приём, что у остальных десяти
-        # фото-ручек в miniapp_theme_photo_step (handlers/admin_miniapp_theme.py).
-        from handlers.admin_miniapp_theme import (  # ленивый шов
+        # фото-ручек в miniapp_theme_photo_step (handlers/settings/admin_miniapp_theme.py).
+        from handlers.settings.admin_miniapp_theme import (  # ленивый шов
             build_miniapp_theme_keyboard, render_miniapp_theme_text,
         )
         await message.answer(
@@ -2724,7 +2724,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     # Phase 20 (20-04): возврат на экран ГРУППЫ, с которого менеджер и открыл правку (кнопка
     # «✏️ …» живёт только там). Предупреждение о вариантах/вкладке приклеивается к тексту
     # экрана возврата так же, как раньше приклеивалось к тексту лендинга.
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(message.from_user.id, setting_key=key, return_to=_caller_screen(data))
     await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
 
@@ -2742,7 +2742,7 @@ async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext
         await set_setting_by_admin(callback.from_user.id, key, value)
         if key in _SHEET_TAB_WRITE_MODE:
             await _after_tab_setting_saved(key)
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Сохранено")
@@ -2752,7 +2752,7 @@ async def sheets_tab_confirm_go(callback: types.CallbackQuery, state: FSMContext
 async def sheets_tab_cancel_go(callback: types.CallbackQuery, state: FSMContext):
     """Cancelled overwrite — nothing saved, prior value untouched."""
     await state.clear()
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Отменено")
@@ -2840,36 +2840,36 @@ async def export_incomplete(callback: types.CallbackQuery):
 
 from handlers.regform.admin_consent import consent_group_extra_lines, consent_group_extra_buttons, remind_consent_purposes_if_widened, remind_consent_purposes_after_preset  # noqa: E402  -- quick 260822: шов согласий (версия/пересогласие/напоминание о целях)
 
-# ── Seam chain (quick 260822): handlers/admin_settings_lists.py (списочные настройки по
+# ── Seam chain (quick 260822): handlers/settings/admin_settings_lists.py (списочные настройки по
 # пунктам) decorates the same admin.router and depends one-way on this module. Imported HERE,
 # as the very last statement, so its handlers register right after every handler above at any
 # module import order (same device as admin_gamification -> admin_game_tasks). Golden
 # snapshot: tests/test_refac_snapshot_260816.py.
-from handlers import admin_settings_lists  # noqa: E402,F401
+from handlers.settings import admin_settings_lists  # noqa: E402,F401
 
-# ── Seam chain (Phase 15, 15-02): handlers/admin_dashboard.py (экран «📊 Дашборд» — тумблеры
+# ── Seam chain (Phase 15, 15-02): handlers/settings/admin_dashboard.py (экран «📊 Дашборд» — тумблеры
 # блоков веб-дашборда) decorates the same admin.router. Imported LAST, after
 # admin_settings_lists, so its two handlers land right after every handler above at any module
 # import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
-from handlers import admin_dashboard  # noqa: E402,F401
+from handlers.settings import admin_dashboard  # noqa: E402,F401
 
-# ── Seam chain (Phase 19, 19-08): handlers/admin_miniapp.py (экран «🎨 Оформление» Mini App)
+# ── Seam chain (Phase 19, 19-08): handlers/settings/admin_miniapp.py (экран «🎨 Оформление» Mini App)
 # decorates the same admin.router. Imported LAST, after admin_dashboard, so its handlers land
 # right after every handler above at any module import order. Golden snapshot:
 # tests/test_refac_snapshot_260816.py (regenerated by this plan's task 2, which touches the
 # snapshot together with the user_actions.py append).
-from handlers import admin_miniapp  # noqa: E402,F401
+from handlers.settings import admin_miniapp  # noqa: E402,F401
 
-# ── Seam chain (Phase 19.1, 07, D-20): handlers/admin_miniapp_theme.py (пресеты + ручки
+# ── Seam chain (Phase 19.1, 07, D-20): handlers/settings/admin_miniapp_theme.py (пресеты + ручки
 # кастома — второй шов «🎨 Оформление») decorates the same admin.router. Imported LAST, right
 # after admin_miniapp, so its handlers land right after every handler above at any module
 # import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
-from handlers import admin_miniapp_theme  # noqa: E402,F401
+from handlers.settings import admin_miniapp_theme  # noqa: E402,F401
 
-# ── Seam chain (Phase 20, 20-01): handlers/admin_sections.py (реестр 8 разделов админки по
+# ── Seam chain (Phase 20, 20-01): handlers/settings/admin_sections.py (реестр 8 разделов админки по
 # пути делегата и экраны этих разделов) decorates the same admin.router. Imported LAST, right
 # after admin_miniapp_theme, so its handler lands right after every handler above at any
 # module import order. Golden snapshot: tests/test_refac_snapshot_260816.py.
-from handlers import admin_sections  # noqa: E402,F401
-from handlers import admin_settings_placeholders as ph  # noqa: E402  -- проверка {подстановок} при сохранении текста + превью
-from handlers import admin_settings_global as gscope  # noqa: E402  -- общая настройка при городе в шапке: ввод только после кнопки
+from handlers.settings import admin_sections  # noqa: E402,F401
+from handlers.settings import admin_settings_placeholders as ph  # noqa: E402  -- проверка {подстановок} при сохранении текста + превью
+from handlers.settings import admin_settings_global as gscope  # noqa: E402  -- общая настройка при городе в шапке: ввод только после кнопки

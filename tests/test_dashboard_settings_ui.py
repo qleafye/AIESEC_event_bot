@@ -6,7 +6,7 @@ pytest-asyncio недоступен в этом окружении (см. tests/
 Task 1: реестр — ключи dashboard_block_* в SETTINGS_SCHEMA, вне SETTINGS_FIELDS,
 дефолты читаются через get_setting_typed на пустой БД.
 
-Task 2: экран handlers/admin_dashboard.py — рендер, тумблер по одному ключу, права в
+Task 2: экран handlers/settings/admin_dashboard.py — рендер, тумблер по одному ключу, права в
 ADMIN_CAPS, регресс «бот для людей» (сырой код ключа не попадает в текст/подписи кнопок).
 """
 import asyncio
@@ -14,7 +14,7 @@ import asyncio
 from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
-from handlers import admin_settings
+from handlers.settings import admin_settings
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 from tests._dbtpl import fast_init_db
 
@@ -116,7 +116,7 @@ def _flat_callback_data(kb):
 
 def test_dashboard_settings_screen_shows_buttons_in_order(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_dashboard
+    from handlers.settings import admin_dashboard
 
     kb = asyncio.run(admin_dashboard.build_dashboard_settings_keyboard())
     data = _flat_callback_data(kb)
@@ -130,7 +130,7 @@ def test_dashboard_settings_screen_shows_buttons_in_order(tmp_path):
 
 def test_dashboard_settings_open_screen_handler(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_dashboard
+    from handlers.settings import admin_dashboard
 
     callback = FakeCallback("admin_dashboard_settings")
     asyncio.run(admin_dashboard.open_dashboard_settings(callback))
@@ -140,7 +140,7 @@ def test_dashboard_settings_open_screen_handler(tmp_path):
 
 def test_dashboard_block_toggle_flips_only_its_own_key(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_dashboard
+    from handlers.settings import admin_dashboard
 
     callback = FakeCallback("dash_block:funnel")
     asyncio.run(admin_dashboard.toggle_dashboard_block(callback))
@@ -161,7 +161,7 @@ def test_dashboard_block_toggle_flips_only_its_own_key(tmp_path):
 
 def test_dashboard_block_toggle_unknown_suffix_does_not_write(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_dashboard
+    from handlers.settings import admin_dashboard
 
     callback = FakeCallback("dash_block:unknown_suffix")
     asyncio.run(admin_dashboard.toggle_dashboard_block(callback))
@@ -180,7 +180,7 @@ def test_dashboard_block_toggle_unknown_suffix_does_not_write(tmp_path):
 
 def test_dashboard_settings_text_and_labels_have_no_raw_keys(tmp_path):
     _admin_ready(tmp_path)
-    from handlers import admin_dashboard
+    from handlers.settings import admin_dashboard
 
     text = asyncio.run(admin_dashboard.render_dashboard_settings_text())
     assert "dashboard_block_" not in text

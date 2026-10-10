@@ -12,7 +12,7 @@
 
 Форма модуля — та же, что у соседних швов (`admin_dashboard.py`, `admin_miniapp.py`):
 своего `Router()` нет, хендлеры декорируют ОБЩИЙ `admin.router` (техника 13-02), а сам
-модуль импортируется ХВОСТОМ `handlers/admin_settings.py`. Импорты `admin_core`/
+модуль импортируется ХВОСТОМ `handlers/settings/admin_settings.py`. Импорты `admin_core`/
 `admin_settings` — ленивые, внутри функций: на уровне модуля они дают цикл
 (admin_core -> admin_sections -> admin_settings -> admin_core). Прецедент ленивого шва —
 `handlers/game/admin_gamification.py`.
@@ -47,7 +47,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("screen", "admin_menu_buttons", "🔘 Кнопки меню"),
         # Подписи тех же кнопок — тексты (settings_group:menu_labels), сразу под тумблерами.
         ("group", "menu_labels"),
-        # 09.10: аватар бота без BotFather (handlers/admin_bot_avatar.py), капа `settings`.
+        # 09.10: аватар бота без BotFather (handlers/settings/admin_bot_avatar.py), капа `settings`.
         ("screen", "admin_bot_avatar", "🖼 Аватар бота"),
         ("toggle", "settings_toggle_bonus"),
         # Форум-ночь п.4 (расписание форума в боте): контент события, та же капа `settings`,
@@ -247,9 +247,9 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ]),
     ("manage", "🔧 Управление", [
         # «🔎 Найти настройку» — первой строкой: в сотнях настроек нужную ищут словом
-        # (handlers/admin_settings_search.py), кнопка ведёт на тот же экран правки.
+        # (handlers/settings/admin_settings_search.py), кнопка ведёт на тот же экран правки.
         ("screen", "settings_search", "🔎 Найти настройку"),
-        # Мастер первой настройки в боте (handlers/admin_setup_wizard.py) — тот же список шагов,
+        # Мастер первой настройки в боте (handlers/settings/admin_setup_wizard.py) — тот же список шагов,
         # что в приложении; только суперадмину.
         ("screen_admin", "admin_setup_wizard", "🚀 Первая настройка"),
         ("op", "admin_cities"),
@@ -334,7 +334,7 @@ def section_rows(token: str) -> list[tuple]:
     спрятать настройку от менеджера — она осталась бы в реестре, но исчезла бы с экранов."""
     rows = _declared_rows(token)
     if token == "manage":
-        from handlers.admin_settings import _settings_group_keys  # ленивый шов (см. docstring)
+        from handlers.settings.admin_settings import _settings_group_keys  # ленивый шов (см. docstring)
         if _settings_group_keys("misc"):
             rows.append(("group", "misc"))
     return rows
@@ -476,12 +476,12 @@ async def settings_return_screen(
 
     WR-05: сам резолвер шапку города НЕ читает — ни одного её чтения здесь нет; каждая из
     трёх пар рендера читает шапку ровно один раз внутри себя, как и до фазы."""
-    from handlers.admin_settings import (  # ленивый шов (см. docstring модуля)
+    from handlers.settings.admin_settings import (  # ленивый шов (см. docstring модуля)
         SETTINGS_GROUPS, _group_of_setting_key,
         render_settings_group_text, build_settings_group_keyboard,
     )
-    from handlers.admin_core import admin_keyboard_for
-    from handlers.admin_setup_wizard import pop_return, step_screen
+    from handlers.settings.admin_core import admin_keyboard_for
+    from handlers.settings.admin_setup_wizard import pop_return, step_screen
 
     # Правку поля открыли из «🚀 Первая настройка» — вернуть в тот же шаг мастера (только
     # сохранение этого поля; чужие сохранения и тумблеры идут своим путём).
@@ -571,7 +571,7 @@ def section_group_label(section_token: str, group_token: str) -> str:
     настройки (UAT фазы 20, п.3). Совпала с подписью раздела — подписываем по назначению;
     остальные («🎪 Событие/Медиа», «📝 Регистрация», «🎉 Party»…) остаются своим именем.
     Заголовок экрана самой группы («⚙️ Настройки → 📋 Заявки») не трогаем — там это имя группы."""
-    from handlers.admin_settings import _settings_group_label  # ленивый шов (см. docstring модуля)
+    from handlers.settings.admin_settings import _settings_group_label  # ленивый шов (см. docstring модуля)
 
     label = _settings_group_label(group_token)
     return GROUP_IN_SECTION_LABEL if label == _SECTION_LABELS.get(section_token) else label
@@ -594,8 +594,8 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
     `settings_toggle_rows` готовой. Прежде каждая из двух читала её сама — два независимых
     await по одному ключу внутри сборки ОДНОЙ клавиатуры, и переключение города между ними
     давало экран с шапкой одного города и тумблером регистрации другого."""
-    from handlers.admin_core import _ADMIN_MENU_ROWS  # ленивый шов (см. docstring модуля)
-    from handlers.admin_settings import settings_toggle_rows
+    from handlers.settings.admin_core import _ADMIN_MENU_ROWS  # ленивый шов (см. docstring модуля)
+    from handlers.settings.admin_settings import settings_toggle_rows
 
     if caps is None:
         caps = await resolve_capabilities(admin_id)
@@ -647,7 +647,7 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
                 logger.warning("Раздел %s: тумблер %s не объявлен в settings_toggle_rows — пропущен", token, row[1])
                 continue
             if row[1] == "toggle_uni_mode":
-                from handlers.admin_settings import UNI_V2_NOTE, uni_controls_hidden_by_v2  # ленивый шов
+                from handlers.settings.admin_settings import UNI_V2_NOTE, uni_controls_hidden_by_v2  # ленивый шов
                 if await uni_controls_hidden_by_v2():
                     buttons.append([InlineKeyboardButton(text=UNI_V2_NOTE, callback_data="settings_group_noop")])
                     continue
@@ -732,19 +732,19 @@ from handlers.comms import admin_quiet_hours  # noqa: E402,F401
 
 # Phase 30 (30-01, A2-08): шов «📝 Анкета» (девять тумблеров «Анкета 2.0») — импорт СРАЗУ ПОСЛЕ
 # admin_quiet_hours, тот же хвостовой приём; `handlers.regform.admin_reg_form` читает
-# `_toggle_module_setting` из `handlers.admin_settings`, который к этому моменту импорта уже
+# `_toggle_module_setting` из `handlers.settings.admin_settings`, который к этому моменту импорта уже
 # полностью определён (admin_settings.py импортирует этот модуль (admin_sections) последним в
 # своей собственной хвостовой цепочке). Golden snapshot: tests/test_refac_snapshot_260816.py.
 from handlers.regform import admin_reg_form  # noqa: E402,F401
 
 # Квик 260913-16o: шов «подтверждение выключения модерации» — импорт СРАЗУ ПОСЛЕ admin_reg_form,
-# тот же хвостовой приём; `handlers.admin_settings_audit` читает `settings_return_screen` отсюда
+# тот же хвостовой приём; `handlers.settings.admin_settings_audit` читает `settings_return_screen` отсюда
 # ленивым импортом внутри своих хендлеров (обратный порядок загрузки не важен).
-from handlers import admin_settings_audit  # noqa: E402,F401
+from handlers.settings import admin_settings_audit  # noqa: E402,F401
 
 # Phase 30 (30-07, A2-03): шов «📚 Справочники» — импорт СРАЗУ ПОСЛЕ admin_settings_audit, тот
 # же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
-from handlers import admin_lookup  # noqa: E402,F401
+from handlers.settings import admin_lookup  # noqa: E402,F401
 
 # Квик 260914-rgq (RGQ-01): шов «📇 Список заявок» — импорт СРАЗУ ПОСЛЕ admin_lookup, тот же
 # хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).

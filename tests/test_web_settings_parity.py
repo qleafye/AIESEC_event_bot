@@ -2,7 +2,7 @@
 
 Пять сторожей проверяют, что `GET /app/api/admin/settings/all` не может тихо разойтись с
 ботом: компонент на тип, единственный источник «что опасно», подписи разделов/групп из
-`handlers.admin_sections`/`handlers.admin_settings`, полное покрытие поиска и отсутствие
+`handlers.settings.admin_sections`/`handlers.settings.admin_settings`, полное покрытие поиска и отсутствие
 группы `roles` на обеих операциях (чтение/запись).
 
 Харнесс — `tests/test_miniapp_routes.py` (тот же, что у планов 22-04/22-05); форма покрытия —
@@ -12,10 +12,10 @@ from __future__ import annotations
 
 import asyncio
 
-import handlers.admin_sections as admin_sections
+import handlers.settings.admin_sections as admin_sections
 import domain.settings.ops as settings_ops
 from database import db as bot_db
-from handlers.admin_settings import SETTINGS_GROUPS, _settings_group_label
+from handlers.settings.admin_settings import SETTINGS_GROUPS, _settings_group_label
 from miniapp.routers import settings as settings_router
 from domain.settings.schema import SETTINGS_SCHEMA
 
@@ -162,9 +162,9 @@ def test_dangerous_keys_come_only_from_settings_ops_dangerous_keys(tmp_path):
 
 def test_section_and_group_labels_match_bot_verbatim(tmp_path):
     """Порядок и подписи разделов в ответе — подпоследовательность
-    handlers.admin_sections.SECTIONS (разделы без настроек — «comms» — отсутствуют, порядок
+    handlers.settings.admin_sections.SECTIONS (разделы без настроек — «comms» — отсутствуют, порядок
     остальных сохранён 1-в-1); подпись каждой группы, входящей в
-    handlers.admin_settings.SETTINGS_GROUPS, совпадает с _settings_group_label(token) символ
+    handlers.settings.admin_settings.SETTINGS_GROUPS, совпадает с _settings_group_label(token) символ
     в символ."""
     client = _setup(tmp_path)
     body = _sections_body(client)
@@ -182,7 +182,7 @@ def test_section_and_group_labels_match_bot_verbatim(tmp_path):
     for section in resp_sections:
         token = section["token"]
         assert token in bot_tokens_in_order, (
-            f"раздел '{token}' веб-экрана не существует в handlers.admin_sections.SECTIONS"
+            f"раздел '{token}' веб-экрана не существует в handlers.settings.admin_sections.SECTIONS"
         )
         pos = bot_tokens_in_order.index(token, cursor)
         assert pos >= cursor, (

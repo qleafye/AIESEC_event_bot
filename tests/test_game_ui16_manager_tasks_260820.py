@@ -108,7 +108,7 @@ def test_deadline_preset_key_does_not_shadow_point_edit_key():
 from handlers import admin as admin_mod  # noqa: E402,F401  (ядро роутера — первым, иначе цикл импорта)
 from handlers.game import admin_gamification  # noqa: E402
 from handlers.game import admin_game_tasks  # noqa: E402  (новый шов-модуль этого плана)
-from handlers import admin_core  # noqa: E402
+from handlers.settings import admin_core  # noqa: E402
 from handlers import user_actions as ua_mod  # noqa: E402
 from domain.game import labels as game_labels  # noqa: E402
 import domain.settings.schema as settings_schema  # noqa: E402
@@ -396,7 +396,7 @@ def test_preview_intro_registry_key_in_game_group():
     entry = settings_schema.SETTINGS_SCHEMA["game_task_preview_intro"]
     assert entry["group"] == "game"
     assert entry["default"].startswith("👁")
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     assert "game_task_preview_intro" in admin_settings._GAME_FIELD_ORDER
 
 
@@ -825,7 +825,7 @@ def test_screen_edit_other_failure_falls_back_to_new_message(tmp_path):
 def test_wizard_registry_keys_and_html_policy():
     for key in ("game_wizard_preview_title", "game_wizard_publish_btn"):
         assert settings_schema.SETTINGS_SCHEMA[key]["group"] == "game"
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     assert "game_wizard_preview_title" in admin_settings.HTML_SETTINGS
     assert "game_wizard_publish_btn" not in admin_settings.HTML_SETTINGS
     assert "game_wizard_preview_title" in admin_settings._GAME_FIELD_ORDER

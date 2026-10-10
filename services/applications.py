@@ -410,7 +410,7 @@ async def manager_scope(city: str | None):
 
 
 async def out_of_scope(city: str | None, telegram_id: int) -> bool:
-    """Дословное правило `handlers/admin_core.py::_card_out_of_scope`, но от переданной
+    """Дословное правило `handlers/settings/admin_core.py::_card_out_of_scope`, но от переданной
     привязки менеджера, а не от `admin_id`: модуль городов выключен или привязки нет -> False."""
     if not await cities_module_on() or city is None:
         return False

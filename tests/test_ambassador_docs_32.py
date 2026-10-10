@@ -23,7 +23,7 @@ from pathlib import Path
 import pytest
 
 import handlers.access.admin_roles as roles
-import handlers.admin_sections as sec
+import handlers.settings.admin_sections as sec
 from domain.settings.schema import SETTINGS_SCHEMA
 
 DOCS_ROOT = REPO_ROOT / "docs"

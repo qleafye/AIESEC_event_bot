@@ -20,7 +20,7 @@ import pytest
 import domain.cities as cities
 from config import config
 from database import db
-from handlers import admin_settings, admin_settings_lists
+from handlers.settings import admin_settings, admin_settings_lists
 from handlers.access.admin_caps import required_capability
 from handlers.states import EditSetting
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed

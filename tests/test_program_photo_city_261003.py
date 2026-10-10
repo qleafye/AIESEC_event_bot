@@ -222,7 +222,7 @@ def test_bound_manager_cannot_upload_for_other_city(tmp_path):
 
 
 def test_settings_photo_button_uses_header_city(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
 
     _ready(tmp_path)
     _run(cities.set_admin_city(SUPERADMIN_ID, "spb"))
@@ -236,7 +236,7 @@ def test_settings_photo_button_uses_header_city(tmp_path):
 def test_event_section_program_line_reflects_header_city_photo(tmp_path):
     """«🎪 Событие» при городе в шапке: строка «📅 Программа» — про своё фото города, а не
     про общее (кнопка рядом грузит именно фото города); при «Всех городах» — про общее."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
 
     _ready(tmp_path)
     _run(db.set_setting("program_photo_file_id", "SHARED_PHOTO"))

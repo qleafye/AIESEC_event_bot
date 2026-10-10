@@ -1,6 +1,6 @@
 """Phase 19 (19-07 Task 2, D-19): настройки-лайт из Mini App — закрытый белый список
 тумблеров `on`/`off`. Экран — облегчённая версия боевого экрана настроек бота
-(`handlers/admin_dashboard.py`): подпись из реестра, «✅/☐», тап переключает.
+(`handlers/settings/admin_dashboard.py`): подпись из реестра, «✅/☐», тап переключает.
 
 `EDITABLE_KEYS` вычисляется из `SETTINGS_SCHEMA` (не переписывается руками, иначе список
 разъедется с реестром при добавлении новых ключей): все ключи `miniapp_section_*`,
@@ -206,7 +206,7 @@ async def _countdown_hint(telegram_id: int) -> dict | None:
 
 
 # Quick 260904-dq1: «в очереди: N» — та же форма, что countdown выше (None при пустой
-# очереди), тот же счётчик, что читает бот (handlers/admin_sections.py::section_screen).
+# очереди), тот же счётчик, что читает бот (handlers/settings/admin_sections.py::section_screen).
 async def _quiet_queue_hint() -> dict | None:
     from services import quiet_hours
     pending = await quiet_hours.queued_count()

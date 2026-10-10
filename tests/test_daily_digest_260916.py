@@ -109,14 +109,14 @@ def test_schema_keys_present_with_human_labels():
 
 
 def test_time_key_is_editable_from_the_system_group():
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     assert "daily_digest_time" in admin_settings._SYSTEM_FIELD_ORDER
 
 
 def test_toggle_row_and_section_placement(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin_settings
-    from handlers import admin_sections as sec
+    from handlers.settings import admin_settings
+    from handlers.settings import admin_sections as sec
 
     rows = asyncio.run(admin_settings.settings_toggle_rows(ADMIN_ID))
     btn = rows["toggle_daily_digest"][0][0]
@@ -140,7 +140,7 @@ def test_toggle_callback_registered_under_settings_capability():
 
 def test_toggle_handler_flips_the_switch(tmp_path):
     _db_ready(tmp_path)
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
 
     class _Msg:
         async def edit_text(self, text, parse_mode=None, reply_markup=None):

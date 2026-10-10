@@ -7,14 +7,14 @@ per_city `forum_stats_card_enabled` (дефолт off), собственный �
 аддитивная — см. его докстринг). Своего `Router()` нет — декорирует `handlers.admin.router`,
 импортирован в ХВОСТЕ `handlers/admin.py`, ПОСЛЕДНИМ (золотой снапшот — чистый аппенд).
 
-Фон карточки — общий генерический `settings_photo:forum_stats_card` (handlers/admin_settings.py
+Фон карточки — общий генерический `settings_photo:forum_stats_card` (handlers/settings/admin_settings.py
 PHOTO_FIELDS), второй копии хендлера загрузки не заводим. Подпись к фото —
 `forum_stats_card_caption_text`, редактор — общий текстовый экран «📋 Заявки»
-(`handlers/admin_settings.py::_APPS_FIELD_ORDER`), тот же приём, что у соседних форумных
+(`handlers/settings/admin_settings.py::_APPS_FIELD_ORDER`), тот же приём, что у соседних форумных
 текстов (см. докстринг `settings_schema.SETTINGS_SCHEMA["forum_stats_card_caption_text"]`) —
 прямой ссылки на `settings_edit:` с этого экрана НЕТ намеренно (генерический хендлер стартует
 FSM per-city правки только через «✏️ Изменить для …» на самом экране группы, см. докстринг
-`handlers.admin_settings.settings_edit_start`).
+`handlers.settings.admin_settings.settings_edit_start`).
 
 Рассылка — двухшаговое подтверждение (выбор аудитории кнопкой с готовым числом -> «✅ Да,
 отправить»), тот же приём двойного барьера, что «📤 Разослать QR сейчас»

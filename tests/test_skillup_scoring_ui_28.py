@@ -513,7 +513,7 @@ def test_queue_without_score_goes_last(tmp_path):
 def test_toggle_reachable_in_both_surfaces():
     assert "apps_queue_sort_by_score" in settings_ops.editable_keys()
     assert settings_ops.TOGGLE_SECTION["apps_queue_sort_by_score"] == "apps"
-    from handlers.admin_sections import SECTIONS
+    from handlers.settings.admin_sections import SECTIONS
     apps_rows = next(rows for token, _label, rows in SECTIONS if token == "apps")
     assert ("toggle", "toggle_apps_queue_sort_by_score") in apps_rows
 

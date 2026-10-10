@@ -1,4 +1,4 @@
-"""«🚀 Первая настройка» в боте (`handlers/admin_setup_wizard.py`): тот же список шагов, что в
+"""«🚀 Первая настройка» в боте (`handlers/settings/admin_setup_wizard.py`): тот же список шагов, что в
 приложении, кнопки полей — в обычные экраны правки, после сохранения — назад в шаг мастера.
 
 pytest-asyncio в окружении нет — async через `asyncio.run()`, БД — `tests/_dbtpl.fast_init_db`.
@@ -12,7 +12,7 @@ from aiogram.types import User
 
 from config import config
 from database import db
-from handlers import admin_sections, admin_settings, admin_setup_wizard as wiz
+from handlers.settings import admin_sections, admin_settings, admin_setup_wizard as wiz
 from handlers.access.admin_caps import required_capability
 from miniapp.setup_wizard import STEPS
 from tests._dbtpl import fast_init_db

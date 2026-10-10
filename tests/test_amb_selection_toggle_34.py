@@ -356,8 +356,8 @@ def _admin_ready(tmp_path):
 
 
 def test_admin_root_hides_amb_section_until_toggle_on(tmp_path):
-    from handlers import admin_core
-    from handlers.admin_sections import SECTIONS
+    from handlers.settings import admin_core
+    from handlers.settings.admin_sections import SECTIONS
     from tests.test_amb_candidates_34 import ADMIN_ID
     _admin_ready(tmp_path)
     flat = _datas(_run(admin_core.build_admin_keyboard(ADMIN_ID)))
@@ -370,7 +370,7 @@ def test_admin_root_hides_amb_section_until_toggle_on(tmp_path):
 
 def test_stale_section_buttons_explain_how_to_turn_on(tmp_path):
     from handlers.amb import admin_amb_section as s
-    from handlers import admin_sections
+    from handlers.settings import admin_sections
     from tests.test_amb_candidates_34 import _cb
     _admin_ready(tmp_path)
     cb = _cb("admin_sec:amb")
@@ -392,7 +392,7 @@ def test_stale_section_buttons_explain_how_to_turn_on(tmp_path):
 
 def test_toggle_button_in_game_settings_flips_key(tmp_path):
     from handlers.amb import admin_amb_section as s
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     from tests.test_amb_candidates_34 import ADMIN_ID, _buttons, _cb
     _admin_ready(tmp_path)
     kb = _run(admin_settings.build_settings_group_keyboard("game", ADMIN_ID))

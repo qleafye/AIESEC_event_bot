@@ -11,7 +11,7 @@ from aiogram.types import User
 
 from config import config
 from database import db
-from handlers import admin_settings, admin_settings_search as ss
+from handlers.settings import admin_settings, admin_settings_search as ss
 from handlers.access.admin_caps import required_capability
 from handlers.states import SettingsSearch
 from domain.settings.search import Candidate, match_word, search, search_terms, words
@@ -203,7 +203,7 @@ def test_caps_for_search_callbacks_and_state():
 
 
 def test_manage_section_has_search_first_only_for_settings_holders(tmp_path):
-    from handlers.admin_sections import build_section_keyboard, section_of
+    from handlers.settings.admin_sections import build_section_keyboard, section_of
 
     _ready(tmp_path)
     assert section_of("settings_search") == "manage"
@@ -258,7 +258,7 @@ def test_echo_of_query_is_trimmed(tmp_path):
     query = "приветствие " + "а" * 80  # длиннее эха, но короче предела запроса
     assert len(query) <= ss.QUERY_MAX
     cands = [Candidate(key="start_text", label="Приветствие " + "а" * 80, extra={"cb": "settings_edit:start_text", "section": "x"})]
-    import handlers.admin_settings_search as mod
+    import handlers.settings.admin_settings_search as mod
 
     orig = mod.candidates
     mod.candidates = lambda: cands
@@ -313,7 +313,7 @@ def test_screen_rows_of_sections_are_found(tmp_path):
 def test_screen_candidates_respect_section_rights(tmp_path):
     """Права — как у раздела: экран без права не показывается, «только суперадмину» — только ему,
     сам поиск в выдаче не встречается."""
-    from handlers.admin_sections import SECTIONS, row_callback
+    from handlers.settings.admin_sections import SECTIONS, row_callback
 
     _ready(tmp_path)
     all_screens = {row_callback(r) for _t, _l, rows in SECTIONS for r in rows if r[0] in ("screen", "screen_admin")}

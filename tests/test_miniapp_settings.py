@@ -3,11 +3,11 @@
 pytest-asyncio недоступен в этом окружении (см. tests/test_db_phase5.py) — каждый async
 хелпер гоняется через asyncio.run(), config.DB_PATH указывает на файл в tmp_path.
 
-Task 1 (19-08): экран handlers/admin_miniapp.py — рендер, тумблеры miniapp_enabled/staff_only,
+Task 1 (19-08): экран handlers/settings/admin_miniapp.py — рендер, тумблеры miniapp_enabled/staff_only,
 восемь чекбоксов разделов (каждый переключает только свой ключ), права в ADMIN_CAPS, регресс
 «бот для людей» (сырой код ключа не попадает в текст/подписи кнопок).
 
-Задачи 1-2 (19.1-07): второй шов handlers/admin_miniapp_theme.py — пресеты BlueBook/YouLead/
+Задачи 1-2 (19.1-07): второй шов handlers/settings/admin_miniapp_theme.py — пресеты BlueBook/YouLead/
 Своя (применение пишет все ручки разом, «Своя (на базе X)» вычисляется сравнением, не флагом),
 сброс с подтверждением, ручки кастома D-04 (три цвета с контрастом, шрифт, тон, лого/обложка/
 паттерн/стикеры/иконка монеты).
@@ -21,8 +21,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
-from handlers import admin_miniapp
-from handlers import admin_miniapp_theme
+from handlers.settings import admin_miniapp
+from handlers.settings import admin_miniapp_theme
 from handlers.states import MiniAppTheme
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 import shared.web_theme as web_theme
@@ -338,7 +338,7 @@ def test_all_new_callbacks_registered_under_settings():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Phase 19.1 (07, D-20) — второй шов: пресеты + ручки кастома (handlers/admin_miniapp_theme.py)
+# Phase 19.1 (07, D-20) — второй шов: пресеты + ручки кастома (handlers/settings/admin_miniapp_theme.py)
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 # ── пресеты: рендер, выбор кнопкой, превью с подтверждением ────────────────────────────────

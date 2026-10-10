@@ -209,7 +209,7 @@ def test_delay_custom_start_enters_fsm_with_correct_key(tmp_path):
 
 
 def test_delay_custom_invalid_input_gives_clear_error_and_stays_in_state(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     code = cities.default_city_code()
@@ -222,7 +222,7 @@ def test_delay_custom_invalid_input_gives_clear_error_and_stays_in_state(tmp_pat
 
 
 def test_delay_custom_valid_input_saves_via_generic_editor(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     code = cities.default_city_code()
@@ -237,7 +237,7 @@ def test_delay_custom_reconciles_existing_session_job(tmp_path, monkeypatch):
     """Задача плана: смена задержки переставляет уже стоящую джобу отзыва (не только
     будущие сессии) — реальный `AsyncIOScheduler`, тот же харнесс, что
     `tests/test_session_feedback_260924.py`."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
     import services.scheduler as sched
@@ -304,7 +304,7 @@ def test_text_edit_prompt_enters_fsm_with_global_key(tmp_path):
 
 
 def test_text_edit_saves_through_generic_editor_and_delegate_reads_it(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(sf_handlers.prog_fbtext_edit(_FakeCallback("prog_fbtext:thanks"), state))

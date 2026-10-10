@@ -154,7 +154,7 @@ _TOGGLE_ALERT = {
 
 @router.callback_query(F.data == "toggle_amb_team_selection")
 async def toggle_amb_team_selection(callback: types.CallbackQuery):
-    from handlers.admin_settings import build_settings_group_keyboard, render_settings_group_text
+    from handlers.settings.admin_settings import build_settings_group_keyboard, render_settings_group_text
 
     new_val = "off" if await amb_status.selection_enabled() else "on"
     await set_setting_by_admin(callback.from_user.id, amb_status.TOGGLE_KEY, new_val)
@@ -176,8 +176,8 @@ async def toggle_amb_team_selection(callback: types.CallbackQuery):
 # ── главный экран ────────────────────────────────────────────────────────────────────────
 
 async def render_entry_screen(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
-    from handlers.admin_core import _admin_city_view  # ленивый шов, как у экранов заявок
-    from handlers.admin_sections import back_button
+    from handlers.settings.admin_core import _admin_city_view  # ленивый шов, как у экранов заявок
+    from handlers.settings.admin_sections import back_button
 
     mode = await amb_status.join_mode()
     taken, limit = await amb_status.slot_counter()

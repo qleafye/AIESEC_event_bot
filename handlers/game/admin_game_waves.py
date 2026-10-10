@@ -356,7 +356,7 @@ async def _wave_list_screen(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
     buttons.append([InlineKeyboardButton(text="➕ Новая волна", callback_data="wavenew")])
     if waves:
         buttons.append([InlineKeyboardButton(text="📋 Скопировать прошлую", callback_data="wavecopy")])
-    from handlers.admin_sections import owner_back_button  # ленивый шов: admin_sections тянет этот модуль
+    from handlers.settings.admin_sections import owner_back_button  # ленивый шов: admin_sections тянет этот модуль
 
     buttons.append([await owner_back_button("admin_game_waves")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)

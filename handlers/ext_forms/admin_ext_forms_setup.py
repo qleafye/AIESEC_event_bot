@@ -31,7 +31,7 @@ def _btn(text: str, data: str) -> InlineKeyboardButton:
 
 
 def _back_row(form_id: int) -> list[InlineKeyboardButton]:
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     return [back_button(f"extf_card:{form_id}")]
 
 

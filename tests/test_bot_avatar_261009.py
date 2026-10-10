@@ -1,4 +1,4 @@
-"""«🖼 Аватар бота» (handlers/admin_bot_avatar.py): фото от менеджера -> `setMyProfilePhoto`,
+"""«🖼 Аватар бота» (handlers/settings/admin_bot_avatar.py): фото от менеджера -> `setMyProfilePhoto`,
 без BotFather; отказ Telegram — человеческим текстом."""
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
 from aiogram.methods import SetMyProfilePhoto
 from aiogram.types import BufferedInputFile, InputProfilePhotoStatic
 
-from handlers import admin_bot_avatar as ava
+from handlers.settings import admin_bot_avatar as ava
 from handlers.access.admin_caps import required_capability
-from handlers.admin_sections import SECTIONS, section_of
+from handlers.settings.admin_sections import SECTIONS, section_of
 
 
 class _Bot:
@@ -235,7 +235,7 @@ def test_start_drops_avatar_wait():
 def test_intro_does_not_promise_instant_set():
     """UAT 09.10: экран обещал «бот сразу поставит», а перед установкой стоит вопрос
     «Поставить это фото аватаром бота?» — текст обязан говорить про подтверждение."""
-    from handlers import admin_bot_avatar as m
+    from handlers.settings import admin_bot_avatar as m
 
     assert "сразу" not in m.INTRO_TEXT
     assert "подтвержд" in m.INTRO_TEXT

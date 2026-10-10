@@ -118,7 +118,7 @@ def test_hub_rows_open_native_screens_with_hub_back(tmp_path):
 
 
 def test_hub_back_survives_toggle_redraw(tmp_path):
-    from handlers import admin_miniapp
+    from handlers.settings import admin_miniapp
     from handlers.regform import admin_reg_config
     from handlers.forum import session_feedback
     _seed_spb(tmp_path)
@@ -281,7 +281,7 @@ def test_city_move_sheet_writes_mark_last_write(monkeypatch):
 # ── «Сколько дней идёт»: видно число по умолчанию ──────────────────────────────────────────
 
 def test_days_editor_shows_default_number(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _seed_spb(tmp_path)
     text, _kb = asyncio.run(admin_settings._settings_edit_screen("sos_active_days", "spb"))
     assert "Как везде. Общее значение: <i>по умолчанию — 2</i>" in text

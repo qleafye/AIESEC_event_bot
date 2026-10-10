@@ -107,7 +107,7 @@ async def bot_avatar_open(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "botava_cancel")
 async def bot_avatar_cancel(callback: types.CallbackQuery, state: FSMContext):
     """Снимает ожидание фото и возвращает в раздел «🎪 Событие»."""
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
 
     await state.clear()
     text, kb = await settings_return_screen(callback.from_user.id, callback_data="admin_bot_avatar")

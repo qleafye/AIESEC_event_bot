@@ -10,7 +10,7 @@
 правки здесь.
 
 Форма — Phase 13 (REFAC-01), тот же приём, что у `handlers/forum/admin_faq.py`: своего `Router()`
-нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; `handlers.admin_sections` (`back_button`)
+нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; `handlers.settings.admin_sections` (`back_button`)
 импортируется ЛЕНИВО внутри функций — цикл на уровне модуля (admin_sections тянет
 admin_settings, тот — обратно к admin_core).
 
@@ -265,7 +265,7 @@ async def render_i18n_list(state_token: str = "all", page: int = 0) -> tuple[str
     if nav_row:
         buttons.append(nav_row)
 
-    from handlers.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
     buttons.append([back_button("admin_i18n")])
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)

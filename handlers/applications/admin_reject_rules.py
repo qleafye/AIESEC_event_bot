@@ -4,7 +4,7 @@
 
 Форма шва — точная копия `handlers/forum/admin_faq.py`: своего `Router()` нет, хендлеры декорируют
 ОБЩИЙ `handlers.admin.router`; каждый декоратор — в одну строку (инвариант cap-теста).
-`handlers.admin` импортируется на уровне модуля, `handlers.admin_sections` — лениво внутри
+`handlers.admin` импортируется на уровне модуля, `handlers.settings.admin_sections` — лениво внутри
 функций (цикл на уровне модуля: `admin_sections` импортирует этот шов хвостом).
 
 Конструктор условий и счётчик dry-run — ОТДЕЛЬНЫЙ шов (потолок размера модуля, не архитектурная
@@ -26,7 +26,7 @@ from config import config
 from domain.cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
 from database.db import count_auto_reject_log_for_rule, get_reject_rule, get_staff_city
 from handlers.admin import router
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from handlers.states import RejectRuleEdit
 from keyboards.builders import get_cancel_kb
 from domain.regform.engine import label_for
@@ -235,7 +235,7 @@ async def render_rules_screen(admin_id: int, offset: int = 0) -> tuple[str, Inli
     # тем же входом, рядом с журналом (handlers/applications/admin_reject_reports.py).
     buttons.append([InlineKeyboardButton(text="📊 Отчётность", callback_data="admin_reject_reports")])
 
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_reject_rules")])
 
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)

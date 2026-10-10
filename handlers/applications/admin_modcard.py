@@ -91,7 +91,7 @@ async def render_modcard_text() -> str:
 
 def build_modcard_keyboard(steps: list[str], limit: int,
                            asked: set[str] | None = None) -> InlineKeyboardMarkup:
-    from handlers.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
 
     asked = asked or set()
     buttons = [

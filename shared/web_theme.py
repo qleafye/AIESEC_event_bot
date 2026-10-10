@@ -217,7 +217,7 @@ def _active_preset_name(raw) -> str:
 def preset_handle_writes(name: str, skip_keys: set[str] | None = None) -> dict[str, str]:
     """`{ключ реестра: значение}` для ВСЕХ ручек пресета `name` (кроме ключа самого пресета и
     кроме `skip_keys`) — единственный список «что пишет применение пресета» в проекте.
-    Эталон паритета: `handlers/admin_miniapp_theme.py::miniapp_preset_apply` (бот при выборе
+    Эталон паритета: `handlers/settings/admin_miniapp_theme.py::miniapp_preset_apply` (бот при выборе
     пресета пишет ровно эти ручки, веб обязан делать то же самое — иначе пресет в вебе никогда
     не побеждает уже сохранённые значения ручек, T-8o3 E5). Неизвестное имя пресета -> пустой
     словарь (нечего дописывать)."""
