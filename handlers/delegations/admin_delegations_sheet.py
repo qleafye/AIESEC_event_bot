@@ -12,7 +12,7 @@ ID ответа, сколько добавит, совпадает ли шапк
 в очередь листа (`requeue_form_answers`) — дальше их разбирает обычный `ext_forms_sheet_drain`.
 Выключение возвращает режим `bot`, снимает вкладку и гасит предупреждение листа.
 
-Шов на общий `handlers.admin.router` (импортируется из хвоста handlers/admin_delegations.py,
+Шов на общий `handlers.admin.router` (импортируется из хвоста handlers/delegations/admin_delegations.py,
 декораторы в одну строку). Права — `dlg_*` → `moderate_reg` (handlers/admin_caps.py).
 Названия вкладок и ячейки шапки — чужой текст, в HTML только через `_e()`.
 """
@@ -25,7 +25,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import ext_forms_db as ef
 from handlers.admin import router
-from handlers.admin_delegations import (
+from handlers.delegations.admin_delegations import (
     _btn, _current_form, _cut, _e, _kb, _show, _tail_int, _to_screen, render_screen,
 )
 from services import delegations_mirror, sheets

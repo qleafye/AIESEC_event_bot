@@ -16,8 +16,8 @@
 
 Все значения из чужой формы (название, подписи вопросов, вузы) идут в HTML только через
 `html.escape`. Коды вопросов (qkey) и id формы менеджеру не показываются — только подписи.
-Списки «❔ Проверить курс», «⏳ Не зашли» (handlers/admin_delegations_review.py) и выбор
-листа UR REGS (handlers/admin_delegations_sheet.py) живут в соседних швах, импортируемых из
+Списки «❔ Проверить курс», «⏳ Не зашли» (handlers/delegations/admin_delegations_review.py) и выбор
+листа UR REGS (handlers/delegations/admin_delegations_sheet.py) живут в соседних швах, импортируемых из
 хвоста этого модуля; здесь — только кнопки-входы.
 """
 import html as html_module
@@ -686,5 +686,5 @@ async def dlg_text_input(message: types.Message, state: FSMContext):
 # Соседние швы экрана регистрируются после всех хендлеров этого модуля (чистая вставка в хвост
 # общего роутера): лист UR REGS — выбор вкладки, сверка, включение записи; «❔ Проверить курс»,
 # «⏳ Не зашли» и ручная привязка делегата.
-from handlers import admin_delegations_sheet  # noqa: E402,F401
-from handlers import admin_delegations_review  # noqa: E402,F401
+from handlers.delegations import admin_delegations_sheet  # noqa: E402,F401
+from handlers.delegations import admin_delegations_review  # noqa: E402,F401

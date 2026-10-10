@@ -245,7 +245,7 @@ def test_unique_nick_still_converts(tmp_path):
 # ---------- CR-04: отказ в боте виден менеджеру и не снимается одним нажатием ----------
 
 def test_card_and_ok_confirm_for_rejected_person_without_note(tmp_path):
-    from handlers import admin_delegations_review as mod
+    from handlers.delegations import admin_delegations_review as mod
     from tests.test_delegations_admin import _FakeCallback, _callbacks, _last_edit
     from tests.test_delegations_admin_review import _check_row
     _env(tmp_path)
@@ -268,7 +268,7 @@ def test_card_and_ok_confirm_for_rejected_person_without_note(tmp_path):
 # ---------- WR-10: устаревшая карточка не меняет статус уже привязанного ответа ----------
 
 def test_stale_card_cannot_mark_linked_answer_not_ta(tmp_path):
-    from handlers import admin_delegations_review as mod
+    from handlers.delegations import admin_delegations_review as mod
     from tests.test_delegations_admin import _FakeCallback
     from tests.test_delegations_admin_review import _check_row
     _env(tmp_path)
@@ -300,7 +300,7 @@ def _setup_would_become_ta(tmp_path):
 
 
 def test_cutoff_change_asks_confirmation_with_count(tmp_path, monkeypatch):
-    from handlers import admin_delegations as mod
+    from handlers.delegations import admin_delegations as mod
     from tests.test_delegations_admin import (
         _FakeCallback, _FakeMessage, _callbacks, _spy_sweep, _state,
     )
@@ -323,7 +323,7 @@ def test_cutoff_change_asks_confirmation_with_count(tmp_path, monkeypatch):
 
 
 def test_apply_runs_sweep_and_preview_counts_zero_when_nobody(tmp_path, monkeypatch):
-    from handlers import admin_delegations as mod
+    from handlers.delegations import admin_delegations as mod
     from tests.test_delegations_admin import _FakeCallback, _spy_sweep
     _setup_would_become_ta(tmp_path)
     assert _run(dlg.preview_reevaluate()) == 0  # настройки прежние — никто не изменится
