@@ -1112,6 +1112,9 @@ PARTY_TRACK_CODES = ("full", "party_overnight", "party_noovernight")
 
 # Один текст на тап по устаревшей кнопке в боте и на PATCH из приложения.
 CITY_CHOICE_INVALID_TEXT = "Некорректный выбор."
+# Приёмка 10.10: «Дальше» в приложении без выбора — просьба выбрать, а не «некорректно».
+CITY_CHOICE_EMPTY_TEXT = "Выбери город."
+TRACK_CHOICE_EMPTY_TEXT = "Выбери формат участия."
 CITY_CLOSED_TEXT = "Регистрация на этот город закрыта."
 PARTY_CLOSED_TEXT = "Регистрация на вечеринку уже закрыта."
 
@@ -1220,6 +1223,8 @@ async def validate_city_choice(code) -> tuple[str | None, str | None]:
     """Порядок проверок — как в `city_pick`: закрытый словарь CITIES, затем
     `is_city_registration_open` (окно «нарисовали — выключили/закрыли по дате», квик
     260923-p37 расширил проверку с одного лишь `is_city_enabled`)."""
+    if not code:
+        return None, CITY_CHOICE_EMPTY_TEXT
     if code not in city_codes():
         return None, CITY_CHOICE_INVALID_TEXT
     if not await is_city_registration_open(code):
@@ -1232,6 +1237,8 @@ async def validate_track_choice(code, city_code: str | None = None) -> tuple[str
     закрытый словарь кодов; вечеринка — только при `party_enabled == on`; «Полная регистрация»
     (`full`) означает «кандидата нет» и уходит в `resolve_track(None, city)` — так глобальный
     `registration_mode == short` перебивает выбор, как у бота."""
+    if not code:
+        return None, TRACK_CHOICE_EMPTY_TEXT
     if code not in PARTY_TRACK_CODES:
         return None, CITY_CHOICE_INVALID_TEXT
     if _is_party_track(code) and await get_setting_typed("party_enabled") != "on":

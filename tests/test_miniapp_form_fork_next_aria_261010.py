@@ -14,3 +14,17 @@ def test_fork_next_button_aria_label_is_its_caption():
     button = button[:button.index("}, icon(")]
     assert '"aria-label": d.next_cta_text' in button
     assert "item.text" not in button
+
+
+def test_fork_next_button_disabled_until_choice():
+    """Приёмка 10.10: «Дальше» на выборе города без выбора давала «Некорректный выбор.».
+    Кнопка неактивна, пока ничего не выбрано, и оживает по тапу на вариант."""
+    body = _between(_js_without_comments(FORM_SCREEN_JS), "function drawFork(item)", "function drawPre(")
+    button = body[body.index('h("button", {'):]
+    button = button[:button.index("}, icon(")]
+    assert "disabled: busy || !chosen" in button
+    assert "nextBtn = h(\"button\"" in body
+    pick = body[body.index("field(h, {"):]
+    pick = pick[:pick.index("const errorZone")]
+    assert "syncNext()" in pick
+    assert "nextBtn.disabled = busy || !chosen" in body

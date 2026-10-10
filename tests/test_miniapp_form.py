@@ -731,6 +731,37 @@ def test_patch_city_choice_invalid_and_closed_match_bot_texts(client):
     assert _draft_row(UNREGISTERED_ID) is None
 
 
+def test_patch_empty_city_and_track_ask_to_choose(client):
+    """Приёмка 10.10: «Дальше» без выбора города отвечал «Некорректный выбор.» — человеку
+    непонятно, что делать. Пустой выбор — просьба выбрать, а не «некорректно»."""
+    import reg_engine
+
+    _set("event_city_enabled", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID),
+        json={"version": 0, "event_city": ""},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["errors"]["event_city"] == reg_engine.CITY_CHOICE_EMPTY_TEXT == "Выбери город."
+
+    _set("party_enabled", "on")
+    resp = client.patch(
+        "/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID + 7),
+        json={"version": 0, "participant_type": ""},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["errors"]["participant_type"] == reg_engine.TRACK_CHOICE_EMPTY_TEXT
+    assert _draft_row(UNREGISTERED_ID) is None
+
+
+def test_empty_choice_texts_have_english():
+    import reg_engine
+    from services import i18n_form_manual
+
+    for text in (reg_engine.CITY_CHOICE_EMPTY_TEXT, reg_engine.TRACK_CHOICE_EMPTY_TEXT):
+        assert text in i18n_form_manual._ENGINE_DYNAMIC_EN, text
+
+
 def test_patch_city_when_already_set_409_deeplink_wins(client):
     _set("event_city_enabled", "on")
     # Quick 260904-3vm: тем же приёмом — черновик "принадлежит" приложению, иначе PATCH
