@@ -178,7 +178,7 @@ async def revert_to_pending(
     if notify and bot is not None:
         try:
             from domain.cities import get_setting_typed_for_city
-            from services import quiet_hours
+            from services.comms import quiet_hours
             from services.i18n.i18n import context as _i18n_context, tr as _i18n_tr
             from services.scheduler import _now_moscow_naive
             from domain.settings.schema import SETTINGS_SCHEMA

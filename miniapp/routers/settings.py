@@ -208,7 +208,7 @@ async def _countdown_hint(telegram_id: int) -> dict | None:
 # Quick 260904-dq1: «в очереди: N» — та же форма, что countdown выше (None при пустой
 # очереди), тот же счётчик, что читает бот (handlers/settings/admin_sections.py::section_screen).
 async def _quiet_queue_hint() -> dict | None:
-    from services import quiet_hours
+    from services.comms import quiet_hours
     pending = await quiet_hours.queued_count()
     if not pending:
         return None

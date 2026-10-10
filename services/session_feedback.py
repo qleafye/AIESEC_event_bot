@@ -7,7 +7,7 @@ D-24 `.planning/FORUM-CHECKIN.md`): «⭐ Отзыв о сессии одним 
 в services/, хендлеры — тонкий шов» (та же форма, что `services/sos.py`/`services/forum/program.py`).
 
 aiogram-free НА УРОВНЕ ИМПОРТА (тот же инвариант, что `services/forum/program.py`/`services/sos.py`)
-— `services.scheduler` (тянет aiogram `Bot`) и `services.quiet_hours` (aiogram-free сам, но
+— `services.scheduler` (тянет aiogram `Bot`) и `services.comms.quiet_hours` (aiogram-free сам, но
 зовёт `services.scheduler` лениво только у бота, не у веба) подтягиваются ЛЕНИВО внутри функций,
 которые вызывает ТОЛЬКО бот (планирование джоб, сама доставка) — не на пути импорта модуля.
 
@@ -212,7 +212,7 @@ async def deliver_feedback_prompts(session_id: int) -> None:
         # переводится СНАЧАЛА, {title} подставляется ПОСЛЕ», что LANG-02 уже закрепила везде
         # в чате (Часть А ревью SOS — тот же класс бага, если поменять местами).
         from services.scheduler import _now_moscow_naive, get_bot
-        from services import quiet_hours
+        from services.comms import quiet_hours
         from services.i18n import i18n as i18n_service
         from handlers.i18n import reg_i18n
 

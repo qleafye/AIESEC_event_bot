@@ -18,7 +18,7 @@ import pytest
 
 from config import config
 from database import db
-import services.quiet_hours as qh
+import services.comms.quiet_hours as qh
 from tests._dbtpl import fast_init_db
 
 DELEGATE = 960916
@@ -614,7 +614,7 @@ async def _seed_two_delegates():
 
 def test_deliver_poll_in_quiet_hours_queues_per_recipient(tmp_path):
     """Каждому делегату уходит СВОЙ send_poll — значит и окно тишины считается по нему."""
-    from services import polls as polls_svc
+    from services.comms import polls as polls_svc
 
     _ready(tmp_path, "qh_poll_deliver.db")
     bot = _PollBot()
@@ -644,7 +644,7 @@ def test_deliver_poll_in_quiet_hours_queues_per_recipient(tmp_path):
 
 
 def test_deliver_poll_outside_quiet_hours_unchanged(tmp_path):
-    from services import polls as polls_svc
+    from services.comms import polls as polls_svc
 
     _ready(tmp_path, "qh_poll_deliver_off.db")
     bot = _PollBot()

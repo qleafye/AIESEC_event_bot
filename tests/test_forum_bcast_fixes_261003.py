@@ -506,7 +506,7 @@ def test_not_arrived_confirm_note_lists_cities(tmp_path, monkeypatch):
 # ── Рассылка менеджера, привязанного к городу, — только его городу ───────────────────────────
 
 def test_city_bound_manager_broadcast_limited_to_city(tmp_path):
-    from services.broadcast_scope import restrict_to_sender_city, sender_city_note
+    from services.comms.broadcast_scope import restrict_to_sender_city, sender_city_note
     _cities_env(tmp_path)
     config.ADMIN_IDS = [1000]
     _run(db.add_staff(2000, "manager", 1000))
@@ -521,7 +521,7 @@ def test_city_bound_manager_broadcast_limited_to_city(tmp_path):
 
 
 def test_moscow_bound_manager_gets_cityless_delegates(tmp_path):
-    from services.broadcast_scope import restrict_to_sender_city
+    from services.comms.broadcast_scope import restrict_to_sender_city
     _cities_env(tmp_path)
     config.ADMIN_IDS = [1000]
     _run(db.add_staff(2001, "manager", 1000))
@@ -532,7 +532,7 @@ def test_moscow_bound_manager_gets_cityless_delegates(tmp_path):
 def test_city_manager_reaches_own_unfinished_registrations(tmp_path):
     """Сегмент «📝 Не завершили регистрацию» живёт в reg_started, а не в users: менеджер города
     раньше рассылал ему никому. Теперь — его город по городу из начала анкеты."""
-    from services.broadcast_scope import restrict_to_sender_city, split_by_sender_city
+    from services.comms.broadcast_scope import restrict_to_sender_city, split_by_sender_city
     _cities_env(tmp_path)
     config.ADMIN_IDS = [1000]
     _run(db.add_staff(2000, "manager", 1000))
@@ -550,7 +550,7 @@ def test_city_manager_reaches_own_unfinished_registrations(tmp_path):
 def test_moscow_manager_does_not_reach_unfinished_without_city(tmp_path):
     """Нажал /start, до вопроса о городе не дошёл — город неизвестен: менеджеру Москвы (город
     по умолчанию) такой человек не уходит, он посчитан в «отсеяно»; суперадмину — уходит."""
-    from services.broadcast_scope import split_by_sender_city
+    from services.comms.broadcast_scope import split_by_sender_city
     _cities_env(tmp_path)
     config.ADMIN_IDS = [1000]
     _run(db.add_staff(2001, "manager", 1000))
@@ -564,7 +564,7 @@ def test_moscow_manager_does_not_reach_unfinished_without_city(tmp_path):
 
 
 def test_city_manager_confirm_note_counts_dropped(tmp_path):
-    from services.broadcast_scope import sender_city_note
+    from services.comms.broadcast_scope import sender_city_note
     _cities_env(tmp_path)
     config.ADMIN_IDS = [1000]
     _run(db.add_staff(2000, "manager", 1000))

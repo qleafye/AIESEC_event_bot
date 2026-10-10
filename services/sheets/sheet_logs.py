@@ -2,7 +2,7 @@
 02.09) — «История правок» (кто что менял в уже поданной анкете, из `reg_answer_history`,
 Phase 21) и «Вопросы» (вопросы делегатов боту, из `delegate_questions`, Phase 8).
 
-Форма — буква в букву `services/polls.py`: полная пересборка листа (`sync_named_worksheet` —
+Форма — буква в букву `services/comms/polls.py`: полная пересборка листа (`sync_named_worksheet` —
 clear + перезапись), не append по событию. Обрыв прокси даёт «лист не обновился», а не молча
 потерянную строку (память проекта: sheet-append-no-retry-on-proxy-drop) — ровно то же
 рассуждение, что уже отработано для вкладки опросов.
@@ -24,7 +24,7 @@ from database.db import (
     _sheet_safe,  # квик 260919 (08-sheets-dashboard): _csv_safe -> _sheet_safe, см. её докстринг
 )
 from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
-from services.questions import format_stamp as _fmt_dt, status_label
+from services.comms.questions import format_stamp as _fmt_dt, status_label
 import domain.regform.engine as reg_engine
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ def _column_label(column: str) -> str:
     return reg_engine.label_for(step)
 
 
-# Quick 260904-2cj: тело переехало в `services/questions.py::format_stamp` — единственное
+# Quick 260904-2cj: тело переехало в `services/comms/questions.py::format_stamp` — единственное
 # место, где живёт разбор обоих форматов времени (нужно и листу «Вопросы», и статусу вопроса,
 # и экранам бота/приложения). Алиас сохраняет и вызовы ниже, и имя, на которое смотрят
 # существующие тесты этого модуля.

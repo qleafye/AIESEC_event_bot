@@ -612,7 +612,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     keeps every existing caller (manual approve, receipt confirm, payment path) byte-for-byte
     unchanged.
     16.09 («все уведомления делегатам подходят под правило тихого часа»): `respect_quiet_hours=
-    True` пропускает и текст, и бонус через `services.quiet_hours` — в окне тишины они лягут в
+    True` пропускает и текст, и бонус через `services.comms.quiet_hours` — в окне тишины они лягут в
     очередь (текст ВМЕСТЕ с главным меню, бонус отдельной строкой kind media) и уедут делегату
     утром. Единственный вызывающий с True — подтверждение чека менеджером
     (`handlers/applications/admin_moderation.py::rcpt_confirm`), где менеджер тут же видит приписку «делегат
@@ -654,7 +654,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
         async def _send_decision_text() -> None:
             nonlocal quiet_now
             if respect_quiet_hours:
-                from services import quiet_hours
+                from services.comms import quiet_hours
                 from services.scheduler import _now_moscow_naive
                 quiet_now = _now_moscow_naive()
                 await quiet_hours.send_or_queue_text(
@@ -682,7 +682,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
                     ("send_photo", bonus_photo) if bonus_photo else (None, None)
                 )
                 if file_id and quiet_now is not None:
-                    from services import quiet_hours
+                    from services.comms import quiet_hours
                     await quiet_hours.send_or_queue_media(
                         quiet_now, telegram_id,
                         sender=lambda: getattr(bot, method)(

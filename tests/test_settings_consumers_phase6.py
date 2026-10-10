@@ -1,6 +1,6 @@
 """Phase 6 plan 06-03 (REG-02): consumer parse-equivalence + behavior-preservation tests.
 
-Proves two things for the three migrated consumers (services/reminders.py,
+Proves two things for the three migrated consumers (services/comms/reminders.py,
 services/scheduler.py, keyboards/builders.py):
 
 1. Oracle equivalence — `settings_schema.get_setting_typed` resolves int/date/list settings
@@ -38,7 +38,7 @@ def _flat_button_texts(kb):
 def test_reminders_interval_via_registry_matches_oracle(tmp_path):
     _db_ready(tmp_path)
     from domain.settings.schema import get_setting_typed
-    from services.reminders import _reminder_interval
+    from services.comms.reminders import _reminder_interval
 
     for raw in [None, "900", "0", "abc"]:
         asyncio.run(delete_setting("pending_reminder_interval"))
@@ -102,7 +102,7 @@ def test_source_kb_default_includes_blogger_before_other(tmp_path):
 
 class _StopLoop(Exception):
     """Sentinel raised from a patched asyncio.sleep to escape the infinite reminder loop
-    after exactly one iteration, without altering services/reminders.py's structure."""
+    after exactly one iteration, without altering services/comms/reminders.py's structure."""
 
 
 class _FakeBot:
@@ -112,7 +112,7 @@ class _FakeBot:
 
 def test_reminders_loop_reads_interval_via_registry(tmp_path):
     _db_ready(tmp_path)
-    import services.reminders as reminders_mod
+    import services.comms.reminders as reminders_mod
 
     calls = []
 

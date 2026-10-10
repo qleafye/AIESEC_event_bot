@@ -2,7 +2,7 @@
 
 09.09 менеджер отправил «Привет» на 951 человека и не смог остановить рассылку — цикл шёл
 внутри хендлера, никого не слушал, ни лога, ни message_id не оставалось. Эти тесты покрывают
-`services/broadcast_run.py`: журнал заполняется, стоп адресен по broadcast_id и прерывает
+`services/comms/broadcast_run.py`: журнал заполняется, стоп адресен по broadcast_id и прерывает
 цикл на ближайшей итерации, отзыв удаляет сохранённые message_id.
 
 Стиль tests/test_broadcast_checkpointing_260819.py: pytest-asyncio в проекте нет, async
@@ -15,7 +15,7 @@ from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
 
 from config import config
 from database import db
-from services import broadcast_run as br
+from services.comms import broadcast_run as br
 from tests._dbtpl import fast_init_db
 
 

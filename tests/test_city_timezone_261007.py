@@ -201,7 +201,7 @@ async def _seed_delegate(uid, city):
 
 def test_quiet_hours_tyumen_uses_local_window(tmp_path):
     _db(tmp_path)
-    from services import quiet_hours
+    from services.comms import quiet_hours
 
     async def scenario():
         await _tyumen_plus2()

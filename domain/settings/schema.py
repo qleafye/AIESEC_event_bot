@@ -1104,7 +1104,7 @@ SETTINGS_SCHEMA = {
     # ── REG-01/REG-03 (06-02): "reg" group ("📝 Регистрация") ──────────────────────────
     # Labels/prompts copied byte-for-byte from the pre-migration literal SETTINGS_FIELDS
     # tuples (handlers/admin.py). pending_reminder_interval's default is pinned to 1800 to
-    # match services/reminders.py::DEFAULT_INTERVAL (T-06-07, proven byte-for-byte by
+    # match services/comms/reminders.py::DEFAULT_INTERVAL (T-06-07, proven byte-for-byte by
     # test_parse_equivalence_int).
     "source_options": {
         "type": "list", "group": "reg", "label": "📢 Источники",
@@ -2311,7 +2311,7 @@ SETTINGS_SCHEMA = {
         "default": "История правок",
     },
     # Ночь 10.10 (бэклог «🛠», P1): порог «🔒 залип» был зашит — 30 минут
-    # (services/questions.py::STUCK_AFTER_MINUTES — теперь только дефолт). Экраны вопросов
+    # (services/comms/questions.py::STUCK_AFTER_MINUTES — теперь только дефолт). Экраны вопросов
     # читают значение при каждой отрисовке — новое действует сразу.
     "question_stuck_minutes": {
         "type": "int", "group": "apps", "label": "❓ Вопрос «🔒 залип»: через сколько минут",
@@ -7248,7 +7248,7 @@ SETTINGS_SCHEMA = {
     },
 
     # Quick 260904-dq1: «с»/«до» тихих часов — per_city (часы тишины у Владивостока и Москвы
-    # разные), время московское, как везде в боте (см. services/quiet_hours.py). Метка
+    # разные), время московское, как везде в боте (см. services/comms/quiet_hours.py). Метка
     # "format": "time" — новая необязательная мета, читает domain/settings/validation.py.
     "quiet_hours_start": {
         "type": "text", "group": "apps", "label": "🌙 Тихие часы: с",
@@ -9054,7 +9054,7 @@ def _parse_setting(key, raw):
 
     if entry_type == "int":
         # Lifted verbatim from services/scheduler.py::_int_or_default /
-        # services/reminders.py::_reminder_interval — positive int or default;
+        # services/comms/reminders.py::_reminder_interval — positive int or default;
         # None/empty/garbage/<=0 -> default.
         try:
             value = int(raw)

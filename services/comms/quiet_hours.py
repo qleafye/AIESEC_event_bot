@@ -61,7 +61,7 @@ KIND_COPY = "copy"
 # "allows_multiple_answers": bool, "intro_text": str | None, "poll_id": int | None} — нативный
 # опрос Telegram. `poll_id` — id строки `polls` в НАШЕЙ базе: по нему `flush_due` допишет
 # чекпоинт `poll_messages` (карта «ответ -> наш опрос» и цель для stop_poll), который при
-# немедленной отправке пишет `services/polls.py::deliver_poll`.
+# немедленной отправке пишет `services/comms/polls.py::deliver_poll`.
 KIND_POLL = "poll"
 
 # Дедуп-заменой («последнее решение выигрывает») живёт ТОЛЬКО application_decision. Результаты

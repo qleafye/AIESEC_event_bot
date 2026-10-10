@@ -15,7 +15,7 @@ import re
 
 from config import config
 from database import db
-from services.text_fill import EVENT_FALLBACK, event_label, event_name, fill_event
+from services.comms.text_fill import EVENT_FALLBACK, event_label, event_name, fill_event
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 

@@ -37,7 +37,7 @@ from database.db import get_setting
 from handlers.admin import router
 from handlers.access.admin_caps import has_capability
 from handlers.settings.admin_core import _admin_city_view
-from services import quiet_hours
+from services.comms import quiet_hours
 from services.applications.reject_journal import (
     JOURNAL_PAGE,
     export_csv,

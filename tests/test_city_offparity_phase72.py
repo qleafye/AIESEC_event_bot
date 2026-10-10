@@ -37,7 +37,7 @@ from handlers import admin as admin_mod
 from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
-from services import reminders as reminders_mod
+from services.comms import reminders as reminders_mod
 import domain.cities as cities
 
 
@@ -333,7 +333,7 @@ def test_manager_pending_reminder_is_personal_per_recipient_city_scope():
     `admin_selected_city` («что выбрано в шапке панели», как у экрана «📋 Заявки») оказалась
     неверной — на проде НИ ОДИН менеджер не привязан к spb/tyumen, а непривязанные (и
     ADMIN_IDS) по умолчанию, без выбора, смотрят на дефолтный город (Москва) — заявки СПб/
-    Тюмени не будили НИКОГО. Финальное правило (`services/reminders.py::_text_for_recipient`):
+    Тюмени не будили НИКОГО. Финальное правило (`services/comms/reminders.py::_text_for_recipient`):
     * ПРИВЯЗАННЫЙ к городу (`staff.city`, не суперадмин — D-12) -> счётчик СВОЕГО города;
     * любой другой (staff без города, ADMIN_IDS) -> ВСЕГДА общее число + разбивка по городам,
       независимо от шапки панели.
