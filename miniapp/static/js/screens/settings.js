@@ -937,7 +937,8 @@ async function renderSection(root, code, ctx, targetKey) {
       updateBatchBar();
       closeDiffDialog();
       haptic("success");
-      showToast(texts.miniapp_settings_saved_toast_text || "", "success");
+      if (resp.notice) showToast(resp.notice, "warn");
+      else showToast(texts.miniapp_settings_saved_toast_text || "", "success");
     } catch (err) {
       if (!isAuthError(err)) showToast(errorText(err, texts.miniapp_settings_error_toast_text || ""), "warn");
     } finally {
