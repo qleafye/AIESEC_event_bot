@@ -1211,3 +1211,4 @@ from handlers import admin_bot_avatar  # noqa: E402,F401
 from handlers import admin_resend_decision  # noqa: E402,F401
 from handlers import admin_settings_search  # noqa: E402,F401  -- «🔎 Найти настройку», golden append в хвост
 from handlers import admin_sheet_target  # noqa: E402,F401 — «🔗 Какая таблица» в «📊 Данные», golden append
+from handlers import admin_setup_wizard  # noqa: E402,F401 — «🚀 Первая настройка» в «🔧 Управление», golden append
