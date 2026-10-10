@@ -62,7 +62,7 @@ import domain.regform.moderation_card as moderation_card
 from domain.settings.schema import get_setting_typed
 from domain.cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.applications.admin_modcard_render import build_card_text
-from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
+from handlers.settings.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT
 from services.ru_plural import ru_plural
 from handlers.admin import router
 

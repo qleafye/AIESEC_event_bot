@@ -168,7 +168,7 @@ def test_check_access_no_key(env, monkeypatch):
 def test_registry_key_hidden_from_web_and_group_screens():
     from domain.settings.ops import editable_keys
     from domain.settings.schema import SETTINGS_SCHEMA
-    from handlers.admin_settings import SETTINGS_FIELDS
+    from handlers.settings.admin_settings import SETTINGS_FIELDS
 
     assert "google_sheet_id" in SETTINGS_SCHEMA
     assert "google_sheet_id" not in editable_keys()
@@ -176,7 +176,7 @@ def test_registry_key_hidden_from_web_and_group_screens():
 
 
 def test_caps_registered_and_row_is_superadmin_only():
-    from handlers.admin_sections import section_rows, visible_rows
+    from handlers.settings.admin_sections import section_rows, visible_rows
 
     from handlers.access.admin_caps import required_capability
 
@@ -191,7 +191,7 @@ def test_caps_registered_and_row_is_superadmin_only():
 
 
 def test_open_sheet_link_uses_resolver(env):
-    from handlers.admin_sections import sheet_url
+    from handlers.settings.admin_sections import sheet_url
 
     assert sheet_url().endswith(f"/{ID_A}/edit")
     asyncio.run(db.set_setting(sheet_target.SETTING_KEY, ID_B))
@@ -200,7 +200,7 @@ def test_open_sheet_link_uses_resolver(env):
 
 
 def test_open_sheet_button_shown_when_only_bot_value(env, monkeypatch):
-    from handlers.admin_sections import build_section_keyboard
+    from handlers.settings.admin_sections import build_section_keyboard
 
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "")
     asyncio.run(db.set_setting(sheet_target.SETTING_KEY, ID_B))

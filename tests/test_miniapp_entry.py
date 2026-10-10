@@ -14,7 +14,7 @@ import inspect
 from config import config
 from database import db
 from handlers import user_actions as ua_mod
-from handlers import admin_miniapp
+from handlers.settings import admin_miniapp
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
 from aiogram.types import InlineKeyboardButton, MenuButtonDefault, MenuButtonWebApp
 from tests._dbtpl import fast_init_db

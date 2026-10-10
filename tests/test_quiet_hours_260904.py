@@ -614,7 +614,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from handlers.comms import admin_broadcasts
 from handlers.states import Broadcast
-import handlers.admin_sections as sections_mod
+import handlers.settings.admin_sections as sections_mod
 from tests.test_roles_phase8 import ADMIN_ID as _ROLES_ADMIN_ID, _roles_ready
 from tests._dbtpl import fast_init_db
 

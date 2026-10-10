@@ -28,7 +28,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers.access import admin_roles  # Phase 13 (13-04): render_roles_text/build_roles_keyboard moved here
 from handlers import states as states_mod
@@ -230,7 +230,7 @@ def test_roles_group_ui_row_is_in_settings_not_in_admin_menu(tmp_path):
     # Phase 20 (20-03): корень — разделы, поэтому «Роли и доступы» отсутствуют на нём уже по
     # построению; проверяем не только отсутствие, но и что кнопка не потерялась — она живёт
     # на экране раздела «🔧 Управление».
-    from handlers.admin_sections import build_section_keyboard
+    from handlers.settings.admin_sections import build_section_keyboard
 
     admin_kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     assert "admin_roles" not in _flat_callback_data(admin_kb)
@@ -711,7 +711,7 @@ def test_menu_admin_sees_all_sections(tmp_path):
     # строки. Суперадмину доступна хотя бы одна строка в каждом разделе, поэтому он видит все
     # восемь, и порядок задаёт реестр SECTIONS.
     _roles_ready(tmp_path)
-    from handlers.admin_sections import SECTIONS
+    from handlers.settings.admin_sections import SECTIONS
 
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     flat = _flat_callback_data(kb)
@@ -858,7 +858,7 @@ def test_action_only_row_never_autoopens_end_to_end(tmp_path):
     # экране своего раздела («📊 Данные»). Показана она по-прежнему — просто /admin никогда
     # не запускает её автоматически, что этот тест и стережёт.
     assert "admin_sec:data" in flat_cb
-    from handlers.admin_sections import build_section_keyboard
+    from handlers.settings.admin_sections import build_section_keyboard
 
     section_cb = _flat_callback_data(asyncio.run(build_section_keyboard("data", MANAGER_ID)))
     assert "admin_rebuild_sheet" in section_cb

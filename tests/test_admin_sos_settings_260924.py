@@ -164,7 +164,7 @@ def test_set_delay_preset_collecting_module_off_writes_global_key(tmp_path):
 
 
 def test_text_edit_global_done_saves_through_generic_editor(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:done"), state))
@@ -174,7 +174,7 @@ def test_text_edit_global_done_saves_through_generic_editor(tmp_path):
 
 
 def test_text_edit_global_expired_saves_through_generic_editor(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:expired"), state))
@@ -252,7 +252,7 @@ def test_delay_custom_start_enters_fsm_with_composed_key(tmp_path):
 
 
 def test_delay_custom_invalid_input_gives_clear_error(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_delay_custom_start(_FakeCallback("asos_delay_custom:reopen"), state))
@@ -263,7 +263,7 @@ def test_delay_custom_invalid_input_gives_clear_error(tmp_path):
 
 
 def test_delay_custom_valid_input_saves(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_delay_custom_start(_FakeCallback("asos_delay_custom:reopen"), state))
@@ -285,7 +285,7 @@ def test_text_edit_unknown_field_denied(tmp_path):
 
 
 def test_text_edit_global_failed_saves_through_generic_editor(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:failed"), state))
@@ -295,7 +295,7 @@ def test_text_edit_global_failed_saves_through_generic_editor(tmp_path):
 
 
 def test_text_edit_percity_contact_module_on_writes_composite_key(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     _run(_setup_bound_staff())
     _run(_enable_cities_module())
@@ -308,7 +308,7 @@ def test_text_edit_percity_contact_module_on_writes_composite_key(tmp_path):
 
 
 def test_text_edit_percity_contact_clear_with_dash(tmp_path):
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     _run(_setup_bound_staff())
     _run(_enable_cities_module())
@@ -355,7 +355,7 @@ def test_settings_screen_hides_length_button_without_settings_right(tmp_path):
 def test_forum_length_sits_next_to_forum_date():
     """Подпись по смыслу (длина форума, не «SOS»), подсказка с примерами, место — сразу под
     датой начала форума на экране «🎪 Событие/Медиа»."""
-    from handlers.admin_settings import _settings_group_keys
+    from handlers.settings.admin_settings import _settings_group_keys
     from domain.settings.schema import SETTINGS_SCHEMA
     from domain.settings.synonyms import SETTINGS_SYNONYMS
 
@@ -369,7 +369,7 @@ def test_forum_length_sits_next_to_forum_date():
 
 
 def test_event_screen_shows_forum_length_default(tmp_path):
-    from handlers.admin_settings import render_settings_group_text
+    from handlers.settings.admin_settings import render_settings_group_text
     _ready(tmp_path)
     text = _run(render_settings_group_text("event"))
     assert "🗓 Сколько дней идёт форум: <i>по умолчанию</i>" in text
@@ -387,7 +387,7 @@ def test_escalation_minutes_refuses_zero_with_explanation():
 def test_after_save_and_cancel_manager_is_offered_the_sos_screen_back(tmp_path):
     """10.10: правку текста/тайминга открыл экран SOS — после сохранения и после отмены кнопка
     ведёт обратно на него, а не на экран группы реестра, где этих кнопок нет."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:sent"), state))

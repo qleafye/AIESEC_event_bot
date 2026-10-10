@@ -20,8 +20,8 @@ asyncio.run(), config.DB_PATH указывает на файл в tmp_path (ко
 import asyncio
 
 from database import db
-from handlers import admin_settings as st
-from handlers import admin_settings_audit as audit
+from handlers.settings import admin_settings as st
+from handlers.settings import admin_settings_audit as audit
 from tests.test_roles_phase8 import ADMIN_ID, FakeBot, FakeCallback, FakeUser, _roles_ready
 
 _HANDLER_BY_KEY = {

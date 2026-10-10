@@ -7,7 +7,7 @@
 QR): одна one-shot date-джоба НА ГОРОД (`checkin_volunteer_guide:{city}`), `replace_existing=
 True`, джоба перечитывает состояние (аудиторию, текст, тумблер, дату форума) НА
 СРАБАТЫВАНИИ — не то, что было верно на постановке. `reconcile()` вызывается и при старте бота
-(`main.py`), и СРАЗУ после правки `forum_date`/тумблера/времени (`handlers/admin_settings.py`),
+(`main.py`), и СРАЗУ после правки `forum_date`/тумблера/времени (`handlers/settings/admin_settings.py`),
 тот же трёхточечный шов, что у `services.checkin_broadcast.schedule_city_jobs`/
 `reconcile_broadcasts`.
 

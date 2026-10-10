@@ -4,7 +4,7 @@
 через `get_setting_typed` — незаданная ручка приходила ДЕФОЛТОМ реестра (`miniapp_accent`),
 `web_theme.resolve_theme` считал любое валидное значение явной ручкой, и пресет в вебе никогда
 не побеждал (превью «РилТолк» отдавало accent `#037EF3` вместо `#7552CC`). Бот при выборе
-пресета пишет ВСЕ его ручки (`handlers/admin_miniapp_theme.py::miniapp_preset_apply`) —
+пресета пишет ВСЕ его ручки (`handlers/settings/admin_miniapp_theme.py::miniapp_preset_apply`) —
 `web_theme.preset_handle_writes` даёт вебу тот же приём: сырые чтения + серверная дозапись
 ручек пресета после успешной фазы 2 `settings_batch`.
 
@@ -125,7 +125,7 @@ def test_batch_without_preset_key_does_not_touch_theme_handles(tmp_path):
 # ── бот: меню темы показывает пресет, а не «Своя», на чистом стенде ─────────────────────
 
 def test_bot_theme_menu_shows_preset_not_custom_on_clean_stand(tmp_path):
-    from handlers.admin_miniapp_theme import _current_preset_and_custom
+    from handlers.settings.admin_miniapp_theme import _current_preset_and_custom
 
     _use_tmp_db(tmp_path, "miniapp_theme_preset_bot_260904.db")
     preset_name, is_custom = _run(_current_preset_and_custom())
@@ -134,7 +134,7 @@ def test_bot_theme_menu_shows_preset_not_custom_on_clean_stand(tmp_path):
 
 
 def test_bot_theme_menu_reflects_preset_after_web_batch_save(tmp_path):
-    from handlers.admin_miniapp_theme import _current_preset_and_custom
+    from handlers.settings.admin_miniapp_theme import _current_preset_and_custom
 
     client = _setup(tmp_path)
     _batch(client, [("miniapp_theme_preset", "realtalk")])

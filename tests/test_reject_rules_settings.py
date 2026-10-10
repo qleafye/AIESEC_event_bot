@@ -147,6 +147,6 @@ def test_forum_date_resolves_per_city_with_city_override_winning(tmp_path):
 
 
 def test_forum_date_in_event_field_order():
-    from handlers.admin_settings import _EVENT_FIELD_ORDER, _REG_FIELD_ORDER
+    from handlers.settings.admin_settings import _EVENT_FIELD_ORDER, _REG_FIELD_ORDER
     assert "forum_date" in _EVENT_FIELD_ORDER
     assert "reject_rules_return_text" in _REG_FIELD_ORDER

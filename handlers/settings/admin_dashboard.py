@@ -1,7 +1,7 @@
 """Phase 15 (15-02, D-19) — шов admin_settings: экран «📊 Дашборд», тумблеры блоков.
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_settings.py`, ПОСЛЕ admin_settings_lists (тот сам
+импортируется из ХВОСТА `handlers/settings/admin_settings.py`, ПОСЛЕ admin_settings_lists (тот сам
 на потолке размера — см. tests/test_module_size_convention_260816.py), как и остальные швы
 Phase 13.
 
@@ -65,7 +65,7 @@ async def build_dashboard_settings_keyboard() -> InlineKeyboardMarkup:
         )])
     # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («📊 Данные»), а не в общий
     # корень настроек. Цель выводится из SECTIONS — второй карты «экран -> раздел» нет.
-    from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
+    from handlers.settings.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
     buttons.append([back_button("admin_dashboard_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

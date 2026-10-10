@@ -26,7 +26,7 @@ from database.db import (
     list_questions_page,
 )
 from handlers.admin import router
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from handlers.states import QuestionAnswer
 from keyboards.builders import get_cancel_kb
 from services.questions import (
@@ -169,7 +169,7 @@ async def render_questions_screen(
     if nav_row:
         buttons.append(nav_row)
 
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_questions")])
 
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)

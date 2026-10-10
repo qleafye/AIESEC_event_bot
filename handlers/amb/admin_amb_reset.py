@@ -45,7 +45,7 @@ async def _edit(callback: types.CallbackQuery, text: str, kb: InlineKeyboardMark
 
 
 async def _is_global(admin_id: int) -> bool:
-    from handlers.admin_core import _admin_city_view
+    from handlers.settings.admin_core import _admin_city_view
 
     scope, _ = await _admin_city_view(admin_id)
     return scope is None

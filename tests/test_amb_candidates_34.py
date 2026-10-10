@@ -543,7 +543,7 @@ def test_csv_export_no_at_and_formula_safe(tmp_path):
 
 
 def test_list_has_csv_button_and_section_row():
-    from handlers import admin_sections as sec
+    from handlers.settings import admin_sections as sec
     rows = sec.section_rows("amb")
     assert rows.index(("screen", "admin_amb_candidates", "🙋 Кандидаты и команда")) == \
         rows.index(("screen", "admin_amb_entry", "🚪 Вход и лимит")) + 1

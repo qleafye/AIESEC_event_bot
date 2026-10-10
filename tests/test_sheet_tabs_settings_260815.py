@@ -21,9 +21,9 @@ import gspread
 
 from config import config
 from database import db
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.game import admin_gamification
-from handlers.admin_sections import section_of
+from handlers.settings.admin_sections import section_of
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 import services.sheets as sheets
@@ -726,7 +726,7 @@ def test_saving_main_sheet_tab_resets_sheet_cache_on_all_three_paths(tmp_path, m
     reset_calls = []
     # Phase 22 (22-01, D-12): _after_tab_setting_saved переехал в domain/settings/ops.py — сбрасывает
     # кэш листа через settings_ops-локальную ссылку на _reset_sheet_cache, не через
-    # handlers.admin_settings (тот больше её не импортирует, только алиасит саму функцию).
+    # handlers.settings.admin_settings (тот больше её не импортирует, только алиасит саму функцию).
     monkeypatch.setattr(settings_ops, "_reset_sheet_cache", lambda: reset_calls.append(1))
 
     async def fake_probe_missing(title):

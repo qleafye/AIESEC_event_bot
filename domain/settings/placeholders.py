@@ -1,6 +1,6 @@
 """Проверка подстановок `{имя}` в текстах настроек при сохранении.
 
-Корневой aiogram-free модуль: его зовут и бот (`handlers/admin_settings_placeholders.py`),
+Корневой aiogram-free модуль: его зовут и бот (`handlers/settings/admin_settings_placeholders.py`),
 и веб-процесс Mini App (`settings_ops.validate_batch_item`), а пакет `handlers` тянет aiogram.
 
 Менеджер правит тексты сам и может случайно стереть `{deadline}` или опечататься

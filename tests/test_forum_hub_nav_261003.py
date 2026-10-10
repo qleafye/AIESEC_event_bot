@@ -91,7 +91,7 @@ def test_menu_reset_city_keeps_way_back_to_hub(tmp_path):
 
 
 def test_theme_screen_from_hub_returns_to_hub_settings(tmp_path):
-    from handlers import admin_miniapp_theme
+    from handlers.settings import admin_miniapp_theme
     _seed_spb(tmp_path)
     _t, app_kb = _open_from_hub("app", "spb")
     cb = _CB("miniapp_theme_open", markup=app_kb)
@@ -106,7 +106,7 @@ def test_theme_screen_from_hub_returns_to_hub_settings(tmp_path):
 
 
 def test_theme_screen_from_section_keeps_native_back(tmp_path):
-    from handlers import admin_miniapp_theme
+    from handlers.settings import admin_miniapp_theme
     _seed_spb(tmp_path)
     cb = _CB("miniapp_theme_open")
     asyncio.run(admin_miniapp_theme.open_miniapp_theme(cb, _State()))

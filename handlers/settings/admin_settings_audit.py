@@ -11,7 +11,7 @@
 
 Форма шва — `handlers/regform/admin_reg_form.py`: свой `Router()` здесь НЕ заводится, декоратор
 навешивается на общий `router` из `handlers.admin` (тот же инвариант cap-теста
-`tests/test_roles_phase8.py`). Импортируется последней строкой `handlers/admin_sections.py`
+`tests/test_roles_phase8.py`). Импортируется последней строкой `handlers/settings/admin_sections.py`
 (тот же хвостовой приём, что и соседи).
 """
 from aiogram import Bot, F, types
@@ -77,7 +77,7 @@ async def approval_auto_go(callback: types.CallbackQuery, bot: Bot):
 
     await callback.answer(f"Модерация {genitive}: ⚡ Авто", show_alert=True)
 
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (см. admin_settings.py)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (см. admin_settings.py)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=f"settings_toggle_{key}")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
 
@@ -91,6 +91,6 @@ async def approval_auto_no(callback: types.CallbackQuery):
 
     await callback.answer("Ничего не изменилось: заявки по-прежнему проходят модерацию", show_alert=True)
 
-    from handlers.admin_sections import settings_return_screen  # ленивый шов (см. admin_settings.py)
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов (см. admin_settings.py)
     text, kb = await settings_return_screen(callback.from_user.id, callback_data=f"settings_toggle_{key}")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)

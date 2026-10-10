@@ -56,9 +56,9 @@ from domain.cities import (
     set_admin_city,
 )
 from handlers.reg.reg_schema import city_row_tab
-from handlers.admin_core import admin_keyboard_for
+from handlers.settings.admin_core import admin_keyboard_for
 from handlers.admin import router
-from handlers.admin_settings import render_settings_group_text, build_settings_group_keyboard  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings.admin_settings import render_settings_group_text, build_settings_group_keyboard  # Phase 13 (13-06): settings moved out of admin.py
 
 logger = logging.getLogger(__name__)
 
@@ -556,7 +556,7 @@ async def season_reset_name_step(message: types.Message, state: FSMContext):
     data = await state.get_data()
     old = data.get("season_old") or ""
     n = await count_current_season_users(old or None)
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     from handlers.amb.admin_amb_bulk import season_reset_line  # сбой чтения — пустая строка
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➡️ Продолжить", callback_data="season_reset_go")],
@@ -784,7 +784,7 @@ async def season_import_name_step(message: types.Message, state: FSMContext):
     found = data.get("import_found", 0)
     existing = data.get("import_existing", 0)
     to_add = found - existing
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📥 Да, импортировать", callback_data="season_import_go")],
         [back_button("admin_season_import", text="← Отмена")],  # цель из реестра, см. выше
@@ -853,7 +853,7 @@ async def admin_city_switch(callback: types.CallbackQuery):
         )
         return
 
-    from handlers.admin_sections import is_section  # ленивый шов (цикл на уровне модуля)
+    from handlers.settings.admin_sections import is_section  # ленивый шов (цикл на уровне модуля)
     origin = callback.data.split(":", 1)[1] if ":" in callback.data else ""
     if not is_section(origin):
         origin = ""  # раздел переименовали/убрали (стейл-кнопка) — ведём в корень, не в тупик
@@ -884,7 +884,7 @@ async def admin_city_switch(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("admin_city_pick:"))
 async def admin_city_pick(callback: types.CallbackQuery):
-    from handlers.admin_sections import section_screen  # ленивый шов (цикл на уровне модуля)
+    from handlers.settings.admin_sections import section_screen  # ленивый шов (цикл на уровне модуля)
     # «admin_city_pick:{код}» (корень и стейл-кнопки) либо «…:{код}:{раздел}» — раздел, из
     # шапки которого пришли. Коды городов двоеточий не содержат, поэтому разбор однозначен.
     parts = callback.data.split(":")
@@ -954,6 +954,6 @@ async def dedupe_sheet_run(callback: types.CallbackQuery):
     else:
         text = f"✅ Удалено дублей: <b>{removed}</b>. Оставлены свежие строки."
     logger.info(f"admin={callback.from_user.id} action=dedupe_sheet removed={removed}")
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
     # Гейт подтверждения дал callback «…_go», в разделе объявлена сама кнопка — называем её.
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, "admin_dedupe_sheet"))

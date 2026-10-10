@@ -1,13 +1,13 @@
 """Quick 260902-vth — шов admin_sections: экран «🕓 Журналы в таблицу» (раздел «📊 Данные»).
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_sections.py` (не `admin_settings.py` — тот стоит
+импортируется из ХВОСТА `handlers/settings/admin_sections.py` (не `admin_settings.py` — тот стоит
 ровно на потолке размера, `tests/test_module_size_convention_260816.py`).
 
 Два новых листа в ТОЙ ЖЕ Google-таблице заявок — «История правок» и «Вопросы» — пересобираются
 целиком из БД (`services/sheet_logs.py`), не append по событию. Названия листов правятся общим
 `settings_edit:{key}` (у `SETTINGS_SCHEMA["history_sheet_tab"|"questions_sheet_tab"]` есть
-`prompt`, в `handlers.admin_settings.SETTINGS_FIELDS`/`_SHEETS_FIELD_ORDER` ключу быть не
+`prompt`, в `handlers.settings.admin_settings.SETTINGS_FIELDS`/`_SHEETS_FIELD_ORDER` ключу быть не
 обязано — тот список тоже живёт в файле на потолке и пополнить его нельзя). Известный нюанс
 UX: после сохранения `_group_of_setting_key` вернёт `None` (ключа нет в `SETTINGS_GROUPS`),
 и менеджер приземлится на корень `/admin`, а не обратно на этот экран — не тупик (корень —
@@ -42,7 +42,7 @@ async def render_sheet_logs_text() -> str:
 
 
 def build_sheet_logs_keyboard(autosync_on: bool) -> InlineKeyboardMarkup:
-    from handlers.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (см. докстринг модуля)
 
     buttons = [
         [InlineKeyboardButton(
@@ -84,7 +84,7 @@ async def sheet_logs_autosync_toggle(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "sheet_logs_sync_go")
 async def sheet_logs_sync_go(callback: types.CallbackQuery):
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов (см. докстринг модуля)
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов (см. докстринг модуля)
 
     await callback.answer("🔄 Обновляю…")
     history_n, questions_n = await sync_sheet_logs()

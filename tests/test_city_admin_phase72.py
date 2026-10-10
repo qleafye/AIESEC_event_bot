@@ -18,8 +18,8 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from handlers import admin_core  # Phase 13 (13-04): _admin_city_view moved here
+from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings import admin_core  # Phase 13 (13-04): _admin_city_view moved here
 from handlers.cities import admin_cities  # Phase 13 (13-05): admin_city_switch/pick moved here
 from handlers.access.admin_caps import ANY_CAPABILITY, required_capability
 import domain.cities as cities
@@ -593,7 +593,7 @@ def test_both_moderation_queues_use_the_same_city_resolver():
 # ошибка, против которой заголовок и вводился.
 
 def _count_city_reads(monkeypatch):
-    # Phase 13 (13-04): _admin_city_view (the sole caller) moved to handlers/admin_core.py --
+    # Phase 13 (13-04): _admin_city_view (the sole caller) moved to handlers/settings/admin_core.py --
     # its own `admin_selected_city` call resolves via admin_core's module globals, not
     # handlers.admin's, so the patch target follows the function to its real home.
     calls = []

@@ -424,7 +424,7 @@ def test_time_step_scoped_to_city_when_cities_module_on(tmp_path, monkeypatch):
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # Права: менеджер, закреплённый за ОДНИМ городом, не трогает чужой (тот же довод, что
-# `handlers.admin_settings._cycle_enum_setting` для per-city ключей)
+# `handlers.settings.admin_settings._cycle_enum_setting` для per-city ключей)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_bound_manager_denied_config_for_other_city(tmp_path):
@@ -566,7 +566,7 @@ def test_bot_save_reschedules_exactly_once(tmp_path, monkeypatch):
 def test_master_toggle_schedules_and_cancels_qr_and_volunteer_jobs(tmp_path, monkeypatch):
     """«🎟 Вход по QR» — от него зависит постановка джоб рассылки QR и шпаргалки волонтёру;
     раньше включение ничего не планировало до рестарта бота."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
 
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("forum_date", "03.10.2037"))
@@ -594,7 +594,7 @@ def test_master_toggle_schedules_and_cancels_qr_and_volunteer_jobs(tmp_path, mon
 
 def test_master_toggle_survives_reconcile_failure(tmp_path, monkeypatch):
     """Сверка упала — тумблер всё равно сохранён, менеджер получил подтверждение."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
 
     _db_ready(tmp_path)
 

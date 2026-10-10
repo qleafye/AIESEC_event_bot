@@ -50,7 +50,7 @@ def _retry(seconds):
 
 
 def test_key_is_in_registry_and_on_event_screen():
-    from handlers.admin_settings import _EVENT_GROUP_KEYS
+    from handlers.settings.admin_settings import _EVENT_GROUP_KEYS
 
     entry = SETTINGS_SCHEMA["bot_name"]
     assert entry["group"] == "event" and entry["type"] == "text"

@@ -22,7 +22,7 @@ from database import db
 # handlers.admin импортируется ПЕРВЫМ намеренно: admin_settings в одиночку не импортируется
 # (цикл admin <-> admin_settings, та же идиома, что в tests/test_settings_groups_c0x.py).
 from handlers import admin as _admin_mod  # noqa: F401
-from handlers import admin_settings
+from handlers.settings import admin_settings
 from domain.game import labels as game_labels
 from handlers import payment as pay_mod
 from handlers import registration as reg_mod

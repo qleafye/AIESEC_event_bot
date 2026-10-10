@@ -316,7 +316,7 @@ def test_texts(tmp_path):
 def test_points_max_editable_from_texts_screen_for_own_city_only(tmp_path):
     """10.10: «максимум баллов за вариант» — на экране текстов теста; число у каждого города
     своё, поэтому менеджер города, открывший экран, меняет только свой город."""
-    from handlers.admin_settings import settings_edit_value
+    from handlers.settings.admin_settings import settings_edit_value
 
     ready(tmp_path)
     run(db.set_setting("event_city_enabled", "on"))

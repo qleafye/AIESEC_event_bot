@@ -32,7 +32,7 @@ from services.polls import (
     audience_label,
 )
 from services.scheduler import cancel_poll_job
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)

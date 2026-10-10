@@ -19,7 +19,7 @@ from aiogram import F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from handlers.admin import router
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from services.decision_delivery import resend_undelivered_decisions
 from services.sheet_reconcile import (
     apply_append_missing,
@@ -54,7 +54,7 @@ def _breakdown(items: list[dict]) -> list[tuple[str, int]]:
 
 
 async def _action_keyboard(admin_id: int, report: dict) -> InlineKeyboardMarkup:
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
 
     rows: list[list[InlineKeyboardButton]] = []
     if report["ok"] and report["missing_rows"]:

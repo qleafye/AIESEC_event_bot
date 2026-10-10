@@ -205,8 +205,8 @@ def test_new_labels_have_own_group_in_translation_corpus():
 
 
 def test_labels_group_in_chat_settings():
-    from handlers import admin_settings
-    from handlers.admin_sections import SECTIONS, section_of
+    from handlers.settings import admin_settings
+    from handlers.settings.admin_sections import SECTIONS, section_of
 
     keys = admin_settings._settings_group_keys("menu_labels")
     assert keys == list(MENU_LABEL_KEYS.values())
@@ -373,7 +373,7 @@ def test_only_manual_english_translation_matches(ready, monkeypatch):
 
 def test_taken_label_in_chat_is_explained_not_tapped(ready):
     """Ввод подписи, занятой другой кнопкой, — объяснение, а не срабатывание чужой кнопки."""
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     from tests.test_settings_menu_button_guard_260916 import (
         ADMIN_ID as GUARD_ADMIN, _FakeFSMState, _FakeSettingsMessage,
     )

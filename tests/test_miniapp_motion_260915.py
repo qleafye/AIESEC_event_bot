@@ -260,7 +260,7 @@ from domain.settings.schema import SETTINGS_SCHEMA  # noqa: E402
 
 PAGE_PY = ROOT / "miniapp" / "routers" / "page.py"
 APP_HTML = ROOT / "miniapp" / "templates" / "app.html"
-ADMIN_MINIAPP_PY = ROOT / "handlers" / "admin_miniapp.py"
+ADMIN_MINIAPP_PY = ROOT / "handlers" / "settings" / "admin_miniapp.py"
 
 
 def test_miniapp_motion_key_registered_with_expected_options_labels_and_default():

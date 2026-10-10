@@ -80,7 +80,7 @@ def test_proxy_settings_prompts_mention_restart():
 def test_proxy_settings_wired_into_admin_system_group():
     from handlers import admin as admin_mod
     from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
-    from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+    from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 
     keys = {k for k, _, _ in admin_settings.SETTINGS_FIELDS}
     assert "proxy_recheck_seconds" in keys
@@ -122,7 +122,7 @@ def test_seed_proxy_settings_from_env_noop_when_env_matches_default(tmp_path):
 def test_settings_group_misc_does_not_swallow_system_keys():
     from handlers import admin as admin_mod
     from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
-    from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+    from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 
     misc_keys = admin_settings._settings_group_keys("misc")
     assert "proxy_recheck_seconds" not in misc_keys

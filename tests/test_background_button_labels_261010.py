@@ -23,7 +23,7 @@ def _texts(kb):
 
 
 def test_keys_on_apps_screen_defaults_match_old_literals():
-    from handlers.admin_settings import _settings_group_keys
+    from handlers.settings.admin_settings import _settings_group_keys
 
     apps = _settings_group_keys("apps")
     for key in BACKGROUND_BUTTON_FIELD_ORDER:

@@ -327,9 +327,9 @@ def test_appr_history_skips_status_marker_not_shown_as_a_field():
 # ── Task 2 (21-07): тумблер «toggle_reg_edit_remoderation» в разделе «📋 Заявки» ────────────
 
 from domain.settings.schema import SETTINGS_SCHEMA  # noqa: E402
-from handlers.admin_sections import SECTIONS  # noqa: E402
+from handlers.settings.admin_sections import SECTIONS  # noqa: E402
 from handlers.access.admin_caps import ADMIN_CAPS  # noqa: E402
-from handlers import admin_settings  # noqa: E402
+from handlers.settings import admin_settings  # noqa: E402
 from tests._dbtpl import fast_init_db
 
 

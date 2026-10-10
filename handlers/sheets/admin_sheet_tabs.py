@@ -1,7 +1,7 @@
 """Quick 260919-mlu — шов admin_sections: операции переименования вкладок Google-таблицы.
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_sections.py` — `handlers/admin_settings.py` стоит
+импортируется из ХВОСТА `handlers/settings/admin_sections.py` — `handlers/settings/admin_settings.py` стоит
 на потолке размера (`tests/test_module_size_convention_260816.py`), новый ветвящийся код
 сюда не влезает.
 
@@ -161,7 +161,7 @@ async def sheet_tab_rename_go(callback: types.CallbackQuery, state: FSMContext):
     new_value = data.get("pending_tab_value")
     old_value = data.get("pending_tab_old")
     await state.clear()
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
 
     if not key or new_value is None or not old_value:
         text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
@@ -208,7 +208,7 @@ async def sheet_tab_reuse_go(callback: types.CallbackQuery, state: FSMContext):
         await set_setting_by_admin(callback.from_user.id, key, new_value)
         if key in SHEET_TAB_WRITE_MODE:
             await after_tab_setting_saved(key)
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Сохранено")
@@ -234,7 +234,7 @@ async def sheet_tab_newtab_go(callback: types.CallbackQuery, state: FSMContext):
                 f"\n\n📄 Старая вкладка «{old_h}» останется в таблице, бот в неё больше не "
                 "пишет."
             )
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(callback.from_user.id, group_token="sheets")
     await callback.message.edit_text(text + warning, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Сохранено")
@@ -423,7 +423,7 @@ async def _run_prefix_plan(callback: types.CallbackQuery, *, add: bool) -> None:
     if failed:
         report.append(f"❌ Не удалось {len(failed)}: " + "; ".join(failed))
 
-    from handlers.admin_sections import settings_return_screen  # ленивый шов
+    from handlers.settings.admin_sections import settings_return_screen  # ленивый шов
     text, kb = await settings_return_screen(admin_id, group_token="sheets")
     await callback.message.edit_text(
         "\n".join(report) + "\n\n" + text, parse_mode="HTML", reply_markup=kb,

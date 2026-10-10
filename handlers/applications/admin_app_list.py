@@ -3,7 +3,7 @@
 чтобы не терять людей между решением и заездом (запрос менеджера RealTalk 14.09).
 
 Форма шва — Phase 13 (REFAC-01): своего `Router()` нет, хендлеры декорируют ОБЩИЙ
-`handlers.admin.router`; модуль подключается ХВОСТОМ `handlers/admin_sections.py` (см. импорт
+`handlers.admin.router`; модуль подключается ХВОСТОМ `handlers/settings/admin_sections.py` (см. импорт
 СРАЗУ ПОСЛЕ `admin_lookup` там же). `admin_core` на уровне модуля безопасен, `admin_sections`
 даёт цикл и потому лениво внутри функции — тот же приём, что у каждого другого шва этого
 раздела (`handlers/comms/admin_questions.py`, копия формы которого этот модуль почти дословно
@@ -16,7 +16,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import count_applications, get_setting, list_applications_page, resolve_decision_managers
 from handlers.admin import router
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from services.reject_journal import AUTO_DECIDED_BY
 
 PAGE = 15
@@ -192,7 +192,7 @@ async def render_app_list_screen(
             ),
         ])
 
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_app_list")])
 
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)

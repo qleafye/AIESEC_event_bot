@@ -16,7 +16,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
+from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.access.admin_caps import required_capability, role_caps_key, role_enabled_key
 import domain.cities as cities
 from tests._dbtpl import fast_init_db
@@ -191,7 +191,7 @@ def test_module_on_non_per_city_key_editor_marked_global_only(tmp_path):
     spb_label = asyncio.run(cities.city_label("spb"))
     assert cb.message.text.splitlines()[0] == f"🏙 {spb_label}"
     # 10.10: общая настройка при городе в шапке — ввод только после кнопки «✏️ Изменить для
-    # всех городов» (handlers/admin_settings_global.py): случайное сообщение при просмотре
+    # всех городов» (handlers/settings/admin_settings_global.py): случайное сообщение при просмотре
     # экрана больше не меняет текст всем городам.
     assert state.state is None
     assert "settings_edit_all:event_name" in data

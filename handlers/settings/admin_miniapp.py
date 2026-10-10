@@ -2,13 +2,13 @@
 App (тумблеры/разделы) — точка входа в блок пресетов и ручек кастома.
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_settings.py`, ПОСЛЕДНЕЙ строкой (после
+импортируется из ХВОСТА `handlers/settings/admin_settings.py`, ПОСЛЕДНЕЙ строкой (после
 `admin_dashboard`), как и остальные швы Phase 13/15.
 
 Что здесь: два тумблера («Приложение включено», «Только менеджерам»), восемь чекбоксов разделов
 приложения (`miniapp_section_*`, подписи из SETTINGS_SCHEMA — код ключа менеджеру никогда не
 показывается, CLAUDE.md «бот для людей») и кнопка входа в пресеты/ручки кастома. Сама правка
-цвета/шрифта/лого/обложки/стикеров (D-04/D-20) — ВТОРОЙ шов, `handlers/admin_miniapp_theme.py`
+цвета/шрифта/лого/обложки/стикеров (D-04/D-20) — ВТОРОЙ шов, `handlers/settings/admin_miniapp_theme.py`
 (план 19.1-07): вынесен в отдельный файл потолком размера модуля (docs/CONVENTIONS.md), но делит с
 этим файлом одну и ту же FSM-группу `MiniAppTheme` и общий `router`.
 
@@ -130,12 +130,12 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
     )])
     # Phase 19.1 (07, D-20): вход во второй шов — пресеты BlueBook/YouLead/Своя и ручки
     # кастома (цвета/шрифт/тон/лого/обложка/паттерн/стикеры/иконка монеты).
-    # handlers/admin_miniapp_theme.py.
+    # handlers/settings/admin_miniapp_theme.py.
     buttons.append([InlineKeyboardButton(
         text="🎭 Пресеты и ручки оформления", callback_data="miniapp_theme_open",
     )])
     # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («🔧 Управление»).
-    from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
+    from handlers.settings.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
     buttons.append([back_button("admin_miniapp_settings")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

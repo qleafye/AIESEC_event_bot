@@ -230,7 +230,7 @@ def test_decline_quiet_hours_counted_as_deferred(tmp_path, monkeypatch):
 
 
 def test_decline_city_scoped_admin_refused(tmp_path, monkeypatch):
-    from handlers import admin_core
+    from handlers.settings import admin_core
     from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, amb_status="candidate")
@@ -428,7 +428,7 @@ def test_appoint_cancel_button(tmp_path):
 
 
 def test_appoint_go_out_of_city_scope_refused(tmp_path, monkeypatch):
-    from handlers import admin_core
+    from handlers.settings import admin_core
     from handlers.amb import admin_amb_bulk as b
     _ready(tmp_path)
     _seed(10, city="spb")

@@ -1,7 +1,7 @@
 """Проверка подстановок `{…}` при сохранении текста настройки в боте и превью после сохранения.
 
 Шов к общему `admin.router` (техника 13-02/13-03): импортируется последней строкой
-`handlers/admin_settings.py` и зависит от него односторонне (settings_edit_value импортируется
+`handlers/settings/admin_settings.py` и зависит от него односторонне (settings_edit_value импортируется
 лениво внутри хендлера, чтобы не было цикла).
 
 Поток. `gate` зовётся из `settings_edit_value` после валидации и до записи. Нашлась пропавшая
@@ -81,7 +81,7 @@ async def _resave(callback: types.CallbackQuery, state: FSMContext, value: str):
     await state.update_data(ph_ack=value)
     await state.set_state(EditSetting.waiting_for_value)
     await callback.answer()
-    from handlers.admin_settings import settings_edit_value
+    from handlers.settings.admin_settings import settings_edit_value
     copy = callback.message.model_copy(update={"text": value, "from_user": callback.from_user, "entities": None})
     logger.info(f"admin {callback.from_user.id}: подтверждено сохранение {key} с подстановками")
     await settings_edit_value(copy, state)

@@ -1587,7 +1587,7 @@ def dump_repeatable(items: list[dict]) -> str:
 def repeatable_display(items: list[dict]) -> str:
     """Человекочитаемая строка для листа Гугл и карточки заявки менеджера (30-UI-SPEC.md §6):
     «Название — описание; Название — описание» — разделитель «;», та же конвенция, что
-    `handlers/admin_settings_lists.py::split_list_items` (ловушка Enter=send в Телеграме).
+    `handlers/settings/admin_settings_lists.py::split_list_items` (ловушка Enter=send в Телеграме).
     Блок без описания не роняется (title-only строка); блок без заголовка отдаёт голое
     описание — это ЛЕГАСИ-БЛОК (свободный текст до этой фазы), тот же текст, что видел
     менеджер до плана 30-04."""

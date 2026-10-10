@@ -116,7 +116,7 @@ async def screen_text(in_bot: str | None) -> str:
 
 
 def screen_kb(in_bot: str | None) -> InlineKeyboardMarkup:
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
 
     rows = [[InlineKeyboardButton(text="✏️ Указать другую таблицу", callback_data="sheet_target_set")]]
     if in_bot:

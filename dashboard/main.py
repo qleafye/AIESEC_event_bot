@@ -137,7 +137,7 @@ def _event_logo_url(conn) -> "str | None":
 def _favicon_url(conn) -> "str | None":
     """Квик 260921: своя иконка вкладки браузера дашборда — `dashboard_favicon`, отдельный
     ключ реестра от лого мероприятия (`miniapp_logo`), загружается ДОКУМЕНТОМ (не фото) с
-    экрана «🎭 Пресеты и ручки оформления» (handlers/admin_miniapp_theme.py,
+    экрана «🎭 Пресеты и ручки оформления» (handlers/settings/admin_miniapp_theme.py,
     shared/favicon.py). Порядок отката: своя иконка -> лого мероприятия -> ничего (пустой
     `favicon_url` в `base.html` уходит на статичную иконку АЙСЕК, тот же приём, что раньше
     был завязан на `event_logo_url`) — менеджер, ничего не загрузивший отдельно, видит во

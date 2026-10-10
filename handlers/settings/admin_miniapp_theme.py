@@ -2,9 +2,9 @@
 App — пресеты (BlueBook/YouLead/Своя) и ручки кастома.
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`, техника 13-02) и
-импортируется из ХВОСТА `handlers/admin_settings.py`, СРАЗУ ПОСЛЕ `admin_miniapp` (та же
+импортируется из ХВОСТА `handlers/settings/admin_settings.py`, СРАЗУ ПОСЛЕ `admin_miniapp` (та же
 техника шва, что и остальные модули Phase 13/15/19). Вынесен в отдельный файл от
-`handlers/admin_miniapp.py` из-за потолка размера модуля (docs/CONVENTIONS.md) — вход сюда идёт
+`handlers/settings/admin_miniapp.py` из-за потолка размера модуля (docs/CONVENTIONS.md) — вход сюда идёт
 кнопкой «🎭 Пресеты и ручки оформления» с первого экрана «🎨 Оформление».
 
 Правило D-03 (пресет — стартовая точка, не жёсткий шаблон): применение пресета пишет ВСЕ его
@@ -521,7 +521,7 @@ async def miniapp_theme_photo_start(callback: types.CallbackQuery, state: FSMCon
     slot_name = callback.data.split(":", 1)[1]
     # Квик 260921: иконка вкладки дашборда — вне _ASSET_SLOTS (документ, не фото), приёмник
     # общий EditSetting.waiting_for_file + raw_file_key (тот же путь, что у PDF согласий в
-    # handlers/admin_settings.py), своей MiniAppTheme-ручки не заводит.
+    # handlers/settings/admin_settings.py), своей MiniAppTheme-ручки не заводит.
     if slot_name == dashboard_favicon.SETTING_KEY:
         await callback.message.edit_text(
             dashboard_favicon.UPLOAD_PROMPT_HTML, parse_mode="HTML", reply_markup=_cancel_edit_keyboard(),

@@ -112,7 +112,7 @@ _FONT_LABEL = "miniapp/static/fonts/lato-400.woff2"
 _FONT_VALUE = "miniapp/static/fonts/lato-700.woff2"
 
 # Реестровый суффикс photo-записи — тот же, что у program/speakers/venue
-# (handlers/admin_settings.py::PHOTO_FIELDS/settings_receive_photo).
+# (handlers/settings/admin_settings.py::PHOTO_FIELDS/settings_receive_photo).
 BACKGROUND_SETTING_KEY = "forum_stats_card_photo_file_id"
 
 # Лого мероприятия — общий ключ реестра Mini App (`settings_schema.SETTINGS_SCHEMA["miniapp_logo"]`,

@@ -7,7 +7,7 @@
 Форма шва — эталон `handlers/access/admin_purge.py`/`handlers/cities/admin_cities.py`: своего `Router()`
 нет, `from handlers.admin import router`, каждый декоратор — в одну строку со строковым
 литералом (инвариант cap-теста `tests/test_roles_phase8.py`). Право — `checkin`
-(`handlers/access/admin_caps.py` ADMIN_CAPS/`_ADMIN_MENU_ROWS`, `handlers/admin_sections.py`
+(`handlers/access/admin_caps.py` ADMIN_CAPS/`_ADMIN_MENU_ROWS`, `handlers/settings/admin_sections.py`
 SECTIONS «apps»).
 
 T-12-01 (Tampering): найденный в файле QR-код НЕ доверенный ввод — строки отчёта «не найден»/
@@ -48,7 +48,7 @@ from database.db import (
     reissue_checkin_token,
 )
 from handlers.admin import router
-from handlers.admin_core import _admin_city_scope
+from handlers.settings.admin_core import _admin_city_scope
 from handlers.states import CheckinImport, CheckinQrTimeEdit, CheckinTestUpload
 from keyboards.builders import get_cancel_kb
 from services.settings.audit import set_setting_by_admin
@@ -341,7 +341,7 @@ async def _not_arrived_section(admin_id: int, city: str | None = None) -> tuple[
 async def render_admin_checkin(admin_id: int, city: str | None = None) -> tuple[str, InlineKeyboardMarkup]:
     """Экран «✅ Отметки на форуме». Последняя строка — «◀️ Назад» в раздел; хаб «🎪 Форум:
     функции» подменяет её своей (handlers/forum/admin_forum_hub_nav.py)."""
-    from handlers.admin_sections import back_button  # ленивый шов (см. docstring модуля)
+    from handlers.settings.admin_sections import back_button  # ленивый шов (см. docstring модуля)
     qr_line, qr_buttons = await _qr_broadcast_section(admin_id, city)
     qr_block = f"\n\n🎟 <b>Рассылка QR</b>\n{qr_line}" if qr_line else ""
     not_arrived_line, not_arrived_buttons = await _not_arrived_section(admin_id, city)
@@ -635,7 +635,7 @@ async def _checkin_point_import(callback, state: FSMContext, records: list[dict]
     lines.append("")
     lines.append(await _counter_line(callback.from_user.id))
 
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов (см. docstring модуля)
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов (см. docstring модуля)
     await callback.message.answer(
         "\n".join(lines), parse_mode="HTML",
         reply_markup=await op_return_keyboard(callback.from_user.id, "admin_checkin"),
@@ -762,7 +762,7 @@ async def checkin_test_file_step(message: types.Message, state: FSMContext, bot:
     records = find_checkin_records(text, tag)
     await state.set_state(None)
 
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов (см. docstring модуля)
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов (см. docstring модуля)
     back_kb = await op_return_keyboard(message.from_user.id, "admin_checkin")
 
     if not records:
@@ -799,7 +799,7 @@ async def checkin_test_file_invalid(message: types.Message):
 # ── Форум-ночь п.3 (D-03, идея №2): ручной запуск рассылки QR + настройки города ────────────
 
 async def _city_allowed(admin_id: int, code: str | None) -> bool:
-    """WR-03-подобная проверка (тот же довод, что `handlers.admin_settings._cycle_enum_setting`
+    """WR-03-подобная проверка (тот же довод, что `handlers.settings.admin_settings._cycle_enum_setting`
     для per-city ключей): менеджер, закреплённый за ОДНИМ городом (`staff.city`), не имеет
     права рассылать QR/трогать настройки ЧУЖОГО города, даже если соберёт `callback_data`
     вручную (кнопки в его собственном UI никогда не предлагают чужой город, но сам
@@ -940,7 +940,7 @@ async def _safe_reschedule(code: str | None) -> None:
     бросает `RuntimeError`, если бот стартовал без него) — в проде это невозможно (main.py
     поднимает планировщик раньше, чем начинают приходить апдейты), но правка настройки не
     имеет права уронить сохранение ИЗ-ЗА этого; тот же fail-soft приём, что у
-    `handlers.admin_settings._reschedule_checkin_qr_if_forum_date`."""
+    `handlers.settings.admin_settings._reschedule_checkin_qr_if_forum_date`."""
     try:
         await schedule_city_jobs(code)
     except Exception as e:
@@ -1009,7 +1009,7 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
 
     # Защитная перепроверка (T-092-01/WR-03 idiom): право на город могло измениться между
     # входом в FSM (checkinqr_time_start) и вводом значения — TOCTOU-гейт, тот же приём, что
-    # handlers.admin_settings.settings_edit_value применяет к composite-ключам.
+    # handlers.settings.admin_settings.settings_edit_value применяет к composite-ключам.
     if not await _city_allowed(message.from_user.id, code):
         await message.answer(_CITY_FORBIDDEN_ALERT, reply_markup=ReplyKeyboardRemove())
         return

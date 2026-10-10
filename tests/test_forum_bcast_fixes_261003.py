@@ -92,7 +92,7 @@ def test_evening_send_keeps_tomorrow_text(tmp_path, monkeypatch):
 
 
 def test_morning_text_registered_like_neighbours():
-    from handlers.admin_settings import SETTINGS_FIELDS
+    from handlers.settings.admin_settings import SETTINGS_FIELDS
     from services.i18n_form_manual import FORM_DEFAULT_EN
     from domain.settings.schema import SETTINGS_SCHEMA
     from domain.settings.synonyms import SETTINGS_SYNONYMS

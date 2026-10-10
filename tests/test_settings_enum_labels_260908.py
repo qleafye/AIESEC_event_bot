@@ -11,8 +11,8 @@ from __future__ import annotations
 import asyncio
 
 import shared.web_theme as web_theme
-from handlers.admin_miniapp_theme import _FONT_LABELS, _PRESET_LABELS
-from handlers.admin_settings import _enum_human_label
+from handlers.settings.admin_miniapp_theme import _FONT_LABELS, _PRESET_LABELS
+from handlers.settings.admin_settings import _enum_human_label
 from domain.settings.schema import SETTINGS_SCHEMA, option_label, option_labels
 
 from tests.test_miniapp_routes import (

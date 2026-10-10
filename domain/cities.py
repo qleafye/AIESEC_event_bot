@@ -570,7 +570,7 @@ def split_per_city_key(composed: str) -> tuple[str, str] | None:
     `None`, если строка не составной per-city ключ ИЛИ код не входит в `city_codes()` —
     то есть ровно тогда, когда `per_city_key(base, code)` не собрал бы такой ключ. Нужна
     писателям, которые получают составной ключ не из callback_data, а из FSM (см.
-    `handlers.admin_settings.settings_edit_value`): право на запись перепроверяется по коду
+    `handlers.settings.admin_settings.settings_edit_value`): право на запись перепроверяется по коду
     города в момент записи, а не только в момент входа в FSM."""
     if PER_CITY_SEP not in composed:
         return None

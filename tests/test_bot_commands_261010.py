@@ -62,7 +62,7 @@ def _by_scope(bot):
 
 
 def test_keys_on_event_screen_without_defaults():
-    from handlers.admin_settings import _EVENT_GROUP_KEYS
+    from handlers.settings.admin_settings import _EVENT_GROUP_KEYS
 
     for key in bot_commands.COMMAND_KEYS:
         assert SETTINGS_SCHEMA[key]["group"] == "event"

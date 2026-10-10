@@ -135,7 +135,7 @@ from domain.cities import (  # Phase 07.1 (CITY-04): admin city screen; Phase 07
     default_city_code,
     make_city_code,
 )
-from handlers.admin_core import (  # Phase 13 (13-04, REFAC-01): shared aggregator-core helpers
+from handlers.settings.admin_core import (  # Phase 13 (13-04, REFAC-01): shared aggregator-core helpers
     _ADMIN_MENU_ROWS,
     _visible_menu_rows,
     build_admin_keyboard,
@@ -345,7 +345,7 @@ async def _stats_keyboard_for(user_id: int, callback_data: str | None = None) ->
     # называет себя (callback_data) и получает клавиатуру своего раздела; у команды экрана-
     # источника нет вовсе, поэтому там по-прежнему корень.
     if callback_data:
-        from handlers.admin_sections import op_return_keyboard  # ленивый шов
+        from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
         base = await op_return_keyboard(user_id, callback_data)
     else:
         base = await admin_keyboard_for(user_id)
@@ -837,7 +837,7 @@ async def show_admin_stats(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "admin_monthly_stats")
 async def show_admin_monthly_stats(callback: types.CallbackQuery):
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов (цикл на уровне модуля)
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов (цикл на уровне модуля)
     await callback.message.edit_text(await render_monthly_stats(), parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, callback.data))
     await callback.answer()
 
@@ -853,7 +853,7 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
             lines.append(f"• {html_module.escape(str(source))} — {count}")
         text = "\n".join(lines)
 
-    from handlers.admin_sections import op_return_keyboard  # ленивый шов
+    from handlers.settings.admin_sections import op_return_keyboard  # ленивый шов
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await op_return_keyboard(callback.from_user.id, callback.data))
     await callback.answer()
 
@@ -863,7 +863,7 @@ async def show_admin_source_stats(callback: types.CallbackQuery):
 # Quick 260904-2cj: экран-однострочник поглощён журналом «❓ Вопросы делегатов»
 # (handlers/comms/admin_questions.py) — видит все три статуса, не только «в работе», и умеет
 # отвечать прямо со страницы. Кнопки «🔒 Залипшие вопросы» на главном экране больше нет
-# (см. handlers/admin_core.py::_ADMIN_MENU_ROWS), но этот callback остаётся жить: клавиатуры,
+# (см. handlers/settings/admin_core.py::_ADMIN_MENU_ROWS), но этот callback остаётся жить: клавиатуры,
 # отправленные ДО этого квика, лежат в чатах менеджеров вечно и должны продолжать работать.
 # Имя функции и декоратор НЕ трогаем — они зафиксированы золотым снимком
 # `tests/test_refac_snapshot_260816.py`.
@@ -880,8 +880,8 @@ async def show_stuck_questions(callback: types.CallbackQuery):
 # after the 307-658 core in original top-to-bottom order, immediately before cities. Also
 # re-wires `show_admin_settings` so the `_AUTO_OPEN_SECTIONS` dict (tail of this file) binds
 # a real function object at module-load time.
-from handlers import admin_settings  # noqa: E402
-from handlers.admin_settings import show_admin_settings  # noqa: E402
+from handlers.settings import admin_settings  # noqa: E402
+from handlers.settings.admin_settings import show_admin_settings  # noqa: E402
 
 
 # Module-size convention split (tests/test_module_size_convention_260816.py): «🔄 Синхронизация»/
@@ -1150,7 +1150,7 @@ from handlers.applications import admin_resume_replace  # noqa: E402
 # (handlers/sheets/admin_sheet_reconcile.py) — registers admin_sheet_reconcile/sheetrec_csv/
 # sheetrec_append_confirm/sheetrec_append_go/sheetrec_status_confirm/sheetrec_status_go in the
 # very tail of admin.router (golden snapshot: a clean append, right after admin_resume_replace).
-# «📊 Данные» hub row: handlers/admin_core.py right after «♻️ Пересобрать таблицу».
+# «📊 Данные» hub row: handlers/settings/admin_core.py right after «♻️ Пересобрать таблицу».
 from handlers.sheets import admin_sheet_reconcile  # noqa: E402
 
 # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): shared-router seam import for the
@@ -1164,7 +1164,7 @@ from handlers.forum import admin_forum_stats_card  # noqa: E402
 # Квик 260927 (рейтинг чата): shared-router seam import экрана «🏆 Рейтинг чата»
 # (handlers/chat/admin_chat_rating.py) — admin_chat_rating/chrate:* и ввод ChatRatingEdit в самом
 # хвосте admin.router (golden snapshot: чистое добавление после admin_forum_stats_card).
-# Строка раздела: handlers/admin_sections.py, «🔧 Управление», после тумблера учёта чата.
+# Строка раздела: handlers/settings/admin_sections.py, «🔧 Управление», после тумблера учёта чата.
 from handlers.chat import admin_chat_rating  # noqa: E402,F401
 # Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/chat/admin_chat_cleanup.py) — сразу
 # после admin_chat_rating (golden append: admin_chat_cleanup/chclean:* и ввод ChatCleanupEdit).
@@ -1192,8 +1192,8 @@ from handlers.delegations import admin_delegations  # noqa: E402,F401
 from handlers.forum import admin_forum_tz  # noqa: E402,F401
 # «📥 Перенос баллов из таблицы» в «🎮 Геймификации» (handlers/game/admin_coins_transfer.py) — golden append в хвост.
 from handlers.game import admin_coins_transfer  # noqa: E402,F401
-# Enum-настройки кнопками в общем редакторе (handlers/admin_settings_enum.py) — golden append в хвост.
-from handlers import admin_settings_enum  # noqa: E402,F401
+# Enum-настройки кнопками в общем редакторе (handlers/settings/admin_settings_enum.py) — golden append в хвост.
+from handlers.settings import admin_settings_enum  # noqa: E402,F401
 # «👥 Список участников» в «📊 Данные» (handlers/applications/admin_participants.py) — golden append в хвост.
 from handlers.applications import admin_participants  # noqa: E402,F401
 # Треки, компетенции и запись у сессии (handlers/forum/admin_enroll.py) — golden append в хвост.
@@ -1202,13 +1202,13 @@ from handlers.forum import admin_enroll  # noqa: E402,F401
 from handlers.forum import admin_enroll_list  # noqa: E402,F401
 # Тест компетенций: настройки, вопросы, баллы (handlers/forum/admin_quiz.py) — golden append в хвост.
 from handlers.forum import admin_quiz  # noqa: E402,F401
-# «🖼 Аватар бота» в «🎪 Событие» (handlers/admin_bot_avatar.py) — golden append в хвост.
-from handlers import admin_bot_avatar  # noqa: E402,F401
+# «🖼 Аватар бота» в «🎪 Событие» (handlers/settings/admin_bot_avatar.py) — golden append в хвост.
+from handlers.settings import admin_bot_avatar  # noqa: E402,F401
 
 # Переотправка решения одному делегату: shared-router seam import «📨 Отправить решение заново»
 # (handlers/applications/admin_resend_decision.py) — decresend_start/decresend_go/decresend_cancel в самом
 # хвосте admin.router (golden snapshot: чистая вставка после admin_chat_rating).
 from handlers.applications import admin_resend_decision  # noqa: E402,F401
-from handlers import admin_settings_search  # noqa: E402,F401  -- «🔎 Найти настройку», golden append в хвост
+from handlers.settings import admin_settings_search  # noqa: E402,F401  -- «🔎 Найти настройку», golden append в хвост
 from handlers.sheets import admin_sheet_target  # noqa: E402,F401 — «🔗 Какая таблица» в «📊 Данные», golden append
-from handlers import admin_setup_wizard  # noqa: E402,F401 — «🚀 Первая настройка» в «🔧 Управление», golden append
+from handlers.settings import admin_setup_wizard  # noqa: E402,F401 — «🚀 Первая настройка» в «🔧 Управление», golden append

@@ -19,7 +19,7 @@ from database import db
 from services import polls as polls_svc
 from services import scheduler as sched
 from handlers import admin as admin_mod
-from handlers import admin_core
+from handlers.settings import admin_core
 from handlers.comms import admin_poll_wizard as wiz
 from handlers.comms import polls as polls_handlers
 from handlers.access.admin_caps import required_capability, ADMIN_CAPS
@@ -313,7 +313,7 @@ def test_poll_callbacks_require_broadcast_capability_and_menu_row_exists(tmp_pat
     assert rows.index("admin_polls") == rows.index("admin_broadcast") + 1
     # Phase 20 (20-03): на корне теперь разделы — «📊 Опросы» приходят на экране «📢 Общение»
     # (та же аудитория и то же право, что у рассылки, поэтому и раздел один).
-    from handlers.admin_sections import build_section_keyboard
+    from handlers.settings.admin_sections import build_section_keyboard
 
     root = _flat_callback_data(asyncio.run(admin_core.build_admin_keyboard(ADMIN_ID)))
     assert "admin_sec:comms" in root

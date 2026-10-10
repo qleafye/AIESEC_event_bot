@@ -13,7 +13,7 @@ SETTINGS_SCHEMA (модуль-уровня dict, БД не требуется).
 """
 import re
 
-import handlers.admin_miniapp as admin_miniapp
+import handlers.settings.admin_miniapp as admin_miniapp
 import miniapp.deps as miniapp_deps
 from domain.settings.schema import SETTINGS_SCHEMA
 

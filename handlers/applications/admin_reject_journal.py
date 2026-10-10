@@ -5,9 +5,9 @@
 
 Форма шва — та же, что `handlers/applications/admin_app_list.py`/`handlers/forum/admin_faq.py`: своего `Router()`
 нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; каждый декоратор — в одну строку
-(инвариант cap-теста). `handlers.admin`/`handlers.admin_core`/`handlers.access.admin_caps` — на уровне
+(инвариант cap-теста). `handlers.admin`/`handlers.settings.admin_core`/`handlers.access.admin_caps` — на уровне
 модуля (безопасно, цикла не создают — `handlers/access/admin_caps.py` явно не импортирует `handlers.
-admin`/`handlers.admin_core`); `handlers.admin_sections` (`back_button`) — лениво внутри функции,
+admin`/`handlers.settings.admin_core`); `handlers.settings.admin_sections` (`back_button`) — лениво внутри функции,
 тот же приём, что у каждого соседнего шва этого раздела.
 
 Запись — ТОЛЬКО через `services.reject_journal` (`journal_page`/`journal_entry_detail`/
@@ -36,7 +36,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from database.db import get_setting
 from handlers.admin import router
 from handlers.access.admin_caps import has_capability
-from handlers.admin_core import _admin_city_view
+from handlers.settings.admin_core import _admin_city_view
 from services import quiet_hours
 from services.reject_journal import (
     JOURNAL_PAGE,
@@ -149,7 +149,7 @@ async def render_journal_screen(admin_id: int, offset: int = 0, include_returned
 
     buttons.append([InlineKeyboardButton(text="📄 Выгрузить файлом", callback_data="arj_csv")])
 
-    from handlers.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
+    from handlers.settings.admin_sections import back_button  # ленивый шов: цикл на уровне модуля
     buttons.append([back_button("admin_reject_journal")])
 
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)

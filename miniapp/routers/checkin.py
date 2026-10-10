@@ -9,7 +9,7 @@
 Городской скоуп — тот же приём, что `admin_tasks.py::bound_city`: суперадмин (ADMIN_IDS) не
 ограничен НИКОГДА, модуль городов выключен -> ограничений нет, иначе -- `Principal.city`
 (`staff.city`, привязка менеджера, НЕ бот-овский `admin_selected_city` — тот живёт в
-aiogram-зависимом `handlers/admin_core.py`, сюда его импортировать нельзя). `/stats` строит ту
+aiogram-зависимом `handlers/settings/admin_core.py`, сюда его импортировать нельзя). `/stats` строит ту
 же разбивку по городам, что бот (`handlers/forum/admin_checkin.py::_counter_line`) — те же
 `count_checkins_by_point(city_scope=…)`/`count_approved_current_season(city_scope=…)`
 (задача A2). Скан/ручная отметка (`/scan`/`/manual`) с D-26 (24.09) ПРОВЕРЯЮТ город делегата

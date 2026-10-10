@@ -107,8 +107,8 @@ def test_morning_catchup_until_follows_setting(tmp_path):
 # ── Ревью 10.10: ключи видны на экранах бота ─────────────────────────────────────────────
 
 def test_new_keys_are_on_bot_screens_and_in_search():
-    from handlers import admin_settings
-    from handlers.admin_settings_search import candidates
+    from handlers.settings import admin_settings
+    from handlers.settings.admin_settings_search import candidates
 
     assert "question_stuck_minutes" in admin_settings._settings_group_keys("apps")
     assert "wave_deadline_reminder_hours" in admin_settings._settings_group_keys("amb")

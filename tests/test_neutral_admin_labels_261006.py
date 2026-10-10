@@ -17,6 +17,6 @@ def test_forum_preset_label_is_neutral():
 
 
 def test_photo_button_label_is_neutral():
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     labels = [row[1] for row in admin_settings.PHOTO_FIELDS if row[0] == "forum_stats_card"]
     assert labels and all("Юлид" not in x for x in labels)

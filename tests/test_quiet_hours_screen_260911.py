@@ -167,7 +167,7 @@ def test_edit_buttons_carry_current_values_in_label(tmp_path):
 
 def test_toggle_row_is_same_button_as_settings_toggle_rows(tmp_path):
     _roles_ready(tmp_path)
-    from handlers.admin_settings import settings_toggle_rows
+    from handlers.settings.admin_settings import settings_toggle_rows
 
     text, kb = _run(qh_screen.render_quiet_hours_screen(ADMIN_ID))
     labels = _labels(kb)

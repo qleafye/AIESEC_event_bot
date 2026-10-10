@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 
 from handlers import user_actions
-from handlers.admin_settings import SETTINGS_FIELDS, SETTINGS_GROUPS
+from handlers.settings.admin_settings import SETTINGS_FIELDS, SETTINGS_GROUPS
 from domain.settings.schema import SETTINGS_SCHEMA
 
 import shared.web_theme as web_theme

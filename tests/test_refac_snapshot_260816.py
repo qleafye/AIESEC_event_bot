@@ -38,7 +38,7 @@ delegate task-card open/back-navigation flow).
 Drift note (2026-09-13, квик 260913-16o, подтверждение выключения модерации): 2 хендлера
 вставлены (496 -> 498), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and
 diffed against the prior 496-line snapshot -- pure insert, zero reorders: admin.router gained
-`approval_auto_go`/`approval_auto_no` (шов `handlers/admin_settings_audit.py`), встав СРАЗУ
+`approval_auto_go`/`approval_auto_no` (шов `handlers/settings/admin_settings_audit.py`), встав СРАЗУ
 после `toggle_reg_form_haptics` (хвост шва `admin_reg_form`, который тот же шов-модуль
 `admin_settings_audit` импортирует следующим по цепочке `admin_sections.py`) и ПЕРЕД
 `sync_sheet` (первый хендлер, который `handlers/admin.py` импортирует напрямую после
@@ -69,7 +69,7 @@ against the prior 517-line snapshot -- pure insert, zero reorders: admin.router 
 `handlers/admin_chat.py` снесён целиком (экран «💬 Чат» больше не существует — привязка
 чата идёт через личку промоутера, `handlers/chat/group_chat.py`), из admin.router ушли все шесть
 его хендлеров (пять из квика 260914-rgr + `chat_broadcast_out` отдельной задачи 3); взамен
-`handlers/admin_settings.py` получил один общий тумблер `toggle_chat_tracking_enabled`,
+`handlers/settings/admin_settings.py` получил один общий тумблер `toggle_chat_tracking_enabled`,
 вставший в хвост блока простых `_toggle_module_setting` тумблеров, сразу после
 `toggle_quiet_hours`. Пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом с
 прежним 523-строчным снапшотом.
@@ -224,7 +224,7 @@ def _build_snapshot_lines():
 # Drift note (2026-08-22, quick 260822, списочные настройки по пунктам): 5 handlers inserted
 # (334 -> 339), re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed
 # against the prior 334-line snapshot -- every pre-existing line byte-for-byte identical, no
-# reorders, no key changes. All five live in the NEW seam module handlers/admin_settings_lists.py
+# reorders, no key changes. All five live in the NEW seam module handlers/settings/admin_settings_lists.py
 # (imported as the last statement of admin_settings.py, so they land right after its last
 # handler, before admin_cities): message observer `settings_list_add_item`
 # (EditSetting.waiting_for_list_item -- a NEW state, so `settings_edit_value` on
@@ -252,14 +252,14 @@ def _build_snapshot_lines():
 # the same relative order, pure appends, no reorders. The two new lines are
 # `open_dashboard_settings` (`admin_dashboard_settings`, opens «📊 Дашборд») and
 # `toggle_dashboard_block` (`dash_block:*`, flips one of the eight block toggles), both in the
-# NEW seam module handlers/admin_dashboard.py, imported at the tail of admin_settings.py right
+# NEW seam module handlers/settings/admin_dashboard.py, imported at the tail of admin_settings.py right
 # after admin_settings_lists -> land last among admin.router's handlers.
 #
 # Drift note (2026-08-23, Phase 19-08, D-06/D-10): 13 handlers appended (364 -> 376),
 # re-captured by RUNNING `_build_snapshot_lines()` against HEAD and diffed against the prior
 # 364-line snapshot -- every pre-existing line byte-for-byte identical in the same relative
 # order, pure appends/insertions, no reorders. admin.router gained 12 lines from the NEW seam
-# module handlers/admin_miniapp.py («🎨 Оформление» Mini App screen), imported at the tail of
+# module handlers/settings/admin_miniapp.py («🎨 Оформление» Mini App screen), imported at the tail of
 # admin_settings.py right after admin_dashboard: message observers `miniapp_accent_step`/
 # `miniapp_logo_step`/`miniapp_logo_step_invalid` (own small FSM group MiniAppTheme, land
 # right after admin_settings_lists's `settings_list_add_item` in the message bucket — no
@@ -276,7 +276,7 @@ def _build_snapshot_lines():
 # RUNNING `_build_snapshot_lines()` against HEAD and diffed against the prior 376-line snapshot
 # -- every OTHER pre-existing line byte-for-byte identical in the same relative order (verified
 # by diffing both snapshots with every `miniapp` line filtered out first — zero remaining
-# diff). Second seam `handlers/admin_miniapp_theme.py` (пресеты BlueBook/YouLead/Своя + ручки
+# diff). Second seam `handlers/settings/admin_miniapp_theme.py` (пресеты BlueBook/YouLead/Своя + ручки
 # кастома D-04) imported at the tail of admin_settings.py right after admin_miniapp, replacing
 # the old accent/logo edit flow that used to live in admin_miniapp.py itself:
 # REMOVED (7, admin_miniapp.py): message `miniapp_accent_step`, `miniapp_logo_step`,
@@ -304,7 +304,7 @@ def _build_snapshot_lines():
 # via callback_data suffix, same `toggle_miniapp_section`-style dispatch already used one seam
 # over). Net: -7 + 17 = +10 lines (376 -> 386).
 # Drift note (2026-08-31, Phase 20, 20-01): +1 handler (386 -> 387) -- хвостовой seam-импорт
-# handlers/admin_sections.py в конце handlers/admin_settings.py регистрирует один
+# handlers/settings/admin_sections.py в конце handlers/settings/admin_settings.py регистрирует один
 # `show_admin_section` (admin_sec:*). Снапшот ПЕРЕСНЯТ прогоном `_build_snapshot_lines()`
 # против HEAD и сдиффен с прежним 386-строчным: единственное изменение -- вставка одной
 # строки после хвоста admin_miniapp_theme (конец цепочки швов admin_settings), все
@@ -318,7 +318,7 @@ def _build_snapshot_lines():
 # местах в прежнем порядке.
 # Drift note (2026-09-02, Phase 21, 21-07 Task 2): +1 handler (388 -> 389) -- новый
 # `toggle_reg_edit_remoderation` («Изменённая анкета — снова на модерацию», D-12) дописан в
-# handlers/admin_settings.py сразу после `toggle_nudge_enabled` (тот же принцип, что и у
+# handlers/settings/admin_settings.py сразу после `toggle_nudge_enabled` (тот же принцип, что и у
 # соседних тумблеров: физическая позиция декоратора в файле = позиция в этом снапшоте), поэтому
 # встал между `toggle_nudge_enabled` и `toggle_payment_reminders`. Снапшот ПЕРЕСНЯТ прогоном
 # `_build_snapshot_lines()` и сдиффен с прежним 388-строчным -- единственное изменение: одна
@@ -344,7 +344,7 @@ def _build_snapshot_lines():
 #
 # Drift note (quick 260902-vth, 397 -> 400): новый шов `handlers/sheets/admin_sheet_logs.py` (экран
 # «🕓 Журналы в таблицу», раздел «📊 Данные») импортируется ПОСЛЕДНИМ в хвосте
-# handlers/admin_sections.py (после его собственного `show_admin_section`) — три хендлера
+# handlers/settings/admin_sections.py (после его собственного `show_admin_section`) — три хендлера
 # (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go) встали строго между
 # `show_admin_section` и `show_admin_cities` (первый хендлер следующего шва). Пересъёмка
 # `_build_snapshot_lines()` + diff с прежним 397-строчным подтвердили: чистая вставка трёх
@@ -382,7 +382,7 @@ def _build_snapshot_lines():
 # byte-for-byte identical in the same order.
 # Drift note (Phase 30, 30-01, A2-08, 487 -> 496 handlers -- PURE APPEND): девять новых
 # callback-хендлеров тумблеров «Анкета 2.0» (`handlers/regform/admin_reg_form.py`, шов, декорирующий
-# общий `admin.router`, импортируется последним в хвостовой цепочке `handlers/admin_sections.py`
+# общий `admin.router`, импортируется последним в хвостовой цепочке `handlers/settings/admin_sections.py`
 # -- сразу после `admin_quiet_hours`) регистрируются ПОСЛЕ `admin_quiet_hours` и ПЕРЕД
 # `admin_sync_sheet` (`handlers/sheets/admin_sheets.py`, импортируется в `handlers/admin.py` только
 # после того, как весь хвост `admin_settings.py`, включая `admin_sections`, отработал).
@@ -392,7 +392,7 @@ def _build_snapshot_lines():
 # Drift note (Quick 260919-mlu, Task 3, 524 -> 527 handlers -- PURE APPEND): три новых
 # callback-хендлера развилки «была своя вкладка, имя меняется» (`handlers/sheets/admin_sheet_tabs.py`,
 # шов, декорирующий общий `admin.router`, импортируется последним в хвостовой цепочке
-# `handlers/admin_sections.py` -- сразу после `admin_app_list`) регистрируются ПОСЛЕ
+# `handlers/settings/admin_sections.py` -- сразу после `admin_app_list`) регистрируются ПОСЛЕ
 # `apl_page` и ПЕРЕД `sync_sheet`. Re-captured by RUNNING `_build_snapshot_lines()` against
 # HEAD after this quick's changes и diffed против прежнего 524-строчного снимка
 # (`difflib.SequenceMatcher`): ровно одна вставка из 3 строк в позиции 198, ни одна
@@ -515,7 +515,7 @@ def _build_snapshot_lines():
 #
 # Drift note (квик 260923, AUTOREJ-REPORT, D-I: экран «📊 Отчётность автоотказа», 611 -> 613
 # handlers -- PURE APPEND): новый шов `handlers/applications/admin_reject_reports.py`, импортирован из
-# хвоста `handlers/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_rules` (та же цепочка импортов
+# хвоста `handlers/settings/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_rules` (та же цепочка импортов
 # — сам `admin_reject_rules` тянет `admin_reject_cond`/`admin_reject_journal` своим хвостом
 # первым, поэтому физически 2 новые строки встали ПОСЛЕ `arj_csv_export` и ПЕРЕД `sync_sheet`).
 # 2 новых callback_query-хендлера (`admin_reject_reports`/`arp_sync`). Re-captured by RUNNING
@@ -524,7 +524,7 @@ def _build_snapshot_lines():
 #
 # Drift note (форум-ночь п.4, расписание форума в боте, 642 -> 678 handlers -- PURE APPEND, ДВЕ
 # вставки): новые швы `handlers/forum/admin_program.py` (импортирован из хвоста
-# `handlers/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_reports`) и `handlers/
+# `handlers/settings/admin_sections.py` СРАЗУ ПОСЛЕ `admin_reject_reports`) и `handlers/
 # admin_program_halls.py` (импортирован хвостом самого `admin_program.py`, потолок размера
 # модуля). 9 message-хендлеров (`prog_daynew_cancel`/`prog_daynew_step`/`prog_field_cancel`/
 # `prog_time_step`/`prog_title_step`/`prog_speaker_step`/`prog_description_step`/
@@ -1941,15 +1941,15 @@ def test_snapshot_total_handler_count_is_292():
     # перепроверен прогоном _build_snapshot_lines() и diff'ом с прежним 481-строчным снапшотом.
     # Quick 260911-805 (W4-03): +1 handlers/comms/admin_quiet_hours.py (callback_query
     # admin_quiet_hours -- экран «🌙 Тихие часы»), встал сразу после sheet_logs_sync_go и перед
-    # sync_sheet: шов импортируется из хвоста handlers/admin_sections.py, СРАЗУ ПОСЛЕ импорта
+    # sync_sheet: шов импортируется из хвоста handlers/settings/admin_sections.py, СРАЗУ ПОСЛЕ импорта
     # admin_sheet_logs (D-03) -- та же точка регистрации, что у sheet_logs_* выше (484 -> 485);
     # чистая вставка, перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним
     # 484-строчным снапшотом (единственная строка сдвинула всё после неё на одну позицию, ни
     # одна другая строка не поменялась и не переставилась).
-    # Квик 260913-16o: +2 handlers/admin_settings_audit.py (callback_query approval_auto_go/
+    # Квик 260913-16o: +2 handlers/settings/admin_settings_audit.py (callback_query approval_auto_go/
     # approval_auto_no — подтверждение выключения модерации), встали сразу после
     # toggle_reg_form_haptics и перед sync_sheet: шов импортируется из хвоста
-    # handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_reg_form (496 -> 498); чистая вставка,
+    # handlers/settings/admin_sections.py, СРАЗУ ПОСЛЕ admin_reg_form (496 -> 498); чистая вставка,
     # перепроверена прогоном _build_snapshot_lines() и diff'ом с прежним 496-строчным
     # снапшотом — ровно две новые строки, ни одна другая не поменялась и не переставилась.
     # Phase 30 (30-06, задача 4, A2-01/03/04/05): +5 handlers/reg/reg_types_lookup.py,
@@ -1963,18 +1963,18 @@ def test_snapshot_total_handler_count_is_292():
     # прогоном `_build_snapshot_lines()` и diff'ом с прежним 498-строчным снапшотом — ровно пять
     # новых строк, ни одна другая строка не поменялась и не переставилась.
     # Phase 30 (30-01, A2-08): +9 handlers/regform/admin_reg_form.py; (30-07, A2-03): +11
-    # handlers/admin_lookup.py (2 message + 9 callback_query) -> 503 + 11 = 514;
+    # handlers/settings/admin_lookup.py (2 message + 9 callback_query) -> 503 + 11 = 514;
     # (30-07, задача 4): +1 admin_settings_lists.py::settings_list_attr_toggle -> 515.
     # Квик 260914-rgq (RGQ-01): +2 handlers/applications/admin_app_list.py (callback_query
     # admin_app_list_open/apl_page — экран «📇 Список заявок»), встали сразу после
     # admin_lookup_search_pick и перед sync_sheet: шов импортируется из хвоста
-    # handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_lookup (515 -> 517); чистая вставка,
+    # handlers/settings/admin_sections.py, СРАЗУ ПОСЛЕ admin_lookup (515 -> 517); чистая вставка,
     # перепроверена прогоном `_build_snapshot_lines()` и diff'ом с прежним 515-строчным
     # снапшотом — ровно две новые строки, ни одна другая не поменялась и не переставилась.
     # Квик 260914-rgr (RGR-01..07, задача 2): +5 handlers/admin_chat.py (callback_query
     # admin_chat/chat_chat_tracking_toggle/chat_refresh_now/chat_unbind/chat_unbind_go —
     # экран «💬 Чат»), встали сразу после apl_page и перед sync_sheet: шов импортируется из
-    # хвоста handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_app_list (517 -> 522); чистая
+    # хвоста handlers/settings/admin_sections.py, СРАЗУ ПОСЛЕ admin_app_list (517 -> 522); чистая
     # вставка, перепроверена прогоном `_build_snapshot_lines()` и diff'ом (difflib.
     # SequenceMatcher) с прежним 517-строчным снапшотом — ровно пять новых строк в позиции
     # 194, ни одна другая не поменялась и не переставилась.
@@ -1991,7 +1991,7 @@ def test_snapshot_total_handler_count_is_292():
     # шестой, добавленный отдельно задачей 3 (chat_broadcast_out), убраны из admin.router
     # одним куском (были встык, сразу после apl_page и перед sync_sheet — см. дрифт-ноты
     # выше). Взамен добавлена ОДНА строка `toggle_chat_tracking_enabled`
-    # (handlers/admin_settings.py) — тумблер учёта чата теперь общий тумблер раздела
+    # (handlers/settings/admin_settings.py) — тумблер учёта чата теперь общий тумблер раздела
     # «🔧 Управление», встал в хвост уже существующего блока простых `_toggle_module_setting`
     # тумблеров, СРАЗУ ПОСЛЕ `toggle_quiet_hours` и ПЕРЕД `toggle_delegate_lang_enabled` —
     # перепроверено прогоном `_build_snapshot_lines()` и diff'ом (difflib.unified_diff) с
@@ -2020,7 +2020,7 @@ def test_snapshot_total_handler_count_is_292():
     # Квик 260919-mlu (Task 3): +3 handlers/sheets/admin_sheet_tabs.py callback_query
     # (sheet_tab_rename_go/sheet_tab_reuse_go/sheet_tab_newtab_go — развилка «была своя
     # вкладка, имя меняется»), встали сразу после apl_page и перед sync_sheet: шов
-    # импортируется из хвоста handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_app_list
+    # импортируется из хвоста handlers/settings/admin_sections.py, СРАЗУ ПОСЛЕ admin_app_list
     # (524 -> 527); чистая вставка, перепроверена прогоном `_build_snapshot_lines()` и
     # diff'ом (difflib.SequenceMatcher) с прежним 524-строчным снапшотом — ровно три новые
     # строки в позиции 198, ни одна другая не поменялась и не переставилась.
@@ -2032,7 +2032,7 @@ def test_snapshot_total_handler_count_is_292():
     # новые строки в позиции 201, ни одна другая не поменялась и не переставилась.
     # Phase 31 (план 31-08, задача 1): +7 handlers/applications/admin_reject_rules.py callback_query
     # (admin_reject_rules/arr_p/arr_master/arr_t/arr_noop/arr_new/arr_preset — экран списка
-    # «🚫 Правила автоотказа»), шов импортируется из хвоста handlers/admin_sections.py СРАЗУ
+    # «🚫 Правила автоотказа»), шов импортируется из хвоста handlers/settings/admin_sections.py СРАЗУ
     # ПОСЛЕ admin_sheet_tabs (531 -> 538); чистая вставка, перепроверена прогоном
     # `_build_snapshot_lines()` и diff'ом с прежним 531-строчным снапшотом — 7 новых строк, ни
     # одна другая не поменялась и не переставилась. Задачи 2/3 того же плана заполняют тела
@@ -2076,7 +2076,7 @@ def test_snapshot_total_handler_count_is_292():
     # снимком: ровно одна вставка одной строки, ни одна другая строка не поменялась и не
     # переставилась.
     # Тумблер «имена в рейтинге волны»: новый хендлер admin.callback_query
-    # toggle_wave_rating_show_names, handlers/admin_settings.py, встал СРАЗУ ПОСЛЕ
+    # toggle_wave_rating_show_names, handlers/settings/admin_settings.py, встал СРАЗУ ПОСЛЕ
     # toggle_daily_digest и ПЕРЕД toggle_delegate_lang_enabled — среди соседних тумблеров
     # раздела настроек, а не в хвосте admin.router (577 -> 578). Точка регистрации в файле
     # не переехала: соседний shadowing-риск проверен (ни один более ранний
@@ -2115,7 +2115,7 @@ def test_snapshot_total_handler_count_is_292():
     # с прежним 614-строчным снимком: ровно одна вставка из 1 строки, 0 удалений, 0 реордеров
     # (614 -> 615).
     # Квик 260923 (форум-чекин, D-01..D-04): +1 admin.callback_query toggle_checkin_qr_enabled
-    # (handlers/admin_settings.py), встал сразу после toggle_daily_digest и перед
+    # (handlers/settings/admin_settings.py), встал сразу после toggle_daily_digest и перед
     # toggle_wave_rating_show_names — чистая вставка, пересчитано `_build_snapshot_lines()` и
     # сверено diff'ом с прежним 615-строчным снимком: ровно одна вставка из 1 строки, 0
     # удалений, 0 реордеров (615 -> 616).
@@ -2438,7 +2438,7 @@ def test_snapshot_total_handler_count_is_292():
     # Перенос баллов из таблицы (handlers/game/admin_coins_transfer.py, хвост admin.py): +3 admin.message
     # (state:CoinsTransfer:* — отмена дважды/ссылка) и +4 admin.callback_query в хвосте; чистые
     # вставки (1076 -> 1083).
-    # Enum-настройки кнопками (handlers/admin_settings_enum.py, хвост admin.py): +1
+    # Enum-настройки кнопками (handlers/settings/admin_settings_enum.py, хвост admin.py): +1
     # admin.callback_query settings_enum_pick в хвосте; чистая вставка (1083 -> 1084).
     # 09.10 (/start менеджера, handlers/reg/reg_manager_start.py): +1 registration.callback_query
     # (manager_fill_form) в хвост registration.router после regrepeat_pick (1084 -> 1085).
@@ -2454,11 +2454,11 @@ def test_snapshot_total_handler_count_is_292():
     # menu_edit_anketa сразу после quiz_menu, до reg_handoff_idle_fallback (1200 -> 1201).
     # 09.10 (подзаголовки раздела «🤝 Амбассадоры»): +1 admin.callback_query amb_separator (amb_sep)
     # в хвосте handlers/amb/admin_amb_section.py, перед forumfn_qr_screen (1201 -> 1202).
-    # 09.10 «🖼 Аватар бота» (handlers/admin_bot_avatar.py, хвост admin.py): +4 admin.message
+    # 09.10 «🖼 Аватар бота» (handlers/settings/admin_bot_avatar.py, хвост admin.py): +4 admin.message
     # (state:BotAvatar:* — отмена дважды/фото/не фото) и +4 admin.callback_query в хвосте
     # перед decresend_start; две чистые вставки (1202 -> 1210). Ревью: +1 admin.callback_query
     # bot_avatar_set_go (подтверждение «Поставить это фото?») после bot_avatar_cancel (1210 -> 1211).
-    # 09.10 («🔎 Найти настройку», handlers/admin_settings_search.py): +2 admin.message
+    # 09.10 («🔎 Найти настройку», handlers/settings/admin_settings_search.py): +2 admin.message
     # (settings_search_query/settings_search_not_text) после prog_qzimp_not_file и +2 admin.
     # callback_query (settings_search_start/settings_search_cancel) после decresend_cancel;
     # чистые вставки, сверено SequenceMatcher поверх аватара (1211 -> 1215).
@@ -2474,10 +2474,10 @@ def test_snapshot_total_handler_count_is_292():
     # 10.10 (ревью разовых операций): кнопка «Начислить» несёт числа предпросмотра, фильтр
     # amb_backfill_go стал startswith("ambpt_fill_go") — состав хендлеров прежний, меняется литерал.
     # 10.10 («Загрузить историю чата»): +4 admin.message и +4 admin.callback_query у экрана рейтинга чата (1232 -> 1240).
-    # 10.10 (общая настройка при городе в шапке, handlers/admin_settings_global.py — хвост
+    # 10.10 (общая настройка при городе в шапке, handlers/settings/admin_settings_global.py — хвост
     # admin_settings.py после admin_settings_placeholders): +1 admin.callback_query settings_edit_all
     # сразу после phchk_retry, чистая вставка (1240 -> 1241).
-    # 10.10 («🚀 Первая настройка» в боте, handlers/admin_setup_wizard.py): +3 admin.callback_query
+    # 10.10 («🚀 Первая настройка» в боте, handlers/settings/admin_setup_wizard.py): +3 admin.callback_query
     # в хвосте admin.router; чистая вставка, сверено SequenceMatcher (1240 -> 1243).
     # Слияние обеих вставок: 1241 + 3 = 1244.
     # 10.10 (мастер: экраны «🔘 Кнопки меню»/«📋 Вопросы регистрации» с возвратом в шаг): +1 admin.callback_query
@@ -2486,7 +2486,7 @@ def test_snapshot_total_handler_count_is_292():
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
-    # handlers/admin_sections.py, СРАЗУ ПОСЛЕ импорта admin_quiet_hours — та же точка
+    # handlers/settings/admin_sections.py, СРАЗУ ПОСЛЕ импорта admin_quiet_hours — та же точка
     # регистрации, что у admin_quiet_hours выше (487 -> 496); чистая вставка, перепроверена
     # прогоном _build_snapshot_lines() и diff'ом (difflib.SequenceMatcher) с прежним
     # 487-строчным снапшотом — ровно одна вставка из 9 строк, ни одна другая строка не

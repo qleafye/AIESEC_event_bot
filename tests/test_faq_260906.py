@@ -656,8 +656,8 @@ def test_admin_caps_cover_faq_namespace_exactly_three_records(tmp_path):
 
 
 def test_admin_faq_wired_into_apps_section_and_menu_rows():
-    from handlers import admin_sections as sec
-    from handlers.admin_core import _ADMIN_MENU_ROWS
+    from handlers.settings import admin_sections as sec
+    from handlers.settings.admin_core import _ADMIN_MENU_ROWS
 
     assert ("❓ Частые вопросы", "admin_faq") in _ADMIN_MENU_ROWS
     apps_rows = next(rows for token, _label, rows in sec.SECTIONS if token == "apps")

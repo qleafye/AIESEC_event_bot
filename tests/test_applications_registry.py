@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from handlers.admin_settings import _APPS_FIELD_ORDER
+from handlers.settings.admin_settings import _APPS_FIELD_ORDER
 from miniapp.deps import SECTIONS
 from domain.settings.schema import SETTINGS_SCHEMA
 

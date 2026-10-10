@@ -1,7 +1,7 @@
 """Валидация значения настройки по типу ключа из SETTINGS_SCHEMA — ДО записи в bot_settings.
 
 Чистая функция, без БД и без aiogram: вызывается из
-`handlers.admin_settings.settings_edit_value` (вынесена отдельным модулем, т.к.
+`handlers.settings.admin_settings.settings_edit_value` (вынесена отдельным модулем, т.к.
 admin_settings.py упирается в потолок test_module_size_convention_260816) и — с Phase 22
 (план 22-04, D-06) — из веб-слоя Mini App через `settings_ops.validate_batch_item`. Модуль
 живёт в КОРНЕ (не в `handlers/`): пакет `handlers` при импорте тянет aiogram, а веб-процессу
@@ -33,7 +33,7 @@ from domain.cities import PER_CITY_SEP
 from domain.settings.schema import SETTINGS_SCHEMA, multi_codes, option_labels
 
 # Тумблеры on/off в реестре без option_labels — человеку их показываем так (и так же
-# принимаем ввод текстом). Источник для кнопок бота (handlers/admin_settings_enum.py).
+# принимаем ввод текстом). Источник для кнопок бота (handlers/settings/admin_settings_enum.py).
 ON_OFF_LABELS = {"on": "Включено", "off": "Выключено"}
 
 # Quick 260820-rms: одиночная команда — `/slovo` или `/slovo@YouLead_bot`, без пробелов и без

@@ -75,7 +75,7 @@ from handlers.admin import router
 # and which admin button changes it. `entries` carry the raw key only for the DB read.
 #
 # Phase 20 (20-05, ADMIN-IA-04): поле `where` начинается с подписи РАЗДЕЛА из
-# `handlers/admin_sections.py::SECTIONS` — экрана «⚙️ Настройки форума» со всеми тумблерами
+# `handlers/settings/admin_sections.py::SECTIONS` — экрана «⚙️ Настройки форума» со всеми тумблерами
 # больше нет, и путь без раздела никуда не ведёт. Сторож
 # `tests/test_admin_sections_ia20.py::test_settings_guide_where_starts_with_a_real_section`
 # роняет набор, если раздел переименуют, а справку забудут.
@@ -548,7 +548,7 @@ async def build_roles_keyboard(viewer_id: int | None = None) -> InlineKeyboardMa
     if viewer_id is not None and await has_capability(viewer_id, "moderate_reg"):
         buttons.append([InlineKeyboardButton(text="🔗 Пригласить волонтёров", callback_data="volinvite_entry")])
     # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («🔧 Управление»).
-    from handlers.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
+    from handlers.settings.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
     buttons.append([back_button("admin_roles")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

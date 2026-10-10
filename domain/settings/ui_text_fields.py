@@ -1,7 +1,7 @@
 """Записи реестра и порядок на экранах бота для подписей, вынесенных из кода (бэклог «🛠» P1).
 
 Корневой модуль без импортов проекта: `settings_schema` вливает `UI_TEXT_SCHEMA` в
-`SETTINGS_SCHEMA`, `handlers/admin_settings.py` дописывает `*_FIELD_ORDER` в хвост экранов
+`SETTINGS_SCHEMA`, `handlers/settings/admin_settings.py` дописывает `*_FIELD_ORDER` в хвост экранов
 групп — так ключ виден менеджеру в боте, а не только в приложении.
 """
 

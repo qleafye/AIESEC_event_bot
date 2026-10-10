@@ -4,7 +4,7 @@
 «🎟 Включить/выключить QR», `checkin` для «✅ Отметки на форуме»). Держатель одной
 `moderate_reg` тапал кнопку и получал «Недостаточно прав» — `_render_hub` теперь рисует
 только кнопки, на которые есть право (`required_capability`/`resolve_capabilities`/`_holds`,
-тот же приём, что `handlers.admin_sections.visible_rows`), остальные скрыты. Статусные
+тот же приём, что `handlers.settings.admin_sections.visible_rows`), остальные скрыты. Статусные
 строки (✅/❌) остаются видны всем, кто вообще открыл хаб — это факт, а не действие.
 
 pytest-asyncio недоступна — async через `asyncio.run()` (конвенция проекта). БД —
@@ -147,7 +147,7 @@ def test_manager_with_unrelated_cap_sees_only_back_button(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_hub_back_leads_to_own_section(tmp_path, monkeypatch):
-    from handlers import admin_sections
+    from handlers.settings import admin_sections
 
     _ready(tmp_path)
     own = f"admin_sec:{admin_sections.section_of('admin_forum_functions')}"

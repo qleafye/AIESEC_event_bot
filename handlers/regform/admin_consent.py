@@ -1,7 +1,7 @@
 """Quick 260822 — шов admin_settings: версия согласия и напоминание о целях обработки.
 
 Регистрирует хендлеры на общий `router` владельца (`handlers.admin`) и импортируется из
-ХВОСТА `handlers/admin_settings.py` (тот сам на потолке размера — см.
+ХВОСТА `handlers/settings/admin_settings.py` (тот сам на потолке размера — см.
 tests/test_module_size_convention_260816.py), как и остальные швы Phase 13.
 
 Что здесь:
@@ -23,7 +23,7 @@ from services.consent import (
     purpose_reminder_text, PURPOSE_REMINDER_BUTTON, PURPOSE_REMINDER_CALLBACK,
 )
 from handlers.admin import router
-from handlers.admin_settings import render_settings_group_text, build_settings_group_keyboard
+from handlers.settings.admin_settings import render_settings_group_text, build_settings_group_keyboard
 
 logger = logging.getLogger(__name__)
 

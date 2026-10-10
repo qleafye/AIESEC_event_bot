@@ -185,7 +185,7 @@ def test_counter_button_label_comes_from_registry(tmp_path):
 def test_registry_has_two_new_game_keys_and_admin_order_lists_them():
     import domain.settings.schema as s
     from handlers import admin as _admin_mod  # noqa: F401 -- ядро первым, иначе circular import
-    from handlers import admin_settings
+    from handlers.settings import admin_settings
     for key in ("game_proof_collected_template", "game_proof_remove_last_button"):
         assert s.SETTINGS_SCHEMA[key]["group"] == "game"
         assert s.SETTINGS_SCHEMA[key]["default"]
