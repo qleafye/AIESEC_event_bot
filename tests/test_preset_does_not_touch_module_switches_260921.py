@@ -25,7 +25,7 @@ from database.db import get_setting, set_setting
 from domain.regform.engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
 from domain.settings.schema import SETTINGS_SCHEMA
 
-from handlers.reg_schema import _apply_party_preset, _apply_short_preset
+from handlers.reg.reg_schema import _apply_party_preset, _apply_short_preset
 from tests._dbtpl import fast_init_db
 
 

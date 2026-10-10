@@ -1,9 +1,9 @@
 """Phase 21 Plan 09 (FORM-SYNC-02/03): бот подхватывает общий черновик анкеты (`reg_drafts`,
 план 21-05) — точки синхронизации в `_advance`/`_stamp_reg_step`/`_start_registration_flow`,
-шов `handlers/reg_resume.py` («▶️ Продолжить с шага N / 🔄 Заново»), deep-link
+шов `handlers/reg/reg_resume.py` («▶️ Продолжить с шага N / 🔄 Заново»), deep-link
 `?start=continue|edit`, отсечка догонялки для делегата, активного в приложении прямо сейчас.
 
-RED (задача 1): `handlers/reg_resume.py` и функции `_sync_draft_out`/`_sync_draft_in` в
+RED (задача 1): `handlers/reg/reg_resume.py` и функции `_sync_draft_out`/`_sync_draft_in` в
 `handlers/registration.py` ещё не существуют — весь набор обязан падать на
 ImportError/AttributeError с их именами, не на фикстурах.
 
@@ -25,9 +25,9 @@ from aiogram.types import InlineKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_flow
-from handlers import reg_resume_fork
-from handlers import reg_steps
+from handlers.reg import reg_flow
+from handlers.reg import reg_resume_fork
+from handlers.reg import reg_steps
 from handlers.states import Registration
 from services import reg_finalize as rf
 
@@ -116,7 +116,7 @@ class _FakeDocument:
 
 class _FakeResumeMessage(_KBCapturingMessage):
     """`_KBCapturingMessage` + `.document` — единственное, чего не хватает
-    `handlers/reg_flow.py::process_resume` (message.chat.id/.answer уже есть в базовом классе)."""
+    `handlers/reg/reg_flow.py::process_resume` (message.chat.id/.answer уже есть в базовом классе)."""
 
     def __init__(self, uid, username=None, document=None):
         super().__init__(uid, username)
@@ -248,7 +248,7 @@ def test_reg_resume_continue_restores_step_and_answers(tmp_path):
         await db.set_setting("reg_q_phone", "on")
         await db.set_setting("reg_q_age", "on")
         await _seed_new_draft(USER_ID, step="phone", patch={"age": "22"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
         callback = _FakeCallback("reg_resume:continue", USER_ID, "delegate")
         state = _new_state(USER_ID)
         await reg_resume.reg_resume_continue(callback, state, bot=object())
@@ -268,7 +268,7 @@ def test_reg_resume_continue_step_no_longer_enabled_falls_back(tmp_path):
         await db.set_setting("reg_q_age", "on")
         # черновик указывает на шаг, который сейчас выключен
         await _seed_new_draft(USER_ID, step="a_step_turned_off_meanwhile", patch={"age": "22"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
         callback = _FakeCallback("reg_resume:continue", USER_ID, "delegate")
         state = _new_state(USER_ID)
         # must not raise
@@ -288,7 +288,7 @@ def test_reg_resume_restart_shows_confirm_with_count(tmp_path):
         # Приёмка 09.10: счётчик — отвеченные ВКЛЮЧЁННЫЕ вопросы, телефон по умолчанию выключен.
         await db.set_setting("reg_q_phone", "on")
         await _seed_new_draft(USER_ID, patch={"age": "22", "phone": "+7999"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
         callback = _FakeCallback("reg_resume:restart", USER_ID, "delegate")
         state = _new_state(USER_ID)
         await reg_resume.reg_resume_restart(callback, state)
@@ -304,7 +304,7 @@ def test_reg_resume_restart_yes_deletes_draft_and_restarts(tmp_path):
 
     async def go():
         await _seed_new_draft(USER_ID, patch={"age": "22"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
         callback = _FakeCallback("reg_resume:restart_yes", USER_ID, "delegate")
         state = _new_state(USER_ID)
         await reg_resume.reg_resume_restart_yes(callback, state, bot=object())

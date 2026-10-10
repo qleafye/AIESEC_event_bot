@@ -38,7 +38,7 @@ from services.sheets import (
     get_existing_named_sheet_ids,
     append_rows_to_named_sheet,
 )
-from handlers.reg_schema import (
+from handlers.reg.reg_schema import (
     active_sheet_headers,
     set_sheet_schema,
     _sheet_value_map,
@@ -73,7 +73,7 @@ class SheetBatch:
     дозаписывается построчно после сверки с уже имеющимися id."""
 
     tab: str | None  # None = основная вкладка
-    kind: str  # "main" | "short" | "party" — из handlers.reg_schema._sheet_kind
+    kind: str  # "main" | "short" | "party" — из handlers.reg.reg_schema._sheet_kind
     city_code: str | None  # sheet_city_code(event_city); None для основной вкладки
     headers: list[str] = field(default_factory=list)
     rows: list[list] = field(default_factory=list)

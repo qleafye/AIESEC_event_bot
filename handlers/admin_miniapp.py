@@ -143,7 +143,7 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
 async def sync_chat_menu_button(bot, chat_id: int | None = None, lang: str = "ru") -> None:
     """Phase 19 (08, D-10/T-19-52): the ONE function that sets the chat menu button, called
     from THREE places — `main.py` at startup, `toggle_miniapp_enabled` below (right after the
-    setting is written), and `handlers/reg_lang.py::lang_pick_choose` (right after a delegate
+    setting is written), and `handlers/reg/reg_lang.py::lang_pick_choose` (right after a delegate
     picks/switches their language). Without a single shared function called from all three,
     the toggle would only take visible effect on the NEXT bot restart, breaking the
     "выключение тумблера убирает точки входа сразу" success criterion. Fail-soft is the

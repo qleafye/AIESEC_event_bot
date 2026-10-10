@@ -244,7 +244,7 @@ async def move_user_city(
     # Резолв вкладок и рядов — читается ВСЕГДА (в т.ч. в dry_run), чтобы отчёт показывал
     # реальные имена вкладок и число строк ДО того, как что-либо применится.
     from handlers.registration import _sheet_dispatch
-    from handlers.reg_schema import sheet_city_code
+    from handlers.reg.reg_schema import sheet_city_code
     from services.reg_finalize import _resolve_update_tab
 
     old_tab = await _resolve_update_tab(old_city, participant_type)

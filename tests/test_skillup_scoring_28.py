@@ -4,7 +4,7 @@
 - Задача 1: `reg_engine.compute_score`/`scoring_rules`/`course_number` — чистая формула ТЗ
   §3.6 без БД (таблица кейсов по образцу FINALIZE_GOLDEN).
 - Задача 2: запись балла на финале (`services/reg_finalize.py`) и столбцы листа
-  (`handlers/reg_schema.py`).
+  (`handlers/reg/reg_schema.py`).
 - Задача 3: балл в карточке модерации — бот (`handlers/applications/admin_moderation.py`) и приложение
   (`services/applications.py`) одинаково; делегатские поверхности его не видят никогда.
 
@@ -21,7 +21,7 @@ import domain.regform.engine as reg_engine
 from services import reg_finalize as rf
 import services.applications as applications
 from handlers.applications import admin_moderation as am
-from handlers import reg_schema as rs
+from handlers.reg import reg_schema as rs
 from tests._dbtpl import fast_init_db
 
 UID = 900800500

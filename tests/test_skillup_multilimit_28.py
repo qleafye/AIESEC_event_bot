@@ -1,6 +1,6 @@
 """Phase 28 (28-03, SU-02, A-06 CONTEXT): сторожа лимита мультивыбора — реестровый ключ
 `reg_multi_max_<step>`, единый судья `reg_engine.validate_answer` (второй барьер для веб-
-PATCH), гейт в чате (`handlers/reg_flow.py::process_multi_toggle/process_multi_done`) и спека
+PATCH), гейт в чате (`handlers/reg/reg_flow.py::process_multi_toggle/process_multi_done`) и спека
 шага для Mini App (`reg_engine.step_spec` публикует `max_select`). pytest-asyncio недоступен —
 async через `asyncio.run()`, фикстура временной БД — тот же приём, что
 `tests/test_skillup_core_28.py::_ready(tmp_path)`.
@@ -147,7 +147,7 @@ class _FakeState:
 
 def test_bot_toggle_blocks_over_limit(tmp_path):
     """Тап шестого варианта при лимите 5 не меняет `_multi_stack` в FSM и отдаёт алерт."""
-    from handlers import reg_flow
+    from handlers.reg import reg_flow
 
     _ready(tmp_path)
 
@@ -170,7 +170,7 @@ def test_bot_toggle_blocks_over_limit(tmp_path):
 
 def test_bot_toggle_allows_deselect_at_limit(tmp_path):
     """На лимите снятие уже выбранного варианта разрешено всегда."""
-    from handlers import reg_flow
+    from handlers.reg import reg_flow
 
     _ready(tmp_path)
 

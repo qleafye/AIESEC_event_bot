@@ -6,7 +6,7 @@
 
 Серверный харнесс — `tests/test_miniapp_form.py` (тот же клиент/сиды). Бот-часть — приём
 `tests/test_reg_resume_draft.py` (Fake-объекты aiogram, `_seed_new_draft`, monkeypatch
-`finalize_registration`/`_ask_step_or_recall` в модуле `handlers.reg_resume`, где они и
+`finalize_registration`/`_ask_step_or_recall` в модуле `handlers.reg.reg_resume`, где они и
 импортированы по имени).
 """
 from __future__ import annotations
@@ -129,7 +129,7 @@ def test_resume_from_draft_marker_shows_summary_without_asking(tmp_path, monkeyp
     async def go():
         await db.set_setting("reg_q_age", "on")
         await _seed_new_draft(USER_ID, step=reg_engine.STEP_DONE, patch={"age": "22"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
 
         calls = []
 
@@ -162,7 +162,7 @@ def test_resume_from_draft_unknown_step_falls_back(tmp_path, monkeypatch):
     async def go():
         await db.set_setting("reg_q_age", "on")
         await _seed_new_draft(USER_ID, step="a_step_turned_off_meanwhile", patch={"age": "22"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
 
         calls = []
 
@@ -189,7 +189,7 @@ def test_resume_from_draft_enabled_step_asks_question(tmp_path, monkeypatch):
         await db.set_setting("reg_q_age", "on")
         await db.set_setting("reg_q_phone", "on")
         await _seed_new_draft(USER_ID, step="phone", patch={"age": "22"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
 
         calls = []
 
@@ -219,7 +219,7 @@ def test_offer_resume_marker_shows_step_equals_total(tmp_path):
         await db.set_setting("reg_q_age", "on")
         await db.set_setting("reg_q_phone", "on")
         await _seed_new_draft(USER_ID, step=reg_engine.STEP_DONE, patch={"age": "22", "phone": "+7999"})
-        from handlers import reg_resume
+        from handlers.reg import reg_resume
 
         draft = await db.get_reg_draft(USER_ID)
         msg = _KBCapturingMessage(USER_ID, "delegate")

@@ -105,7 +105,7 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
     apply_decision_effects(bot, tid, decision, reason, sheet=False, resend=True)` — текст решения
     строится там же, где всегда (не дублируем), лист сверка правит отдельной кнопкой «Выправить
     статусы», переотправка её не трогает. `resend=True` — координатор 25.09: для `approved` это
-    шлёт ТОЛЬКО текст решения (`handlers.reg_schema.resend_approve_text`), шаг оплаты НЕ
+    шлёт ТОЛЬКО текст решения (`handlers.reg.reg_schema.resend_approve_text`), шаг оплаты НЕ
     открывается никогда (при `payment_enabled=on` обычный `approve_user` заново нарисовал бы
     пикер тарифов уже одобренному делегату и сбросил его FSM) и бонус-файл повторно не шлётся.
     `reason` для отказа — `services.applications.last_rejection_reason` (единая точка правды
@@ -186,7 +186,7 @@ _PREVIEW_LEN = 80
 
 async def preview_decision_text(user: dict) -> str:
     """Начало текста, который получит делегат (для экрана подтверждения). Те же функции, что
-    собирают реальное письмо: одобрение — `handlers.reg_schema._approve_text_for` (трек/город),
+    собирают реальное письмо: одобрение — `handlers.reg.reg_schema._approve_text_for` (трек/город),
     отказ — `services.applications.reject_message_text` с последней причиной. Теги убираются,
     чтобы обрезка не оставила незакрытый тег."""
     import html as _html
@@ -200,7 +200,7 @@ async def preview_decision_text(user: dict) -> str:
         raw = await reject_message_text(await last_rejection_reason(tid), lang, tr_map)
     else:
         from domain.cities import cities_module_on, normalize_city
-        from handlers.reg_schema import _approve_text_for
+        from handlers.reg.reg_schema import _approve_text_for
         city_code = normalize_city(user.get("event_city")) if await cities_module_on() else None
         raw = await _approve_text_for(user.get("participant_type") or "full", city_code)
     plain = _html.unescape(re.sub(r"<[^>]+>", "", raw or ""))

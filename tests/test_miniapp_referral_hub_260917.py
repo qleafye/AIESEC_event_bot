@@ -44,7 +44,7 @@ def test_referral_present_by_default_and_uses_amb_link_format(client):
     """Формат ссылки — тот же, что у кнопки меню «🔗 Моя реферальная ссылка»
     (`handlers/user_actions.py::my_referral_link`): `?start=<telegram_id>`, БЕЗ префикса
     `amb_` — тот формат принадлежит отдельному потоку «Хочу свою ссылку» финального экрана
-    анкеты (`handlers/reg_ambassador.py`) и сюда не переносится."""
+    анкеты (`handlers/reg/reg_ambassador.py`) и сюда не переносится."""
     body = client.get("/app/api/hub", headers=_hdr(DELEGATE_ID)).json()
     referral = body["referral"]
     assert referral is not None

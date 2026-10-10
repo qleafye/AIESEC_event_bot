@@ -8,7 +8,7 @@ import sqlite3
 
 from config import config
 from database import db
-from handlers import menu_edit_anketa as mod
+from handlers.reg import menu_edit_anketa as mod
 from keyboards import builders
 from keyboards.builders import MENU_BUTTONS, MENU_TEXTS, get_main_menu_kb
 from tests._dbtpl import fast_init_db

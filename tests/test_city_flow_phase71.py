@@ -13,8 +13,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import registration as reg
-# Phase 13 REFAC (13-03): city_pick/party_pick moved to handlers/reg_flow.py.
-from handlers import reg_flow
+# Phase 13 REFAC (13-03): city_pick/party_pick moved to handlers/reg/reg_flow.py.
+from handlers.reg import reg_flow
 from tests._dbtpl import fast_init_db
 
 

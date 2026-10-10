@@ -5,7 +5,7 @@
 """
 import asyncio
 
-from handlers import reg_flow
+from handlers.reg import reg_flow
 from handlers.states import Registration
 from tests._dbtpl import fast_init_db
 from tests.test_returning_delegate_073 import _KBCapturingMessage, _new_state, _use_tmp_db

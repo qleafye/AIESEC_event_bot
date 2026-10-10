@@ -1,5 +1,5 @@
 """Phase 28 (28-02, SU-01/SU-04, СкиллАп 5): сторожа экранов пяти новых шагов анкеты в
-чате (общий хвост `_ask_step` -> `handlers/reg_extra_steps.py`) и (задача 3) паритета спеки
+чате (общий хвост `_ask_step` -> `handlers/reg/reg_extra_steps.py`) и (задача 3) паритета спеки
 Mini App (`reg_engine.step_spec`/`form_spec`).
 
 pytest-asyncio недоступен в этом окружении — асинхронщина через `asyncio.run()`, БД —
@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_extra_steps
+from handlers.reg import reg_extra_steps
 from handlers.states import Registration
 import domain.regform.engine as reg_engine
 from tests._dbtpl import fast_init_db

@@ -1,7 +1,7 @@
 """Приёмка 09.10 (C12): экран языка и кнопки городов оказались в чате одновременно, и тап по
 городу продолжил анкету мимо выбора языка — язык так и не был выбран.
 
-Задумано (D-06, `handlers/reg_lang.py`): язык не угадывается молча и спрашивается раньше
+Задумано (D-06, `handlers/reg/reg_lang.py`): язык не угадывается молча и спрашивается раньше
 города. Тап по городу, пока язык ещё нужно спросить, теперь не продолжает анкету: бот
 объясняет, что сначала язык, и показывает экран выбора; после выбора `/start` продолжается
 обычным путём (снова город).
@@ -14,7 +14,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import reg_flow
+from handlers.reg import reg_flow
 from tests._dbtpl import fast_init_db
 
 UID = 862001

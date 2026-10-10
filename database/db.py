@@ -1522,7 +1522,7 @@ async def init_db():
         # Phase 27 (27-02, LANG-04): очередь на перевод — форма один в один как у
         # `miniapp_outbox` выше (тот же паттерн: attempts/last_error, дошлёт после рестарта).
         # UNIQUE(lang, src_hash) + `INSERT OR IGNORE` в enqueue_translation — дедупликация
-        # массового пресета (`handlers/reg_schema.py::_apply_*_preset` кладёт десятки ключей
+        # массового пресета (`handlers/reg/reg_schema.py::_apply_*_preset` кладёт десятки ключей
         # одним нажатием) решена в СХЕМЕ, не в коде воркера плана 27-03. Пишут сюда оба
         # процесса (бот и `miniapp`), в `translations` — только бот (A-04, 27-CONTEXT.md).
         await db.execute('''
@@ -2736,7 +2736,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
     перевода при сохранении настройки — врезана в `set_setting`, ЕДИНСТВЕННУЮ точку записи
     настроек (64 вызова), а не в хендлеры админки: так покрываются бесплатно и веб-настройки
     Mini App (`miniapp/routers/settings.py`), и массовые пресеты
-    (`handlers/reg_schema.py::_apply_*_preset`).
+    (`handlers/reg/reg_schema.py::_apply_*_preset`).
 
     **Fail-soft (T-27-03-04):** обёрнута ЦЕЛИКОМ в `try/except` — запись настройки к этому
     моменту УЖЕ закоммичена, сбой очереди (или движка перевода, которого этот модуль даже не
@@ -5595,7 +5595,7 @@ QUIZ_NOT_PASSED = "not_passed"
 # `RESUME_RECALL_COLUMNS` — набор для чат-recall (`reg_engine.has_prior_resume`): «есть
 # артефакт, который можно ПЕРЕИСПОЛЬЗОВАТЬ на шаге резюме вместо повторного вопроса».
 # `RESUME_COLUMNS` — тот же набор ПЛЮС `resume_link` (СкиллАп 5, развилка резюме R2b,
-# `handlers/reg_resume_fork.py`) — ссылка на профиль ВМЕСТО файла. Для менеджера это тоже
+# `handlers/reg/reg_resume_fork.py`) — ссылка на профиль ВМЕСТО файла. Для менеджера это тоже
 # «резюме есть» (просить прислать заново такого делегата нельзя), но переиспользовать эту
 # ссылку на шаге резюме recall не станет — это не тот же артефакт. Заведено производной
 # (`RESUME_RECALL_COLUMNS + (...)`), а не вторым литералом, чтобы паритет трёх из четырёх
@@ -10819,7 +10819,7 @@ async def enqueue_translation(
 ) -> int | None:
     """Кладёт строку в очередь на перевод (план 27-03 — фон при сохранении настройки,
     план 27-01 — bulk-seed). `INSERT OR IGNORE` — дедупликация массового пресета
-    (`handlers/reg_schema.py::_apply_*_preset` кладёт десятки ключей одним нажатием) решена в
+    (`handlers/reg/reg_schema.py::_apply_*_preset` кладёт десятки ключей одним нажатием) решена в
     СХЕМЕ через `UNIQUE(lang, src_hash)` (T-27-02-02), не в коде воркера. Возвращает
     `lastrowid` новой строки или `None`, если строка с этим `(lang, src_hash)` уже стоит
     в очереди."""

@@ -15,7 +15,7 @@ import asyncio
 from config import config
 from database import db
 import domain.regform.engine as reg_engine
-from handlers import reg_schema
+from handlers.reg import reg_schema
 from handlers.regform import admin_reg_config
 from handlers.regform import admin_reg_percity
 import services.sheets as sheets_mod

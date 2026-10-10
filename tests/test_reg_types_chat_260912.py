@@ -7,10 +7,10 @@
 `handlers.registration._ask_step(...)`, а не сразу модульные функции, чтобы заодно проверить
 саму врезку в `_ask_step`.
 
-Задача 1 (A2-03, `handlers/reg_types_lookup.py`): «напиши первые буквы» → до пяти кнопок
-совпадений + «Другое». Задача 2 (A2-04, `handlers/reg_types_composite.py`): карточка-рекап
+Задача 1 (A2-03, `handlers/reg/reg_types_lookup.py`): «напиши первые буквы» → до пяти кнопок
+совпадений + «Другое». Задача 2 (A2-04, `handlers/reg/reg_types_composite.py`): карточка-рекап
 «Проверь образование» после последнего под-поля группы. Задача 3 (A2-05,
-`handlers/reg_types_repeatable.py`): «Название проекта?» → «Опиши коротко» → «Добавить ещё?».
+`handlers/reg/reg_types_repeatable.py`): «Название проекта?» → «Опиши коротко» → «Добавить ещё?».
 """
 import asyncio
 
@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_types_composite, reg_types_lookup, reg_types_repeatable
+from handlers.reg import reg_types_composite, reg_types_lookup, reg_types_repeatable
 from handlers.states import Registration
 from domain.regform.engine import parse_repeatable
 from tests._dbtpl import fast_init_db
