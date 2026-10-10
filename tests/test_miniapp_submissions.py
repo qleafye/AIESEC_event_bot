@@ -436,7 +436,8 @@ def test_finalize_creates_submission_parts_and_outbox_row(client, caplog):
     assert outbox[0]["kind"] == "submission_created"
     assert outbox[0]["payload"] == {
         "submission_id": sid, "user_id": DELEGATE_ID, "task_id": task_id,
-        "task_text": "Сфоткай стенд", "submitter_name": f"User {DELEGATE_ID}",
+        "task_text": "Сфоткай стенд", "task_title": "Стенд",  # в уведомлении — название, не текст
+        "submitter_name": f"User {DELEGATE_ID}",
     }
     assert not [r for r in outbox if "coin" in r["kind"]]  # монет в outbox нет
     assert TOKEN not in resp.text

@@ -58,6 +58,7 @@ from database.db import (
     get_reg_draft,
     get_task,
     get_user,
+    task_title,
     upsert_reg_draft,
 )
 from domain.game.labels import visible_tasks_for  # Phase 32 (32-06, D-28/D-36, T-32-06-02)
@@ -539,7 +540,8 @@ async def create_submission_route(
         "submission_id": submission_id,
         "user_id": p.telegram_id,
         "task_id": task["id"],
-        "task_text": task["text"],
+        "task_text": task["text"],  # бот прежней версии читает только его
+        "task_title": task_title(task),
         "submitter_name": submitter_name,
     })
     return {
