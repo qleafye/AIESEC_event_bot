@@ -10,7 +10,7 @@ from aiogram.types import Chat, Message, User
 
 from config import config
 from database import chat_coins_db, db
-from handlers import group_chat
+from handlers.chat import group_chat
 from handlers.admin_caps import required_capability
 from services import chat_coins, chat_tracking, coins_transfer, quiet_hours
 from tests._dbtpl import fast_init_db

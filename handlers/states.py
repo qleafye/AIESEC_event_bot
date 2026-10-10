@@ -504,7 +504,7 @@ class ResumeReplace(StatesGroup):
 
 
 class ChatRatingEdit(StatesGroup):
-    # Квик 260927: экран «🏆 Рейтинг чата» (handlers/admin_chat_rating.py) — менеджер вводит
+    # Квик 260927: экран «🏆 Рейтинг чата» (handlers/chat/admin_chat_rating.py) — менеджер вводит
     # число правила города (или название баллов); ключ (per-city композит или общий) и город
     # экрана несёт state.get_data(). Свой стейт, а не EditSetting: после сохранения менеджер
     # возвращается на этот экран, а не на общий редактор настройки.
@@ -512,13 +512,13 @@ class ChatRatingEdit(StatesGroup):
 
 
 class ChatRatingPostEdit(StatesGroup):
-    # Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/admin_chat_rating_post.py) —
+    # Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/chat/admin_chat_rating_post.py) —
     # время, число мест, заголовки и подпись поста; поле и город экрана несёт state.get_data().
     waiting_for_value = State()
 
 
 class ChatCleanupEdit(StatesGroup):
-    # Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/admin_chat_cleanup.py) —
+    # Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/chat/admin_chat_cleanup.py) —
     # менеджер вводит задержку удаления в секундах; после сохранения — обратно на экран.
     waiting_for_value = State()
 
@@ -661,7 +661,7 @@ class SheetTarget(StatesGroup):
 
 
 class ChatExportImport(StatesGroup):
-    # «📥 Загрузить историю чата» (handlers/admin_chat_import.py): сначала ждём файл result.json из
+    # «📥 Загрузить историю чата» (handlers/chat/admin_chat_import.py): сначала ждём файл result.json из
     # Telegram Desktop, затем — подтверждение предпросмотра кнопкой. Выбранный чат и разобранный
     # файл несёт state.get_data(); текстового ввода нет.
     waiting_file = State()

@@ -24,7 +24,8 @@ from aiogram.types import CallbackQuery, Chat, Message, Update, User
 
 from config import config
 from database import db
-from handlers import admin, group_chat
+from handlers import admin
+from handlers.chat import group_chat
 from services import sos as sos_service
 from tests._dbtpl import fast_init_db
 

@@ -8,7 +8,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from shared.secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
-from handlers import registration, user_actions, admin, payment, polls, uat_seed, group_chat, reg_silence_fallback, onsite_reg, admin_no_access
+from handlers import registration, user_actions, admin, payment, polls, uat_seed
+from handlers.chat import group_chat
+from handlers import reg_silence_fallback, onsite_reg, admin_no_access
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
@@ -498,7 +500,7 @@ async def main():
     # Правка 15.09: коллбэк выбора города (`chatbind:*`) теперь приходит ИЗ ЛИЧКИ (бот пишет
     # промоутеру/ADMIN_IDS, а не в саму группу) — свой лёгкий роутер, отфильтрованный по
     # `chat.type == "private"`, мимо `admin.router`/`CapabilityMiddleware` (см. докстринг
-    # `handlers/group_chat.py::private_router`).
+    # `handlers/chat/group_chat.py::private_router`).
     dp.include_router(group_chat.private_router)
     dp.include_router(uat_seed.router)
     dp.include_router(admin.router) # Admin first to intercept commands

@@ -1162,16 +1162,16 @@ from handlers import admin_sheet_reconcile  # noqa: E402
 from handlers import admin_forum_stats_card  # noqa: E402
 
 # Квик 260927 (рейтинг чата): shared-router seam import экрана «🏆 Рейтинг чата»
-# (handlers/admin_chat_rating.py) — admin_chat_rating/chrate:* и ввод ChatRatingEdit в самом
+# (handlers/chat/admin_chat_rating.py) — admin_chat_rating/chrate:* и ввод ChatRatingEdit в самом
 # хвосте admin.router (golden snapshot: чистое добавление после admin_forum_stats_card).
 # Строка раздела: handlers/admin_sections.py, «🔧 Управление», после тумблера учёта чата.
-from handlers import admin_chat_rating  # noqa: E402,F401
-# Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/admin_chat_cleanup.py) — сразу
+from handlers.chat import admin_chat_rating  # noqa: E402,F401
+# Квик 260927: экран «🧹 Служебные сообщения в чате» (handlers/chat/admin_chat_cleanup.py) — сразу
 # после admin_chat_rating (golden append: admin_chat_cleanup/chclean:* и ввод ChatCleanupEdit).
-from handlers import admin_chat_cleanup  # noqa: E402,F401
-# Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/admin_chat_rating_post.py) —
+from handlers.chat import admin_chat_cleanup  # noqa: E402,F401
+# Квик 260927: экран «📣 Публикация рейтинга в чат» (handlers/chat/admin_chat_rating_post.py) —
 # golden append после admin_chat_cleanup: chpost:* и ввод ChatRatingPostEdit.
-from handlers import admin_chat_rating_post  # noqa: E402,F401
+from handlers.chat import admin_chat_rating_post  # noqa: E402,F401
 # D-41 (регистрация на месте): экран «📝 Регистрация на месте» (handlers/admin_onsite_reg.py) —
 # onsitereg_cfg_screen/onsitereg_toggle_go/onsitereg_qr_send в самом хвосте admin.router
 # (golden snapshot: чистое добавление после admin_chat_cleanup). Строка хаба —

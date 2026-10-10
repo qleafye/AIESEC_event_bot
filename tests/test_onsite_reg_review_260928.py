@@ -1019,7 +1019,7 @@ def _rating_ready(tmp_path):
 
 def test_double_tap_publish_posts_once(tmp_path):
     import asyncio
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     t = _rating_ready(tmp_path)
     post._publishing.clear()
     post._published_messages.clear()
@@ -1047,7 +1047,7 @@ def test_double_tap_publish_posts_once(tmp_path):
 
 def test_scheduled_post_skips_week_already_posted(tmp_path, monkeypatch):
     from datetime import timedelta
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     from services import chat_rating_post as crp
     from services import scheduler as sched
     t = _rating_ready(tmp_path)
@@ -1071,7 +1071,7 @@ def test_scheduled_post_skips_week_already_posted(tmp_path, monkeypatch):
 
 
 def test_manual_publish_counts_as_posted_week(tmp_path, monkeypatch):
-    from handlers import admin_chat_rating_post as post
+    from handlers.chat import admin_chat_rating_post as post
     from services import chat_rating_post as crp
     from services import scheduler as sched
     t = _rating_ready(tmp_path)

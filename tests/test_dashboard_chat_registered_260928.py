@@ -119,7 +119,7 @@ def test_group_message_without_username_stores_first_name(tmp_path):
 
     from aiogram.types import Chat, Message, User
 
-    from handlers import group_chat
+    from handlers.chat import group_chat
 
     config.DB_PATH = str(tmp_path / "capture_names.db")
     config.ADMIN_IDS = [1]
