@@ -373,8 +373,8 @@ async def _send_confirm_prompt(
     эту же функцию заново)."""
     dropped = int((await state.get_data()).get("bc_scope_dropped") or 0)
     warning = await sender_city_note(chat_id, dropped) + await _audience_warning(state, users_ids, chat_id)
-    from handlers.comms.admin_broadcast_season import season_confirm_extra
-    season_text, season_rows = await season_confirm_extra(state, users_ids)
+    from handlers.comms.admin_broadcast_status import confirm_extra  # сезон + статусы заявки
+    season_text, season_rows = await confirm_extra(state, users_ids)
     warning += season_text
     important = bool((await state.get_data()).get("bc_important"))
     important_btn = InlineKeyboardButton(
@@ -1733,8 +1733,10 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
     # Менеджер города — то же сужение, что у «✅ Отправить N»: числа на экранах совпадают.
     ids = await restrict_to_sender_city(callback.from_user.id, await count_and_list_filtered(filters))
     await callback.answer()
+    from handlers.comms.admin_broadcast_status import status_block  # разбивка по статусу заявки
+    st_text, st_rows = await status_block(ids, filters, "bcstatus_filter")
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📨 Отправить сейчас", callback_data="filter_send_now")],
+        [InlineKeyboardButton(text="📨 Отправить сейчас", callback_data="filter_send_now")], *st_rows,
         [InlineKeyboardButton(text="🕓 Запланировать", callback_data="filter_schedule")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ])
@@ -1742,7 +1744,7 @@ async def filter_count(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"{await sender_city_note(callback.from_user.id)}🎯 Условия: {_filter_summary(filters)}\n"
         f"Под фильтр попадает <b>{len(ids)}</b> пользователей.{await past_season_note(ids)}"
-        f"{html_module.escape(await not_arrived_city_note(filters, ids))}",
+        f"{html_module.escape(await not_arrived_city_note(filters, ids))}\n\n{st_text}".rstrip(),
         reply_markup=kb,
     )
 
@@ -1800,3 +1802,4 @@ from handlers.comms import admin_broadcast_session_filter  # noqa: E402,F401
 from handlers.comms import admin_broadcast_ext_form_filter  # noqa: E402,F401
 from handlers.comms import admin_broadcast_season  # noqa: E402,F401  # сезон по умолчанию, «из них прошлого сезона»
 from handlers.comms import admin_broadcast_enroll_filter  # noqa: E402,F401  # фильтры записи на сессии и теста
+from handlers.comms import admin_broadcast_status  # noqa: E402,F401  # разбивка по статусу заявки, «Только одобренные»

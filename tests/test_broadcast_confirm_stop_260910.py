@@ -36,6 +36,13 @@ def _patch_audience(monkeypatch, ids):
     async def fake_all():
         return list(ids)
     monkeypatch.setattr(admin_broadcasts, "get_all_users_ids", fake_all)
+    # «Всем» = строки users; поддельные id считаем одобренными, иначе экран покажет
+    # разбивку по статусу заявки («не подали анкету»), которой у этих тестов нет.
+    from handlers.comms import admin_broadcast_status
+
+    async def all_approved(got):
+        return {"approved": list(got), "pending": [], "rejected": [], "not_submitted": []}
+    monkeypatch.setattr(admin_broadcast_status, "split_ids_by_app_status", all_approved)
 
 
 def _fast_sleep(monkeypatch):

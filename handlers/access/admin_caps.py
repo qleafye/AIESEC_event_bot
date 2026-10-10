@@ -532,6 +532,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Фильтры рассылки «Записан на сессию / Не записался / Не прошёл тест» и сезон в рассылке.
     "enrf_*": "broadcast",
     "bcseason_*": "broadcast",
+    "bcstatus_*": "broadcast",
     "extff_*": "broadcast",
     "sched_cancel_*": "broadcast",
     # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности + подтверждение/отмена планирования
