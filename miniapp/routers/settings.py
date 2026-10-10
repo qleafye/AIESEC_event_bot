@@ -49,7 +49,8 @@ from cities import (
     per_city_key,
     set_admin_city,
 )
-from database.db import get_setting, set_setting, settings_snapshot
+from database.db import get_setting, settings_snapshot
+from settings_audit import write_setting_logged
 from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
 from settings_search import search_terms
 
@@ -136,7 +137,11 @@ async def settings_set(
         raise HTTPException(403, {"reason": "not_editable"})
     if body.value not in ("on", "off"):
         raise HTTPException(400, {"reason": "bad_value", "text": BAD_VALUE_TEXT})
-    await set_setting(body.key, body.value)
+    await write_setting_logged(p.telegram_id, body.key, body.value)
+    # Реакции бота на правку (кнопка меню чата, джобы) — через очередь, как у пакетной записи.
+    from miniapp.outbox import enqueue
+
+    await enqueue("settings_changed", {"keys": [body.key], "by": p.telegram_id})
     return await _items()
 
 
@@ -708,7 +713,7 @@ async def settings_batch(
             for change in body.changes:
                 key = change.key
                 logger.info(f"admin {p.telegram_id} правит настройку {key}")
-                warning = await settings_ops.commit_batch_item(key, checked[key])
+                warning = await settings_ops.commit_batch_item(key, checked[key], p.telegram_id)
                 if warning:
                     warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
                 saved.append(key)
@@ -729,9 +734,13 @@ async def settings_batch(
                 if isinstance(preset_name, str) and preset_name in web_theme.PRESETS:
                     preset_writes = web_theme.preset_handle_writes(preset_name, skip_keys=seen)
                     for handle_key, handle_value in preset_writes.items():
-                        await set_setting(handle_key, handle_value)
+                        await write_setting_logged(p.telegram_id, handle_key, handle_value)
                         targets[handle_key] = handle_key
                         saved.append(handle_key)
+                    if preset_writes:
+                        from miniapp.outbox import enqueue
+
+                        await enqueue("settings_changed", {"keys": list(preset_writes), "by": p.telegram_id})
                     logger.info(f"admin {p.telegram_id} применил пресет {preset_name} в вебе")
         else:
             warnings = {}

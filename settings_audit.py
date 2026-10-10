@@ -66,6 +66,19 @@ async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> No
         await after_name_saved_by_admin(admin_id, previous)
 
 
+async def write_setting_logged(admin_id: int | None, key: str, value: str | None) -> None:
+    """Запись с автором в логе, но БЕЗ реакций бота: для веб-процесса Mini App, где бота и токена
+    нет. Реакции (имя/описание бота, перепланировка джоб, кнопка меню) разбирает бот сам —
+    вызывающий ставит в очередь `settings_changed` (`miniapp.outbox.enqueue`). `value=None` —
+    сброс значения."""
+    if value is None:
+        logger.info(f"admin={admin_id} setting {key} <- (сброшено)")
+        await db.delete_setting(key)
+        return
+    logger.info(f"admin={admin_id} setting {key} <- {value!r}")
+    await db.set_setting(key, value)
+
+
 async def revert_setting(admin_id: int | None, key: str, previous: str | None) -> None:
     """Откат значения после отказа внешней стороны (Telegram не принял имя бота). Без
     реакций на правку: возвращается то, что уже действовало."""

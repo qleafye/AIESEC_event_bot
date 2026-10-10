@@ -557,3 +557,11 @@ def test_common_forum_date_refused_with_cities_on(tmp_path, no_tab):
     _run(set_admin_city(ADMIN_ID, "spb"))  # с городом в шапке дата города сохраняется
     body = _batch(client, [(f"forum_date{PER_CITY_SEP}spb", "03.10.2026")]).json()
     assert body["saved"] == [f"forum_date{PER_CITY_SEP}spb"]
+
+
+def test_batch_write_logs_author(tmp_path, caplog):
+    client = _setup(tmp_path, "miniapp_settings_batch_author.db")
+    with caplog.at_level("INFO"):
+        resp = _batch(client, [("nudge_after_minutes", "15")])
+    assert resp.status_code == 200, resp.text
+    assert f"admin={ADMIN_ID} setting nudge_after_minutes <- '15'" in caplog.text
