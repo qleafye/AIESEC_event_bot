@@ -50,7 +50,7 @@ from handlers.registration import DEFAULT_START_RETURNING_TEXT
 # Квик 260915-skg (P7): перевод входа в приложение при lang=en — тот же общий механизм, что
 # reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
 from handlers import reg_i18n
-from settings_ui_text_fields import ui_text  # подписи, вынесенные из кода в настройки
+from settings_ui_text_fields import ui_text, ui_tr  # подписи, вынесенные из кода в настройки
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
     category_label, proof_types_label, sort_tasks_for_delegate,
     render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
@@ -326,8 +326,8 @@ async def _balance_screen(
             lines.append(_format_coin_entry_line(row, manual_label, task_label, referral_label))
     text = "\n".join(lines)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=reg_i18n.tr_text("📜 История", lang, tr_map), callback_data="gbal_history:0")],
-        [InlineKeyboardButton(text=reg_i18n.tr_text("🏆 Рейтинг", lang, tr_map), callback_data="gbal_top")],
+        [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_history_button_text"), lang, tr_map), callback_data="gbal_history:0")],
+        [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_top_button_text"), lang, tr_map), callback_data="gbal_top")],
     ])
     return text, kb
 
@@ -365,15 +365,15 @@ async def _balance_history_screen(
     nav_row: list[InlineKeyboardButton] = []
     if offset > 0:
         nav_row.append(InlineKeyboardButton(
-            text=reg_i18n.tr_text("← Раньше", lang, tr_map), callback_data=f"gbal_history:{max(0, offset - limit)}",
+            text=reg_i18n.tr_text(await ui_text("balance_history_prev_button_text"), lang, tr_map), callback_data=f"gbal_history:{max(0, offset - limit)}",
         ))
     if offset + limit < total:
         nav_row.append(InlineKeyboardButton(
-            text=reg_i18n.tr_text("Позже →", lang, tr_map), callback_data=f"gbal_history:{offset + limit}",
+            text=reg_i18n.tr_text(await ui_text("balance_history_next_button_text"), lang, tr_map), callback_data=f"gbal_history:{offset + limit}",
         ))
     if nav_row:
         buttons.append(nav_row)
-    buttons.append([InlineKeyboardButton(text=reg_i18n.tr_text("◀️ Баланс", lang, tr_map), callback_data="gbal_back")])
+    buttons.append([InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_back_button_text"), lang, tr_map), callback_data="gbal_back")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -419,7 +419,7 @@ async def gbal_top(callback: types.CallbackQuery):
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text = await render_leaderboard(rows, callback.from_user.id, rank, balance, lang, tr_map)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=reg_i18n.tr_text("◀️ Баланс", lang, tr_map), callback_data="gbal_back")],
+        [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_back_button_text"), lang, tr_map), callback_data="gbal_back")],
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -609,7 +609,7 @@ async def _game_task_list_screen(
     if is_ambassador:
         current_wave = await current_wave_for(code)
         if current_wave and wave_eligible(user, current_wave):
-            wave_label = reg_i18n.tr_text("🏅 Рейтинг волны", lang, tr_map)
+            wave_label = reg_i18n.tr_text(await ui_text("wave_rating_button_text"), lang, tr_map)
             buttons.append([InlineKeyboardButton(text=wave_label, callback_data="ambwave")])
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
@@ -1160,15 +1160,15 @@ async def show_info_menu(message: types.Message):
     place_name = await get_setting_for_city("event_place_name", code)
 
     if event_date and place_name:
-        text = f"<b>{tr('Информация о мероприятии')}</b>\n\n"
-        text += f"🗓 <b>{tr('Дата')}:</b> {html.escape(tr(event_date))}\n"
+        text = f"<b>{await ui_tr('info_screen_title_text', tr)}</b>\n\n"
+        text += f"🗓 <b>{await ui_tr('info_date_label_text', tr)}:</b> {html.escape(tr(event_date))}\n"
         if event_time:
-            text += f"⌚ <b>{tr('Время')}:</b> {html.escape(tr(event_time))}\n"
-        text += f"📍 <b>{tr('Место')}:</b> {html.escape(tr(place_name))}"
+            text += f"⌚ <b>{await ui_tr('info_time_label_text', tr)}:</b> {html.escape(tr(event_time))}\n"
+        text += f"📍 <b>{await ui_tr('info_place_label_text', tr)}:</b> {html.escape(tr(place_name))}"
     else:
         text = (
-            f"{tr('Информация о мероприятии пока заполняется.')}\n\n"
-            f"{tr('Выбери, что тебя интересует:')}"
+            f"{await ui_tr('info_pending_text', tr)}\n\n"
+            f"{await ui_tr('info_choose_text', tr)}"
         )
     await message.answer(text, reply_markup=get_info_submenu_kb(), parse_mode="HTML")
 
@@ -1181,12 +1181,12 @@ async def info_date(callback: types.CallbackQuery):
     event_time = await get_setting_for_city("event_time", code)
     if event_date:
         # Съезд АЙСЕК — не форум: фраза зависит от типа события, у форума прежняя.
-        lead = "Конференция пройдет" if await get_setting_typed("event_type") == "conference" else "Форум пройдет"
-        text = f"🗓 {tr(lead)} <b>{html.escape(tr(event_date))}</b>!"
+        lead = await ui_text("info_date_lead_text") or ("Конференция пройдет" if await get_setting_typed("event_type") == "conference" else "Форум пройдет")
+        text = f"🗓 {html.escape(tr(lead))} <b>{html.escape(tr(event_date))}</b>!"
         if event_time:
-            text += f"\n⌚ {tr('Время')}: {html.escape(tr(event_time))}"
+            text += f"\n⌚ {await ui_tr('info_time_label_text', tr)}: {html.escape(tr(event_time))}"
     else:
-        text = tr("🗓 Дата пока уточняется. Скоро сообщим! 🙂")
+        text = await ui_tr("info_date_pending_text", tr)
     await callback.message.answer(text, parse_mode="HTML")
     await callback.answer()
 
@@ -1198,9 +1198,9 @@ async def info_place(callback: types.CallbackQuery):
     place_name = await get_setting_for_city("event_place_name", code)
     place_address = await get_setting_for_city("event_place_address", code)
     if place_name:
-        text = f"<b>{tr('Наша площадка')} — {html.escape(tr(place_name))}!</b> 🚀"
+        text = f"<b>{await ui_tr('info_venue_title_text', tr)} — {html.escape(tr(place_name))}!</b> 🚀"
         if place_address:
-            text += f"\n\n📍 <b>{tr('Адрес')}:</b> {html.escape(tr(place_address))}"
+            text += f"\n\n📍 <b>{await ui_tr('info_address_label_text', tr)}:</b> {html.escape(tr(place_address))}"
 
         # Phase 09.2: venue_photo_file_id is out of the per-city mechanism (RESEARCH
         # Pitfall 1 — photo/file fields are never independently editable registry text,
@@ -1221,7 +1221,7 @@ async def info_place(callback: types.CallbackQuery):
             await callback.message.answer(text, parse_mode="HTML")
     else:
         await callback.message.answer(
-            tr("📍 Место проведения в процессе подтверждения. Как только всё будет готово, мы напишем!")
+            await ui_tr("info_place_pending_text", tr)
         )
 
     await callback.answer()
@@ -1317,14 +1317,14 @@ async def show_contacts(message: types.Message):
         # Квик 260917-en: contact_person/contact_vk/contact_tg сами НЕ переводятся
         # (юзернейм/URL, см. services/i18n_sources.py::_NON_LANGUAGE_EVENT_KEYS) — переводим
         # только обёртку вокруг них.
-        parts.append(f"{reg_i18n.tr_text('По всем вопросам пиши сюда', lang, tr_map)}: {contact_person}")
+        parts.append(f"{reg_i18n.tr_text(await ui_text('contacts_person_label_text'), lang, tr_map)}: {contact_person}")
     links = []
     if contact_vk:
         links.append(f"VK: {contact_vk}")
     if contact_tg:
         links.append(f"TG: {contact_tg}")
     if links:
-        parts.append(f"{reg_i18n.tr_text('Наши группы', lang, tr_map)}:\n" + "\n".join(links))
+        parts.append(f"{reg_i18n.tr_text(await ui_text('contacts_groups_label_text'), lang, tr_map)}:\n" + "\n".join(links))
 
     text = "\n\n".join(parts)
     # WR-04: an invalid admin URL (BUTTON_URL_INVALID) or stray &/< in a contact field under
