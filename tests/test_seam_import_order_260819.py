@@ -30,7 +30,7 @@ ROOT = REPO_ROOT
 SEAMS = [
     "handlers.admin_settings",
     "handlers.admin_settings_lists",
-    "handlers.admin_cities",
+    "handlers.cities.admin_cities",
     "handlers.admin_broadcasts",
     "handlers.admin_reg_config",
     "handlers.admin_moderation",

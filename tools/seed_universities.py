@@ -387,7 +387,7 @@ def cities_fallback_snapshot() -> dict:
     (задача 3, «поиск города при этом работает»).
 
     Города берутся через `cities.all_cities()` — тот же публичный аксессор кэша `CITIES`,
-    которым пользуются `handlers/admin_cities.py` и `handlers/registration.py`, а не
+    которым пользуются `handlers/cities/admin_cities.py` и `handlers/registration.py`, а не
     прямым чтением .env-значения (сторож `tests/test_cities_registry_260818.py` запрещает
     читать это значение где-либо, кроме `domain/cities.py`). Скрипт не вызывает `reload_cities()`,
     поэтому список — тот же холодный фолбэк из `.env`, что и раньше, если БД недоступна/пуста."""

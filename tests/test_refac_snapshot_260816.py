@@ -420,7 +420,7 @@ def _build_snapshot_lines():
 # PURE APPEND): 4 message-хендлера (`arr_text_cancel` зарегистрирован ДВАЖДЫ — на
 # `RejectRuleEdit.name` и `RejectRuleEdit.text`, `arr_name_step`/`arr_text_step`) встали в
 # message-бакете СРАЗУ ПОСЛЕ `admin_lookup_search_step` и ПЕРЕД `cancel_city_form` — раньше по
-# фактическому порядку импорта, чем `handlers/admin_cities.py` (точка вставки определяется
+# фактическому порядку импорта, чем `handlers/cities/admin_cities.py` (точка вставки определяется
 # цепочкой импортов, а не позицией файла на диске); 7 callback_query-хендлеров (`arr_v`/
 # `arr_act`/`arr_city`/`arr_citypick`/`arr_track`/`arr_name`/`arr_text`) встали СРАЗУ ПОСЛЕ
 # `arr_preset` и ПЕРЕД `sync_sheet`. `arr_t` (`arr_toggle_enabled`) НЕ переехал — его тело
@@ -2277,7 +2277,7 @@ def test_snapshot_total_handler_count_is_292():
     # Бэклог чек-ина №7 («🧪 Учебные QR»): +1 admin.callback_query checkin_training_sheet
     # (handlers/admin_checkin_training.py) — шов из хвоста handlers/admin_checkin.py сразу
     # после venue_revoke_go и ПЕРЕД admin_sos; одна чистая вставка (752 -> 753).
-    # Фаза 33 (перевод делегата в другой город): admin.callback_query citymv_* из handlers/admin_city_move.py — шов импортирован из хвоста handlers/admin.py после admin_forum_ready.
+    # Фаза 33 (перевод делегата в другой город): admin.callback_query citymv_* из handlers/cities/admin_city_move.py — шов импортирован из хвоста handlers/admin.py после admin_forum_ready.
     # Пересчитано RUNNING `_build_snapshot_lines()`, difflib: 1 чистых вставок, 0 удалений, 0 реордеров (750 -> 754).
     # Слияние с main 3d0b70f: citymv_* (4) встают перед checkin_floor_* — порядок швов в хвосте
     # handlers/admin.py (admin_city_move, затем admin_checkin_floor); 753 + 4 = 757.

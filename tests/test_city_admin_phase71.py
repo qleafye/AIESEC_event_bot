@@ -14,7 +14,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
+from handlers.cities import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import registration as reg_mod
 from handlers.admin_caps import required_capability
 from domain.cities import CITIES

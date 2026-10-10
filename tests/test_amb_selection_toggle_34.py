@@ -411,7 +411,7 @@ def test_toggle_button_in_game_settings_flips_key(tmp_path):
 
 
 def test_season_wizard_leaves_ambassadors_alone(tmp_path):
-    from handlers import admin_cities
+    from handlers.cities import admin_cities
     from handlers.states import SeasonReset
     from tests.test_amb_bulk_34 import SEASON_OLD, _msg, _season_wizard
     from tests.test_amb_candidates_34 import _sql

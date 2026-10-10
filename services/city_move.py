@@ -1,7 +1,7 @@
 """Phase 33 (delegate-card admin actions): перевод делегата между городами мероприятия — общий
 примитив (33-SEED.md, прецедент ручного переноса 23.09: Анна Потаенко spb/short/approved ->
 msk «как есть, одобренной»). Единая точка правды, вызываемая и карточкой `/find`
-(`handlers/admin_city_move.py`), и разовым dry-run скриптом для стенда
+(`handlers/cities/admin_city_move.py`), и разовым dry-run скриптом для стенда
 (`scripts/move_city_dry_run.py`).
 
 Объём (SEED «Зависимости города»):
@@ -152,7 +152,7 @@ async def _resolve_sheet_targets(new_city: str, participant_type: str | None) ->
 async def preview_city_move(
     participant_type: str | None, new_city: str, telegram_id: int | None = None,
 ) -> dict:
-    """Публичная точка правды для экрана подтверждения (`handlers/admin_city_move.py`) —
+    """Публичная точка правды для экрана подтверждения (`handlers/cities/admin_city_move.py`) —
     ничего не пишет, только читает (список вкладок листа — сетевой вызов). Трек делегата НЕ
     меняется никогда (см. докстринг модуля) — `track_supported` только сигнализирует, допускает
     ли новый город текущий трек, а `sheet` — тот же резолв, что применит сам перевод
@@ -190,7 +190,7 @@ async def move_user_city(
     `services/reject_journal.py::return_to_moderation`), no-op если статус уже `pending`.
 
     `history_source` — `source` записи `reg_answer_history` (решение координатора 25.09):
-    дефолт `"admin"` — ручной перевод менеджером карточкой (`handlers/admin_city_move.py`,
+    дефолт `"admin"` — ручной перевод менеджером карточкой (`handlers/cities/admin_city_move.py`,
     `scripts/move_city_dry_run.py`, вызовы без этого параметра не меняются). Трек «региональные
     форумы → Москва» (`services/regional_noshow_move.py::apply_move`) передаёт свой маркер
     (`"system:regional_offer"`) — перенос инициирован делегатом по кнопке предложения, не

@@ -347,7 +347,7 @@ async def sheet_tabs_prefix_del(callback: types.CallbackQuery):
 
 async def _apply_city_rename_result(admin_id: int, target, new_title: str) -> None:
     """`origin == "city" and kind == "main"` -> база города переезжает на новое имя листа
-    (зеркало `handlers/admin_cities.py::city_edit_tab_step`); `kind != "main"` -> лист трека
+    (зеркало `handlers/cities/admin_cities.py::city_edit_tab_step`); `kind != "main"` -> лист трека
     уже переименован, настройку (`city_tab_suffix__*`) трогать не нужно — имя трека всегда
     вычисляется как база + приписка, и после смены БАЗЫ (эта функция, вызванная для
     `kind == "main"`) оно автоматически становится верным."""
