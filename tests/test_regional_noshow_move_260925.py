@@ -882,19 +882,21 @@ def test_cfg_screen_toggle_reschedules_exactly_once(tmp_path, monkeypatch):
     """Перепланировку делает хук воронки записи; явный вызов хендлера рядом — второй проход."""
     from handlers import admin_forum_functions as aff
 
+    import services.regional_noshow_move as rnm
+
     _ready(tmp_path)
     calls = []
-    real = sched.get_scheduler
+    real = rnm.reconcile
 
-    def spy():
+    async def spy(*args, **kwargs):
         calls.append(1)
-        return real()
+        return await real(*args, **kwargs)
 
-    monkeypatch.setattr(sched, "get_scheduler", spy)
+    # Считаем сами сверки модуля, а не обращения к планировщику: их число зависит от
+    # содержимого jobstore и в CI отличалось от локального прогона.
+    monkeypatch.setattr(rnm, "reconcile", spy)
     _run(aff.rgnm_toggle_go(FakeCallback("rgnm_toggle:_all", ADMIN_ID)))
-    # reconcile() обращается к планировщику дважды (джоба города + джоба уведомления); явный
-    # вызов хендлера рядом дал бы третье обращение.
-    assert len(calls) == 2
+    assert len(calls) == 1
 
 
 def test_cfg_screen_shows_summary_line(tmp_path):
