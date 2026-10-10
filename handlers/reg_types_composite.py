@@ -58,6 +58,8 @@ async def maybe_show_recap(step_key: str, message: types.Message, state: FSMCont
     рекап этой группы уже подтверждён в этой сессии, `_composite_recap_done_<group>`)."""
     if degrade_kind("composite", flags) != "composite":
         return False
+    if await _is_direct_edit(step_key, state, data):
+        return False
     for group, _group_steps in _COMPOSITE_GROUPS.items():
         if data.get(f"_composite_recap_done_{group}"):
             continue
@@ -77,6 +79,18 @@ async def maybe_show_recap(step_key: str, message: types.Message, state: FSMCont
         await _send_recap(group, relevant, message, state, data, step_key, step, total)
         return True
     return False
+
+
+async def _is_direct_edit(step_key: str, state: FSMContext, data: dict) -> bool:
+    """Приёмка 10.10: «✏️ Изменить» на экране «Прошлый ответ» (`recall_change`) открывает
+    ровно этот вопрос. «Группа только что закончена» выше определяется наличием ответов в FSM, а
+    на правке со сводки или у возвращенца они есть всегда — без этой проверки правка «Цели
+    участия» сначала показывала «Проверь образование», хотя образование делегат не трогал."""
+    if data.get("_recall_step") != step_key:
+        return False
+    from handlers.states import Registration  # тот же ленивый стиль, что и у соседей
+
+    return await state.get_state() == Registration.recall_pending.state
 
 
 async def _send_recap(group: str, relevant: list[str], message: types.Message, state: FSMContext,
