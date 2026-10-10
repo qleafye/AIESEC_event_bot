@@ -1000,6 +1000,9 @@ admin|callback_query|arj_back_go|arj_backgo:*
 admin|callback_query|arj_csv_export|arj_csv
 admin|callback_query|admin_reject_reports|admin_reject_reports
 admin|callback_query|arp_sync|arp_sync
+admin|callback_query|reject_retro_menu|rjretro
+admin|callback_query|reject_retro_preview|rjretro_p:*
+admin|callback_query|reject_retro_go|rjretro_go:*
 admin|callback_query|admin_program_entry|admin_program
 admin|callback_query|prog_city_open|prog_city:*
 admin|callback_query|prog_daynew_start|prog_daynew:*
@@ -2447,7 +2450,8 @@ def test_snapshot_total_handler_count_is_292():
     # вставки, сверено SequenceMatcher (1215 -> 1223).
     # 10.10 (свободный текст на сводке анкеты): +1 registration.message process_confirm_other
     # сразу после process_confirm_edit (1223 -> 1224).
-    assert len(GOLDEN_SNAPSHOT) == 1224
+    # 10.10 (ретро-применение автоотказа): +3 admin.callback_query сразу после arp_sync (1224 -> 1227).
+    assert len(GOLDEN_SNAPSHOT) == 1227
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
