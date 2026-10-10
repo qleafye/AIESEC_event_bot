@@ -573,6 +573,15 @@ ROLES_COMMON_DENIED_TEXT = (
 )
 
 
+ROLES_ALL_CITIES_TARGET_TEXT = (
+    "Этот человек работает на всех городах — роль ему выдаёт суперадмин или менеджер без "
+    "привязки к городу."
+)
+ROLES_OTHER_CITY_TARGET_TEXT = (
+    "Этот человек работает в городе {city} — роль ему выдаёт менеджер этого города или суперадмин."
+)
+
+
 async def _roles_common_denied(callback: types.CallbackQuery) -> bool:
     if await can_write_common(callback.from_user.id):
         return False
@@ -962,17 +971,27 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
         await callback.answer("Неизвестная роль", show_alert=True)
         return
 
-    # Менеджер, привязанный к городу, выдаёт роль — новый человек получает его город, а не
-    # NULL («все города»): иначе привязанный выдавал бы второму аккаунту доступ ко всем городам
-    # (выбор города при выдаче — только у суперадмина, ниже).
+    # Менеджер, привязанный к городу, выдаёт роль только в своём городе: новый человек получает
+    # его город в том же INSERT (не NULL = «все города»), а человеку на всех городах или из
+    # другого города роль не выдаётся — иначе любая роль, хоть с «⚙️ Настройками», действовала бы
+    # за пределами города выдающего. Выбор города при выдаче — только у суперадмина, ниже.
     issuer_city = None
     if callback.from_user.id not in config.ADMIN_IDS and await cities_module_on():
         issuer_city = await get_staff_city(callback.from_user.id)
-    newcomer = not await get_staff_roles(tid)
+    if issuer_city and await get_staff_roles(tid):
+        target_city = await get_staff_city(tid)
+        if target_city is None:
+            await callback.answer(ROLES_ALL_CITIES_TARGET_TEXT, show_alert=True)
+            return
+        if target_city != issuer_city:
+            await callback.answer(
+                ROLES_OTHER_CITY_TARGET_TEXT.format(city=await city_label(target_city)), show_alert=True,
+            )
+            return
 
-    created = await add_staff(tid, role, callback.from_user.id)
-    if created and issuer_city and newcomer:
-        await set_staff_city(tid, issuer_city)
+    created = await add_staff(tid, role, callback.from_user.id, city=issuer_city)
+    if created and issuer_city:
+        await set_staff_city(tid, issuer_city)  # подтянуть к городу и истёкшие строки человека
         await callback.answer(f"Добавлен — город {await city_label(issuer_city)}, как у вас", show_alert=True)
     else:
         await callback.answer("Добавлен" if created else "Уже был в этой роли", show_alert=True)
