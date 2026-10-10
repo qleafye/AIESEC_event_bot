@@ -147,7 +147,7 @@ async def _try_slot(telegram_id: int) -> bool:
     """Выдать место, если человек active, его заявка одобрена в текущем сезоне и места есть.
     Fail-soft: статус уже записан, место доберёт следующее одобрение."""
     try:
-        from services import amb_tiers
+        from services.amb import amb_tiers
         return await amb_status_db.try_claim_slot(
             int(telegram_id), limit=await slots_limit(),
             season=await amb_tiers.current_season(), at=_now(),
@@ -178,7 +178,7 @@ async def _credit_candidate_period(telegram_id: int, *, since: str, by: int) -> 
 
 async def _check_tiers(telegram_id: int) -> None:
     try:
-        from services.amb_tiers import check_tiers_for_new_ambassador
+        from services.amb.amb_tiers import check_tiers_for_new_ambassador
         await check_tiers_for_new_ambassador(int(telegram_id))
     except Exception:
         logger.exception("amb_status: проверка ступеней при вступлении не прошла (tid=%s)",
@@ -332,7 +332,7 @@ async def on_applications_unapproved(telegram_ids) -> None:
     if not await _enabled_safe():
         return
     try:
-        from services import amb_tiers
+        from services.amb import amb_tiers
         season = await amb_tiers.current_season()
     except Exception:
         logger.exception("amb_status: сезон не прочитан — место не снимаю")
@@ -358,7 +358,7 @@ async def reconcile_slots() -> int:
         return 0
     released = 0
     try:
-        from services import amb_tiers
+        from services.amb import amb_tiers
         holders = await amb_status_db.unapproved_slot_holders(await amb_tiers.current_season())
     except Exception:
         logger.exception("amb_status: сверка мест не прочитала список")

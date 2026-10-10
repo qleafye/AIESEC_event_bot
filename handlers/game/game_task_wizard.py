@@ -29,7 +29,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import domain.cities as cities
 from domain.settings.schema import get_setting_typed
 from database.db import NO_DEADLINE_AT, list_waves
-from services.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
+from services.amb.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
 from services.scheduler import (
     _fmt_dt,
     _now_moscow_naive,

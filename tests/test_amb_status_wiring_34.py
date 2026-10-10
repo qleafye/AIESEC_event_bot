@@ -1,4 +1,4 @@
-"""Подключение правил входа в амбассадоры (`services/amb_status.py`) к поверхностям:
+"""Подключение правил входа в амбассадоры (`services/amb/amb_status.py`) к поверхностям:
 вопрос анкеты (общий движок бота и Mini App), ответ «да» → кандидат в режиме отбора, место в
 лимите во всех путях одобрения, предложение ссылки после анкеты в боте и кнопка
 «Хочу свою ссылку», снятие места, когда своя заявка перестала быть одобренной.
@@ -20,7 +20,8 @@ import domain.regform.engine as reg_engine
 from config import config
 from database import amb_status_db as sdb
 from database import db
-from services import amb_status, amb_tiers, applications
+from services.amb import amb_status, amb_tiers
+from services import applications
 from tests._dbtpl import fast_init_db
 
 SEASON = "RT 26"
@@ -262,7 +263,7 @@ def _functions_calling(name: str) -> dict[str, set[str]]:
 # Сторож «путь одобрения обязан выдавать и место» переехал в
 # tests/test_referral_credit_32.py (test_nobody_calls_credit_or_tier_hooks_directly и
 # test_every_approval_path_calls_journal_entry_point): все пути зовут одну
-# services.amb_journal.on_invitees_approved, а она сама выдаёт место и проверяет ступени.
+# services.amb.amb_journal.on_invitees_approved, а она сама выдаёт место и проверяет ступени.
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

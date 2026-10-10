@@ -11,7 +11,7 @@ import pytest
 from config import config
 from database import amb_status_db as sdb
 from database import db
-from services import amb_journal, amb_status, amb_tiers
+from services.amb import amb_journal, amb_status, amb_tiers
 from tests._dbtpl import fast_init_db
 
 SEASON = "RT 26"

@@ -558,7 +558,7 @@ def test_ambleave_go_clears_ambassador_keeps_balance_and_current_wave_rating(cli
     assert user["is_ambassador"] == 0
     assert user["ambassador_left_at"]
     assert _run(bot_db.get_balance(DELEGATE_ID)) == balance_before
-    from services.ambassador_waves import wave_rating
+    from services.amb.ambassador_waves import wave_rating
     ids_in_rating = {row["user_id"] for row in _run(wave_rating(wave_id))}
     assert DELEGATE_ID not in ids_in_rating
 
@@ -570,7 +570,7 @@ def test_ambjoin_restores_flag_with_fresh_since_current_wave_unavailable_next_av
     user = _run(bot_db.get_user(DELEGATE_ID))
     assert user["is_ambassador"] == 1 and user["ambassador_since"]
 
-    from services.ambassador_waves import eligible_wave_ids as _eligible
+    from services.amb.ambassador_waves import eligible_wave_ids as _eligible
     current = _run(bot_db.get_wave(wave_id))
     assert wave_id not in _eligible(user, [current])  # вступил ПОСЛЕ старта текущей волны
 

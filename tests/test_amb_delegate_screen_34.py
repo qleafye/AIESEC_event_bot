@@ -11,7 +11,7 @@ import pytest
 from config import config
 from database import amb_status_db as sdb
 from database import db
-from services import amb_screen, amb_tiers
+from services.amb import amb_screen, amb_tiers
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
@@ -127,7 +127,7 @@ def test_points_none_when_not_awarded(ready):
 # ── сервис: волна ──────────────────────────────────────────────────────────────────────────
 
 def _patch_wave(monkeypatch, *, wave, own):
-    from services import ambassador_waves as w
+    from services.amb import ambassador_waves as w
 
     async def _cur(city):
         return wave
@@ -170,7 +170,7 @@ def test_fail_soft_parts(ready, monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(amb_screen, "referral_points_sum", _boom)
-    from services import ambassador_waves as w
+    from services.amb import ambassador_waves as w
     monkeypatch.setattr(w, "current_wave_for_city_raw", _boom)
     v = _view(10)
     assert v["status_key"] == "amb_status_pack_text"
@@ -213,7 +213,7 @@ def test_bot_full_screen_order(ready, monkeypatch):
                 own={"place": 3, "total": 12, "points": 30, "gap_to_prize": 0})
     # since раньше старта волны — участвует
     monkeypatch.setattr(
-        "services.ambassador_waves.wave_eligible", lambda user, wave: True)
+        "services.amb.ambassador_waves.wave_eligible", lambda user, wave: True)
     text, kb = _screen(10)
     pos = [text.index(s) for s in (
         f"start=amb_10", "пакет амбассадора за тобой", "Баллы за приглашённых: 30",
@@ -253,7 +253,7 @@ def test_bot_english_lines(ready, monkeypatch):
     _run(db.add_coins(10, 30, "x", None, "referral"))
     _patch_wave(monkeypatch, wave={"id": 1, "number": 2, "starts_at": "2026-10-01 00:00:00"},
                 own={"place": 3, "total": 12, "points": 30, "gap_to_prize": 0})
-    monkeypatch.setattr("services.ambassador_waves.wave_eligible", lambda user, wave: True)
+    monkeypatch.setattr("services.amb.ambassador_waves.wave_eligible", lambda user, wave: True)
     text, _kb = _screen(10, "en")
     assert "ambassador pack is yours" in text
     assert "Points for invitees: 30" in text

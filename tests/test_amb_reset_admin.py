@@ -7,7 +7,7 @@ from database import amb_status_db as sdb
 from handlers.amb import admin_amb_reset as h
 from handlers.amb.admin_amb_bulk import bulk_buttons
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
-from services import amb_status_reset as svc
+from services.amb import amb_status_reset as svc
 from database import db
 from tests.test_amb_status_reset_34 import AT, PAST, _ready, _run, _seed, _status, _world
 from tests.test_amb_tiers_admin_su5 import FakeCallback

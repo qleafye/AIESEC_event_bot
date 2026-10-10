@@ -1,7 +1,7 @@
 """Phase 32 План 11 (D-07/D-16/D-17/D-18/D-19): итоги волны — подготовленный ботом топ,
 подтверждение менеджера, неизменяемый снимок призёров и две рассылки (общая + призёрам).
 
-Задача 1 — `services.ambassador_waves.announce_results`/`prize_places_for` (без aiogram, чистые
+Задача 1 — `services.amb.ambassador_waves.announce_results`/`prize_places_for` (без aiogram, чистые
 БД-тесты). Задача 2 — экран итогов и подтверждение в `handlers/game/admin_game_waves.py` (стиль
 `tests/test_ambassador_waves_crud_32.py`: Fake* объекты, прямой вызов хендлеров). Задача 3 —
 рассылка из снимка в `services/scheduler.py` (стиль `tests/test_ambassador_wave_scheduling_32.py`:
@@ -23,7 +23,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.cities as cities
 from config import config
 from database import db
-from services import ambassador_waves as aw
+from services.amb import ambassador_waves as aw
 import services.scheduler as sched
 from tests._dbtpl import fast_init_db
 
@@ -587,7 +587,7 @@ def test_send_wave_results_reads_snapshot_not_live_rating(tmp_path, monkeypatch)
 
     async def fake_rating(_wid):
         raise AssertionError("send_wave_results НЕ должна звать wave_rating")
-    monkeypatch.setattr("services.ambassador_waves.wave_rating", fake_rating)
+    monkeypatch.setattr("services.amb.ambassador_waves.wave_rating", fake_rating)
 
     _run(sched.send_wave_results(wave_id))
     texts = {c[0]: c[1] for c in bot.sent}

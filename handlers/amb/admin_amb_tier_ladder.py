@@ -16,7 +16,7 @@
 Подпись квоты здесь — «наград на ступени»: это не «мест в команде амбассадоров» из раздела
 «🤝 Амбассадоры» (там лимит самой команды).
 
-Правила выдачи и снятия — в `services/amb_tiers.py`; модуль только показывает и зовёт их.
+Правила выдачи и снятия — в `services/amb/amb_tiers.py`; модуль только показывает и зовёт их.
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
 импортом `handlers/amb/admin_amb_journal.py`.
 """
@@ -37,7 +37,7 @@ from handlers.admin import router
 from handlers.amb.admin_amb_tiers import _edit_or_send, _is_cancel, _person_label, _resolve_person_input
 from handlers.access.admin_caps import has_capability
 from handlers.states import AmbTierRevoke
-from services import amb_tiers
+from services.amb import amb_tiers
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 

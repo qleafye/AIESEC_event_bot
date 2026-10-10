@@ -41,7 +41,7 @@ from database.db import (
     update_task_text,
 )
 from keyboards.builders import get_cancel_kb
-from services.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
+from services.amb.ambassador_waves import can_edit_wave, wave_editable_fields, wave_number_label
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game_sync import request_resync as _request_game_resync
 from handlers.states import GameTaskCreate, GameTaskEdit

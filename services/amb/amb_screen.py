@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 
 from database import db as _db
-from services import amb_status
+from services.amb import amb_status
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -71,7 +71,7 @@ async def _points(telegram_id: int) -> int | None:
 
 async def _wave_place(user: dict) -> dict | None:
     try:
-        from services import ambassador_waves as waves
+        from services.amb import ambassador_waves as waves
         wave = await waves.current_wave_for_city_raw(user.get("event_city"))
         if not wave or not waves.wave_eligible(user, wave):
             return None
