@@ -4,6 +4,7 @@
 Схемой владеет только бот (`init_db`); `miniapp/` не зовёт `init_db` (грепается).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import json
@@ -17,7 +18,7 @@ from database import db as bot_db
 
 from miniapp import outbox
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 MINIAPP_DIR = ROOT / "miniapp"
 
 

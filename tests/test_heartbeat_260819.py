@@ -3,6 +3,7 @@
 Покрытие: touch/age (atomic write), семантика «файл пишется только при живом поллинге»,
 middleware отмечает только getUpdates, `--check` exit-коды через subprocess, и статическая
 проверка, что HEALTHCHECK в Dockerfile вызывает реальный модуль с реальной опцией."""
+from tests._paths import REPO_ROOT
 import asyncio
 import os
 import re
@@ -15,7 +16,7 @@ from aiogram.methods import GetMe, GetUpdates
 
 from services import heartbeat as hb
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 @pytest.fixture(autouse=True)

@@ -5,6 +5,7 @@
 `asyncio.run()`, временная БД — тот же приём, что `tests/test_amb_tiers_core_su5.py::_ready`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import asyncio
@@ -20,7 +21,7 @@ from tests._dbtpl import fast_init_db
 
 SEASON = "RT 26"
 AT = "2026-09-30 12:00:00"
-REPO = Path(__file__).resolve().parent.parent
+REPO = REPO_ROOT
 
 _NEW_COLUMNS = (
     "ambassador_status", "ambassador_status_at", "ambassador_status_by", "ambassador_slot_at",

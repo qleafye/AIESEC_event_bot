@@ -2,12 +2,13 @@
 
 Читаем файлы с диска — демон Docker не нужен. Compose парсится через yaml.safe_load,
 а не регулярками, чтобы комментарии не давали ложных совпадений."""
+from tests._paths import REPO_ROOT
 from pathlib import Path
 
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 REQS = ROOT / "requirements.txt"
 COMPOSE = ROOT / "docker-compose.yml"
 RUNBOOK = ROOT / "docs" / "DEPLOY-DOMAIN.md"

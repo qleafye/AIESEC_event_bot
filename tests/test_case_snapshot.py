@@ -4,6 +4,7 @@
 зависит только от stdlib и грузится здесь по пути файла, а не импортом пакета. Фикстура — та же
 схема, что у бота (`fast_init_db` = `init_db`), наполненная синхронным sqlite3.
 """
+from tests._paths import REPO_ROOT
 import hashlib
 import importlib.util
 import json
@@ -17,7 +18,7 @@ import pytest
 from config import config
 from tests._dbtpl import fast_init_db
 
-SCRIPT = Path(__file__).resolve().parent.parent / "tools" / "case_snapshot.py"
+SCRIPT = REPO_ROOT / "tools" / "case_snapshot.py"
 
 
 def _load():

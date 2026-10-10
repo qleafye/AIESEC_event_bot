@@ -12,6 +12,7 @@ pytest-asyncio не используется — асинхронщина чер
 (`config.DB_PATH = tmp_path / "..."` + `database.db.init_db()`), как в `tests/test_applications_db.py`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import html as html_module
@@ -28,7 +29,7 @@ from database import db
 from tests.test_miniapp_labels_drift import _loaded_aiogram
 from tests._dbtpl import fast_init_db
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 def _use_tmp_db(tmp_path):

@@ -2,6 +2,7 @@
 реестра (`miniapp_coins_ops_count_text`, «{n} {операция|операции|операций}») через тот же
 `formatCount` (ui.js), что у остальных счётчиков; у делегата и у менеджера одна функция.
 """
+from tests._paths import REPO_ROOT
 import json
 import re
 import shutil
@@ -14,7 +15,7 @@ from miniapp.routers.page import SCREEN_TEXT_KEYS
 from services.i18n_miniapp_manual import MANUAL_EN
 from settings_schema import SETTINGS_SCHEMA
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 HUB_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "hub.js"
 UI_JS = ROOT / "miniapp" / "static" / "js" / "ui.js"
 TEMPLATE = SETTINGS_SCHEMA["miniapp_coins_ops_count_text"]["default"]

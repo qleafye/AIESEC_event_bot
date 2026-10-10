@@ -23,11 +23,12 @@ waves/32-04-PLAN.md`, раздел «Карта читателей метки «
 выполняются меньше секунды.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 # Каталоги обхода — ровно те, что перечислены в разделе «Карта читателей» плана 32-04/32-14:
 # корень репозитория (НЕ рекурсивно — там же лежат десятки несвязанных модулей) и шесть

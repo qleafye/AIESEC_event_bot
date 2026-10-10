@@ -12,6 +12,7 @@
 3. отрисованные экраны хаба форума, SOS и рассылки QR — текст и подписи кнопок.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import asyncio
@@ -24,7 +25,7 @@ from config import config
 from settings_schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 # `(?<!#)` — HEX-цвет вроде #F48924 в подсказке про цвет оформления кодом не является.
 INTERNAL_ID_RE = re.compile(r"\bD-\d+\b|(?<!#)\bF\d+\b|квик|\bп\.\d+", re.IGNORECASE)
 SCANNED_DIRS = ("handlers", "keyboards", "services", "miniapp")

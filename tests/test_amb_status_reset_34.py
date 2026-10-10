@@ -6,6 +6,7 @@
 Async — через `asyncio.run()`, временная БД — тот же приём, что tests/test_amb_status_34.py.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import sqlite3
@@ -20,7 +21,7 @@ from tests._dbtpl import fast_init_db
 SEASON = "RT 26"
 PAST = "RT 25"
 AT = "2026-09-30 12:00:00"
-REPO = Path(__file__).resolve().parent.parent
+REPO = REPO_ROOT
 
 
 def _run(coro):

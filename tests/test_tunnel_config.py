@@ -2,12 +2,13 @@
 
 Сторож против возврата старой схемы: на сервере не открывается ни один входящий порт,
 обратного прокси с сертификатами (caddy) нет, токен туннеля живёт только в tunnel/.env."""
+from tests._paths import REPO_ROOT
 from pathlib import Path
 
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 TUNNEL_COMPOSE = ROOT / "tunnel" / "docker-compose.yml"
 TUNNEL_ENV_EXAMPLE = ROOT / "tunnel" / ".env.example"
 STACK_COMPOSE = ROOT / "docker-compose.yml"

@@ -9,6 +9,7 @@ aiogram-free модули `reg_labels.py` / `game_labels.py`; в `handlers/` о�
 - состав ключей `REG_LABELS` не изменился относительно снимка.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import os
 import subprocess
@@ -17,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 REG_LABELS_KEYS_SNAPSHOT = [
     # Приёмка 16.09 (4a99eee): мастер анкеты в приложении спрашивает ФИО первым шагом

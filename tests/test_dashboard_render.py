@@ -11,6 +11,7 @@ Task 3 покрывает `dashboard.html`/`build_page_context`: семь бло
 T-15-05-03), человеческие подписи «где бросают» (D-07).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 import hashlib
@@ -29,7 +30,7 @@ from dashboard.config import DashboardConfig
 from dashboard.main import create_app
 from tests._dbtpl import fast_init_db
 
-DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
+DASHBOARD_DIR = REPO_ROOT / "dashboard"
 TOKENS_CSS = DASHBOARD_DIR / "static" / "tokens.css"
 APP_CSS = DASHBOARD_DIR / "static" / "app.css"
 TEMPLATES_DIR = DASHBOARD_DIR / "templates"

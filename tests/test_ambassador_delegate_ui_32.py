@@ -12,6 +12,7 @@
 `handlers.user_actions._game_task_list_screen`, как в `tests/test_game_task_order_260919.py`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import asyncio
@@ -30,7 +31,7 @@ from tests.test_miniapp_routes import DELEGATE_ID, _hdr
 
 from handlers import user_actions as ua_mod
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 
 def _run(coro):

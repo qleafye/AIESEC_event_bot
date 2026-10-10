@@ -11,6 +11,7 @@ Bot API (`getUserProfilePhotos` для аватара) мокается цели
 просроченного `effects_due_at` в БД, а не `sleep`.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 
@@ -550,7 +551,7 @@ def test_resume_node_handles_link_kind_with_own_button_text():
     from tests.test_miniapp_frontend import _js_without_comments
 
     applications_js = (
-        Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js" / "screens" / "applications.js"
+        REPO_ROOT / "miniapp" / "static" / "js" / "screens" / "applications.js"
     )
     src = _js_without_comments(applications_js)
     fn_start = src.index("function resumeNode(")

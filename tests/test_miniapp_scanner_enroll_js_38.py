@@ -1,5 +1,6 @@
 """Кнопка «Перезаписать на эту» на плашке сканера: поведение в node + подключение в scanner.js."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -8,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 ENROLL_JS = ROOT / "miniapp" / "static" / "js" / "scanner_enroll.js"
 SCANNER_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "scanner.js"
 

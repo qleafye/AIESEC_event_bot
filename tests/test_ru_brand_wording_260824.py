@@ -21,6 +21,7 @@ Phase 27 (27-02, LANG-08): английские тексты делегатск�
 модули нельзя — сторож упадёт на легальном английском, который сам и обязан там быть.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
@@ -159,7 +160,7 @@ def test_miniapp_js_display_strings_have_no_owner_latin_brand():
     """Задача 260903: строковые литералы фронтенда Mini App (miniapp/static/js/**). Ключи
     localStorage (snake_case, напр. `aiesec_miniapp_onboarding_seen_v1`) и код-комментарии
     (`// ...`) исключены — это не то, что видит человек."""
-    js_root = Path(__file__).resolve().parent.parent / "miniapp" / "static" / "js"
+    js_root = REPO_ROOT / "miniapp" / "static" / "js"
     js_files = sorted(js_root.rglob("*.js"))
     assert js_files, "не нашли JS Mini App — проверь путь miniapp/static/js"
 
@@ -198,7 +199,7 @@ def test_human_docs_have_no_owner_latin_brand():
     README.md и CLAUDE.md сюда намеренно НЕ входят — это доки для разработчика, их не
     видит ни делегат, ни менеджер, правило владельца на них не распространяется.
     """
-    docs_root = Path(__file__).resolve().parent.parent / "docs"
+    docs_root = REPO_ROOT / "docs"
     doc_names = ("BOT_GUIDE.md", "ADMIN_CHEATSHEET.md", "ADMIN_GUIDE.md")
 
     offenders = []

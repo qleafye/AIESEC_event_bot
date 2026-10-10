@@ -18,6 +18,7 @@ pytest-asyncio недоступен в этом окружении (см. `tests
 обёрнут в `asyncio.run()`, `config.DB_PATH` указывает на файл в `tmp_path`, как в
 `tests/test_delete_user_260910.py`.
 """
+from tests._paths import REPO_ROOT
 import ast
 import asyncio
 import re
@@ -253,7 +254,7 @@ def test_username_needle_unit_table():
 
 # ── Структурный сторож дрейфа ────────────────────────────────────────────────────────────
 
-DB_SRC_PATH = Path(__file__).resolve().parent.parent / "database" / "db.py"
+DB_SRC_PATH = REPO_ROOT / "database" / "db.py"
 
 
 def test_no_bare_username_equality_left_in_sql_strings():

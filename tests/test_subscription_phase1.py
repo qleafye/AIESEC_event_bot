@@ -1,4 +1,5 @@
 """Phase 1 subscription tests: membership mapping, fail-open check, segment authorization."""
+from tests._paths import REPO_ROOT
 import asyncio
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from handlers.admin_caps import required_capability
 from handlers.registration import _membership_status_to_bool, is_subscribed, _normalize_channel_ref
 from tests._dbtpl import fast_init_db
 
-ADMIN_PY = Path(__file__).resolve().parent.parent / "handlers" / "admin.py"
+ADMIN_PY = REPO_ROOT / "handlers" / "admin.py"
 # Phase 13 (13-05): broadcast_unsubscribed/incomplete now live in handlers/admin_broadcasts.py,
 # not admin.py itself -- same file-glob widening the 13-04 cap-test/doc-safety fixes already
 # established (test_roles_phase8.py, test_city_offparity_phase72.py) for a source-text scan

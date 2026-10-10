@@ -10,6 +10,7 @@
 - делегата нет в листе -> событие ждёт с редким повтором, через неделю снимается;
 - сторож: services/checkin.py, services/venue_log.py и miniapp/ не импортируют Google-листы."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import ast
 import asyncio
@@ -25,7 +26,7 @@ from services import sheet_arrival_sync, venue_log
 from services.checkin import record_arrival
 from tests.test_sheet_status_city_tab_260819 import _patch_fake_sheets, _setup_city_user, _use_tmp_db
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 HEADER = ["id", sheets.STATUS_HEADER, sheets.ARRIVED_HEADER]
 
 

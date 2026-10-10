@@ -9,6 +9,7 @@ miniapp.routers.form`. Харнесс — `tests/test_miniapp_routes.py` (`TestC
 бота ловится автоматически (T-21-05), не читкой глазами.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import asyncio
 
@@ -855,7 +856,7 @@ def test_engine_aliases_are_same_objects():
 
     assert reg._resolve_track is reg_engine.resolve_track
     assert reg._PARTY_TAG_MAP is reg_engine.PARTY_TAG_MAP
-    src = (Path(__file__).resolve().parent.parent / "handlers" / "reg_flow.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "handlers" / "reg_flow.py").read_text(encoding="utf-8")
     for literal in ("Некорректный выбор.", "Регистрация на этот город закрыта.",
                     "Регистрация на вечеринку уже закрыта."):
         assert literal not in src, literal

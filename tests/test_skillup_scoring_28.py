@@ -11,6 +11,7 @@
 pytest-asyncio недоступен в этом окружении — async через `asyncio.run()`, фикстура временной
 БД — тот же приём, что `tests/test_skillup_core_28.py::_ready(tmp_path)`.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import inspect
 
@@ -477,7 +478,7 @@ def test_delegate_surfaces_never_expose_score():
     assert "Балл" not in labels
     assert not any("score" in str(v).lower() for _l, v in fields)
 
-    profile_path = pathlib.Path(__file__).resolve().parent.parent / "miniapp" / "routers" / "profile.py"
+    profile_path = REPO_ROOT / "miniapp" / "routers" / "profile.py"
     if profile_path.exists():
         src = profile_path.read_text(encoding="utf-8")
         assert "score" not in src.lower()

@@ -8,6 +8,7 @@ Node-подпроцесс без jsdom — тот же приём, что `tests
 файл фазы носит свою копию фейкового DOM). Без node в PATH — `pytest.skip` с явной причиной.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import re
@@ -19,7 +20,7 @@ import pytest
 
 from tests.test_miniapp_frontend import FORM_JS, _STRING_LITERAL, _js_without_comments
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 _CYRILLIC = re.compile(r"[А-Яа-яЁё]")
 
 

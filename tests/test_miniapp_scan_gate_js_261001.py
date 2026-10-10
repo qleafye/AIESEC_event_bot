@@ -7,6 +7,7 @@
 (тот же приём, что `tests/test_miniapp_net_health_js_260925.py`); подключение к экрану —
 статикой по `scanner.js`."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 GATE_JS = ROOT / "miniapp" / "static" / "js" / "scan_gate.js"
 SCANNER_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "scanner.js"
 

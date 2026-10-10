@@ -3,6 +3,7 @@ RS256/JWKS, допуск по списку e-mail. Ключи — фикстур
 сети (JWKS подставляется через шов `jwks_client`).
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import base64
 import hashlib
@@ -25,7 +26,7 @@ from dashboard.cf_access import (
 )
 from dashboard.config import DashboardConfig
 
-CF_ACCESS_FILE = Path(__file__).resolve().parent.parent / "dashboard" / "cf_access.py"
+CF_ACCESS_FILE = REPO_ROOT / "dashboard" / "cf_access.py"
 
 TEAM_DOMAIN = "aiesec"
 AUD = "app-aud-tag"

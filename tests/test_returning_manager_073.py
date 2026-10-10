@@ -12,6 +12,7 @@ pytest-asyncio is unavailable in this env — every async call goes through asyn
 config.DB_PATH points at a tmp_path file, no conftest.py (project convention, see
 tests/test_season_data_073.py / tests/test_city_export_stats_phase72.py).
 """
+from tests._paths import REPO_ROOT
 import asyncio
 from pathlib import Path
 
@@ -105,7 +106,7 @@ def test_stats_returning_line_outside_city_block(tmp_path):
 
 # ── Task 2: ADMIN_GUIDE section ──────────────────────────────────────────────────────────
 
-_GUIDE_PATH = Path(__file__).resolve().parent.parent / "docs" / "ADMIN_GUIDE.md"
+_GUIDE_PATH = REPO_ROOT / "docs" / "ADMIN_GUIDE.md"
 
 
 def _guide_text() -> str:

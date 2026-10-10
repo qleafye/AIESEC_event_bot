@@ -11,6 +11,7 @@
 переход, что кнопка развилки), а не просто показывает поле.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import subprocess
@@ -31,7 +32,7 @@ from tests.test_miniapp_routes import DELEGATE_ID, UNREGISTERED_ID, _hdr, _set
 from tests.test_miniapp_frontend import _js_without_comments
 from tests.test_miniapp_form_controls_js_260911 import _FAKE_DOM_PRELUDE
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 FORM_JS = ROOT / "miniapp" / "static" / "js" / "form.js"
 SCREEN_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "form.js"
 

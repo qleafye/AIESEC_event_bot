@@ -14,6 +14,7 @@ node без DOM — на уровне модуля он к `document`/`window` �
 остаются гейтом в любом случае.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -22,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 FORM_JS = ROOT / "miniapp" / "static" / "js" / "form.js"
 
 # Элементы в форме ответа `settings/all` (план 22-04): подпись/подсказка/синонимы/значение.

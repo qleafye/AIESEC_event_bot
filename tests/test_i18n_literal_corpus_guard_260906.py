@@ -16,13 +16,14 @@
 `services/i18n_sources.py`) с кириллицей — литерал обязан быть либо в `code_literals()`
 (ярус B, машинный перевод), либо в `i18n_ui_en.UI_EN` (ярус A, рукописный). Новый литерал,
 который не завели ни туда, ни туда, — тихая дыра ровно того класса, что нашёл стендовый UAT."""
+from tests._paths import REPO_ROOT
 import ast
 from pathlib import Path
 
 from i18n_ui_en import UI_EN
 from services import i18n_sources
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 
 SCANNED_FILES = [
     ROOT / "handlers" / "registration.py",

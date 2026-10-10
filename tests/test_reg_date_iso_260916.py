@@ -1,5 +1,6 @@
 """Приёмка 16.09: Mini App шлёт дату нативного поля в ISO («2007-03-15»), сервер принимал
 только «ДД.ММ.ГГГГ» — в приложении не проходил ни один шаг-дата."""
+from tests._paths import REPO_ROOT
 from pathlib import Path
 
 import reg_engine
@@ -27,7 +28,7 @@ def test_garbage_keeps_format_error():
 def test_date_control_shows_legacy_iso_value_like_chat():
     """Приёмка 09.10: поле даты в приложении — текст «ДД.ММ.ГГГГ», как в чате (было нативное
     поле с переводом в ISO). Старое ISO-значение показывается в формате чата."""
-    js = (Path(__file__).resolve().parents[1] / "miniapp/static/js/form.js").read_text(encoding="utf-8")
+    js = (REPO_ROOT / "miniapp/static/js/form.js").read_text(encoding="utf-8")
     body = js.split("function dateControl", 1)[1].split("\n}\n", 1)[0]
     assert "iso[3]" in body and "iso[1]" in body
     assert 'type: "date"' not in body

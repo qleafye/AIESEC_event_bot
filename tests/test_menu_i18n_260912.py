@@ -16,6 +16,7 @@
 `tests/test_i18n_service_words_27.py`. pytest-asyncio в этом окружении нет, только
 `asyncio.run()`.
 """
+from tests._paths import REPO_ROOT
 import asyncio
 import re
 from pathlib import Path
@@ -35,7 +36,6 @@ from keyboards.builders import (
 )
 from tests._dbtpl import fast_init_db
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 UID = 813001
 
 

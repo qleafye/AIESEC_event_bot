@@ -11,6 +11,7 @@
 в любом случае.
 """
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import json
 import shutil
@@ -19,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 MOTION_JS = ROOT / "miniapp" / "static" / "js" / "motion.js"
 
 # Таблица кейсов resolveMotionTier (D-17 + quick 260915-4mw четвёртый сигнал `setting`).

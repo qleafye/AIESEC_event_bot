@@ -2,11 +2,12 @@
 сохранение, — значит обязаны показывать `notice` (бот не получил правку), а не зелёное
 «сохранено». Проверка по исходнику, без node (приём `test_miniapp_settings_fixes_260915`)."""
 from __future__ import annotations
+from tests._paths import REPO_ROOT
 
 import re
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = REPO_ROOT
 SCREENS = ROOT / "miniapp" / "static" / "js" / "screens"
 
 
