@@ -82,7 +82,7 @@ def write_preset(db_path: Path, preset_name: str) -> None:
     """Пишет ВСЕ ручки пресета разом, тем же приёмом, что `miniapp_preset_apply` в
     `handlers/admin_miniapp_theme.py` — снимок должен показывать ровно то, что получит
     менеджер после «Применить», не какое-то отдельное демо-состояние."""
-    import web_theme  # локальный импорт: REPO_ROOT уже в sys.path (см. ensure_repo_on_path())
+    import shared.web_theme as web_theme  # локальный импорт: REPO_ROOT уже в sys.path (см. ensure_repo_on_path())
 
     conn = sqlite3.connect(str(db_path))
     try:

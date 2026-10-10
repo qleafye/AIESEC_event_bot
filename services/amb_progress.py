@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 from typing import Awaitable, Callable
 
-from amb_tier_keys import tier_key
+from shared.amb_tier_keys import tier_key
 from database import amb_tiers_db
 from database import db as _db
 from services import amb_tiers

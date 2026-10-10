@@ -1,8 +1,8 @@
-"""Phase 19.1 Plan 02 Task 2 (D-03/D-04/D-07): `web_theme.py` — единственный корневой модуль,
+"""Phase 19.1 Plan 02 Task 2 (D-03/D-04/D-07): `shared/web_theme.py` — единственный корневой модуль,
 где живёт знание о пресетах оформления (BlueBook/YouLead/Своя). Чистые функции — контраст,
 осветление под тёмную тему, разрешение ручек поверх пресета, сборка текста CSS.
 
-Тесты писаны ПЕРВЫМИ (RED) — на момент коммита `web_theme.py` ещё не существует, весь файл
+Тесты писаны ПЕРВЫМИ (RED) — на момент коммита `shared/web_theme.py` ещё не существует, весь файл
 обязан упасть с `ModuleNotFoundError`/`ImportError`, не пройти молча.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-import web_theme
+import shared.web_theme as web_theme
 
 ROOT = REPO_ROOT
 
@@ -348,7 +348,7 @@ def test_import_web_theme_does_not_load_aiogram():
     env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
     env["PYTHONIOENCODING"] = "utf-8"
     snippet = (
-        "import web_theme\nimport sys\n"
+        "import shared.web_theme as web_theme\nimport sys\n"
         "print(sorted(m for m in sys.modules if m == 'aiogram' or m.startswith('aiogram.')))"
     )
     proc = subprocess.run(

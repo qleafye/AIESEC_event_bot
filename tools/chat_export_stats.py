@@ -14,7 +14,7 @@ Bot API не отдаёт историю чата за период ДО тог�
 Коды выхода: 0 — посчитано (даже если часть контекста недоступна — см. предупреждения в шапке
 вывода); 1 — файл экспорта не читается или не в ожидаемом формате.
 
-Только stdlib плюс корневой chat_score.py того же чекаута (формула общая с дашбордом) —
+Только stdlib плюс корневой shared/chat_score.py того же чекаута (формула общая с дашбордом) —
 тул запускается и на сервере, и на ноутбуке менеджера из клона репозитория.
 """
 import argparse
@@ -30,7 +30,7 @@ _REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from chat_score import (  # noqa: E402 — после бутстрапа sys.path
+from shared.chat_score import (  # noqa: E402 — после бутстрапа sys.path
     WEIGHTS,
     AuthorAgg,  # noqa: F401 — реэкспорт для тестов и внешних скриптов
     BurstInfo,  # noqa: F401 — реэкспорт
@@ -255,7 +255,7 @@ def parse_messages(raw_messages: list):
 
 
 # ---------------------------------------------------------------------------
-# Агрегация и балл — в chat_score.py
+# Агрегация и балл — в shared/chat_score.py
 # ---------------------------------------------------------------------------
 
 def to_records(messages, reply_index) -> list:

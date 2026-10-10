@@ -1,7 +1,7 @@
 """«📊 Статистика прихода» (бэклог чек-ина п.10): для менеджера в день форума и после —
 одобрено / пришли / не пришли и % явки по городу, люди по дням форума, отметки на сессиях
 программы с заполненностью зала. Компактное сообщение (итоги + топ сессий) и CSV со всем
-остальным. Числа — общие запросы `arrival_stats.py` (их же показывает дашборд, блок «Приход»),
+остальным. Числа — общие запросы `shared/arrival_stats.py` (их же показывает дашборд, блок «Приход»),
 исполняет `services/checkin_arrival.py`.
 
 Город — из шапки: закреплённый за менеджером город / модуль городов выключен — один отчёт;
@@ -19,7 +19,7 @@ from aiogram import F, types
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-import arrival_stats
+import shared.arrival_stats as arrival_stats
 from cities import cities_module_on, city_label, city_labels_map, city_scope, enabled_cities
 from handlers.admin import router
 from handlers.admin_core import _admin_city_scope

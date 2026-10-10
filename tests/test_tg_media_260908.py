@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-import tg_media
+import shared.tg_media as tg_media
 
 
 @pytest.mark.parametrize(

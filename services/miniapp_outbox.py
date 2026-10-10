@@ -76,7 +76,7 @@ At-least-once, с ретраями (T-19-56): исключение -> `mark_mini
 может нести ПД, например имя делегата).
 """
 import logging
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 
 from database.db import (
     list_unprocessed_miniapp_outbox,

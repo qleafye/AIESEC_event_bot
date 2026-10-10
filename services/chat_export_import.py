@@ -30,7 +30,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime, timedelta, timezone
 
-import chat_score
+import shared.chat_score as chat_score
 from tools.chat_export_stats import (
     ExportError,
     _has_media,

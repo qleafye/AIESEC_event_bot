@@ -23,7 +23,7 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import chat_score
+import shared.chat_score as chat_score
 from cities import (
     ALL_CITIES,
     admin_selected_city,

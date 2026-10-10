@@ -6,7 +6,7 @@ from __future__ import annotations
 import sqlite3
 from datetime import datetime
 
-import arrival_stats
+import shared.arrival_stats as arrival_stats
 from config import config
 from database import db
 from handlers import admin_checkin, admin_checkin_floor

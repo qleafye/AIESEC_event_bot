@@ -4,7 +4,7 @@
 """
 from datetime import date, datetime, timedelta
 
-import chat_score as cs
+import shared.chat_score as cs
 
 TEAM, A, B = 900, 101, 102
 T0 = datetime(2026, 9, 1, 10, 0, 0)

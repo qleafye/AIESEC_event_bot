@@ -20,7 +20,7 @@ tests/test_module_size_convention_260816.py): «🔄 Синхронизация�
 """
 import html as html_module
 import logging
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 from dataclasses import dataclass, field
 
 from aiogram import F, types

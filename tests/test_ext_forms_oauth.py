@@ -8,7 +8,7 @@ from pydantic import SecretStr
 
 from config import config
 from database import ext_forms_db as ef
-from secret_redact import redact_secrets
+from shared.secret_redact import redact_secrets
 from services import ext_forms_yandex as Y
 from tests._dbtpl import fast_init_db
 

@@ -27,7 +27,7 @@ legacy literal tables in handlers/admin.py holds throughout the incremental migr
 """
 from datetime import datetime
 
-import chat_score
+import shared.chat_score as chat_score
 
 from database.db import get_setting, DEFAULT_CONSENT_VERSION
 from reg_labels import REG_LABELS
@@ -4461,7 +4461,7 @@ SETTINGS_SCHEMA = {
     },
     # Обобщённые ступени 1–5: число ступеней, галочка «только с одобренной заявкой», квота на
     # любой ступени. Ступень 2 и следующий шаг 2/3 живут под прежними ключами (карта tier_key в
-    # amb_tier_keys.py), чтобы сохранённые значения стеков не терялись. Правятся экраном ступеней,
+    # shared/amb_tier_keys.py), чтобы сохранённые значения стеков не терялись. Правятся экраном ступеней,
     # в `_GAME_FIELD_ORDER` их нет.
     "amb_tiers_count": {
         "type": "int", "group": "amb", "label": "🎓 Сколько ступеней (от 1 до 5)",
@@ -5459,7 +5459,7 @@ SETTINGS_SCHEMA = {
     # Квик 260921: своя иконка вкладки браузера дашборда статистики — НЕ `miniapp_logo`
     # (лого в шапке Mini App, отдельный ключ/поверхность). Загружается документом (PNG/ICO,
     # НЕ фото — Telegram пережимает фото в JPEG) с экрана «🎭 Пресеты и ручки оформления»
-    # (handlers/admin_miniapp_theme.py), тексты/правила — dashboard_favicon.py. Резолвер
+    # (handlers/admin_miniapp_theme.py), тексты/правила — shared/favicon.py. Резолвер
     # порядка favicon -> miniapp_logo -> статика АЙСЕК — dashboard/main.py::_favicon_url.
     "dashboard_favicon": {
         "type": "file", "group": "dashboard", "label": "🔖 Иконка вкладки дашборда",
@@ -5833,7 +5833,7 @@ SETTINGS_SCHEMA = {
     },
 
     # ── Phase 19.1 Plan 02 (D-03/D-04/D-07/D-08/D-15/D-16/D-18): ручки пресетов оформления —
-    # web_theme.py разрешает их в CSS-переменные, «🎨 Оформление» бота их выставляет (план
+    # shared/web_theme.py разрешает их в CSS-переменные, «🎨 Оформление» бота их выставляет (план
     # 19.1-07). miniapp_accent НЕ дублируется новым ключом — существующий ключ остаётся
     # «акцентом» ради миграции уже настроенных стендов (UI-SPEC).
     "miniapp_theme_preset": {

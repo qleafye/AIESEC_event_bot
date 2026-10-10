@@ -38,7 +38,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from amb_tier_keys import MAX_TIERS, tier_key
+from shared.amb_tier_keys import MAX_TIERS, tier_key
 from database import amb_tiers_db
 from database import db as _db
 from services.timeutil import msk_now

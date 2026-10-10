@@ -18,7 +18,7 @@ from database import ext_forms_db as xdb
 from handlers.admin import router
 from handlers.states import ExtFormAppKeys, ExtFormOAuth
 from keyboards.builders import get_cancel_kb
-from secret_redact import register_secret
+from shared.secret_redact import register_secret
 from services import ext_forms_yandex as yx
 
 logger = logging.getLogger(__name__)

@@ -22,7 +22,7 @@ import logging
 import sqlite3
 from datetime import date, datetime, timedelta
 
-import web_theme
+import shared.web_theme as web_theme
 from dashboard import queries
 from dashboard.db import read_conn
 from dashboard.queries import Scope
