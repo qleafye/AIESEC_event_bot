@@ -372,3 +372,12 @@ def test_event_screen_shows_forum_length_default(tmp_path):
     _ready(tmp_path)
     text = _run(render_settings_group_text("event"))
     assert "🗓 Сколько дней идёт форум: <i>по умолчанию</i>" in text
+
+
+def test_escalation_minutes_refuses_zero_with_explanation():
+    """10.10: «напомнить через 0 мин» — не пауза; ввод «Другое» объясняет, что нужно от 1."""
+    from settings_validation import validate_setting_value
+
+    value, error = validate_setting_value("sos_escalation_minutes__city__msk", "0")
+    assert value is None and "1 или больше" in error
+    assert validate_setting_value("sos_escalation_minutes", "7") == ("7", None)
