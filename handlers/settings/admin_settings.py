@@ -1414,6 +1414,8 @@ async def settings_regmode_reset_go(callback: types.CallbackQuery):
 async def _toggle_approval_setting(callback: types.CallbackQuery, key: str, default: str, title: str):
     # REG-02 (06-07): final-coverage sweep — key is always in SETTINGS_SCHEMA (full_approval/
     # short_approval/party_approval), registry default byte-identical to the `default` param.
+    if await gscope.deny(callback, key):  # не показывать подтверждение, которое всё равно не запишется
+        return
     current = await get_setting_typed(key)
     new_val = "auto" if current == "manual" else "manual"
     if new_val == "auto":
@@ -1871,6 +1873,8 @@ async def toggle_bonus(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("settings_file:"))
 async def settings_file_start(callback: types.CallbackQuery, state: FSMContext):
     prefix = callback.data.split(":", 1)[1]
+    if await gscope.deny(callback, f"{prefix}_doc_file_id"):  # не просить файл, который не запишется
+        return
     prompts = {p: (label, prompt) for p, label, prompt in FILE_FIELDS}
     label, prompt = prompts.get(prefix, ("Файл", "Отправьте файл."))
 
@@ -2208,6 +2212,8 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
     if prefix == "program" and header not in (None, ALL_CITIES):  # своё фото города шапки
         from handlers.forum.admin_program_view import start_program_photo
         return await start_program_photo(callback, state, header, "program")
+    if await gscope.deny(callback, f"{prefix}_photo_file_id"):  # не просить фото, которое не запишется
+        return
     prompts = {p: (label, prompt) for p, label, prompt in PHOTO_FIELDS}
     label, prompt = prompts.get(prefix, ("Фото", "Отправьте фото."))
 
@@ -2336,6 +2342,8 @@ async def admin_consent_pdfs(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("consent_pdf_set:"))
 async def consent_pdf_set(callback: types.CallbackQuery, state: FSMContext):
     key = callback.data.split(":", 1)[1]
+    if await gscope.deny(callback, f"consent_pdf_{key}"):  # не просить PDF, который не запишется
+        return
     cancel_kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")],
     ])
