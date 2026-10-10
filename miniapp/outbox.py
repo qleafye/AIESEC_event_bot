@@ -6,7 +6,7 @@
 
 Контракт видов событий (payload — JSON-словарь; сторожевой тест сверяет этот список):
 
-    submission_created   {submission_id, user_id, task_id, task_text, submitter_name}
+    submission_created   {submission_id, user_id, task_id, task_text, task_title, submitter_name}
     submission_reviewed  {submission_id, user_id, status, coins}
     task_changed         {task_id}
     coins_manual         {user_id, delta}

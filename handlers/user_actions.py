@@ -1068,7 +1068,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
     # Quick 260822: режим (каждую / дайджест) и город делегата — в services/game_digest.py.
     await notify_game_submission(
         bot, submission_id=submission_id, user_id=callback.from_user.id, task_id=task_id,
-        task_text=task["text"], submitter_name=submitter_name,
+        task_title=task_title(task), submitter_name=submitter_name,
     )
 
 
