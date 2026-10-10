@@ -13,7 +13,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from database import ext_forms_db as xdb
 from handlers.admin import router
-from handlers.admin_ext_forms import _btn, _e, _show, _tail_id
+from handlers.ext_forms.admin_ext_forms import _btn, _e, _show, _tail_id
 from handlers.states import ExtFormImport
 from keyboards.builders import get_cancel_kb
 from services.background import spawn
