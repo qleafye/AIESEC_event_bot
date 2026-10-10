@@ -210,3 +210,43 @@ def test_cancel_clears_state(db_path):  # noqa: F811
     _run(h.chat_import_cancel(msg, state))
     assert _run(state.get_state()) is None
     assert "Ничего не загружено" in msg.answers[0][0]
+
+
+class _FailingConn:
+    """Обёртка соединения: на N-й вставке сообщения падает (как обрыв посреди большой загрузки)."""
+
+    def __init__(self, conn, fail_on):
+        self.conn, self.fail_on, self.n = conn, fail_on, 0
+
+    def execute(self, sql, *args):
+        if sql.lstrip().startswith("INSERT OR IGNORE INTO chat_messages"):
+            self.n += 1
+            if self.n == self.fail_on:
+                raise sqlite3.OperationalError("boom")
+        return self.conn.execute(sql, *args)
+
+    def __enter__(self):
+        return self.conn.__enter__()
+
+    def __exit__(self, *exc):
+        return self.conn.__exit__(*exc)
+
+
+def test_apply_commits_in_batches_and_retry_finishes(db_path, monkeypatch):  # noqa: F811
+    from services import chat_export_import as svc
+
+    monkeypatch.setattr(svc, "_BATCH", 1, raising=False)
+    conn = sqlite3.connect(db_path)
+    plan = svc.make_plan(conn, svc.parse_export(json.dumps(_fixture_export()), "result.json"), CHAT_ID)
+    assert plan["to_add"] >= 3
+    try:
+        svc.apply_plan(_FailingConn(conn, fail_on=3), plan)
+    except sqlite3.OperationalError:
+        pass
+    conn.rollback()
+    # целые пачки, записанные до сбоя, остались — длинной транзакции на весь файл нет
+    assert _count(db_path, "chat_messages") == 2
+    added, _ = svc.apply_plan(conn, plan)
+    conn.close()
+    assert _count(db_path, "chat_messages") == plan["to_add"]
+    assert added == plan["to_add"] - 2
