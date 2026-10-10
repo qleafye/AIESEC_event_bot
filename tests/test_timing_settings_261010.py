@@ -102,3 +102,54 @@ def test_morning_catchup_until_follows_setting(tmp_path):
 
     _run(db.set_setting("checkin_qr_morning_catchup_until", "обед"))
     assert _run(cb.morning_catchup_until(None)) == time(12, 0)
+
+
+# ── Ревью 10.10: ключи видны на экранах бота ─────────────────────────────────────────────
+
+def test_new_keys_are_on_bot_screens_and_in_search():
+    from handlers import admin_settings
+    from handlers.admin_settings_search import candidates
+
+    assert "question_stuck_minutes" in admin_settings._settings_group_keys("apps")
+    assert "wave_deadline_reminder_hours" in admin_settings._settings_group_keys("amb")
+    found = {c.key for c in candidates()}
+    assert {"question_stuck_minutes", "wave_deadline_reminder_hours"} <= found
+
+
+def test_qr_screen_has_catchup_row_and_rejects_time_before_morning_repeat(tmp_path):
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types import User
+    from handlers import admin_checkin
+    from handlers.states import CheckinQrTimeEdit
+
+    _ready(tmp_path, "timings_qr_screen.db")
+    config.ADMIN_IDS = [77]
+    text, kb = _run(admin_checkin._qr_cfg_text_kb(None))
+    assert "догнать повтор до: 12:00" in text
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert any(cb.startswith("checkinqr_time:catchup:") for cb in cbs)
+
+    class _Msg:
+        def __init__(self, text):
+            self.text = text
+            self.from_user = User(id=77, is_bot=False, first_name="Админ")
+            self.sent = []
+
+        async def answer(self, text, **kwargs):
+            self.sent.append(text)
+
+    state = FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=77, user_id=77))
+
+    async def go(value):
+        await state.update_data(checkinqr_time_key="checkin_qr_morning_catchup_until", checkinqr_time_city=None)
+        await state.set_state(CheckinQrTimeEdit.waiting_value)
+        msg = _Msg(value)
+        await admin_checkin.checkinqr_time_step(msg, state)
+        return msg, await db.get_setting("checkin_qr_morning_catchup_until")
+
+    msg, saved = _run(go("07:30"))
+    assert saved is None and "догона не будет" in msg.sent[0]
+    msg, saved = _run(go("14:00"))
+    assert saved == "14:00"

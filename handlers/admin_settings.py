@@ -173,6 +173,8 @@ _APPS_FIELD_ORDER = [
     # одного `_gate_decision` редактируются в одном месте.
     "pending_gate_text",
     "pending_reminder_interval",
+    # 10.10: порог «🔒 залип» у вопросов делегатов (журнал вопросов — в этом же разделе).
+    "question_stuck_minutes",
     # Phase 17.1 (17.1-03, schema-completeness): тексты гейта предотбора — читались из
     # bot_settings, но менеджер их в UI не видел.
     "preselect_no_username_text", "preselect_fail_text", "preselect_link",

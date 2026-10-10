@@ -18,7 +18,7 @@ AMB_FIELD_ORDER = [
     "amb_wave_place_text", "amb_status_candidate_text", "amb_slots_full_text", "amb_taken_text",
     "amb_removed_text", "amb_decline_all_text",
     # Тексты старта волны, напоминания, итогов — делегатские, переводятся автоматически.
-    "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text",
+    "wave_start_message_text", "wave_start_button_text", "wave_deadline_reminder_text", "wave_deadline_reminder_hours",
     "wave_results_announce_text", "wave_results_winner_text", "wave_results_prize_text",
     "wave_rating_header_text", "wave_rating_own_line_text", "wave_rating_closed_text",
     # Ссылка и список приглашённых («Моя ссылка») — 09.10 переехали сюда из «🎮 Геймификации».
