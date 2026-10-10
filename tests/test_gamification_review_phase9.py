@@ -35,8 +35,9 @@ def _db_ready(tmp_path):
 
 
 def _seed_task(text="Пост со скрином #знакомство", category="Light", coins=30,
-               proof_type="text", deadline_at="2026-08-25 23:59:00", created_by=ADMIN_ID):
-    return asyncio.run(db.create_task(text, category, coins, proof_type, deadline_at, created_by))
+               proof_type="text", deadline_at="2026-08-25 23:59:00", created_by=ADMIN_ID, title=None):
+    return asyncio.run(db.create_task(text, category, coins, proof_type, deadline_at, created_by,
+                                      title=title))
 
 
 def _seed_submission(task_id, user_id=DELEGATE_ID, content_type="text", content="вот мой пост",
@@ -346,6 +347,42 @@ def test_grev_reject_prompts_reason_and_notifies_with_reason_escaped(tmp_path):
     assert "&lt;i&gt;Y&lt;/i&gt;" in text
     assert "&lt;b&gt;видно&lt;/b&gt;" in text
     assert asyncio.run(state.get_state()) is None
+
+
+def test_review_messages_and_ledger_use_task_title_not_text(tmp_path):
+    """Приёмка 10.10: делегату приходило «Задание «<текст задания>» одобрено!», и тот же текст
+    уходил в историю баллов. Везде — название (`task_title`), текст задания не светится."""
+    _db_ready(tmp_path)
+    task_id = _seed_task(text="Пришли фото своего рабочего места", title="Тест-задание", coins=10)
+    state = _new_state()
+
+    sub_default = _seed_submission(task_id)
+    callback = FakeCallback(f"grev_approve:{sub_default}")
+    asyncio.run(admin_gamification.grev_approve(callback, state))
+
+    sub_custom = _seed_submission(task_id, user_id=MANAGER2_ID)
+    asyncio.run(admin_gamification.grev_approve_custom_start(FakeCallback(f"grev_approve_custom:{sub_custom}"), state))
+    amount_msg = FakeMessage(text="15")
+    asyncio.run(admin_gamification.grev_approve_amount_step(amount_msg, state))
+
+    sub_rejected = _seed_submission(task_id, user_id=930905)
+    asyncio.run(admin_gamification.grev_reject_start(FakeCallback(f"grev_reject:{sub_rejected}"), state))
+    reason_msg = FakeMessage(text="-")
+    asyncio.run(admin_gamification.grev_reject_reason(reason_msg, state))
+
+    texts = [callback.bot.sent[0][1], amount_msg.bot.sent[0][1], reason_msg.bot.sent[0][1]]
+    assert texts[0].startswith("✅ Задание «Тест-задание» одобрено! +10🪙")
+    assert texts[1].startswith("✅ Задание «Тест-задание» одобрено! +15🪙")
+    assert texts[2].startswith("❌ Задание «Тест-задание» отклонено.")
+    assert all("рабочего места" not in t for t in texts)
+
+    async def _reasons():
+        import aiosqlite
+        async with aiosqlite.connect(config.DB_PATH) as conn:
+            cur = await conn.execute("SELECT reason FROM coins WHERE source = 'task' ORDER BY id")
+            return [r[0] for r in await cur.fetchall()]
+
+    assert asyncio.run(_reasons()) == ["Задание: Тест-задание", "Задание: Тест-задание"]
 
 
 def test_grev_reject_without_reason_omits_reason_line(tmp_path):
