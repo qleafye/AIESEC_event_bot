@@ -684,7 +684,7 @@ def test_manual_coins_text_is_one_function_for_both_paths():
     """Формулировка живёт в одном месте: `handlers/admin.py` реэкспортирует ту же функцию,
     что зовёт разборщик outbox'а."""
     from handlers import admin as admin_mod
-    from services import coins_notify
+    from services.game import coins_notify
     from services.infra import miniapp_outbox
 
     assert admin_mod._notify_manual_coins is coins_notify.notify_manual_coins

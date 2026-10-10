@@ -6,7 +6,7 @@
 (с сообщением каждому или без). Повторный запуск безопасен: перенесённым второй раз не
 начисляется, так что после правки ников в таблице можно запустить ещё раз.
 
-Сама логика — `services/coins_transfer.py`. Шов той же формы, что соседние: своего `Router()`
+Сама логика — `services/game/coins_transfer.py`. Шов той же формы, что соседние: своего `Router()`
 нет, хендлеры на общем `admin.router`, модуль импортируется хвостом `handlers/admin.py`.
 """
 import asyncio
@@ -22,7 +22,8 @@ from database.db import get_balance
 from services.infra.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from handlers.admin import router
 from handlers.states import CoinsTransfer
-from services import coins_transfer, ext_forms_google as gsheet
+from services.game import coins_transfer
+from services import ext_forms_google as gsheet
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +233,7 @@ async def cointr_go(callback: types.CallbackQuery, state: FSMContext):
     total = sum(p.total for p, _ in done)
     logger.info("coins_transfer: %s человек, %s монет, by=%s", len(done), total, callback.from_user.id)
     try:
-        from services.game_sync import request_resync
+        from services.game.game_sync import request_resync
 
         request_resync()
     except Exception as e:
@@ -240,7 +241,7 @@ async def cointr_go(callback: types.CallbackQuery, state: FSMContext):
 
     delivered = 0
     if notify and done:
-        from services.coins_notify import notify_manual_coins
+        from services.game.coins_notify import notify_manual_coins
 
         await callback.message.answer(f"Пишу делегатам ({len(done)})…")
         for person, tid in done:

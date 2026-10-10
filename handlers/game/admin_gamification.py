@@ -80,9 +80,9 @@ from database.db import (
 from services.settings.audit import set_setting_by_admin
 from keyboards.builders import get_cancel_kb
 from services.sheets import sync_named_worksheet
-from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry
+from services.game.game_sheets import describe_plan, game_tab_plan, rows_for_entry
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
-from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
+from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from services.amb.ambassador_waves import can_edit_wave, wave_editable_fields
 from handlers.states import CoinsManual, GameReview, GameTaskCreate, GameTaskEdit
 from domain.game.labels import category_label  # Phase 16 (16-01/16-03): RU labels, one source
@@ -91,7 +91,7 @@ from domain.game.labels import (  # Phase 32 (32-07, D-25/D-27/D-35): срок/�
     task_deadline_admin,
     task_has_deadline,
 )
-from services.game_award import award_for  # Phase 32 (фикс, CR-02): единая формула штрафа —
+from services.game.game_award import award_for  # Phase 32 (фикс, CR-02): единая формула штрафа —
 # та же функция, что зовёт Mini App (miniapp/routers/review.py::review_approve), больше не
 # собственная копия здесь.
 from handlers.game.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
@@ -1883,10 +1883,10 @@ async def rebuild_game_sheets_detailed() -> list[dict]:
     """Phase 09.1 (D, GAME-07): the ONE place that actually rebuilds the gamification sheet
     tabs — shared by the "🔄 Да, пересобрать вкладки" button (sync_game_sheets below, which
     calls this directly, bypassing the debounce -- CONTEXT.md D's "пересобрать сейчас" escape
-    hatch) and services.game_sync's debounced background resync (registered via set_rebuild()
+    hatch) and services.game.game_sync's debounced background resync (registered via set_rebuild()
     at the bottom of this module, through the tuple-returning wrapper rebuild_game_sheets).
 
-    Quick GAME-CITY-TABS: the tab list comes from services.game_sheets.game_tab_plan() —
+    Quick GAME-CITY-TABS: the tab list comes from services.game.game_sheets.game_tab_plan() —
     the two whole-event tabs first, then (cities module ON) a matrix + history pair per
     enabled city, built from the same two DB reads filtered per city (delegate's city for
     submissions, task's city / NULL="all" for the matrix columns). Returns one dict per plan
@@ -1928,7 +1928,7 @@ async def rebuild_game_sheets_detailed() -> list[dict]:
 async def rebuild_game_sheets() -> tuple[int, ...]:
     """Row counts per tab in game_tab_plan() order (whole-event matrix, whole-event history,
     then each city's pair) — -1 for a failed tab. Cities module OFF -> exactly a 2-tuple, the
-    shape services.game_sync and the pre-cities callers already understand."""
+    shape services.game.game_sync and the pre-cities callers already understand."""
     return tuple(r["written"] for r in await rebuild_game_sheets_detailed())
 
 
@@ -1956,7 +1956,7 @@ async def sync_game_sheets(callback: types.CallbackQuery):
 
 # Phase 09.1 (D, GAME-07): register the shared rebuild with the debounced background resync
 # helper. Inversion-of-control instead of moving the sheet-builder code into services/ --
-# services.game_sync must not import handlers.* (import-cycle guard).
+# services.game.game_sync must not import handlers.* (import-cycle guard).
 _set_game_rebuild(rebuild_game_sheets)
 
 

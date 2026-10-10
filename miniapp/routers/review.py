@@ -14,7 +14,7 @@
 Фикс фазы 32 (CR-01/CR-02): `add_coins` обязан нести `task_id` — рейтинг волны
 (`database.db.sum_task_coins_for_wave`) джойнит `coins.task_id -> game_tasks.wave_id`, без
 этой ссылки одобренная здесь сдача не попадала в зачёт волны вовсе. Штраф за просрочку
-считает `services.game_award.award_for` — та же формула и тот же предикат просрочки, что у
+считает `services.game.game_award.award_for` — та же формула и тот же предикат просрочки, что у
 бота (`handlers/game/admin_gamification.py::_award_for`), иначе одна и та же просроченная сдача
 получала разные баллы в зависимости от того, где менеджер нажал «Одобрить».
 
@@ -50,7 +50,7 @@ from database.db import (
 )
 from domain.game.labels import category_label, penalized_coins, proof_types_label
 from services import quiet_hours
-from services.game_award import award_for
+from services.game.game_award import award_for
 from domain.settings.schema import get_setting_typed
 
 from miniapp import telegram_api

@@ -390,7 +390,8 @@ def test_endpoint_repeat_press_keeps_single_event(tmp_path):
 
 def test_record_decision_writes_journal_even_if_referral_credit_fails(tmp_path, monkeypatch):
     from datetime import datetime
-    from services import applications, referrals
+    from services import applications
+    from services.game import referrals
     _seed_ready(tmp_path)
     _run(_insert_user(953301, status="approved", city="spb"))
 

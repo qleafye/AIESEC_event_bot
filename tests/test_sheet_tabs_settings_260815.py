@@ -75,7 +75,7 @@ _FROZEN_OLD_HARDCODE_DEFAULTS = {
     "city_tab_suffix__short": " Акция",
     "city_tab_suffix__party": " Party",
     "city_tab_suffix__incomplete": " Незавершённые",
-    # Quick GAME-CITY-TABS: per-city gamification tab suffixes (services/game_sheets.py).
+    # Quick GAME-CITY-TABS: per-city gamification tab suffixes (services/game/game_sheets.py).
     "city_tab_suffix__game": " Гейма",
     "city_tab_suffix__game_history": " История сдач",
 }

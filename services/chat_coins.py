@@ -144,12 +144,12 @@ async def try_handle(message, bot) -> bool:
     logger.info("chat_coins: +%s user=%s by=%s chat=%s", amount, target.id, sender.id, message.chat.id)
     await _react(bot, message.chat.id, message.message_id)
     try:
-        from services.game_sync import request_resync
+        from services.game.game_sync import request_resync
 
         request_resync()
     except Exception as e:
         logger.warning("chat_coins: пересборка вкладок геймы не запрошена: %s", type(e).__name__)
-    from services.coins_notify import notify_manual_coins
+    from services.game.coins_notify import notify_manual_coins
 
     await notify_manual_coins(bot, target.id, amount, full_reason, await get_balance(target.id))
     return True

@@ -2,7 +2,7 @@
 приглашённого — одна идемпотентная функция, врезанная во ВСЕ три пути одобрения заявки.
 
 Три раздела — по одному на задачу плана:
-- Задача 1: `services/referrals.py` (`credit_for_approved`) + одиночное одобрение
+- Задача 1: `services/game/referrals.py` (`credit_for_approved`) + одиночное одобрение
   (`services.applications.claim_approve`).
 - Задача 2: массовое одобрение (`claim_approve_all_with_credits`) и авто-одобрение
   (`services/reg_finalize.py`) — плюс тест-сторож швов (список мест, где статус становится
@@ -26,7 +26,8 @@ from datetime import datetime
 
 from config import config
 from database import db
-from services import applications, referrals
+from services import applications
+from services.game import referrals
 from tests._dbtpl import fast_init_db
 
 
@@ -119,13 +120,13 @@ def _referral_credit_count():
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Задача 1: services/referrals.py — credit_for_approved + одиночное одобрение
+# Задача 1: services/game/referrals.py — credit_for_approved + одиночное одобрение
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_aiogram_free():
     from pathlib import Path
     src = Path(referrals.__file__).read_text(encoding="utf-8")
-    assert "aiogram" not in src, "services/referrals.py не должен упоминать aiogram"
+    assert "aiogram" not in src, "services/game/referrals.py не должен упоминать aiogram"
 
 
 def test_single_approve_credits_ambassador_once(tmp_path):
@@ -448,7 +449,7 @@ _DIRECT_NAMES = {
     "credit_for_approved", "credit_for_approved_bulk",
     "check_tiers_for_invitees", "on_applications_approved",
 }
-_DIRECT_CALL_OK = {"services/amb/amb_journal.py", "services/referrals.py"}
+_DIRECT_CALL_OK = {"services/amb/amb_journal.py", "services/game/referrals.py"}
 
 
 def _call_name(node) -> str | None:
@@ -479,7 +480,7 @@ def _parsed_sources():
 
 def test_nobody_calls_credit_or_tier_hooks_directly():
     """Журнал зачётов — единая точка: никто, кроме services/amb/amb_journal.py (и обёрток в
-    services/referrals.py), не зовёт начисление, проверку ступеней и выдачу места напрямую.
+    services/game/referrals.py), не зовёт начисление, проверку ступеней и выдачу места напрямую.
     Инструменты tools/ и сами определения функций — вне проверки."""
     offenders: list[str] = []
     for rel, tree in _parsed_sources():
