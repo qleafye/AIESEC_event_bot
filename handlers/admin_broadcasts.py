@@ -114,9 +114,15 @@ pending_albums = {}
 BROADCAST_TARGET_FILE = "data/broadcast_target.txt"
 
 
-def build_broadcast_menu_kb() -> InlineKeyboardMarkup:
-    """Меню аудитории рассылки. «По файлу в проекте» показываем только когда файл лежит на месте:
-    кнопка, которая заведомо отвечает ошибкой, менеджера только пугает."""
+def _file_broadcast_allowed(user_id: int | None) -> bool:
+    """«По файлу в проекте» — рассылка по списку id, который кладут на сервер руками; менеджеру
+    без доступа к серверу она бесполезна и опасна, поэтому только суперадмину."""
+    return user_id is not None and user_id in config.ADMIN_IDS
+
+
+def build_broadcast_menu_kb(user_id: int | None = None) -> InlineKeyboardMarkup:
+    """Меню аудитории рассылки. «По файлу в проекте» показываем только суперадмину и только когда
+    файл лежит на месте: кнопка, которая заведомо отвечает ошибкой, менеджера только пугает."""
     rows = [
         [InlineKeyboardButton(text="📢 Все пользователи", callback_data="broadcast_all")],
         [InlineKeyboardButton(text="🚫 Не подписаны на канал", callback_data="broadcast_unsubscribed")],
@@ -129,14 +135,14 @@ def build_broadcast_menu_kb() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⏰ Запланированные", callback_data="admin_broadcast_scheduled")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ]
-    if os.path.exists(BROADCAST_TARGET_FILE):
+    if _file_broadcast_allowed(user_id) and os.path.exists(BROADCAST_TARGET_FILE):
         rows.insert(1, [InlineKeyboardButton(text="📄 По файлу в проекте", callback_data="broadcast_local")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data == "admin_broadcast")
 async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext):
-    kb = build_broadcast_menu_kb()
+    kb = build_broadcast_menu_kb(callback.from_user.id)
     await callback.message.edit_text("Выберите целевую аудиторию рассылки:", reply_markup=kb)
     await state.set_state(Broadcast.target_selection)
     await callback.answer()
@@ -158,7 +164,7 @@ async def cmd_export(message: types.Message):
 
 @router.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
-    kb = build_broadcast_menu_kb()
+    kb = build_broadcast_menu_kb(message.from_user.id)
     await message.answer("Выберите целевую аудиторию рассылки:", reply_markup=kb)
     await state.set_state(Broadcast.target_selection)
 
@@ -178,6 +184,9 @@ async def process_broadcast_all(callback: types.CallbackQuery, state: FSMContext
 
 @router.callback_query(F.data == "broadcast_local", Broadcast.target_selection)
 async def process_broadcast_local_file(callback: types.CallbackQuery, state: FSMContext):
+    if not _file_broadcast_allowed(callback.from_user.id):
+        await callback.answer("Рассылка по файлу доступна только владельцу бота.", show_alert=True)
+        return
     file_path = BROADCAST_TARGET_FILE
 
     if not os.path.exists(file_path):
