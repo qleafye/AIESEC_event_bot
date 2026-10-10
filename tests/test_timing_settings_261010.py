@@ -58,3 +58,24 @@ def test_deadline_reminder_hours_bad_value_falls_back_to_24(tmp_path, monkeypatc
     monkeypatch.setattr(sched, "_deadline_reminder_hours", 24)
     _run(db.set_setting("wave_deadline_reminder_hours", "0"))
     assert _run(sched.load_deadline_reminder_hours()) == 24
+
+
+# ── Вопрос «🔒 залип»: через сколько минут ───────────────────────────────────────────────
+
+def test_question_stuck_threshold_follows_setting(tmp_path, monkeypatch):
+    from services import questions
+
+    _ready(tmp_path, "timings_stuck.db")
+    monkeypatch.setattr(questions, "_stuck_minutes", questions.STUCK_AFTER_MINUTES)
+    now = datetime(2026, 10, 10, 12, 0, 0)
+    row = {"answered_by": 1, "answered_at": (now - timedelta(minutes=45)).isoformat()}
+
+    assert _run(questions.load_stuck_minutes()) == 30  # дефолт — прежние 30 минут
+    assert questions.is_stuck(row, now=now) is True
+
+    _run(db.set_setting("question_stuck_minutes", "60"))
+    assert _run(questions.load_stuck_minutes()) == 60
+    assert questions.is_stuck(row, now=now) is False
+
+    _run(db.set_setting("question_stuck_minutes", "0"))
+    assert _run(questions.load_stuck_minutes()) == 30  # мусор — дефолт, а не «залип сразу»

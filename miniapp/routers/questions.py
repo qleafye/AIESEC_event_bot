@@ -49,7 +49,10 @@ from database.db import (
     release_question_delivery,
 )
 from services import applications, quiet_hours
-from services.questions import FILTER_LABELS, STATUSES, format_stamp, is_stuck, question_status, record_answer, status_label
+from services.questions import (
+    FILTER_LABELS, STATUSES, format_stamp, is_stuck, load_stuck_minutes, question_status, record_answer,
+    status_label,
+)
 from settings_schema import get_setting_typed
 
 from miniapp import telegram_api
@@ -153,6 +156,7 @@ async def questions_list(
     p: Principal = Depends(require_cap("moderate_reg")),
     _: Principal = Depends(require_section("questions")),
 ) -> dict:
+    await load_stuck_minutes()  # порог «🔒 залип» — из настроек, правка действует сразу
     off = _parse_int(offset, 0, 0, 10_000_000)
     lim = _parse_int(limit, LIMIT_DEFAULT, 1, LIMIT_MAX)
     # Неизвестный статус — чип экрана, а не контракт (тот же приём, что `track_filter` в
@@ -207,6 +211,7 @@ async def questions_answer(
     p: Principal = Depends(require_cap("moderate_reg")),
     _: Principal = Depends(require_section("questions")),
 ) -> dict:
+    await load_stuck_minutes()
     text = body.text.strip()
     if not text:
         raise HTTPException(400, {"reason": "empty_text", "text": EMPTY_TEXT_TEXT})

@@ -65,9 +65,24 @@ FILTER_LABELS = {
     STATUS_ANSWERED: "Отвечены",
 }
 
-# TODO: порог не настройка — в реестре SETTINGS_SCHEMA ключа нет. Завести
-# `question_stuck_minutes` при первой же просьбе менеджера сделать его настраиваемым.
+# Порог «🔒 залип» — настройка `question_stuck_minutes` (ночь 10.10), здесь её дефолт.
+# `is_stuck` синхронная (её зовут построители строк), поэтому значение держится в модуле:
+# экраны вопросов в боте и в приложении перечитывают его `load_stuck_minutes()` перед
+# отрисовкой — правка действует сразу и в процессе бота, и в процессе приложения.
 STUCK_AFTER_MINUTES = 30
+_stuck_minutes = STUCK_AFTER_MINUTES
+
+
+async def load_stuck_minutes() -> int:
+    global _stuck_minutes
+    from settings_schema import get_setting_typed  # ленивый: модуль чистый для тестов
+
+    try:
+        minutes = int(await get_setting_typed("question_stuck_minutes"))
+    except (TypeError, ValueError):
+        minutes = STUCK_AFTER_MINUTES
+    _stuck_minutes = minutes if minutes >= 1 else STUCK_AFTER_MINUTES
+    return _stuck_minutes
 
 
 def question_status(row: dict) -> str:
@@ -103,7 +118,8 @@ def _parse_stamp(raw: str) -> datetime | None:
 
 
 def is_stuck(row: dict, now: datetime | None = None) -> bool:
-    """Истинно только для "in_work" И только если `answered_at` старше `STUCK_AFTER_MINUTES`.
+    """Истинно только для "in_work" И только если `answered_at` старше порога «🔒 залип»
+    (`question_stuck_minutes`, по умолчанию `STUCK_AFTER_MINUTES`).
     Любая ошибка разбора даты -> False (fail-soft, не исключение) — залипание сигнализирует
     менеджеру о задержке, а не роняет экран на битой строке."""
     if question_status(row) != STATUS_IN_WORK:
@@ -112,7 +128,7 @@ def is_stuck(row: dict, now: datetime | None = None) -> bool:
     if stamp is None:
         return False
     moment = now if now is not None else datetime.utcnow()
-    return (moment - stamp).total_seconds() > STUCK_AFTER_MINUTES * 60
+    return (moment - stamp).total_seconds() > _stuck_minutes * 60
 
 
 def waiting_days(row: dict, now: datetime | None = None) -> int | None:
