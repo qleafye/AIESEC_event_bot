@@ -235,7 +235,7 @@ class _FailingConn:
 
 
 def test_apply_commits_in_batches_and_retry_finishes(db_path, monkeypatch):  # noqa: F811
-    from services import chat_export_import as svc
+    from services.chat import chat_export_import as svc
 
     monkeypatch.setattr(svc, "_BATCH", 1, raising=False)
     conn = sqlite3.connect(db_path)

@@ -6,7 +6,7 @@
 подтверждает кнопкой. Текст сообщений не сохраняется, только длина. Повторная загрузка ничего не
 задваивает (запись по id сообщения), поэтому большую историю можно присылать по частям.
 
-Логика — `services.chat_export_import`. Разбор и запись
+Логика — `services.chat.chat_export_import`. Разбор и запись
 синхронные и идут в потоке (`asyncio.to_thread`), чтобы большой файл не вешал бота.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
@@ -31,7 +31,7 @@ from handlers.admin import router
 from handlers.chat.admin_chat_rating import _screen_city
 from handlers.states import ChatExportImport
 from keyboards.builders import get_cancel_kb
-from services import chat_export_import as svc
+from services.chat import chat_export_import as svc
 from services import chat_tracking
 
 logger = logging.getLogger(__name__)
