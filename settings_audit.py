@@ -38,7 +38,7 @@ from database import db
 logger = logging.getLogger(__name__)
 
 
-async def run_setting_hooks(key: str, *, reject_rules: bool = True) -> None:
+async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: bool = True) -> None:
     """Реакции бота на правку ключа. Зовётся и после записи из бота, и разборщиком очереди
     приложения (`settings_changed`): правка в приложении должна действовать так же сразу.
     Каждая реакция в своём try — сбой одной не отменяет остальные и не роняет запись."""
@@ -46,7 +46,9 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True) -> None:
     from settings_reschedule import reschedule_for_setting
 
     hooks = [bot_profile.on_setting_written, daily_digest.on_setting_written,
-             scheduler.on_setting_written, menu_labels.on_setting_written, reschedule_for_setting]
+             scheduler.on_setting_written, menu_labels.on_setting_written]
+    if reschedule:
+        hooks.append(reschedule_for_setting)
     if reject_rules:
         hooks.insert(0, reject_rules_notify.on_setting_written)
     for hook in hooks:
@@ -62,8 +64,16 @@ async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True)
     Автоотказ — исключение: он пересчитывает и пишет держателям права, поэтому зовётся ОДИН
     раз на пачку (`on_settings_written_batch`), а не по ключу; `reject_rules=False` — писатель
     уже сделал это сам (`reg_presets.apply_reg_preset`)."""
-    for key in dict.fromkeys(keys):
-        await run_setting_hooks(key, reject_rules=False)
+    unique = list(dict.fromkeys(keys))
+    for key in unique:
+        await run_setting_hooks(key, reject_rules=False, reschedule=False)
+    # Перепланировка — одна на модуль и город за всю пачку, а не по ключу.
+    from settings_reschedule import reschedule_for_settings
+
+    try:
+        await reschedule_for_settings(unique)
+    except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
+        logger.error("settings_audit: перепланировка пачки сорвалась: %s", exc)
     if reject_rules:
         from services import reject_rules_notify
 

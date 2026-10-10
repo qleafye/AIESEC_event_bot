@@ -34,38 +34,64 @@ _SPECS = (
 )
 
 
-async def reschedule_for_setting(key: str) -> None:
-    """Переставляет джобы, зависящие от ключа `key` (глобального или `{base}__city__{code}`).
-    Композитный ключ трогает только свой город, голый — сверка по всем городам."""
+def _plan(keys) -> list[tuple[str, str, str | None]]:
+    """Что переставить для пачки ключей: [(имя джобы, модуль/«feedback», город или None)].
+    Одна сверка на модуль: «все города» (голый ключ) покрывает городские сверки того же
+    модуля, а повторы одного города схлопываются."""
     from cities import PER_CITY_SEP, split_per_city_key
     from settings_ops import base_setting_key
 
-    base = base_setting_key(key)
-    for name, keys, module, reconcile_all, schedule_city in _SPECS:
-        if base not in keys:
-            continue
-        try:
-            import importlib
-
-            mod = importlib.import_module(module)
+    whole: set[str] = set()
+    per_city: dict[str, set[str | None]] = {}
+    order: list[str] = []
+    for key in dict.fromkeys(keys):
+        base = base_setting_key(key)
+        targets = [name for name, trig, *_ in _SPECS if base in trig]
+        if base == "session_feedback_delay_minutes":
+            targets.append("session_feedback")
+        for name in targets:
+            if name not in order:
+                order.append(name)
             if PER_CITY_SEP in key:
                 parsed = split_per_city_key(key)
-                await getattr(mod, schedule_city)(parsed[1] if parsed is not None else None)
+                per_city.setdefault(name, set()).add(parsed[1] if parsed is not None else None)
             else:
-                await getattr(mod, reconcile_all)()
-        except Exception as exc:  # noqa: BLE001 — перепланировка не роняет запись настройки
-            logger.error("settings_reschedule: %s по ключу %r сорвалась: %s", name, key, exc)
-
-    if base != "session_feedback_delay_minutes":
-        return
-    try:
-        from services import session_feedback as sf
-
-        if PER_CITY_SEP in key:
-            parsed = split_per_city_key(key)
-            if parsed is not None:
-                await sf.reconcile_city(parsed[1])
+                whole.add(name)
+    plan: list[tuple[str, str | None, bool]] = []
+    for name in order:
+        if name in whole:
+            plan.append((name, None, True))
         else:
-            await sf.reconcile_all()
-    except Exception as exc:  # noqa: BLE001
-        logger.error("settings_reschedule: отзывы о сессиях по ключу %r сорвалась: %s", key, exc)
+            plan.extend((name, city, False) for city in sorted(per_city.get(name, ()), key=lambda c: c or ""))
+    return plan
+
+
+async def reschedule_for_settings(keys) -> None:
+    """Переставляет джобы, зависящие от пачки ключей, — по одному разу на модуль и город,
+    а не по ключу. Композитный ключ трогает только свой город, голый — сверка по всем."""
+    import importlib
+
+    specs = {name: (module, reconcile_all, schedule_city) for name, _keys, module, reconcile_all, schedule_city in _SPECS}
+    for name, city, whole in _plan(keys):
+        try:
+            if name == "session_feedback":
+                from services import session_feedback as sf
+
+                if whole:
+                    await sf.reconcile_all()
+                elif city is not None:
+                    await sf.reconcile_city(city)
+                continue
+            module, reconcile_all, schedule_city = specs[name]
+            mod = importlib.import_module(module)
+            if whole:
+                await getattr(mod, reconcile_all)()
+            else:
+                await getattr(mod, schedule_city)(city)
+        except Exception as exc:  # noqa: BLE001 — перепланировка не роняет запись настройки
+            logger.error("settings_reschedule: %s (город %r) сорвалась: %s", name, city, exc)
+
+
+async def reschedule_for_setting(key: str) -> None:
+    """Переставляет джобы, зависящие от ключа `key` (глобального или `{base}__city__{code}`)."""
+    await reschedule_for_settings([key])
