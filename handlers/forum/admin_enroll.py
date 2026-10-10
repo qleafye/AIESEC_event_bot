@@ -20,7 +20,7 @@ from handlers.admin import router
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.forum.admin_enroll_guard import confirm_limit
 from handlers.states import ProgramCompetencyEdit, ProgramEnrollLimit, ProgramTrackEdit
-from services.session_enroll import session_open_state
+from services.forum.session_enroll import session_open_state
 
 _NAME_MAX = 60
 _CANCEL_WORDS = {"Отмена", "/cancel"}

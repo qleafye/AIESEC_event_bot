@@ -1,5 +1,5 @@
 """Идея №3 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): приветствие делегату
-после ПЕРВОЙ отметки входа (`services/forum_welcome.py`, слушатель `services.checkin.
+после ПЕРВОЙ отметки входа (`services/forum/forum_welcome.py`, слушатель `services.forum.checkin.
 register_first_entry_listener`).
 
 pytest-asyncio недоступна в этом окружении — каждый async-вызов через `asyncio.run()`,
@@ -13,9 +13,9 @@ from datetime import datetime, timedelta
 
 from config import config
 from database import db
-import services.checkin as checkin_mod
-from services.checkin import ENTRY_POINT, record_arrival
-import services.forum_welcome as fw
+import services.forum.checkin as checkin_mod
+from services.forum.checkin import ENTRY_POINT, record_arrival
+import services.forum.forum_welcome as fw
 from tests._dbtpl import fast_init_db
 from tests._lang_on import enable_delegate_lang
 
@@ -187,7 +187,7 @@ def test_manual_and_auto_session_sources_also_send(tmp_path):
 
 
 def test_duplicate_entry_does_not_resend(tmp_path):
-    """Хук `services.checkin.record_arrival` зовёт слушателей только на ПЕРВОЙ отметке —
+    """Хук `services.forum.checkin.record_arrival` зовёт слушателей только на ПЕРВОЙ отметке —
     повторный скан молчит (та же гарантия, что `tests/test_checkin_first_entry_hook_260924.py`
     уже проверяет для самого хука)."""
     _ready(tmp_path)

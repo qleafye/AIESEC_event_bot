@@ -1,5 +1,5 @@
 """Пакет C, п.3 (D-29, FORUM-CHECKIN.md «Решения владельца 24.09»): резолверы «одной кнопки
-программы» в `services/program.py` — `resolve_program_photo`/`resolve_program_view`/
+программы» в `services/forum/program.py` — `resolve_program_photo`/`resolve_program_view`/
 `has_program_content`/`build_delegate_program`. Общая точка правды для чата, гейта кнопки меню
 и Mini App (см. докстринг модуля).
 
@@ -12,7 +12,7 @@ from datetime import datetime
 
 from config import config
 from database import db
-from services import program
+from services.forum import program
 from tests._dbtpl import fast_init_db
 
 

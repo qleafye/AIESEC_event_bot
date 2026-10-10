@@ -2,7 +2,7 @@
 приложения-сканера (D-09/D-10) и счётчик пришедших (D-17: статус «отмечен»/«пришёл», не
 «зарегистрирован»). Сканер внутри Mini App (D-08) и ленивая выдача самого QR (D-01/D-03) —
 отдельные задачи Phase 12, не эта (выдача QR уже сделана Квиком 260923 —
-`services/checkin.py::build_checkin_qr`/`handlers/user_actions.py::show_my_checkin_qr`).
+`services/forum/checkin.py::build_checkin_qr`/`handlers/user_actions.py::show_my_checkin_qr`).
 
 Форма шва — эталон `handlers/access/admin_purge.py`/`handlers/cities/admin_cities.py`: своего `Router()`
 нет, `from handlers.admin import router`, каждый декоратор — в одну строку со строковым
@@ -54,7 +54,7 @@ from keyboards.builders import get_cancel_kb
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 from domain.settings.validation import validate_setting_value
-from services.checkin import (
+from services.forum.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
     ENTRY_POINT_LABEL,
@@ -78,17 +78,17 @@ from services.checkin_broadcast import (
     schedule_city_jobs,
     send_broadcast,
 )
-from services.checkin_not_arrived import (
+from services.forum.checkin_not_arrived import (
     pending_count as checkin_not_arrived_pending_count,
     report_text as checkin_not_arrived_report_text,
     send as checkin_not_arrived_send,
     summary_text as checkin_not_arrived_summary_text,
 )
-from services.program import checkin_session_points, scanned_outside_session_window
+from services.forum.program import checkin_session_points, scanned_outside_session_window
 from services.reject_rules import forum_date_for
 from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
-from services import checkin_arrival
-from services import checkin_csv_import as _csv_import
+from services.forum import checkin_arrival
+from services.forum import checkin_csv_import as _csv_import
 
 
 async def _city_now(city: str | None):
@@ -117,7 +117,7 @@ def _decode_city(raw: str) -> str | None:
 _IMPORT_MAX_BYTES = 20 * 1024 * 1024
 _REPORT_ROW_LIMIT = 20
 
-# `services.checkin.checkin_denial` возвращает машинный код допуска D-02 ("no_user" |
+# `services.forum.checkin.checkin_denial` возвращает машинный код допуска D-02 ("no_user" |
 # "not_approved" | "past_season") -- строка отчёта нужна человеческая, эта таблица -- единая
 # точка перевода кода в текст, чтобы не завести два места, знающих коды денайла.
 _DENIAL_LABELS = {
@@ -149,14 +149,14 @@ async def _screen_scope(admin_id: int, city: str | None):
 
 
 async def _forum_today(code: str | None) -> bool:
-    from services.forum_days import forum_window
+    from services.forum.forum_days import forum_window
     window = await forum_window(code)
     return window is not None and window[0] <= (await _city_now(code)).date() <= window[1]
 
 
 async def _counter_line(admin_id: int, city: str | None = None) -> str:
     """«Пришли N из M одобренных» (задача A2, FORUM-CHECKIN.md) — тот же запрос, что статистика
-    прихода (`services.checkin_arrival.arrived_counts`: одобренные текущего сезона со входом).
+    прихода (`services.forum.checkin_arrival.arrived_counts`: одобренные текущего сезона со входом).
     Вход каждый день: в день форума (сегодня уже был хоть один вход) — «Сегодня пришли» по
     входу сегодняшнего дня, иначе — «Пришли за форум» (хоть один вход).
 
@@ -507,7 +507,7 @@ async def checkin_import_file_invalid(message: types.Message):
 
 
 # Форум-ночь п.5 (D-18): точки отметки — «Вход» + сессии СЕГОДНЯ выбранного города, «идёт
-# сейчас» — первыми (`services.program.checkin_session_points`). Город — тот же трёхветочный
+# сейчас» — первыми (`services.forum.program.checkin_session_points`). Город — тот же трёхветочный
 # приём, что `handlers/forum/admin_program.py::_resolve_city_for_screen` (закреплённый город /
 # модуль выключен -> единственный дефолтный город / иначе -> экран выбора).
 
@@ -1042,7 +1042,7 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
 
 # Идеи №31/№32: журнал площадки (строки выше пишут в него перевыпуск QR и загрузку CSV) и снятие
 # отметки менеджером — экраны в отдельном шве handlers/forum/admin_venue.py, регистрируются здесь хвостом.
-from services import venue_log as _venue_log  # noqa: E402
+from services.forum import venue_log as _venue_log  # noqa: E402
 from handlers.forum.admin_venue import venue_entry_rows as _venue_entry_rows  # noqa: E402
-from services import checkin_training as _training  # noqa: E402
+from services.forum import checkin_training as _training  # noqa: E402
 from handlers.forum import admin_checkin_training  # noqa: E402,F401  (бэклог №7: «🧪 Учебные QR»)

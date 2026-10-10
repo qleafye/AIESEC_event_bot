@@ -10,7 +10,7 @@
 зовут РЯДОМ с начислением, ленивым импортом, в каждом пути одобрения заявки:
 
 - `services.applications.record_decision(..., effects_already_sent=True)` — одиночное
-  одобрение в боте и вход на площадке (`services/onsite_reg.py`);
+  одобрение в боте и вход на площадке (`services/forum/onsite_reg.py`);
 - `services.applications.flush_due_decisions` — одиночное одобрение в Mini App, только когда
   окно «Отменить» прошло (отменённое решение туда не доходит — ступени за него нет);
 - `services.applications.claim_approve_all_with_credits` — «Принять всех» в боте и Mini App;

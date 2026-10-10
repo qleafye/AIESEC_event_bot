@@ -197,7 +197,7 @@ def test_qr_send_counts_failure_is_contained(tmp_path, monkeypatch):
 
 
 def test_count_program_sessions_none_counts_all_cities(tmp_path):
-    from services.checkin_arrival import count_program_sessions
+    from services.forum.checkin_arrival import count_program_sessions
     _ready(tmp_path)
     _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "А"))
     _run(db.create_program_session("spb", "2026-10-03", "10:00", "11:00", "Б"))

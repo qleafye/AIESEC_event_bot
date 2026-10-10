@@ -16,7 +16,7 @@
 нескопированный запрос, как у чек-ина.
 
 Бизнес-правила (разбор времени/дня, предупреждение о занятости зала, копирование между
-городами) — в `services/program.py`; здесь только UI и права. Конфликт зала (CLAUDE.md:
+городами) — в `services/forum/program.py`; здесь только UI и права. Конфликт зала (CLAUDE.md:
 предупреждение словами, но разрешить после подтверждения) — везде РЕАЛЬНЫЙ экран с двумя
 кнопками, не всплывающий алерт с автопродолжением: менеджер обязан нажать «Всё равно», а не
 просто увидеть текст."""
@@ -51,7 +51,7 @@ from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_scope
 from handlers.states import ProgramDayCustom, ProgramHallName, ProgramSessionField
 from keyboards.builders import get_cancel_kb, get_skip_kb
-from services.program import (
+from services.forum.program import (
     day_label,
     format_time_range,
     hall_conflict_warning,

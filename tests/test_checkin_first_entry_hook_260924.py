@@ -1,4 +1,4 @@
-"""Точка расширения «после ПЕРВОЙ отметки входа делегата» (`services.checkin.
+"""Точка расширения «после ПЕРВОЙ отметки входа делегата» (`services.forum.checkin.
 register_first_entry_listener`): первая отметка зовёт слушателей, повторная — нет; сбой одного
 слушателя не ломает ни отметку, ни остальных слушателей; без `bot` (Mini App) слушатели не
 зовутся, событие остаётся в `result["first_entry"]` и доезжает до них через outbox.
@@ -13,8 +13,8 @@ import pytest
 
 from config import config
 from database import db
-from services import checkin as checkin_mod
-from services.checkin import ENTRY_POINT, record_arrival, register_first_entry_listener
+from services.forum import checkin as checkin_mod
+from services.forum.checkin import ENTRY_POINT, record_arrival, register_first_entry_listener
 from tests._dbtpl import fast_init_db
 
 UID = 260924101

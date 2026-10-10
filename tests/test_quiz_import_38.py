@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 from database import quiz_db as qz, session_enroll_db as se
-from services import quiz_import as qi
+from services.forum import quiz_import as qi
 from tests._enroll38 import CITY, ready, run
 
 COMPS = {"Лидерство": 1, "Командность": 2}

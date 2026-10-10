@@ -13,7 +13,7 @@ import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
 from miniapp import outbox as outbox_mod
-from services import venue_log
+from services.forum import venue_log
 from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_checkin_260924 import (
@@ -267,7 +267,7 @@ def test_scan_denied_toggle_off_no_flag(tmp_path):
 
 
 def test_scan_not_found_carries_register_flag(tmp_path):
-    from services.checkin import build_payload
+    from services.forum.checkin import build_payload
     client = _ready(tmp_path)
     _grant_checkin_to_bound_manager()
     payload = build_payload("YL26", "Никто Никтов", "СПб", "no-such-token")

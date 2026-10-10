@@ -1,5 +1,5 @@
 """Идея №29 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): «Твой Юлид в
-цифрах» — `services/forum_stats_card.py` + `handlers/forum/admin_forum_stats_card.py`.
+цифрах» — `services/forum/forum_stats_card.py` + `handlers/forum/admin_forum_stats_card.py`.
 
 Стиль — `tests/test_checkin_qr_broadcast_260924.py`/`tests/test_forum_noshow_poll_260924.py`
 (шаблонная БД `tests/_dbtpl.fast_init_db`, `asyncio.run`, `FakeBot` для `send_photo`).
@@ -12,7 +12,7 @@ import sqlite3
 from config import config
 from database import db
 import services.scheduler as sched
-import services.forum_stats_card as fsc
+import services.forum.forum_stats_card as fsc
 from tests._dbtpl import fast_init_db
 
 UID = 260926101
@@ -649,7 +649,7 @@ def test_send_broadcast_uses_delegate_language_for_render(tmp_path, monkeypatch)
 
 
 def test_hero_caption_agrees_with_number():
-    from services.forum_stats_card import _hero_caption
+    from services.forum.forum_stats_card import _hero_caption
     assert _hero_caption("days", 1, "ru") == "день на форуме"
     assert _hero_caption("days", 2, "ru") == "дня на форуме"
     assert _hero_caption("days", 5, "ru") == "дней на форуме"
@@ -660,7 +660,7 @@ def test_hero_caption_agrees_with_number():
 
 
 def test_season_code_is_hidden_human_name_kept():
-    from services.forum_stats_card import _human_season
+    from services.forum.forum_stats_card import _human_season
     assert _human_season("26/1") is None
     assert _human_season("YL 26/1") is None
     assert _human_season("") is None

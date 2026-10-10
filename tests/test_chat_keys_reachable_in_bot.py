@@ -95,14 +95,14 @@ EXCEPTIONS = {
     # установке, менеджеру тут выбирать нечего.
     "delegate_lang_driver": "служебное: движок машинного перевода",
     "delegate_lang_http_url": "служебное: адрес движка машинного перевода",
-    # Читаются в services/onsite_reg.py, но показываются только на плашке сканера приложения
+    # Читаются в services/forum/onsite_reg.py, но показываются только на плашке сканера приложения
     # (approve_at_door / wrong_city_text / rejected_reason_text зовёт miniapp/routers/checkin.py):
     # без приложения нет и сканера, править такой текст в боте незачем.
     "onsite_off_text": "плашка сканера приложения",
     "onsite_rejected_text": "плашка сканера приложения",
     "onsite_rejected_reason_text": "плашка сканера приложения",
     "onsite_wrong_city_text": "плашка сканера приложения",
-    # Учебные плашки сканера (services/checkin_training.py: _demo_undo, training_point_entry) —
+    # Учебные плашки сканера (services/forum/checkin_training.py: _demo_undo, training_point_entry) —
     # их видит только волонтёр в сканере приложения. Тексты листа учебных QR, который бот
     # присылает в чат, — в группе «🎪 Форум: тексты в чате».
     "checkin_training_note_text": "учебная плашка сканера приложения",
@@ -233,7 +233,7 @@ def _screen_tables() -> set[str]:
     from handlers.delegations import admin_delegations
     from handlers.settings import admin_miniapp
     from handlers.forum import admin_quiz_levels, admin_sos, session_feedback
-    from services import session_enroll
+    from services.forum import session_enroll
 
     keys = set(admin_sos._SOS_TEXT_FIELDS[f][0] for f in admin_sos._SOS_TEXT_FIELDS)
     keys |= set(admin_sos._SOS_DELAY_FIELDS.values())

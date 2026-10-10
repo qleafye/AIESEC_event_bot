@@ -718,7 +718,7 @@ _REGISTRY_TEXTS_EN = {
     "Задания и монеты для делегаций вузов на этом форуме выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.": "Tasks and coins for university delegations are switched off at this forum. Everything else — the programme, the entry QR, the news — works as usual.",
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): дефолт подписи к фото карточки-итога
     # (group "reg", `forum_stats_card_caption_text`) — сами цифры остаются на картинке (её
-    # подписи — код-литералы `services/forum_stats_card.py`, читаются ПРЯМО по языку делегата,
+    # подписи — код-литералы `services/forum/forum_stats_card.py`, читаются ПРЯМО по языку делегата,
     # не через этот корпус), здесь только текст сообщения.
     "🎉 {name}, вот твой Юлид в цифрах! Поделись с друзьями 🧡💙": "🎉 {name}, here's your Юлид in numbers! Share it with friends 🧡💙",
     # Phase 33 (delegate-card admin actions): три опциональных сообщения делегату с карточки

@@ -10,8 +10,8 @@ from datetime import timedelta
 from pathlib import Path
 
 from database import db
-from services import venue_log
-from services.checkin import ENTRY_POINT, record_arrival
+from services.forum import venue_log
+from services.forum.checkin import ENTRY_POINT, record_arrival
 from tests.test_miniapp_checkin_260924 import BASE, _grant_checkin_to_game_manager, _insert_user, _qr, _run, client_with
 from tests.test_miniapp_routes import GAME_MANAGER_ID, _hdr
 

@@ -31,7 +31,7 @@ from database import db
 from handlers.cities import admin_city_move
 from handlers.access.admin_caps import role_caps_key
 import services.sheets.sheets as sheets_mod
-from services.checkin import record_arrival
+from services.forum.checkin import record_arrival
 from services.cities.city_move import (
     STATUS_MODE_KEEP,
     STATUS_MODE_TO_MODERATION,
@@ -1099,8 +1099,8 @@ def test_citymove_cancel_changes_nothing(tmp_path):
 
 def test_checkin_wrong_city_gate_follows_the_move(tmp_path, monkeypatch):
     """После перевода СПб -> Москва делегат допускается на сессию в Москве и НЕ допускается
-    на сессию в СПб — `services.checkin.record_arrival` сравнивает `users.event_city`
-    (`services/checkin.py::checkin_denial`/сессионная проверка), эта функция не правится, а
+    на сессию в СПб — `services.forum.checkin.record_arrival` сравнивает `users.event_city`
+    (`services/forum/checkin.py::checkin_denial`/сессионная проверка), эта функция не правится, а
     только вызывается."""
     _db_ready(tmp_path)
     store = _install_fake_sheets(monkeypatch)

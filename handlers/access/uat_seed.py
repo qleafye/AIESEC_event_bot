@@ -66,7 +66,7 @@ from domain.cities import (
 from handlers.access import admin_caps
 from handlers.access.admin_purge import _footprint_lines
 from domain.regform.engine import SHORT_TRACK, answer_columns, columns_for_step, consent_entries
-from services.checkin import ENTRY_POINT
+from services.forum.checkin import ENTRY_POINT
 from services.scheduler import cancel_payment_reminders
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
@@ -416,7 +416,7 @@ async def _seed_state(
     await set_user_status(tid, status)
     if state_code in ("fappr", "farr"):
         # Как у настоящего одобренного: токен выпускается тем же `get_or_create_checkin_token`,
-        # что зовёт «🎟 Мой QR» и рассылка QR (`services/checkin.py::build_checkin_payload`).
+        # что зовёт «🎟 Мой QR» и рассылка QR (`services/forum/checkin.py::build_checkin_payload`).
         await get_or_create_checkin_token(tid)
     if state_code == "farr":
         # Отметка входа сегодня — прямо в `checkins` (как ручная отметка), без записи в

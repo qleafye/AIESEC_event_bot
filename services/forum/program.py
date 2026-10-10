@@ -3,7 +3,7 @@
 и дня, человекочитаемое предупреждение о занятости зала, слоты параллельных сессий и
 копирование программы одного дня между городами.
 
-aiogram-free (тот же инвариант, что `services/reject_rules.py`/`services/checkin.py`) —
+aiogram-free (тот же инвариант, что `services/reject_rules.py`/`services/forum/checkin.py`) —
 импортирует только `database.db`/`cities`/стандартную библиотеку (тот же набор, что уже тянет
 `services/reject_rules.py` — прецедент, что этот класс модулей вправе импортировать `cities`,
 не только `database.db`); `services.infra.timeutil.msk_now` подтягивается лениво внутри функции (не

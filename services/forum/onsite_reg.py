@@ -26,7 +26,7 @@ from domain.cities import cities_module_on, city_label, normalize_city, per_city
 from database import db as _db
 from database.db import approve_onsite, get_user
 from domain.regform.engine import is_past_season_row
-from services.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, record_arrival
+from services.forum.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, record_arrival
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
@@ -219,7 +219,7 @@ async def approve_at_door(user: dict | None, *, city: str | None, staff_id: int,
         event_city=move_city, override_reject=overriding,
     )
     if flipped:
-        from services import venue_log
+        from services.forum import venue_log
         from services.applications import record_decision
 
         reason = _OVERRIDE_REASON if overriding else _DECISION_REASON
@@ -331,7 +331,7 @@ async def after_onsite_approved(bot, telegram_id: int) -> None:
         if await checkin_denial(full) is not None:
             return
         from aiogram.types import BufferedInputFile
-        from services.checkin import build_checkin_qr
+        from services.forum.checkin import build_checkin_qr
 
         png, caption = await build_checkin_qr(full)
         caption = tr(caption, lang, tr_map)

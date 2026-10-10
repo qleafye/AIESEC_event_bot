@@ -10,7 +10,7 @@ sqlalchemy>=2.0,<3.0
 # Квик 260923 (форум-чекин, D-01/D-04): персональный QR делегата для отметки на форуме.
 # Чистый Python, PNG без Pillow — не тянет системные библиотеки рендеринга изображений.
 segno
-# Бэклог чек-ина №7: лист A4 учебных QR (services/checkin_training.py). Колесо manylinux несёт
+# Бэклог чек-ина №7: лист A4 учебных QR (services/forum/checkin_training.py). Колесо manylinux несёт
 # freetype+brotli внутри — шрифты Mini App (woff2) читаются без системных пакетов.
 pillow>=11,<12
 

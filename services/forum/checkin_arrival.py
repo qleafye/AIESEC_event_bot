@@ -129,6 +129,6 @@ async def today_forum_codes(day: str | None) -> list[str] | None:
     if not day:
         return None
     from datetime import date
-    from services.forum_days import forum_city_codes
+    from services.forum.forum_days import forum_city_codes
     today = date.fromisoformat(day)
     return await forum_city_codes(today, today)

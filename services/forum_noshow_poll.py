@@ -11,7 +11,7 @@
 forum_noshow_poll`, `UNIQUE(telegram_id, season)`); опрос НЕ повторяется, если бот был
 перезапущен/джоба сработала снова в том же сезоне.
 
-Тихие часы — В ОТЛИЧИЕ от `services/checkin_not_arrived.py` (то сообщение теряет смысл, если
+Тихие часы — В ОТЛИЧИЕ от `services/forum/checkin_not_arrived.py` (то сообщение теряет смысл, если
 доставить его с задержкой — «мы тебя не видим ПРЯМО СЕЙЧАС»), опрос «почему не пришёл» остаётся
 верным независимо от момента доставки, поэтому используем ОЧЕРЕДЬ тихих часов
 (`services.quiet_hours.send_or_queue_text`), а не молчаливый пропуск: у этой джобы нет ручной
@@ -22,7 +22,7 @@ forum_noshow_poll`, `UNIQUE(telegram_id, season)`); опрос НЕ повтор
 неявившимся, как служебное сообщение, — иначе причины неявки собираются неполными.
 
 Троттлинг отправки — `asyncio.sleep(0.05)` между получателями, тот же приём, что
-`services/checkin_not_arrived.py`/`services/checkin_volunteer_broadcast.py`.
+`services/forum/checkin_not_arrived.py`/`services/checkin_volunteer_broadcast.py`.
 
 Планирование — ОДНА one-shot date-джоба на город (тот же приём, что
 `services/checkin_volunteer_broadcast.py`), без self-rescheduling (в отличие от
@@ -323,7 +323,7 @@ async def record_answer(telegram_id: int, reason: str, comment: str | None) -> b
 async def summary_text(*, city_scope=None) -> str:
     """«Ответили N из M: передумал 12, учёба 7…» — строка экрана менеджера (`handlers/
     admin_forum_functions.py`). `total_sent == 0` — вызывающий сам решает, показывать ли строку
-    вовсе (тот же приём, что `services.checkin_not_arrived.summary_text`)."""
+    вовсе (тот же приём, что `services.forum.checkin_not_arrived.summary_text`)."""
     from database.db import forum_noshow_poll_summary
     from domain.settings.schema import get_setting_typed
 

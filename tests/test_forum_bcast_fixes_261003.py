@@ -127,7 +127,7 @@ def _quiet_all_day():
 
 
 def test_not_arrived_ignores_quiet_hours_on_forum_day(tmp_path, monkeypatch):
-    import services.checkin_not_arrived as cna
+    import services.forum.checkin_not_arrived as cna
     _ready(tmp_path)
     _seed(1)
     _quiet_all_day()
@@ -139,7 +139,7 @@ def test_not_arrived_ignores_quiet_hours_on_forum_day(tmp_path, monkeypatch):
 
 
 def test_not_arrived_keeps_quiet_hours_on_other_days(tmp_path, monkeypatch):
-    import services.checkin_not_arrived as cna
+    import services.forum.checkin_not_arrived as cna
     _ready(tmp_path)
     _seed(1)
     _quiet_all_day()
@@ -152,7 +152,7 @@ def test_not_arrived_keeps_quiet_hours_on_other_days(tmp_path, monkeypatch):
 
 def test_not_arrived_transient_failure_unmarks_for_retry(tmp_path, monkeypatch):
     """Сбой отправки не исключает делегата навсегда: повторное нажатие берёт его снова."""
-    import services.checkin_not_arrived as cna
+    import services.forum.checkin_not_arrived as cna
     _ready(tmp_path)
     _seed(1)
     monkeypatch.setattr(cna, "msk_now", real_msk_now)  # дата «сегодня» по МСК, как у db; datetime.now() в CI = UTC
@@ -168,7 +168,7 @@ def test_not_arrived_transient_failure_unmarks_for_retry(tmp_path, monkeypatch):
 
 def test_not_arrived_blocked_user_stays_marked(tmp_path, monkeypatch):
     from aiogram.exceptions import TelegramForbiddenError
-    import services.checkin_not_arrived as cna
+    import services.forum.checkin_not_arrived as cna
     _ready(tmp_path)
     _seed(1)
     monkeypatch.setattr(cna, "msk_now", real_msk_now)  # дата «сегодня» по МСК, как у db; datetime.now() в CI = UTC
@@ -350,7 +350,7 @@ def test_day_report_mark_failure_sends_nothing_and_backs_off(tmp_path, monkeypat
 # ── Карточка «в цифрах»: имя экранируется, пустая подпись не уходит ──────────────────────────
 
 def _stats_card_env(tmp_path, monkeypatch, name):
-    import services.forum_stats_card as fsc
+    import services.forum.forum_stats_card as fsc
     from tests.test_forum_stats_card_260926 import FakeBot as CardBot, _fake_render
     _ready(tmp_path)
     _seed(9, name=name)
@@ -442,7 +442,7 @@ def test_evening_qr_keeps_confirm_button(tmp_path, monkeypatch):
 
 
 def test_welcome_after_checkin_carries_main_menu(tmp_path, monkeypatch):
-    import services.forum_welcome as fw
+    import services.forum.forum_welcome as fw
     _ready(tmp_path)
     _seed(7)
     _run(db.set_setting("forum_welcome_enabled", "on"))
@@ -496,7 +496,7 @@ def test_not_arrived_filter_unchanged_without_cities_module(tmp_path, monkeypatc
 
 
 def test_not_arrived_confirm_note_lists_cities(tmp_path, monkeypatch):
-    from services.forum_days import not_arrived_city_note
+    from services.forum.forum_days import not_arrived_city_note
     _cities_env(tmp_path)
     note = _run(not_arrived_city_note([{"field": "checkin_entry", "value": "no"}], [2]))
     assert "По городам" in note and "— 1" in note and "идёт форум" in note
@@ -578,7 +578,7 @@ def test_stats_card_empty_caption_explained_to_manager(tmp_path, monkeypatch):
     """Пустая подпись — не «✅ Отправлено 0 из 0», а объяснение, что заполнить."""
     from handlers.forum import admin_forum_stats_card as afsc
     from handlers.forum.admin_checkin import _NO_CITY
-    import services.forum_stats_card as fsc
+    import services.forum.forum_stats_card as fsc
     from tests.test_roles_phase8 import FakeCallback
     _ready(tmp_path)
     config.ADMIN_IDS = [1]
@@ -624,7 +624,7 @@ def test_forum_day_qr_without_collecting_check_still_sends_menu(tmp_path, monkey
 def test_checkin_day_filter_label_names_forum_city(tmp_path, monkeypatch):
     """«не пришли 25.09» при форумах в разные дни не читается — к дню приписан город."""
     import services.infra.timeutil as tu
-    from services.forum_days import day_cities_suffix
+    from services.forum.forum_days import day_cities_suffix
     _cities_env(tmp_path)
     monkeypatch.setattr(tu, "msk_now", lambda: datetime(2026, 10, 3, 11, 0))
     spb = _run(day_cities_suffix("2026-10-03"))

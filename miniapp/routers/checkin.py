@@ -17,13 +17,13 @@ aiogram-зависимом `handlers/settings/admin_core.py`, сюда его и
 разложены по городам, но волонтёр за стойкой всё равно городской; делегат другого города
 получает отказ словами (`_entry_city_denial`), а не тихую отметку.
 
-QR не нашего события (`services.checkin.current_event_tag()` не совпал с меткой в самом QR) —
+QR не нашего события (`services.forum.checkin.current_event_tag()` не совпал с меткой в самом QR) —
 отдельный код `foreign_event`, ПРОВЕРЯЕТСЯ ПЕРВЫМ, до поиска делегата по токену: токен внутри
 чужого QR искать в нашей БД бессмысленно и рискованно (совпадение токенов между независимыми
 событиями не исключено при достаточном числе форумов на одном боте).
 
 Регистрация на месте (D-41, 27.09): `/onsite/*` — одобрение ОДНОГО человека у стойки
-(`services.onsite_reg.approve_at_door`), список walk-in «Ждут на стойке» и QR короткой анкеты;
+(`services.forum.onsite_reg.approve_at_door`), список walk-in «Ждут на стойке» и QR короткой анкеты;
 флаги `onsite_approve`/`onsite_register` в ответах скана/поиска — только при включённом
 тумблере города стойки (D-36)."""
 from __future__ import annotations
@@ -53,7 +53,7 @@ from database.db import (
     purge_user,
 )
 from domain.regform.engine import is_past_season_row
-from services.checkin import (
+from services.forum.checkin import (
     DENIAL_REASON_TEXT,
     ENTRY_POINT,
     ENTRY_POINT_LABEL,
@@ -65,10 +65,10 @@ from services.checkin import (
     record_arrival,
     resolve_scanned_user,
 )
-from services import checkin_arrival, checkin_forum_day, checkin_training
+from services.forum import checkin_arrival, checkin_forum_day, checkin_training
 from services.i18n import i18n
-from services import venue_log
-from services.onsite_reg import (
+from services.forum import venue_log
+from services.forum.onsite_reg import (
     approve_at_door,
     is_pending_walkin,
     onsite_enabled,
@@ -80,7 +80,7 @@ from services.onsite_reg import (
 )
 from services.access.person_search import search_people
 from domain.settings.schema import get_setting_typed
-from services.program import checkin_session_points
+from services.forum.program import checkin_session_points
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue
@@ -90,7 +90,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _forward_first_entry(result: dict) -> dict:
-    """Первая отметка входа: слушатели `services.checkin.register_first_entry_listener` живут в
+    """Первая отметка входа: слушатели `services.forum.checkin.register_first_entry_listener` живут в
     процессе бота — событие уходит туда через outbox (`checkin_first_entry`), наружу во фронт
     не отдаётся."""
     event = result.pop("first_entry", None)
@@ -548,7 +548,7 @@ async def checkin_undo(
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
     """Идея №32: волонтёр отменяет СВОЮ ПОСЛЕДНЮЮ отметку в окне отмены. Все проверки
-    (чья, последняя ли, не истекло ли окно) — на сервере, `services.venue_log.undo_last_scan`;
+    (чья, последняя ли, не истекло ли окно) — на сервере, `services.forum.venue_log.undo_last_scan`;
     фронт только прячет кнопку по таймеру. Любой отказ — один человеческий текст из реестра:
     дальше снимает менеджер в боте."""
     lang, tr_map = await i18n.context(p.telegram_id)
@@ -710,7 +710,7 @@ async def checkin_stats(
     видит только свой (`cities: null`), модуль городов выключен — общий счётчик байт-в-байт
     как раньше, иначе — построчно по городам с хотя бы одним одобренным + Итого."""
     bound = await _bound_city(request, p)
-    # Тот же счётчик, что у бота (`services.checkin_arrival`): одобренные текущего сезона со
+    # Тот же счётчик, что у бота (`services.forum.checkin_arrival`): одобренные текущего сезона со
     # входом; в день форума — вход сегодня (`today: true`), иначе — хоть один вход за форум.
     day = await checkin_arrival.counter_day()
     if bound is not None or not await cities_module_on():
@@ -727,7 +727,7 @@ async def checkin_stats(
     today_codes = None
     if day:
         from datetime import date
-        from services.forum_days import forum_city_codes
+        from services.forum.forum_days import forum_city_codes
         today = date.fromisoformat(day)
         today_codes = await forum_city_codes(today, today)
     for c in await enabled_cities():

@@ -18,7 +18,7 @@ from handlers.delegations import admin_delegations_review as mod
 from handlers.access.admin_caps import required_capability
 from handlers.states import DelegationLink
 from services.delegations import delegations as dlg
-from services.checkin import checkin_denial
+from services.forum.checkin import checkin_denial
 from services.settings.audit import set_setting_by_admin
 from tests.test_delegations_admin import (
     _FakeCallback, _button_texts, _callbacks, _last_edit, _run, _state,

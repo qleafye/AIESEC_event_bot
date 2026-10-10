@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from services import quiz
+from services.forum import quiz
 
 
 def _opts():

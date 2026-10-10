@@ -2,7 +2,7 @@
 одобрено / пришли / не пришли и % явки по городу, люди по дням форума, отметки на сессиях
 программы с заполненностью зала. Компактное сообщение (итоги + топ сессий) и CSV со всем
 остальным. Числа — общие запросы `shared/arrival_stats.py` (их же показывает дашборд, блок «Приход»),
-исполняет `services/checkin_arrival.py`.
+исполняет `services/forum/checkin_arrival.py`.
 
 Город — из шапки: закреплённый за менеджером город / модуль городов выключен — один отчёт;
 иначе «Все города» построчно по включённым городам + итог (та же развилка, что у счётчика
@@ -23,7 +23,7 @@ import shared.arrival_stats as arrival_stats
 from domain.cities import cities_module_on, city_label, city_labels_map, city_scope, enabled_cities
 from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_scope
-from services.checkin_arrival import arrival_report
+from services.forum.checkin_arrival import arrival_report
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
