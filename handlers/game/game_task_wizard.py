@@ -257,7 +257,11 @@ async def _game_task_wave_prompt(target, state: FSMContext, admin_id: int):
     ]
     text = "К какой волне относится задание?"
     if not waves:
-        text += "\n\nВолн пока нет — заведите в «🎮 Геймификация → Волны»."
+        # «🌊 Волны» переезжают вслед за модулем отбора амбассадоров (admin_sections.py,
+        # `_AMB_OFF_GAME_ROWS`): статичный путь вёл менеджера в раздел, где кнопки нет.
+        from services.amb.amb_status import selection_enabled  # ленивый шов, как у admin_sections
+        where = "🤝 Амбассадоры → 🌊 Волны" if await selection_enabled() else "🎮 Геймификация → 🌊 Волны"
+        text += f"\n\nВолн пока нет — заведите в «{where}»."
     await target.answer(text, reply_markup=_game_task_wave_kb(waves))
     await state.set_state(GameTaskCreate.wave)
 
