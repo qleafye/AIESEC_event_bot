@@ -1,6 +1,6 @@
 """Опросы (native Telegram polls): доставка, закрытие, итоги, выгрузка в таблицу.
 
-Без aiogram-хендлеров — сюда ходят и админка (handlers/admin_polls.py), и джоба планировщика
+Без aiogram-хендлеров — сюда ходят и админка (handlers/comms/admin_polls.py), и джоба планировщика
 (services/scheduler.py::send_scheduled_poll), и тесты. Бот передаётся параметром (как
 `_safe_send` в scheduler), поэтому модуль не держит своих глобалов.
 

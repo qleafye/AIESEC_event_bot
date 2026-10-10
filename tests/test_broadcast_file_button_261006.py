@@ -4,7 +4,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 from config import config
-from handlers import admin_broadcasts
+from handlers.comms import admin_broadcasts
 
 SUPER = 777001
 MANAGER = 777002

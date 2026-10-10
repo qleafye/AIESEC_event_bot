@@ -1,11 +1,11 @@
 """Форум-ночь п.7 (D-XX): «🔕 Не присылать сегодня» касается ТОЛЬКО рассылок из мастера
-(handlers/admin_broadcasts.py) — системные/сервисные сообщения делегату (решение по заявке,
+(handlers/comms/admin_broadcasts.py) — системные/сервисные сообщения делегату (решение по заявке,
 QR перед форумом, «не пришёл», ответ менеджера на вопрос) обязаны игнорировать заглушку
 `users.mute_broadcasts_until` полностью, как явно потребовано планом ночи.
 
 Два независимых слоя проверки:
 1. Структурный — ни один сервисный модуль, кроме database/db.py (владелец колонки),
-   handlers/admin_broadcasts.py и services/scheduler.py (владельцы фильтра рассылок), не
+   handlers/comms/admin_broadcasts.py и services/scheduler.py (владельцы фильтра рассылок), не
    упоминает `mute_broadcasts_until`/`get_muted_today_ids` — контрактная граница, а не факт о
    рассылках сегодняшней ночи, ловит будущий регресс, если кто-то по ошибке подключит фильтр
    не туда.
@@ -41,7 +41,7 @@ def _ready(tmp_path, name="mute_isolation.db"):
 # после форума, тот же класс рассылки, что forum_noshow_poll/regional_noshow_move выше (обычная
 # рассылка-повод, НЕ служебное сообщение вроде QR — «🔕» уважает).
 _ALLOWED_OWNERS = {
-    "database/db.py", "handlers/admin_broadcasts.py", "services/scheduler.py",
+    "database/db.py", "handlers/comms/admin_broadcasts.py", "services/scheduler.py",
     "services/regional_noshow_move.py",
     "services/forum_stats_card.py",
 }

@@ -612,7 +612,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from handlers import admin_broadcasts
+from handlers.comms import admin_broadcasts
 from handlers.states import Broadcast
 import handlers.admin_sections as sections_mod
 from tests.test_roles_phase8 import ADMIN_ID as _ROLES_ADMIN_ID, _roles_ready

@@ -42,7 +42,7 @@ async def _add_user(tid, *, status="approved", city=None, season=None):
 # ── двойная регистрация + сентинелы (прецедент Фазы 5, D-19) ────────────────────────────────
 
 def test_checkin_entry_double_registration():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert "checkin_entry" in admin_broadcasts._PICKER_FIELDS
     assert "checkin_entry" in db._FILTER_COLUMNS
     assert "checkin_entry" in db._FILTER_VIRTUAL_FIELDS
@@ -50,15 +50,15 @@ def test_checkin_entry_double_registration():
 
 def test_checkin_session_registered_but_not_a_generic_picker():
     """`checkin_session` НЕ входит в `_PICKER_FIELDS` — у него собственный мастер (город → день
-    → сессия, handlers/admin_broadcast_session_filter.py), не generic-пикер значений."""
-    from handlers import admin_broadcasts
+    → сессия, handlers/comms/admin_broadcast_session_filter.py), не generic-пикер значений."""
+    from handlers.comms import admin_broadcasts
     assert "checkin_session" not in admin_broadcasts._PICKER_FIELDS
     assert "checkin_session" in db._FILTER_COLUMNS
     assert "checkin_session" in db._FILTER_VIRTUAL_FIELDS
 
 
 def test_filter_field_label_checkin_entry():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert admin_broadcasts._FILTER_FIELD_LABELS["checkin_entry"] == "Отметка на форуме"
 
 
@@ -314,7 +314,7 @@ def test_any_program_sessions_exist(tmp_path):
 # ── UI-слой: меню/пикер ──────────────────────────────────────────────────────────────────────
 
 def test_checkin_button_hidden_when_no_data(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     msg = FakeMessage()
     _run(admin_broadcasts._render_filter_menu(msg, [], edit=False))
@@ -325,7 +325,7 @@ def test_checkin_button_hidden_when_no_data(tmp_path):
 
 
 def test_checkin_button_shown_when_both_sides_present(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     _run(_add_user(1, status="approved"))
     _run(_add_user(2, status="approved"))
@@ -339,7 +339,7 @@ def test_checkin_button_shown_when_both_sides_present(tmp_path):
 
 
 def test_session_buttons_shown_only_when_program_exists(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     msg = FakeMessage()
     _run(admin_broadcasts._render_filter_menu(msg, [], edit=False))
@@ -355,7 +355,7 @@ def test_session_buttons_shown_only_when_program_exists(tmp_path):
 
 
 def test_checkin_entry_picker_shows_human_labels_not_codes(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     _run(_add_user(1, status="approved"))
     _run(_add_user(2, status="approved"))
@@ -373,7 +373,7 @@ def test_checkin_entry_picker_shows_human_labels_not_codes(tmp_path):
 
 
 def test_checkin_entry_picker_alerts_when_all_on_one_side(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     _run(_add_user(1, status="approved"))  # ещё никто не пришёл -> одна сторона
 
@@ -384,7 +384,7 @@ def test_checkin_entry_picker_alerts_when_all_on_one_side(tmp_path):
 
 
 def test_filter_pick_value_checkin_entry_attaches_label(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
     _run(state.update_data(
@@ -398,11 +398,11 @@ def test_filter_pick_value_checkin_entry_attaches_label(tmp_path):
     assert data["filters"] == [{"field": "checkin_entry", "value": db.CHECKIN_NO, "label": "не пришли"}]
 
 
-# ── UI-слой: мастер сессии (handlers/admin_broadcast_session_filter.py) ─────────────────────
+# ── UI-слой: мастер сессии (handlers/comms/admin_broadcast_session_filter.py) ─────────────────────
 
 def test_session_wizard_full_flow_module_off(tmp_path):
     """Модуль городов выключен -> сразу день (дефолтный город), без экрана выбора города."""
-    from handlers import admin_broadcast_session_filter as sf
+    from handlers.comms import admin_broadcast_session_filter as sf
     _ready(tmp_path)
     _run(_add_user(1, status="approved", city="msk"))
     sid = _run(db.create_program_session("msk", "2026-10-30", "10:00", "11:00", "Keynote"))
@@ -431,7 +431,7 @@ def test_session_wizard_full_flow_module_off(tmp_path):
 
 
 def test_session_wizard_empty_city_alerts_and_stays(tmp_path):
-    from handlers import admin_broadcast_session_filter as sf
+    from handlers.comms import admin_broadcast_session_filter as sf
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
     _run(state.update_data(filters=[]))
@@ -441,7 +441,7 @@ def test_session_wizard_empty_city_alerts_and_stays(tmp_path):
 
 
 def test_session_wizard_picking_deleted_session_alerts(tmp_path):
-    from handlers import admin_broadcast_session_filter as sf
+    from handlers.comms import admin_broadcast_session_filter as sf
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
     _run(state.update_data(filters=[], cksf_mode=db.SESSION_ATTENDED, cksf_city="msk"))
@@ -465,7 +465,7 @@ def test_required_capability_checkin_entry_and_session_wizard_is_broadcast():
 # ── напоминание о пересчёте на шаге «когда» (Требование 1) ─────────────────────────────────
 
 def test_filter_schedule_warns_about_recompute_when_filters_present(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
     _run(state.update_data(filters=[{"field": "checkin_entry", "value": db.CHECKIN_NO}]))
@@ -475,7 +475,7 @@ def test_filter_schedule_warns_about_recompute_when_filters_present(tmp_path):
 
 
 def test_filter_schedule_no_warning_without_filters(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
     _run(state.update_data(filters=[]))

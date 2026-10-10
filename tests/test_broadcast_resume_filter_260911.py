@@ -11,12 +11,12 @@
    ВИРТУАЛЬНОЕ, колонки `users.resume` не существует), собственная ветка
    `_build_filter_clause`, сентинелы `RESUME_HAS`/`RESUME_MISSING`, единый набор колонок
    резюме (`RESUME_COLUMNS`/`RESUME_RECALL_COLUMNS`), `get_resume_filter_options`.
-2. «Экран» (`handlers.admin_broadcasts`) — кнопка «Резюме» в меню фильтров (только когда в
+2. «Экран» (`handlers.comms.admin_broadcasts`) — кнопка «Резюме» в меню фильтров (только когда в
    базе есть и делегаты с резюме, и без), пикер двумя кнопками «есть»/«нет», сводка условий.
 
 Правило двойной регистрации поля (прецедент Фазы 5, D-19, закреплено тестом
 `tests/test_city_broadcast_phase72.py:411`): поле фильтра обязано быть в ОБОИХ местах —
-`db._FILTER_COLUMNS` и `handlers.admin_broadcasts._PICKER_FIELDS`. Если поле есть только в
+`db._FILTER_COLUMNS` и `handlers.comms.admin_broadcasts._PICKER_FIELDS`. Если поле есть только в
 одном из двух, оно либо не доходит до SQL (виден на экране, молча не фильтрует), либо не
 появляется на экране вовсе.
 
@@ -371,24 +371,24 @@ def _seed_resume_users(tmp_path, dbname, rows):
 
 def test_resume_double_registration():
     """Двойная регистрация поля (прецедент Фазы 5, D-19) — одним тестом на связку."""
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert "resume" in admin_broadcasts._PICKER_FIELDS
     assert "resume" in db._FILTER_COLUMNS
 
 
 def test_filter_field_label_resume():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert admin_broadcasts._FILTER_FIELD_LABELS["resume"] == "Резюме"
 
 
 def test_filter_menu_kb_default_has_no_resume_button():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     kb = admin_broadcasts._filter_menu_kb([])
     assert "filter_f_resume" not in _cb_datas(kb)
 
 
 def test_filter_menu_kb_show_resume_adds_exactly_one_button():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     kb_before = admin_broadcasts._filter_menu_kb([])
     kb = admin_broadcasts._filter_menu_kb([], show_resume=True)
     assert len(kb.inline_keyboard) == len(kb_before.inline_keyboard) + 1
@@ -399,7 +399,7 @@ def test_render_filter_menu_mixed_resume_shows_button(tmp_path):
     _seed_resume_users(tmp_path, "render_mixed_resume.db", [
         (1, {"resume_file_id": "f1"}), (2, {}),
     ])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_resume" in _cb_datas(msg.markup)
@@ -409,7 +409,7 @@ def test_render_filter_menu_all_have_resume_hides_button(tmp_path):
     _seed_resume_users(tmp_path, "render_all_has_resume.db", [
         (1, {"resume_file_id": "f1"}), (2, {"resume_text": "text"}),
     ])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_resume" not in _cb_datas(msg.markup)
@@ -417,7 +417,7 @@ def test_render_filter_menu_all_have_resume_hides_button(tmp_path):
 
 def test_render_filter_menu_none_have_resume_hides_button(tmp_path):
     _seed_resume_users(tmp_path, "render_none_has_resume.db", [(1, {}), (2, {})])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_resume" not in _cb_datas(msg.markup)
@@ -427,7 +427,7 @@ def test_render_filter_menu_empty_base_hides_resume_button(tmp_path):
     config.DB_PATH = str(tmp_path / "render_empty_resume.db")
     config.ADMIN_IDS = [ADMIN_ID]
     fast_init_db()
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_resume" not in _cb_datas(msg.markup)
@@ -437,7 +437,7 @@ def test_filter_pick_field_resume_mixed_base_shows_two_buttons_no_raw_codes(tmp_
     _seed_resume_users(tmp_path, "pick_mixed_resume.db", [
         (1, {"resume_file_id": "f1"}), (2, {}),
     ])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_resume")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
@@ -455,7 +455,7 @@ def test_filter_pick_field_resume_single_side_alerts_and_does_not_redraw(tmp_pat
     _seed_resume_users(tmp_path, "pick_single_side_resume.db", [
         (1, {"resume_file_id": "f1"}), (2, {"resume_text": "t"}),
     ])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_resume")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
@@ -470,7 +470,7 @@ def test_filter_pick_value_resume_missing_carries_label(tmp_path):
     _seed_resume_users(tmp_path, "pick_value_resume_missing.db", [
         (1, {"resume_file_id": "f1"}), (2, {}),
     ])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_resume")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
@@ -487,7 +487,7 @@ def test_filter_pick_value_resume_has_carries_label(tmp_path):
     _seed_resume_users(tmp_path, "pick_value_resume_has.db", [
         (1, {"resume_file_id": "f1"}), (2, {}),
     ])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_resume")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
@@ -501,14 +501,14 @@ def test_filter_pick_value_resume_has_carries_label(tmp_path):
 
 
 def test_filter_summary_resume_missing():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert admin_broadcasts._filter_summary(
         [{"field": "resume", "value": db.RESUME_MISSING, "label": "нет"}]
     ) == "Резюме = нет"
 
 
 def test_filter_summary_resume_and_date_joined_with_and():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     summary = admin_broadcasts._filter_summary([
         {"field": "registration_date", "op": "after", "value": "2026-09-05"},
         {"field": "resume", "value": db.RESUME_MISSING, "label": "нет"},
@@ -523,7 +523,7 @@ def test_count_and_list_filtered_via_picked_resume_spec(tmp_path):
     _seed_resume_users(tmp_path, "counter_resume.db", [
         (1, {"resume_file_id": "f1"}), (2, {}), (3, {}),
     ])
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_resume")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))

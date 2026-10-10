@@ -795,7 +795,7 @@ async def gtasks_noop(callback: types.CallbackQuery):
 _LEGACY_CONTENT_TYPE = {"photo": "photo", "document": "pdf", "text": "text", "link": "link"}
 
 # module dict, same "first message wins, spawn one debounced ack" shape as
-# handlers/admin_broadcasts.py::pending_albums / _wait_and_send_album (Phase 13, 13-05: moved
+# handlers/comms/admin_broadcasts.py::pending_albums / _wait_and_send_album (Phase 13, 13-05: moved
 # from handlers/admin.py) -- keyed by media_group_id only
 # (Telegram media_group_id is unique enough in practice, same assumption the broadcast idiom
 # already makes). ONLY collects an ack here -- never finalizes the submission (no timeout).

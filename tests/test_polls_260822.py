@@ -20,8 +20,8 @@ from services import polls as polls_svc
 from services import scheduler as sched
 from handlers import admin as admin_mod
 from handlers import admin_core
-from handlers import admin_poll_wizard as wiz
-from handlers import polls as polls_handlers
+from handlers.comms import admin_poll_wizard as wiz
+from handlers.comms import polls as polls_handlers
 from handlers.admin_caps import required_capability, ADMIN_CAPS
 from tests.test_roles_phase8 import FakeUser, FakeMessage, _flat_callback_data
 from tests._dbtpl import fast_init_db
@@ -515,7 +515,7 @@ def test_card_close_and_delete_with_confirmation(tmp_path, monkeypatch):
 def test_delete_scheduled_cancels_job(tmp_path, monkeypatch):
     _ready(tmp_path)
     cancelled = []
-    import handlers.admin_polls as ap
+    import handlers.comms.admin_polls as ap
     monkeypatch.setattr(ap, "cancel_poll_job", lambda pid: cancelled.append(pid))
     pid = asyncio.run(_mk_poll())
     state, bot = _state(ADMIN_ID), FakeBot()
@@ -529,7 +529,7 @@ def test_export_button_fail_soft_message(tmp_path, monkeypatch):
     _ready(tmp_path)
     pid = asyncio.run(_mk_poll())
     asyncio.run(db.set_poll_status(pid, "open"))
-    import handlers.admin_polls as ap
+    import handlers.comms.admin_polls as ap
 
     async def broken():
         return -1
