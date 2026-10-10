@@ -327,3 +327,11 @@ def test_visible_steps_conference_includes_lc_step_only_for_conference():
     assert conf_keys.index("conf_lc") < conf_keys.index("countdown")
     for other in ("forum", "skillup", "custom", None):
         assert "conf_lc" not in {s.key for s in visible_steps(other, {})}, other
+
+
+def test_setup_js_takes_step_number_from_server():
+    """Номер шага на экране — из ответа роутера (step.n / step.m), а не позиция в общем списке:
+    иначе «Шаг 6 из 14» рядом с «5 из 11 готово» (приёмка 10.10)."""
+    text = _js_without_comments(SETUP_JS)
+    assert "step.n" in text and "step.m" in text
+    assert "data.steps.length" not in text.split("step_of_text", 1)[1].split(";", 1)[0]
