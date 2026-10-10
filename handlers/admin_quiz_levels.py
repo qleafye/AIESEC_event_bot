@@ -8,7 +8,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from cities import get_setting_typed_for_city
+from cities import get_setting_typed_for_city, is_per_city
 from database import quiz_db as qdb
 from handlers.admin import router
 from handlers.admin_enroll_list import _write_key
@@ -20,6 +20,8 @@ from settings_placeholders import hint
 from settings_schema import SETTINGS_SCHEMA
 
 _TEXT_PAGE = 8
+# Тексты теста и «максимум баллов за вариант» (число правилось только в приложении) — один экран.
+_EDIT_KEYS = quiz_service.QUIZ_TEXT_KEYS + ("quiz_points_max",)
 _NAME_MAX = 60
 _DESC_MAX = 500
 _CANCEL_ROW = [InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]
@@ -272,7 +274,7 @@ async def prog_qztx(callback: types.CallbackQuery):
     _, code, page_s = callback.data.split(":", 2)
     if await deny(callback, code):
         return
-    keys = quiz_service.QUIZ_TEXT_KEYS
+    keys = _EDIT_KEYS
     pages = -(-len(keys) // _TEXT_PAGE)
     page = min(max(int(page_s), 0), pages - 1)
     buttons = []
@@ -299,7 +301,7 @@ async def prog_qzte(callback: types.CallbackQuery, state: FSMContext):
     _, code, idx_s = callback.data.split(":", 2)
     if await deny(callback, code):
         return
-    keys = quiz_service.QUIZ_TEXT_KEYS
+    keys = _EDIT_KEYS
     idx = int(idx_s)
     if not 0 <= idx < len(keys):
         await callback.answer("Этого текста нет — обновите экран.", show_alert=True)
@@ -315,7 +317,7 @@ async def prog_qzte(callback: types.CallbackQuery, state: FSMContext):
         lines += ["", html_module.escape(extra)]
     lines += ["", "<i>«-» — вернуть стандартный текст.</i>"]
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": await _write_key(base, code)})
+    await state.set_data({"setting_key": await _write_key(base, code) if is_per_city(base) else base})  # число баллов — общее
     await callback.message.edit_text(
         "\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[_CANCEL_ROW]),
     )
