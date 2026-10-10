@@ -40,8 +40,25 @@ async def _edit(callback: types.CallbackQuery, text: str, kb: InlineKeyboardMark
         await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-@router.callback_query(F.data == "ambpt_fill")
-async def amb_backfill_preview(callback: types.CallbackQuery):
+_NOT_GLOBAL = (
+    "Начисление касается амбассадоров всех городов сразу, поэтому оно доступно только при выбранном "
+    "режиме «Все города». Переключите город в админке и откройте экран заново."
+)
+
+
+async def _global_only(callback: types.CallbackQuery) -> bool:
+    """Начисление идёт по амбассадорам всех городов сразу — только админ в режиме «Все города»
+    (тот же гейт, что у «🧹 Сбросить статусы»). Иначе городской модератор с правом геймификации
+    начислил бы баллы чужим городам."""
+    from handlers.admin_amb_reset import _is_global
+
+    if await _is_global(callback.from_user.id):
+        return True
+    await callback.answer(_NOT_GLOBAL, show_alert=True)
+    return False
+
+
+async def _show_preview(callback: types.CallbackQuery) -> None:
     from settings_schema import get_setting_typed
 
     if int(await get_setting_typed("ambassador_referral_coins") or 0) <= 0:
@@ -52,7 +69,6 @@ async def amb_backfill_preview(callback: types.CallbackQuery):
             "баллов кнопкой «💰 Баллов за приглашённого» и вернитесь сюда.",
             InlineKeyboardMarkup(inline_keyboard=[_back_row()]),
         )
-        await callback.answer()
         return
     summary = await referrals.backfill_approved(dry_run=True)
     if not summary["candidates"]:
@@ -62,7 +78,6 @@ async def amb_backfill_preview(callback: types.CallbackQuery):
             "Начислять нечего: за всех одобренных приглашённых текущего сезона баллы уже начислены.",
             InlineKeyboardMarkup(inline_keyboard=[_back_row()]),
         )
-        await callback.answer()
         return
     lines = [
         "<b>🔁 Начислить за прошлых приглашённых</b>",
@@ -87,19 +102,40 @@ async def amb_backfill_preview(callback: types.CallbackQuery):
         "Повторное нажатие никого не задвоит.",
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Начислить", callback_data="ambpt_fill_go")],
+        [InlineKeyboardButton(
+            text="✅ Начислить",
+            callback_data=f"ambpt_fill_go:{summary['coins']}:{summary['credited']}",
+        )],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="admin_amb_points")],
     ])
     await _edit(callback, "\n".join(lines), kb)
+
+
+@router.callback_query(F.data == "ambpt_fill")
+async def amb_backfill_preview(callback: types.CallbackQuery):
+    if not await _global_only(callback):
+        return
+    await _show_preview(callback)
     await callback.answer()
 
 
-@router.callback_query(F.data == "ambpt_fill_go")
+@router.callback_query(F.data.startswith("ambpt_fill_go"))
 async def amb_backfill_go(callback: types.CallbackQuery):
+    parts = callback.data.split(":")
+    if len(parts) != 3 or not parts[1].isdigit() or not parts[2].isdigit():
+        await callback.answer("Кнопка устарела — откройте экран заново.", show_alert=True)
+        return
+    if not await _global_only(callback):
+        return
     if _lock.locked():
         await callback.answer("Начисление уже идёт — дождитесь итога.", show_alert=True)
         return
     async with _lock:
+        seen = await referrals.backfill_approved(dry_run=True)
+        if (str(seen["coins"]), str(seen["credited"])) != (parts[1], parts[2]):
+            await callback.answer("Список изменился, проверьте ещё раз.", show_alert=True)
+            await _show_preview(callback)
+            return
         await callback.answer()
         summary = await referrals.backfill_approved(dry_run=False)
     logger.info(

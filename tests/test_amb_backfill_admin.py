@@ -32,19 +32,19 @@ def test_preview_writes_nothing_and_shows_who_and_how_much(tmp_path):
     text, kb = cb.message.edits[0]
     assert "Начислится: 50 баллов. Амбассадоров: 1, приглашённых: 2." in text
     assert "Амбассадор Первый: приглашённых 2, баллов 50" in text
-    assert [b.callback_data for r in kb.inline_keyboard for b in r] == ["ambpt_fill_go", "admin_amb_points"]
+    assert [b.callback_data for r in kb.inline_keyboard for b in r] == ["ambpt_fill_go:50:2", "admin_amb_points"]
     assert _credits() == []
 
 
 def test_go_credits_exactly_previewed_and_repeat_is_safe(tmp_path):
     _setup(tmp_path)
-    cb = FakeCallback("ambpt_fill_go")
+    cb = FakeCallback("ambpt_fill_go:50:2")
     _run(h.amb_backfill_go(cb))
     assert cb.message.answers[0][0] == "Готово. Начислено баллов: 50. Амбассадоров: 1, приглашённых: 2."
     assert "Баллы и приватность" in cb.message.answers[1][0]
     assert _credits() == [(9301, 9201, 25, None, "backfill"), (9302, 9201, 25, None, "backfill")]
 
-    again = FakeCallback("ambpt_fill_go")
+    again = FakeCallback("ambpt_fill_go:0:0")
     _run(h.amb_backfill_go(again))
     assert "Новых начислений нет" in again.message.answers[0][0]
     assert len(_credits()) == 2
@@ -68,6 +68,29 @@ def test_points_screen_has_button_and_caps(tmp_path):
     assert ("🔁 Начислить за прошлых приглашённых", "ambpt_fill") in [
         (b.text, b.callback_data) for r in kb.inline_keyboard for b in r
     ]
-    for key in ("ambpt_fill", "ambpt_fill_go"):
+    for key in ("ambpt_fill", "ambpt_fill_go:*"):
         assert ADMIN_CAPS[key] == "moderate_game"
-    assert required_capability(callback_data="ambpt_fill_go") == "moderate_game"
+    assert required_capability(callback_data="ambpt_fill_go:50:2") == "moderate_game"
+
+
+def test_go_with_stale_numbers_recounts_instead_of_crediting(tmp_path):
+    _setup(tmp_path)
+    cb = FakeCallback("ambpt_fill_go:10:1")
+    _run(h.amb_backfill_go(cb))
+    assert _credits() == []
+    assert "Начислится: 50 баллов" in cb.message.edits[0][0]
+
+
+def test_city_scoped_manager_cannot_credit_all_cities(tmp_path, monkeypatch):
+    _setup(tmp_path)
+
+    async def scoped(admin_id):
+        return ("moscow", ("moscow",)), "Москва"
+
+    monkeypatch.setattr("handlers.admin_core._admin_city_view", scoped)
+    pv = FakeCallback("ambpt_fill")
+    _run(h.amb_backfill_preview(pv))
+    assert pv.answers[0][1] is True and "Все города" in pv.answers[0][0] and pv.message.edits == []
+    go = FakeCallback("ambpt_fill_go:50:2")
+    _run(h.amb_backfill_go(go))
+    assert go.answers[0][1] is True and _credits() == []
