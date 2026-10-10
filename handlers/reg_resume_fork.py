@@ -32,7 +32,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from handlers import reg_extra_steps
 from handlers.registration import _advance, _progress, _safe_answer, _sync_draft_out, router
 from handlers.states import Registration
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from domain.settings.schema import get_setting_typed
 from domain.regform.engine import (
     help_text, prompt, resume_fork_options, resume_link_whitelist,

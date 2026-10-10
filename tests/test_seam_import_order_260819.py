@@ -52,11 +52,11 @@ SEAMS = [
     # Phase 27 (27-05, LANG-02): перевод чата на отправке (say()/tr_kb()). Регистрирует НОЛЬ
     # хендлеров на router (не декорирует @router.* вовсе) — добавлен ради симметрии со
     # списком выше и как страховка от будущей регрессии, если модуль когда-нибудь обзаведётся
-    # своим хендлером: `import handlers.reg_i18n` первым НЕ импортирует handlers.registration
-    # на уровне модуля (см. докстринг handlers/reg_i18n.py), поэтому тест тривиально зелёный.
-    "handlers.reg_i18n",
+    # своим хендлером: `import handlers.i18n.reg_i18n` первым НЕ импортирует handlers.registration
+    # на уровне модуля (см. докстринг handlers/i18n/reg_i18n.py), поэтому тест тривиально зелёный.
+    "handlers.i18n.reg_i18n",
     # Phase 27 (27-06, LANG-05/09): экран «🌐 Английские тексты».
-    "handlers.admin_i18n",
+    "handlers.i18n.admin_i18n",
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» (admin_purge).
     "handlers.admin_purge",
 ]

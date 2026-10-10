@@ -23,7 +23,7 @@
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.registration import _advance, _sync_draft_out, router
 from handlers.states import Registration
 from keyboards.builders import get_cancel_kb, get_skip_kb

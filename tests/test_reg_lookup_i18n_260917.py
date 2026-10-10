@@ -6,7 +6,7 @@
 строки давно переведены (`services/i18n_form_manual.py`).
 
 Приём — тот же, что `tests/test_i18n_bot_render_27.py::_patch_ctx`: подменяем
-`handlers.reg_i18n.ctx_for` на фиксированный `(lang, tr_map)`, без похода в БД за языком
+`handlers.i18n.reg_i18n.ctx_for` на фиксированный `(lang, tr_map)`, без похода в БД за языком
 делегата — `reg_types_lookup.py` зовёт именно `reg_i18n.ctx_for`, не `services.i18n.context`
 напрямую."""
 import asyncio
@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers import reg_types_lookup
 from services.i18n_form_manual import EVENT_TEXTS_260917, FORM_DEFAULT_EN
 from services.i18n_miniapp_manual import MANUAL_EN

@@ -25,7 +25,7 @@ from handlers.registration import router, _consent_entries, _prompt
 # пустым tr_map (Квик 260917-en, находка «б») — покрывает НАЗВАНИЕ документа по умолчанию,
 # машинный перевод (легальный override менеджера) сюда не подключается ни при каких условиях
 # (LANG-09), PDF остаётся русским всегда.
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 
 logger = logging.getLogger(__name__)
 

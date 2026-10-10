@@ -793,7 +793,7 @@ async def reject_message_text(reason: str | None, lang: str = "ru", tr_map: dict
     существующими вызовами, включая Mini App, если он когда-нибудь позовёт эту функцию
     напрямую), переводят ТОЛЬКО префикс (`reject_text`, group "reg", уже в делегатском
     корпусе) через `services.i18n.tr` — этот модуль aiogram-free
-    (`test_applications_module_does_not_load_aiogram`), поэтому `handlers.reg_i18n.tr_text`
+    (`test_applications_module_does_not_load_aiogram`), поэтому `handlers.i18n.reg_i18n.tr_text`
     (тянет aiogram-типы) сюда импортировать нельзя; `tr()` без символьного сплита достаточно —
     `reject_text` не несёт эмодзи-префикса в объявлении реестра. `reason` (причина отказа,
     введённая менеджером на КОНКРЕТНУЮ заявку) НЕ переводится — тот же принцип, что у

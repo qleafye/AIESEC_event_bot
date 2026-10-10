@@ -30,7 +30,7 @@ from database.db import get_user
 from domain.cities import get_setting_typed_for_city
 from domain.settings.schema import get_setting_typed
 from handlers.registration import router
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
 from services import amb_status
 

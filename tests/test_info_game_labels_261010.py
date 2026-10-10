@@ -6,7 +6,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from domain.settings.ui_text_fields import (
     GAME_SCREEN_FIELD_ORDER, INFO_SCREEN_FIELD_ORDER, UI_TEXT_SCHEMA, ui_text, ui_tr,
 )

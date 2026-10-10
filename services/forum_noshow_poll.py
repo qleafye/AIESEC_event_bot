@@ -269,7 +269,7 @@ async def send_poll(city: str | None) -> dict:
         if not marked:
             continue
 
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
         from services import i18n as i18n_service
 
         lang, tr_map = await i18n_service.context(tid)

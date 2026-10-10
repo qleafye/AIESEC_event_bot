@@ -37,7 +37,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
 
 from domain.cities import get_setting_typed_for_city
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.registration import _advance, _safe_answer, router
 from handlers.states import Registration
 from keyboards.builders import get_cancel_kb, get_skip_kb, get_yes_no_kb
