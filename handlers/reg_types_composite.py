@@ -31,7 +31,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.registration import _ask_step, _sync_draft_out, router
 from domain.regform.engine import (
     STEP_TO_COLUMN,

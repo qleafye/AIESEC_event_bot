@@ -2502,7 +2502,7 @@ def test_snapshot_total_handler_count_is_292():
     # handlers/reg_extra_steps.py (message process_mini_projects/process_mini_portfolio/
     # process_mini_direction/process_case_optin), хвост message-блока registration.router
     # (после menu_lang_open, перед первым callback_query recall_keep) — шов импортируется
-    # из хвоста registration.py сразу после reg_handoff (454 -> 458). Phase 27-06 (LANG-05/09): +10 handlers/admin_i18n.py
+    # из хвоста registration.py сразу после reg_handoff (454 -> 458). Phase 27-06 (LANG-05/09): +10 handlers/i18n/admin_i18n.py
     # (message admin_i18n_edit_cancel/admin_i18n_edit_step, хвост message-блока
     # admin.router после afaq_text_step; callback_query admin_i18n_entry/admin_i18n_noop/
     # admin_i18n_list_page/admin_i18n_row/admin_i18n_edit_new_start/admin_i18n_edit_start/

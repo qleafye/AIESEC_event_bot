@@ -63,7 +63,7 @@ from domain.regform.engine import multi_max
 # Phase 27 (27-05, LANG-02/LANG-06/LANG-08): say()/tr_for() переводят делегатские отправки
 # этого шва на отправке; служебные слова фильтров (CANCEL_WORDS/CONFIRM_WORDS/EDIT_WORDS) —
 # ярус A i18n_ui_en, не второй список литералов.
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from domain.i18n.ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
 from services import reg_edit_policy  # Квик 260922-wrg: гейт повторной подачи после отказа
 

@@ -20,7 +20,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_user
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link
 from services import amb_progress, amb_screen
 from services import i18n as i18n_service

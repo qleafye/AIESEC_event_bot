@@ -31,7 +31,7 @@ from handlers.registration import (
 )
 # Phase 27 (27-05, LANG-02): say()/tr_for() переводят делегатские отправки этого шва на
 # отправке.
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.reg_summary import show_summary  # приёмка 09.10: «Продолжить» дочитанной анкеты
 
 logger = logging.getLogger(__name__)

@@ -24,7 +24,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from handlers import reg_flow  # noqa: F401 -- регистрирует хендлеры на registration.router
 from handlers import reg_steps  # noqa: F401 -- регистрирует хендлеры на registration.router
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers import registration as reg
 from domain.i18n.ui_en import CANCEL_WORDS, CONFIRM_WORDS, EDIT_WORDS
 

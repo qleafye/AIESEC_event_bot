@@ -16,7 +16,8 @@ import pytest
 from aiogram import Bot
 
 from database import db
-from handlers import menu_tap_escape, reg_i18n
+from handlers import menu_tap_escape
+from handlers.i18n import reg_i18n
 from handlers import user_actions as user_actions_mod
 from handlers.states import GameSubmit, Question, Registration
 from tests.test_refac_snapshot_260816 import _full_dispatcher, _make_message_update, _spied

@@ -37,7 +37,7 @@ from database.db import (
     add_sos_details, create_sos_report, get_open_sos_report, get_sos_report, get_user,
     mark_sos_collecting_started, set_sos_location,
 )
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.states import SosReport
 from handlers.user_actions import _delegate_city, ensure_registered, router
 from domain.i18n.ui_en import DONE_WORDS

@@ -8,7 +8,7 @@
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb
 

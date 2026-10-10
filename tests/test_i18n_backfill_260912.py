@@ -13,7 +13,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_i18n
+from handlers.i18n import admin_i18n
 from services import i18n_worker
 from tests._dbtpl import fast_init_db
 
@@ -97,7 +97,7 @@ def test_reset_translation_attempts_only_touches_its_own_lang(tmp_path):
     asyncio.run(go())
 
 
-# ── handlers.admin_i18n._corpus_gap ──────────────────────────────────────────────────────────
+# ── handlers.i18n.admin_i18n._corpus_gap ──────────────────────────────────────────────────────────
 
 def test_corpus_gap_counts_untranslated_corpus_lines(tmp_path, monkeypatch):
     _db_ready(tmp_path)

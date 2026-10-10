@@ -109,7 +109,7 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
         # `services/session_feedback.py::deliver_feedback_prompts`), эта функция выполняется
         # ТОЛЬКО ботом.
         from services import i18n as i18n_service
-        from handlers import reg_i18n
+        from handlers.i18n import reg_i18n
 
         lang, tr_map = await i18n_service.context(user_id)
         from services.text_fill import event_name, fill_event

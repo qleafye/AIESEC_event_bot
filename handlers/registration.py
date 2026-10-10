@@ -82,9 +82,9 @@ from handlers.reg_schema import (
 )
 # Phase 27 (27-05, LANG-02): единственная воронка отправки вопросов (_safe_answer ниже) и
 # сводка ответов (_build_summary) переводят через этот шов — верхнеуровневый импорт безопасен,
-# handlers/reg_i18n.py НЕ импортирует handlers.registration на уровне модуля (только лениво
+# handlers/i18n/reg_i18n.py НЕ импортирует handlers.registration на уровне модуля (только лениво
 # внутри say(), которым пользуются остальные пять швов анкеты), цикла нет.
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 
 router = Router()
 logger = logging.getLogger(__name__)
