@@ -56,16 +56,48 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
             await hook(key)
         except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
             logger.error("settings_audit: реакция на %r сорвалась: %s", key, exc)
-    if key == "miniapp_open_button":
-        # Подпись кнопки приложения стоит и на кнопке меню чата — Telegram держит её до новой
-        # установки, иначе новая подпись появилась бы там только после перезапуска бота.
-        try:
-            from handlers.admin_miniapp import sync_chat_menu_button
-            from services.scheduler import get_bot
+    if key in MENU_BUTTON_KEYS:
+        _start_menu_button_resync()
 
-            await sync_chat_menu_button(get_bot())
-        except Exception as exc:  # noqa: BLE001 — недоступный Telegram не роняет правку
-            logger.error("settings_audit: кнопка меню приложения не обновилась: %s", exc)
+
+# Кнопку меню чата (иконка приложения у поля ввода) Telegram держит до новой установки: общую —
+# для всех, и свою — у каждого, кто выбрал язык (`handlers/reg_lang.py`), своя главнее общей.
+# После правки подписи или включения/выключения приложения переставляются обе, в фоне: на тысячу
+# делегатов это минута, сохранение настройки ждать её не должно.
+MENU_BUTTON_KEYS = frozenset({"miniapp_open_button", "miniapp_enabled"})
+_menu_resync_tasks: set = set()
+
+_AFTER_SAVE_NOTES = {
+    "miniapp_open_button": (
+        "\n\n📱 Кнопка приложения у поля ввода обновится у всех делегатов в ближайшие минуты — "
+        "у каждого на его языке. Если у кого-то осталась старая подпись, сохраните текст ещё раз."
+    ),
+}
+
+
+def after_save_note(key: str) -> str:
+    """Строка менеджеру под «сохранено», если правка действует не мгновенно и не везде."""
+    from cities import split_per_city_key
+
+    split = split_per_city_key(key)
+    return _AFTER_SAVE_NOTES.get(split[0] if split else key, "")
+
+
+def _start_menu_button_resync() -> None:
+    import asyncio
+
+    from services.scheduler import get_bot
+
+    try:
+        bot = get_bot()
+    except RuntimeError:  # процесс без бота (тест, скрипт) — кнопку поставит старт бота
+        logger.info("settings_audit: бота в процессе нет, кнопку меню чата не переставляю")
+        return
+    from handlers.admin_miniapp import sync_all_chat_menu_buttons
+
+    task = asyncio.get_running_loop().create_task(sync_all_chat_menu_buttons(bot))
+    _menu_resync_tasks.add(task)
+    task.add_done_callback(_menu_resync_tasks.discard)
 
 
 async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True) -> None:

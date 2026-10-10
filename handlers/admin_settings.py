@@ -34,7 +34,7 @@ from database.db import (
     get_dropout_step_stats,
     settings_snapshot,
 )
-from settings_audit import set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
+from settings_audit import after_save_note, set_setting_by_admin, delete_setting_by_admin, run_setting_hooks_batch
 from services.sheets import (
     sync_named_worksheet,
     tab_row_count,
@@ -2658,6 +2658,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         await _after_tab_setting_saved(key)
 
     per_city_base = data.get("per_city_base")
+    warning += after_save_note(key)  # правка действует не сразу и не везде
     await state.clear()
     if value != "-":
         await ph.send_preview(message, key, value)

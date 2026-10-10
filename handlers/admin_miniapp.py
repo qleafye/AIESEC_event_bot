@@ -179,6 +179,33 @@ async def sync_chat_menu_button(bot, chat_id: int | None = None, lang: str = "ru
         await bot.set_chat_menu_button(menu_button=MenuButtonDefault(), **kwargs)
 
 
+async def sync_all_chat_menu_buttons(bot, pause: float = 0.05) -> tuple[int, int]:
+    """Общая кнопка меню чата и своя кнопка каждого, кто выбрал язык (`reg_lang.lang_pick_choose`
+    ставит её на чат, и она главнее общей — без перестановки у него висела бы старая подпись или
+    кнопка выключенного приложения). Зовётся в фоне после правки подписи/тумблера приложения
+    (`settings_audit.MENU_BUTTON_KEYS`). Возвращает (переставлено, не удалось): заблокировавший
+    бота делегат — не повод бросать остальных."""
+    import asyncio
+
+    from database.db import list_stored_langs
+
+    try:
+        await sync_chat_menu_button(bot)
+    except Exception:
+        logger.warning("sync_all_chat_menu_buttons: общая кнопка не встала", exc_info=True)
+    done = failed = 0
+    for chat_id, lang in (await list_stored_langs()).items():
+        try:
+            await sync_chat_menu_button(bot, chat_id=chat_id, lang=lang)
+            done += 1
+        except Exception:
+            failed += 1
+        if pause:
+            await asyncio.sleep(pause)  # ~20 запросов в секунду — ниже лимита Telegram
+    logger.info("sync_all_chat_menu_buttons: переставлено %s, не удалось %s", done, failed)
+    return done, failed
+
+
 async def _rerender(callback: types.CallbackQuery):
     from handlers.admin_forum_hub_nav import keep_hub_back  # открыт из хаба форума — «Назад» в хаб
     await callback.message.edit_text(
