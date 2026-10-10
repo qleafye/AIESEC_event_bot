@@ -186,7 +186,7 @@ def test_manager_saved_empty_string_is_respected(client):
 
 
 def test_free_defaults_have_manual_english():
-    from services.i18n_miniapp_manual import MANUAL_EN
+    from services.i18n.i18n_miniapp_manual import MANUAL_EN
 
     for key in _FREE_KEYS:
         free = SETTINGS_SCHEMA[key]["default_free"]

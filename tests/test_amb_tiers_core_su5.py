@@ -240,7 +240,7 @@ def test_registry_keys_defaults():
 
 
 def test_every_tier_text_has_manual_english():
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
 
     for key in ("amb_tier1_text", "amb_tier2_granted_text", "amb_tier2_waitlist_text",
                 "amb_tier3_text"):

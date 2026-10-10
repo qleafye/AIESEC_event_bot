@@ -12,7 +12,7 @@ import pytest
 
 from database import db as bot_db
 import domain.regform.engine as reg_engine
-from services import i18n as i18n_mod
+from services.i18n import i18n as i18n_mod
 
 from tests.test_miniapp_form import _fill, _run
 from tests.test_miniapp_routes import (

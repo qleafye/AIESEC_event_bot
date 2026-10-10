@@ -4,8 +4,8 @@
 Как и соседние тесты фазы (`tests/test_i18n_lang_27.py`) — Fake message, `asyncio.run()`,
 pytest-asyncio в этом окружении нет. `reg_i18n.ctx_for` монкипатчится напрямую там, где нужен
 конкретный `(lang, tr_map)` — тот же приём, что `tests/test_i18n_miniapp_27.py` использует для
-`services.i18n.context`, только на один уровень ниже (сам `ctx_for`, не его зависимость),
-потому что `_safe_answer`/`say()` зовут именно его, а не `services.i18n.context` напрямую.
+`services.i18n.i18n.context`, только на один уровень ниже (сам `ctx_for`, не его зависимость),
+потому что `_safe_answer`/`say()` зовут именно его, а не `services.i18n.i18n.context` напрямую.
 """
 import asyncio
 
@@ -56,7 +56,7 @@ class _FakeMessage:
 
 def _patch_ctx(monkeypatch, lang, tr_map):
     """Подменяет reg_i18n.ctx_for на фиксированный (lang, tr_map) — без похода в БД. Патчим
-    ИМЕННО reg_i18n.ctx_for (не services.i18n.context) — и _safe_answer, и say() зовут его
+    ИМЕННО reg_i18n.ctx_for (не services.i18n.i18n.context) — и _safe_answer, и say() зовут его
     напрямую."""
     async def _ctx(_target):
         return lang, dict(tr_map)

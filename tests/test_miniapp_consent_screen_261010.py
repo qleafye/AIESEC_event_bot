@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from services.i18n_form_manual import _REGISTRY_TEXTS_EN
+from services.i18n.i18n_form_manual import _REGISTRY_TEXTS_EN
 from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_form import client, db_path  # noqa: F401 — фикстуры подтягиваются по имени
@@ -65,7 +65,7 @@ def _en(client):
 
 def test_en_delegate_gets_manual_translation(client):
     from database import db as bot_db
-    from services import i18n
+    from services.i18n import i18n
     from tests.test_miniapp_form import _run
     _en(client)
     _run(bot_db.upsert_translation("en", i18n.src_hash(LEGAL), LEGAL, LEGAL_EN, manual=1))
@@ -74,7 +74,7 @@ def test_en_delegate_gets_manual_translation(client):
 
 def test_en_delegate_never_gets_machine_translation(client):
     from database import db as bot_db
-    from services import i18n
+    from services.i18n import i18n
     from tests.test_miniapp_form import _run
     _en(client)
     _run(bot_db.upsert_translation("en", i18n.src_hash(LEGAL), LEGAL, "machine text", manual=0))

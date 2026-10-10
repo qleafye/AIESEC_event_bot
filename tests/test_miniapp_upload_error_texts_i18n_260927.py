@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from services.i18n_miniapp_manual import MANUAL_EN
+from services.i18n.i18n_miniapp_manual import MANUAL_EN
 from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_frontend import SCREENS_DIR, _js_without_comments

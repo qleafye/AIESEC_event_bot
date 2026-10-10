@@ -386,7 +386,7 @@ async def init_scheduler(bot):
     )
 
     # Phase 27 (27-03, LANG-04): разбор очереди перевода делегатской анкеты. 30с — тот же
-    # интервал, что у miniapp_outbox выше (батч ограничен services/i18n_worker.py::BATCH_SIZE,
+    # интервал, что у miniapp_outbox выше (батч ограничен services/i18n/i18n_worker.py::BATCH_SIZE,
     # инференс — в отдельном потоке, длинный батч не морозит long polling ни на одном тике).
     _add_interval_job(translation_drain_job, "translation_drain", timedelta(seconds=30))
 
@@ -657,7 +657,7 @@ def apply_important_prefix(content: str | None, important: bool, prefix: str) ->
 
 async def _translated_button(text: str, callback_data: str, chat_id: int) -> InlineKeyboardButton:
     from handlers.i18n import reg_i18n
-    from services import i18n as i18n_service
+    from services.i18n import i18n as i18n_service
     lang, tr_map = await i18n_service.context(chat_id)
     return InlineKeyboardButton(text=reg_i18n.tr_text(text, lang, tr_map), callback_data=callback_data)
 
@@ -686,7 +686,7 @@ class RecipientLangs:
         self._offer_text: str | None = None
 
     def context(self, chat_id: int) -> tuple[str, dict]:
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
         lang = i18n_service.resolve_lang(self._module_on, self._stored.get(chat_id), None)
         return lang, (self._tr_map_en if lang == "en" else {})
 
@@ -713,7 +713,7 @@ class RecipientLangs:
 async def load_recipient_langs() -> RecipientLangs:
     """Fail-soft как у `i18n.delegate_lang`: сбой чтения — всем русский и `logger.error`."""
     from database.db import list_stored_langs
-    from services import i18n as i18n_service
+    from services.i18n import i18n as i18n_service
     try:
         module_on = await get_setting_typed("delegate_lang_enabled") == "on"
         stored = await list_stored_langs() if module_on else {}
@@ -782,7 +782,7 @@ async def send_mute_offer_if_eligible(
         if chat_id in already_shown:
             return None
         from handlers.i18n import reg_i18n
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
         if langs is not None:
             lang, tr_map = langs.context(chat_id)
             base_text = await langs.mute_offer_text()
@@ -1380,13 +1380,13 @@ async def translation_drain_job():
     `miniapp_outbox_drain_job` выше. Выключенный модуль (`delegate_lang_enabled` != "on",
     A-05 27-CONTEXT.md) выходит НЕМЕДЛЕННО, не читая очередь ни разу — 30-секундный тик не
     должен стоить ни одного запроса, пока делегатский английский не включён. Ленивый импорт
-    `services.i18n_worker` внутри функции — тот же приём, что у соседей (сам
-    `services.i18n_worker` лениво импортирует `argostranslate` только внутри драйвера, не
+    `services.i18n.i18n_worker` внутри функции — тот же приём, что у соседей (сам
+    `services.i18n.i18n_worker` лениво импортирует `argostranslate` только внутри драйвера, не
     здесь и не при импорте этого модуля)."""
     try:
         if await get_setting_typed("delegate_lang_enabled") != "on":
             return
-        from services.i18n_worker import drain
+        from services.i18n.i18n_worker import drain
         await drain()
     except Exception as e:
         logger.error(f"translation_drain_job failed: {e}")
@@ -1499,7 +1499,7 @@ async def nudge_incomplete_registrations():
         # быть не должно.
         kb = await _nudge_keyboard()
         from services import quiet_hours
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
         now = _now_moscow_naive()
         tr_maps: dict[str, dict] = {}
         for tid in candidates:
@@ -1537,7 +1537,7 @@ async def nudge_incomplete_registrations():
 def _tr_markup(markup: InlineKeyboardMarkup | None, lang: str, tr_map: dict) -> InlineKeyboardMarkup | None:
     """Подписи инлайн-кнопок через `i18n.tr` целиком (с эмодзи) — для реестровых подписей,
     чей ручной перевод заведён вместе с ведущим эмодзи. Русский -> тот же объект."""
-    from services import i18n as i18n_service
+    from services.i18n import i18n as i18n_service
 
     if markup is None or lang != "en":
         return markup
@@ -1801,7 +1801,8 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
     try:
         from database.db import get_wave, get_user, list_wave_tasks, task_title
         from services.amb.ambassador_waves import wave_eligible
-        from services import quiet_hours, i18n
+        from services import quiet_hours
+        from services.i18n import i18n
         import domain.game.labels as game_labels
 
         wave = await get_wave(wave_id)
@@ -2011,7 +2012,8 @@ async def send_task_deadline_reminder(task_id: int) -> None:
             get_task, get_active_submission, get_user, list_ambassadors, get_wave, task_title,
         )
         from services.amb.ambassador_waves import wave_eligible, wave_open
-        from services import quiet_hours, i18n
+        from services import quiet_hours
+        from services.i18n import i18n
         import domain.game.labels as game_labels
 
         task = await get_task(task_id)
@@ -2201,14 +2203,15 @@ async def send_wave_results(wave_id: int) -> None:
     итогах — T-32-11-01). Каждому неотправленному участнику уходит `wave_results_announce_text`;
     призёрам (`is_winner` в снимке) ДОПОЛНИТЕЛЬНО — `wave_results_winner_text` с текстом приза
     `wave_results_prize_text` (D-19: сам приз бот не выдаёт, это только текст). Оба сообщения —
-    через `services.i18n.context` (язык участника), `quiet_hours.send_or_queue_text` и
+    через `services.i18n.i18n.context` (язык участника), `quiet_hours.send_or_queue_text` и
     `_safe_send` (внутри `sender`), с паузой между получателями; свой `try/except` НА КАЖДОГО
     получателя (CR-05) — сбой одного (кривой src в i18n, блокировка бота) не обрывает рассылку
     остальным."""
     try:
         from database.db import get_wave, get_wave_results, get_display_names, mark_wave_result_notified
         import domain.game.labels as game_labels
-        from services import quiet_hours, i18n
+        from services import quiet_hours
+        from services.i18n import i18n
 
         wave = await get_wave(wave_id)
         if not wave or wave.get("state") != "announced":

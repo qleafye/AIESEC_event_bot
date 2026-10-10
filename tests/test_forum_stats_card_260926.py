@@ -625,7 +625,7 @@ def test_send_broadcast_respects_quiet_hours(tmp_path, monkeypatch):
 
 
 def test_send_broadcast_uses_delegate_language_for_render(tmp_path, monkeypatch):
-    """Английский делегат получает EN-рендер (see `services.i18n.context`) — без реального
+    """Английский делегат получает EN-рендер (see `services.i18n.i18n.context`) — без реального
     Pillow-вызова, только факт передачи `lang` в render_card_sync."""
     _ready(tmp_path)
     _seed_user(UID)
@@ -636,7 +636,7 @@ def test_send_broadcast_uses_delegate_language_for_render(tmp_path, monkeypatch)
     async def fake_context(tid, language_code=None):
         return "en", {}
 
-    import services.i18n as i18n_module
+    import services.i18n.i18n as i18n_module
     monkeypatch.setattr(i18n_module, "context", fake_context)
 
     async def go():

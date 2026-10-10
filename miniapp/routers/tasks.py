@@ -40,7 +40,7 @@ from domain.game.labels import (
     task_has_deadline,
     visible_tasks_for,
 )
-from services import i18n
+from services.i18n import i18n
 from services.amb.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
 from domain.settings.schema import get_setting_typed
 

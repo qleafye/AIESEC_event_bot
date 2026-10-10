@@ -12,7 +12,7 @@ import asyncio
 from config import config
 from database import db
 import domain.regform.engine as re
-from services.i18n import src_hash
+from services.i18n.i18n import src_hash
 from tests._dbtpl import fast_init_db
 
 
@@ -23,7 +23,7 @@ def _db_ready(tmp_path, name="test_i18n_options_roundtrip_27.db"):
 
 def _fake_tr_map(all_canons: set[str]) -> dict[str, str]:
     """Перевод = 'EN:' + канон — подписи гарантированно отличаются от канона (кроме тех, что
-    уже покрыты ярусом A — UI_EN побеждает всегда, см. services/i18n.py::tr, это ожидаемо)."""
+    уже покрыты ярусом A — UI_EN побеждает всегда, см. services/i18n/i18n.py::tr, это ожидаемо)."""
     return {src_hash(canon): f"EN:{canon}" for canon in all_canons}
 
 

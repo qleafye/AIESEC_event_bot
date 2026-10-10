@@ -270,7 +270,7 @@ def test_program_city_read_failure_503_retry_not_foreign_program(client, monkeyp
 
 def test_program_retry_text_has_manual_english():
     from miniapp.routers.program import _RETRY_TEXT
-    from services.i18n_miniapp_manual import MANUAL_EN
+    from services.i18n.i18n_miniapp_manual import MANUAL_EN
     assert MANUAL_EN[_RETRY_TEXT].startswith("Couldn't load the schedule")
 
 

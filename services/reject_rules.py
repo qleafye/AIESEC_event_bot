@@ -20,7 +20,7 @@
 - Автоописание (`rule_summary`, D-10), заготовки (`RULE_PRESETS`, D-11), счётчик dry-run
   (`dry_run_count`, D-13) и постановка текста отказа в очередь машинного перевода (D-25).
 
-Зависимости — ТОЛЬКО `config`, `cities`, `database.db`, `reg_engine`, `services.i18n`,
+Зависимости — ТОЛЬКО `config`, `cities`, `database.db`, `reg_engine`, `services.i18n.i18n`,
 `settings_ops`, `settings_schema` (плюс стандартная библиотека). Ни `aiogram`, ни `handlers.*`
 на уровне модуля не импортируются.
 """
@@ -61,7 +61,7 @@ from domain.regform.engine import (
     reject_condition_category,
     rule_pause_reason,
 )
-from services.i18n import src_hash
+from services.i18n.i18n import src_hash
 from domain.settings.ops import per_city_visible_codes
 from domain.settings.schema import _parse_setting, get_setting_typed
 
@@ -450,7 +450,7 @@ async def _maybe_enqueue_rule_text_translation(text: str | None, rule_id: int | 
     """Постановка текста отказа правила в очередь машинного перевода (D-25) — форма
     СКОПИРОВАНА с `database.db._maybe_enqueue_city_label_translation`, а не вызов существующего
     `database.db._maybe_enqueue_translation`: тот хук висит на `set_setting` и гейтится
-    `services.i18n_sources.is_delegate_dynamic_key` (сверяет ключ реестра `bot_settings`), а
+    `services.i18n.i18n_sources.is_delegate_dynamic_key` (сверяет ключ реестра `bot_settings`), а
     текст правила живёт не в `bot_settings` — в колонке `reject_rules.reject_text`, второго
     ключа реестра под него не заводится. Тот же гейт (`delegate_lang_enabled`), тот же широкий
     fail-soft `except` с логом (T-31-04-05): сбой очереди перевода не должен потерять уже

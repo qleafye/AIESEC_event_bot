@@ -22,7 +22,7 @@ from keyboards.menu_dynamic import menu_key_for_text
 
 logger = logging.getLogger(__name__)
 
-# Группа состояний -> что сказать делегату при выходе. Переводы — services/i18n_form_manual.py.
+# Группа состояний -> что сказать делегату при выходе. Переводы — services/i18n/i18n_form_manual.py.
 ESCAPE_NOTICES: dict[str, str] = {
     "Question": "Вопрос не отправлен.",
     "GameSubmit": "Подтверждение задания не отправлено.",

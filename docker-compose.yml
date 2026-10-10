@@ -91,7 +91,7 @@ services:
         max-file: "3"
 
   # Phase 27 (27-03, LANG-10): HTTP-фоллбэк драйвера перевода делегатской анкеты
-  # (services/i18n_engine.py::HttpLibreTranslateDriver) — ВЫКЛЮЧЕН по умолчанию (owner-decision
+  # (services/i18n/i18n_engine.py::HttpLibreTranslateDriver) — ВЫКЛЮЧЕН по умолчанию (owner-decision
   # 27-01, чекпоинт: драйвер = embedded с выгрузкой, не сайдкар — на хосте физически свободно
   # 237 МБ на ~26 контейнеров, постоянные 400-700 МБ сайдкара туда не влезают). `docker compose
   # up` без явного профиля поднимает стек ровно как сегодня — этот сервис не запускается.

@@ -1671,7 +1671,7 @@ def _build_summary(data: dict, lang: str = "ru", tr_map: dict | None = None,
     Phase 27 (27-05, LANG-02): `lang`/`tr_map` — НЕОБЯЗАТЕЛЬНЫЕ, дефолт `lang="ru"` не меняет
     поведение (существующие вызовы/тесты без правок). Составная строка (шапка + подписи +
     значения) не найдётся в карте переводов как единое целое (27-CONTEXT.md, A-03) — переводим
-    АДРЕСНО здесь: шапку и подписи REG_LABELS через `reg_i18n.tr_text`/`services.i18n.tr`.
+    АДРЕСНО здесь: шапку и подписи REG_LABELS через `reg_i18n.tr_text`/`services.i18n.i18n.tr`.
 
     UAT-фикс (стенд, lang=en): `value_maps` (`reg_i18n.summary_value_maps`, посчитана
     вызывающим — `_advance` ниже, ОДИН поход в БД на весь рендер, не по полю) переводит значения
@@ -2434,7 +2434,7 @@ async def _city_fork_then_continue(
         # Квик 260917-en: приёмка 17.09 — владелец явно попросил переводить и кнопки городов
         # («Москва, 30-31 октября»); прежнее решение (Quick 260906, «данные v1, не UI-текст»)
         # снято этой правкой. Названия городов теперь в делегатском корпусе
-        # (`services/i18n_sources.py::city_texts`), lang/tr_map — один общий контекст на вопрос
+        # (`services/i18n/i18n_sources.py::city_texts`), lang/tr_map — один общий контекст на вопрос
         # и клавиатуру, тот же приём, что и везде в reg_i18n.say().
         lang, tr_map = await reg_i18n.ctx_for(message)
         await message.answer(

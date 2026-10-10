@@ -213,7 +213,7 @@ async def deliver_feedback_prompts(session_id: int) -> None:
         # в чате (Часть А ревью SOS — тот же класс бага, если поменять местами).
         from services.scheduler import _now_moscow_naive, get_bot
         from services import quiet_hours
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
         from handlers.i18n import reg_i18n
 
         bot = get_bot()

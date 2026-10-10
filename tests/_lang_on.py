@@ -22,7 +22,7 @@ import asyncio
 
 async def enable_delegate_lang() -> None:
     from database import db
-    from services import i18n_worker
+    from services.i18n import i18n_worker
 
     async def _skip_bulk_seed(lang: str = "en") -> int:
         return 0

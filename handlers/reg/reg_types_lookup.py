@@ -90,7 +90,7 @@ async def ask_step(step_key: str, message: types.Message, state: FSMContext,
     # Начни вводить...» не совпадает ни с одним из двух переводов по отдельности, делегат видел
     # обе строки русскими даже когда обе давно переведены. Переводим КАЖДЫЙ кусок отдельно, ДО
     # склейки (`reg_i18n.say` ниже переведёт уже готовую английскую строку ещё раз — это no-op,
-    # `services.i18n.tr` fail-soft отдаёт тот же текст, если перевода для него не нашлось).
+    # `services.i18n.i18n.tr` fail-soft отдаёт тот же текст, если перевода для него не нашлось).
     lang, tr_map = await reg_i18n.ctx_for(message)
     text = f"{progress_prefix}{reg_i18n.tr_text(prompt_text, lang, tr_map)}"
     if hint:

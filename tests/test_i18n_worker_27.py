@@ -8,7 +8,7 @@ pytest-asyncio в этом окружении нет (см. tests/test_db_phase5
 asyncio.run(), config.DB_PATH смотрит в tmp_path.
 
 Стаб-драйвер: модель argos-translate-lt в тестах НЕ участвует (Pitfall 9 замера 27-01) —
-`services.i18n_worker.get_driver` подменяется на фейковую async-фабрику, возвращающую
+`services.i18n.i18n_worker.get_driver` подменяется на фейковую async-фабрику, возвращающую
 `_StubDriver` (реализует ровно контракт `TranslationDriver.translate_batch`/`unload`).
 """
 import asyncio
@@ -17,7 +17,7 @@ import pytest
 
 from config import config
 from database import db
-from services import i18n_worker
+from services.i18n import i18n_worker
 from tests._dbtpl import fast_init_db
 
 
@@ -260,8 +260,8 @@ def test_bulk_seed_does_not_duplicate_on_second_call(tmp_path):
 def test_bulk_seed_skips_rows_with_manual_translation(tmp_path):
     _db_ready(tmp_path)
 
-    from services.i18n import src_hash
-    from services.i18n_sources import corpus
+    from services.i18n.i18n import src_hash
+    from services.i18n.i18n_sources import corpus
 
     items = asyncio.run(corpus())
     assert items, "корпус не должен быть пустым на дефолтном реестре"

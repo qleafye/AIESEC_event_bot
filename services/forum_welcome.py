@@ -108,7 +108,7 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
         # Ленивые импорты — модуль aiogram-free на уровне импорта (тот же приём, что
         # `services/session_feedback.py::deliver_feedback_prompts`), эта функция выполняется
         # ТОЛЬКО ботом.
-        from services import i18n as i18n_service
+        from services.i18n import i18n as i18n_service
         from handlers.i18n import reg_i18n
 
         lang, tr_map = await i18n_service.context(user_id)

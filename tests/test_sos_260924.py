@@ -1399,7 +1399,7 @@ def test_sos_claim_fallback_dm_still_works_from_private_chat(tmp_path):
 # «здоровье чата» на эскалации (тот же контур, что уже был у карточки).
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-from services.i18n_form_manual import FORM_DEFAULT_EN, seed  # noqa: E402
+from services.i18n.i18n_form_manual import FORM_DEFAULT_EN, seed  # noqa: E402
 
 
 async def _make_english_delegate(tid: int, **kwargs):
@@ -1593,8 +1593,8 @@ def test_sos_resolve_keeps_collecting_for_other_report(tmp_path):
 
 
 def test_sos_resolve_notifies_delegate_in_english(tmp_path, monkeypatch):
-    from services import i18n as i18n_service
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n import i18n as i18n_service
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     _ready(tmp_path)
     _run(_add_delegate(DELEGATE_ID))
     rid = _run(db.create_sos_report(DELEGATE_ID, None))

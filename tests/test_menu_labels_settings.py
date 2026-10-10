@@ -194,7 +194,7 @@ def test_label_cannot_take_other_buttons_caption():
 # ── правка из чата ──────────────────────────────────────────────────────────────────────
 
 def test_new_labels_have_own_group_in_translation_corpus():
-    from services import i18n_sources
+    from services.i18n import i18n_sources
 
     assert "menu_labels" in i18n_sources.DELEGATE_GROUPS
     keys = i18n_sources.delegate_registry_keys()
@@ -353,7 +353,7 @@ def test_menu_not_matched_in_delegate_states(ready):
 
 
 def test_only_manual_english_translation_matches(ready, monkeypatch):
-    from services.i18n import src_hash
+    from services.i18n.i18n import src_hash
     _as_delegate(monkeypatch, lang="en")
 
     async def go():

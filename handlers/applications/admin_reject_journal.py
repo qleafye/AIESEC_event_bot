@@ -259,7 +259,7 @@ async def arj_back_go(callback: types.CallbackQuery):
 
     telegram_id = entry["telegram_id"]
     raw_return_text = await get_setting("reject_rules_return_text") or DEFAULT_RETURN_TEXT
-    from services.i18n import context as _i18n_context, tr as _i18n_tr
+    from services.i18n.i18n import context as _i18n_context, tr as _i18n_tr
     lang, tr_map = await _i18n_context(telegram_id)
     delegate_text = html_module.escape(_i18n_tr(raw_return_text, lang, tr_map))
     try:

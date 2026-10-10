@@ -1,14 +1,14 @@
 """Квик 260917-en (владелец, приёмка на английском делегате): «перевод интерфейса очень криво
-сделан». `domain/i18n/ui_en.py` (ярус A — служебные слова) и `services/i18n_miniapp_manual.py` (тексты
-приложения вне анкеты) уже рукописные — здесь тот же ярус B (`manual=1`, `services/i18n.py::tr()`
+сделан». `domain/i18n/ui_en.py` (ярус A — служебные слова) и `services/i18n/i18n_miniapp_manual.py` (тексты
+приложения вне анкеты) уже рукописные — здесь тот же ярус B (`manual=1`, `services/i18n/i18n.py::tr()`
 ищет по `src_hash` содержимого, не по ключу реестра), но для КОРПУСА САМОЙ АНКЕТЫ
-(`services/i18n_sources.py::DELEGATE_GROUPS` — `reg_prompts`/`reg`/`party`): подсказки вопросов,
+(`services/i18n/i18n_sources.py::DELEGATE_GROUPS` — `reg_prompts`/`reg`/`party`): подсказки вопросов,
 списки вариантов, подписи и ошибки движка (`domain/regform/engine.py`), которые до этой правки переводились
 только машиной (argos) и звучали плохо («Write your age number:»).
 
 Два словаря:
 
-- `FORM_DEFAULT_EN` — перевод ДЕФОЛТОВ корпуса: то, что вернёт `services/i18n_sources.py::corpus()`
+- `FORM_DEFAULT_EN` — перевод ДЕФОЛТОВ корпуса: то, что вернёт `services/i18n/i18n_sources.py::corpus()`
   на чистой БД (без единой правки менеджера) — `PROMPT_DEFAULTS`/`STEP_HELP`/`STEP_HELP_EXAMPLES`/
   `_GENERIC_FALLBACK_LABEL`/`REG_LABELS`/`_SUMMARY_FIELD_LABELS`/`reg_options.*`/`SELECT_CONFIG`/
   `MULTI_CONFIG`/`LEGACY_SPB_UNIVERSITIES` (`domain/regform/engine.py`, `domain/regform/labels.py`, `domain/regform/options.py`), литералы
@@ -34,10 +34,10 @@
   него.
 
 Формат обоих словарей — тот же, что у `i18n_miniapp_manual.MANUAL_EN`: RU-текст БАЙТ-В-БАЙТ (после
-`.strip()`, `services.i18n.src_hash`) -> EN. Плейсхолдеры (`{min}`, `{n}`, `{count}`, `{season}`,
+`.strip()`, `services.i18n.i18n.src_hash`) -> EN. Плейсхолдеры (`{min}`, `{n}`, `{count}`, `{season}`,
 `{имя}`...) и HTML-теги (`<b>`, `<i>`, `<a href>`, `<blockquote>`, `<u>`) перенесены дословно —
 `tr()` подставляет их ПОСЛЕ перевода, сам перевод не трогает токены. Ключи БЕЗ ведущего эмодзи там,
-где `services.i18n_glossary`-слой мог бы его отделять, здесь не нужны: `tr()` ищет по хешу ВСЕГО
+где `services.i18n.i18n_glossary`-слой мог бы его отделять, здесь не нужны: `tr()` ищет по хешу ВСЕГО
 содержимого (в отличие от `i18n_ui_en.tr_text`, у которого своя логика `split_leading_symbols`
 для яруса A) — эмодзи в начале строки остаётся частью ключа.
 
@@ -50,7 +50,7 @@ from __future__ import annotations
 import logging
 
 from database.db import seed_manual_translations
-from services.i18n import src_hash
+from services.i18n.i18n import src_hash
 from domain.i18n.ui_en import MENU_EN  # литеральный словарь без импортов проекта — цикла нет
 
 logger = logging.getLogger(__name__)
@@ -515,7 +515,7 @@ _CODE_LITERALS_EN = {
         "The SOS session closed due to inactivity. If you still need help — tap «🆘 SOS» again.",
     # Подпись кнопки геопозиции (`lit:sos.location_button`) — идёт через tr_kb (кнопки reply-
     # клавиатуры), не видна АСТ-сторожу, см. комментарий у её регистрации в
-    # services/i18n_sources.py.
+    # services/i18n/i18n_sources.py.
     "📍 Отправить геопозицию": "📍 Send location",
     # Он же без «📍 » — `tr_kb` -> `tr_text` снимает ведущий эмодзи до поиска, и запись выше
     # с эмодзи не находилась никогда: EN-делегат видел кнопку по-русски (приёмка 01.10).
@@ -607,7 +607,7 @@ _CODE_LITERALS_EN = {
 
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
 # (не лежат ни в одном перечислимом словаре `code_literals()` уже читает — PROMPT_DEFAULTS/
-# STEP_HELP), поэтому `services/i18n_sources.py::corpus()` их не видит вообще, а `tr()` их всё
+# STEP_HELP), поэтому `services/i18n/i18n_sources.py::corpus()` их не видит вообще, а `tr()` их всё
 # равно получает на вход при рендере анкеты. Найдено при ревизии `domain/regform/engine.py` (Задача 1
 # инструкции — «литералы движка, которые выводятся через tr, но не входят в corpus()»). ─────
 _ENGINE_DYNAMIC_EN = {
@@ -653,7 +653,7 @@ _ENGINE_DYNAMIC_EN = {
     "📋 Форматы форума (можно выбрать несколько):": "📋 Forum formats (you can select several):",
     "Форматы форума (можно выбрать несколько):": "Forum formats (you can select several):",
     # `reg_engine._v2_texts_for` — `{entity}` в `reg_form_own_option_text`/`reg_form_own_chip_text`
-    # (шаблоны в `_FORM_INTRO`, `services/i18n_miniapp_manual.py`) подставляется ДО перевода
+    # (шаблоны в `_FORM_INTRO`, `services/i18n/i18n_miniapp_manual.py`) подставляется ДО перевода
     # (`.replace("{entity}", entity)` на сыром русском значении настройки, entity ∈
     # `_LOOKUP_ENTITY_NAMES` — только "ВУЗ"/"город"), а не после — в отличие от большинства
     # других плейсхолдеров проекта. `tr()` поэтому видит уже СОСТАВНУЮ строку с "ВУЗ"/"город"
@@ -946,14 +946,14 @@ _REGISTRY_TEXTS_EN = {
     ),
     # Форум-ночь (идея №3 бэклога чек-ина): приветствие после первой отметки входа — group
     # "reg", forum_welcome_text. Плейсхолдер `{time}` переживает перевод сентинелами глоссария
-    # (services/i18n_glossary.py) — тот же приём, что у остальных плейсхолдеров этого словаря.
+    # (services/i18n/i18n_glossary.py) — тот же приём, что у остальных плейсхолдеров этого словаря.
     "Ты отмечен на входе в {time} ✅ Добро пожаловать на Юлид!": (
         "You're checked in at {time} ✅ Welcome to YouLead!"
     ),
     # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» (кнопка «🎟 Мой QR», хаб Mini
     # App) — group "reg", checked_in_status_text. Ключ БЕЗ ведущего «✅ » — `handlers.i18n.reg_i18n.
     # tr_text`/`split_leading_symbols` отделяет ведущий эмодзи-префикс ДО перевода и
-    # приклеивает его назад нетронутым (докстринг `services/i18n_glossary.py::
+    # приклеивает его назад нетронутым (докстринг `services/i18n/i18n_glossary.py::
     # split_leading_symbols`); словарь с эмодзи внутри ключа НИКОГДА не совпал бы по хешу с
     # уже отделённым остатком (тот же класс бага, что ревью нашло у `{claim_status}`, только
     # для символьного, не прогресс-префикса).

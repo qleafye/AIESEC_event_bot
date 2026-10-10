@@ -12,7 +12,7 @@ import pytest
 
 from config import config
 from database import db
-from services.i18n import src_hash
+from services.i18n.i18n import src_hash
 from tests._dbtpl import fast_init_db
 
 
@@ -142,7 +142,7 @@ def test_enabling_module_spawns_bulk_seed(tmp_path, monkeypatch):
         calls.append(lang)
         return 0
 
-    from services import i18n_worker
+    from services.i18n import i18n_worker
 
     monkeypatch.setattr(i18n_worker, "bulk_seed", _fake_bulk_seed)
 
@@ -163,7 +163,7 @@ def test_disabling_module_does_not_spawn_bulk_seed(tmp_path, monkeypatch):
         calls.append(lang)
         return 0
 
-    from services import i18n_worker
+    from services.i18n import i18n_worker
 
     monkeypatch.setattr(i18n_worker, "bulk_seed", _fake_bulk_seed)
 

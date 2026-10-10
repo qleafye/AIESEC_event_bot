@@ -131,8 +131,8 @@ def _old_screen_text(uid, *, ambassador=True):
 
 def _en_map():
     """Карта перевода `src_hash -> en` из ручного словаря — как после сида на старте бота."""
-    from services.i18n import src_hash
-    from services.i18n_form_manual import FORM_DEFAULT_EN
+    from services.i18n.i18n import src_hash
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
     return {src_hash(ru): en for ru, en in FORM_DEFAULT_EN.items()}
 
 
@@ -453,7 +453,7 @@ def test_offer_body_default_unchanged_and_no_preset_writes_it():
     включённой реф-ссылкой). Владелец 09.10: пресет «СкиллАп» тоже его не пишет — текст
     предложения менеджер задаёт сам."""
     import domain.regform.presets as reg_presets
-    from services.i18n_miniapp_manual import MANUAL_EN
+    from services.i18n.i18n_miniapp_manual import MANUAL_EN
     from domain.settings.schema import SETTINGS_SCHEMA
 
     entry = SETTINGS_SCHEMA["miniapp_form_ambassador_offer_body_text"]

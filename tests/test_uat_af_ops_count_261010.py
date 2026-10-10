@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from miniapp.routers.page import SCREEN_TEXT_KEYS
-from services.i18n_miniapp_manual import MANUAL_EN
+from services.i18n.i18n_miniapp_manual import MANUAL_EN
 from domain.settings.schema import SETTINGS_SCHEMA
 
 ROOT = REPO_ROOT

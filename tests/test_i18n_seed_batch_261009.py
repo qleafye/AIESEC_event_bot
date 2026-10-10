@@ -12,7 +12,7 @@ import pytest
 
 from config import config
 from database import db
-from services.i18n import src_hash
+from services.i18n.i18n import src_hash
 from tests._dbtpl import fast_init_db
 
 ORIGIN_A = "seed_a"

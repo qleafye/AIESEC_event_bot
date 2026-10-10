@@ -1,12 +1,12 @@
 """Phase 27 (27-06, LANG-04/LANG-05/LANG-09) — экран «🌐 Английские тексты».
 
-Даёт менеджеру руки над корпусом английских строк анкеты (~265 штук, `services/i18n_sources.py
+Даёт менеджеру руки над корпусом английских строк анкеты (~265 штук, `services/i18n/i18n_sources.py
 ::corpus()`): пагинированный список с фильтрами по состоянию, карточка строки (русский рядом с
 английским), ручная правка (`manual=1` — машина строку больше не трогает, LANG-05), «перевести
 заново» с подтверждением (осознанный возврат машине) и метка «русский изменился» (менеджер
 позже поправил русский исходник, старая ручная правка осиротела). Отдельный фильтр «Согласия»
 даёт ручной ввод английского текста согласия (LANG-09) — эти строки НИКОГДА не попадают в
-очередь машинного перевода (граница `services/i18n_sources.py`), но обязаны быть доступны для
+очередь машинного перевода (граница `services/i18n/i18n_sources.py`), но обязаны быть доступны для
 правки здесь.
 
 Форма — Phase 13 (REFAC-01), тот же приём, что у `handlers/forum/admin_faq.py`: своего `Router()`
@@ -39,9 +39,9 @@ from database.db import (
 from handlers.admin import router
 from handlers.states import AdminI18nEdit
 from keyboards.builders import get_cancel_kb
-from services.i18n import src_hash as compute_src_hash
-from services.i18n_sources import corpus
-from services.i18n_worker import bulk_seed, progress
+from services.i18n.i18n import src_hash as compute_src_hash
+from services.i18n.i18n_sources import corpus
+from services.i18n.i18n_worker import bulk_seed, progress
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 LANG = "en"
@@ -99,11 +99,11 @@ async def _corpus_hash_index() -> dict[str, dict[str, str]]:
 
 async def _corpus_gap() -> tuple[int, int]:
     """Квик 260912 (W5, Задача 4) — `(всего_в_корпусе, без_перевода)`. `corpus()` перечисляет
-    ВЕСЬ делегатский текст анкеты (`services/i18n_sources.py`), включая строки, которые
+    ВЕСЬ делегатский текст анкеты (`services/i18n/i18n_sources.py`), включая строки, которые
     никогда не ставились в очередь перевода вовсе — дыру, которую `progress()['total']`
     принципиально не видит: тот счётчик считает строки, УЖЕ лежащие в `translations`, а не
     размер корпуса. `fetch_translations` фильтрует пустые `text` — та же карта, которой
-    пользуется `services.i18n.tr()`, то есть ровно то, что делегат ещё увидит по-русски."""
+    пользуется `services.i18n.i18n.tr()`, то есть ровно то, что делегат ещё увидит по-русски."""
     items = await corpus()
     translated = await fetch_translations(LANG)
     without = sum(1 for _origin_key, text in items if compute_src_hash(text) not in translated)

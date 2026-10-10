@@ -15,7 +15,7 @@ sos_resolve` -> `services.sos.close_delegate_collecting` сбрасывает FS
 `handlers/user_actions.py`. Домен (карточка, привязка чата, эскалация, режим «дописываю»)
 целиком в `services/sos.py` — здесь только FSM-шаги и точки отправки. Тексты — через
 `reg_i18n.say` (тот же перевод делегатского чата, что остальные экраны); литералы этого модуля
-зарегистрированы в `services/i18n_sources.py::code_literals()` (сторож
+зарегистрированы в `services/i18n/i18n_sources.py::code_literals()` (сторож
 `tests/test_i18n_literal_corpus_guard_260906.py`, SCANNED_FILES дополнен этим модулем).
 
 Анти-спам (пункт 1 плана «не чаще одного открытого SOS на делегата») — повторное «🆘 SOS», пока

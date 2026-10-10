@@ -12,8 +12,8 @@
 2. **Замыкающий эмодзи и гендерная приписка.** «...в меню ниже 👇» → «...below e» (движок не
    переживает голый эмодзи в конце строки, `split_leading_symbols` снимал только ведущий) и
    «зарегистрирован(а)» → «...registered (a)» (у английского нет грамматического рода).
-   Фикс — `split_trailing_symbols`/`strip_gender_suffix` (`services/i18n_glossary.py`),
-   врезанные в конвейер `services/i18n_worker.py::drain` ДО вызова драйвера.
+   Фикс — `split_trailing_symbols`/`strip_gender_suffix` (`services/i18n/i18n_glossary.py`),
+   врезанные в конвейер `services/i18n/i18n_worker.py::drain` ДО вызова драйвера.
 
 Стаб-драйвер для end-to-end тестов конвейера — тот же контракт `TranslationDriver`, что и
 `tests/test_i18n_worker_27.py::_StubDriver` (см. докстринг того файла)."""
@@ -21,8 +21,8 @@ import asyncio
 
 from config import config
 from database import db
-from services import i18n_worker
-from services.i18n_glossary import (
+from services.i18n import i18n_worker
+from services.i18n.i18n_glossary import (
     DNT,
     apply,
     protect,
@@ -95,7 +95,7 @@ def test_apply_tolerates_lowercased_and_spaced_sentinel():
 
 def test_apply_tolerates_trailing_period_after_sentinel():
     """Тот же класс артефакта, что дал «Fio.» вместо «ФИО» до DNT-фикса (докстринг
-    `services/i18n_glossary.py`): движок иногда завершает одинокий ASCII-токен точкой, как
+    `services/i18n/i18n_glossary.py`): движок иногда завершает одинокий ASCII-токен точкой, как
     аббревиатуру. Точка должна поглощаться, а не оставаться в переводе."""
     text = "Юлид"
     protected, mapping = protect(text)

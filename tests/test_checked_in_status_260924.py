@@ -213,7 +213,7 @@ def test_qr_status_line_absent_when_qr_module_off_even_if_checked_in(tmp_path):
 
 
 def test_qr_caption_translates_status_line_for_english_delegate(tmp_path):
-    from services.i18n_form_manual import FORM_DEFAULT_EN, seed
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN, seed
 
     _use_tmp_db(tmp_path)
     _seed_user()

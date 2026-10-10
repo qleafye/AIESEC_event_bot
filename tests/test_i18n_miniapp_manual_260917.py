@@ -1,7 +1,7 @@
-"""Задача «Mini App на английском» — сторож `services/i18n_miniapp_manual.py`: сид пишет
+"""Задача «Mini App на английском» — сторож `services/i18n/i18n_miniapp_manual.py`: сид пишет
 `manual=1` переводы, идемпотентен, не перезаписывает НАСТОЯЩУЮ ручную правку менеджера (строку
 с `manual=1` и origin_key, отличным от нашего маркера), и переведённые строки реально находятся
-через `services.i18n.tr()` (та же карта `translations`, что читает `load_map`).
+через `services.i18n.i18n.tr()` (та же карта `translations`, что читает `load_map`).
 
 pytest-asyncio в проекте нет (см. соседние тесты Phase 27) — каждый async-вызов через
 asyncio.run(), config.DB_PATH смотрит в tmp_path.
@@ -10,8 +10,8 @@ import asyncio
 
 from config import config
 from database import db
-from services import i18n
-from services.i18n_miniapp_manual import MANUAL_EN, ORIGIN, seed
+from services.i18n import i18n
+from services.i18n.i18n_miniapp_manual import MANUAL_EN, ORIGIN, seed
 from tests._dbtpl import fast_init_db
 
 

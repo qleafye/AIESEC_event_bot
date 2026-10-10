@@ -547,7 +547,7 @@ async def seed_lookup_from_snapshot(db: aiosqlite.Connection, kind: str) -> None
         logger.warning("seed_lookup_from_snapshot: %s без списка items — старт без справочника", path)
         return
 
-    # Отложенный импорт (та же дисциплина разрыва цикла, что у `services/i18n_sources.py`/
+    # Отложенный импорт (та же дисциплина разрыва цикла, что у `services/i18n/i18n_sources.py`/
     # `services/scheduler.py`, читающих `database.db._connect()` тем же приёмом в обратную
     # сторону): `services.lookup` на верхнем уровне не импортирует `database.db`.
     from services.lookup import normalize_alias
@@ -1494,7 +1494,7 @@ async def init_db():
         ''')
 
         # Phase 27 (27-02, LANG-02/LANG-03): хранилище переводов. Первичный ключ —
-        # `(lang, src_hash)`, ГДЕ src_hash — sha256 РЕЗУЛЬТАТА резолюции (services/i18n.py::
+        # `(lang, src_hash)`, ГДЕ src_hash — sha256 РЕЗУЛЬТАТА резолюции (services/i18n/i18n.py::
         # src_hash), а не ключ реестра bot_settings. Причина: пространство делегатских ключей
         # трёхосное (динамические `reg_prompt_*`/`reg_help_*` вне реестра, трековые суффиксы
         # `__party`/`__short`, городские `__city__{code}`, и они композитны), плюс литералы
@@ -2752,7 +2752,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
        (или что угодно иное) — ничего не делает. Сам ключ НЕ является делегатским текстом
        (группа `toggles`, не в `DELEGATE_GROUPS`) и во вторую ветку не идёт.
     2. Любой другой ключ — если модуль включён И (ключ делегатский
-       (`services.i18n_sources.is_delegate_dynamic_key`) ИЛИ ключ из явного списка
+       (`services.i18n.i18n_sources.is_delegate_dynamic_key`) ИЛИ ключ из явного списка
        `_MINIAPP_EXTRA_TRANSLATE_KEYS` ниже) И значение непусто, каждая непустая строка
        значения (список разворачивается построчно — `_parse_setting`'овский формат "по строке
        на вариант") ставится в очередь через `enqueue_translation` (`UNIQUE(lang, src_hash)`
@@ -2763,7 +2763,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
         if key == "delegate_lang_enabled":
             if value == "on":
                 from services.infra import background
-                from services.i18n_worker import bulk_seed
+                from services.i18n.i18n_worker import bulk_seed
 
                 background.spawn(bulk_seed())
             return
@@ -2778,12 +2778,12 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
         if key.startswith("consent"):
             return
 
-        from services.i18n_sources import is_delegate_dynamic_key
+        from services.i18n.i18n_sources import is_delegate_dynamic_key
 
         if not is_delegate_dynamic_key(key) and not _is_miniapp_extra_translate_key(key):
             return
 
-        from services.i18n import src_hash
+        from services.i18n.i18n import src_hash
 
         for line in str(value).splitlines():
             text = line.strip()
@@ -2799,7 +2799,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
 # хабе Mini App (`miniapp/routers/hub.py`) ДО начала анкеты и вне её — `event_date`/
 # `event_place_name` и их пара `event_time`/`event_place_address` — свободный текст без
 # дефолта (менеджер печатает даты/адрес каждый сезон заново, `domain/settings/schema.py: default:
-# None`), группа `event` НЕ входит в `DELEGATE_GROUPS` (LANG-08, `services/i18n_sources.py`
+# None`), группа `event` НЕ входит в `DELEGATE_GROUPS` (LANG-08, `services/i18n/i18n_sources.py`
 # — намеренная граница для КОРПУСА АНКЕТЫ, трогать её нельзя, `tests/test_i18n_sources_27.py
 # ::test_non_delegate_groups_excluded`). Этот список — НЕ расширение той границы, а отдельный
 # явный whitelist четырёх ключей, которые видны вне анкеты (тот же приём, что у подписи
@@ -10214,7 +10214,7 @@ async def update_city(
 async def _maybe_enqueue_city_label_translation(label: str, *, origin_key: str) -> None:
     """Задача «делегатский интерфейс на английском»: подпись города мероприятия
     («Москва, 30-31 октября») — свободный текст, который менеджер вводит на сезон, не дефолт
-    реестра — `services.i18n_sources.is_delegate_dynamic_key` (рассчитана на ключи
+    реестра — `services.i18n.i18n_sources.is_delegate_dynamic_key` (рассчитана на ключи
     `bot_settings`, не на строки таблицы `cities`) его не узнаёт, поэтому копия
     `database.db._maybe_enqueue_translation`, а не вызов той функции: тот же гейт
     `delegate_lang_enabled`, тот же fail-soft (T-27-03-04 — запись города к этому моменту уже
@@ -10228,7 +10228,7 @@ async def _maybe_enqueue_city_label_translation(label: str, *, origin_key: str) 
         if await get_setting_typed("delegate_lang_enabled") != "on":
             return
 
-        from services.i18n import src_hash
+        from services.i18n.i18n import src_hash
 
         await enqueue_translation("en", src_hash(label), label, origin_key=origin_key)
     except Exception as exc:  # noqa: BLE001 — намеренно широкий fail-soft (T-27-03-04)
@@ -10568,12 +10568,12 @@ async def get_poll_results(poll_id: int) -> dict | None:
 # результат отброшен fail-soft'ом плана 27-03 (битая HTML-разметка, потерянный DNT-сентинел —
 # см. 27-CONTEXT.md «Находки замера») («failed»); непустая строка — есть перевод, `manual`
 # отличает ручную правку менеджера («manual») от машинной. `fetch_translations`
-# (единственная точка чтения ядра `services/i18n.py::load_map`) видит только непустые строки —
+# (единственная точка чтения ядра `services/i18n/i18n.py::load_map`) видит только непустые строки —
 # «pending»/«failed» для делегата неотличимы от отсутствия перевода (fail-soft, D-04: делегат
 # всегда видит русский, а не дыру).
 
 async def fetch_translations(lang: str) -> dict[str, str]:
-    """Одна выборка карты `src_hash -> text` для языка — `services/i18n.py::load_map` зовёт
+    """Одна выборка карты `src_hash -> text` для языка — `services/i18n/i18n.py::load_map` зовёт
     это РОВНО один раз на запрос делегата, не N раз на текст (`form_spec()` резолвит ~43 шага,
     поход в БД на каждый текст удвоил бы чтения на рендер анкеты)."""
     async with _connect() as db:
@@ -10885,7 +10885,7 @@ async def bump_translation_attempt(row_id: int, error: str | None = None) -> Non
 async def reset_translation_attempts(lang: str) -> int:
     """Квик 260912 (W5, Задача 4) — «догонялка перевода»: сбрасывает `attempts`/`last_error`
     ВСЕМ строкам очереди этого языка, включая застрявшие после `MAX_ATTEMPTS`
-    (`services/i18n_worker.py::drain` их больше не выбирает — `list_pending_translations`
+    (`services/i18n/i18n_worker.py::drain` их больше не выбирает — `list_pending_translations`
     фильтрует `attempts < max_attempts`). Возврат `rowcount` — сколько строк реально ожило.
 
     Почему сброс безопасен: строка либо переведётся движком на следующем прогоне `drain()`,

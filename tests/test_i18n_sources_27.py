@@ -1,5 +1,5 @@
 """Phase 27 (27-01, LANG-08/LANG-10) — сторож границы «делегатское / админское» для
-`services/i18n_sources.py`. pytest-asyncio в проекте нет (см. соседние тесты реестра) —
+`services/i18n/i18n_sources.py`. pytest-asyncio в проекте нет (см. соседние тесты реестра) —
 асинхронные вызовы идут через `asyncio.run`.
 """
 import asyncio
@@ -8,13 +8,13 @@ from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA
 
-import services.i18n_sources as i18n_sources
+import services.i18n.i18n_sources as i18n_sources
 from tests._dbtpl import fast_init_db
 
 # Группы реестра, которые НИКОГДА не должны попасть в делегатский корпус (LANG-08 — это
 # сторож границы, а не формальность): чисто административные + `consent` (LANG-09, ручной
 # английский, не машинный) + `menu`/`miniapp` (переводятся отдельными точечными словарями,
-# см. докстринг `services/i18n_sources.py`). Квик 260917-en: `event`/`game`/`pay` СНЯТЫ с
+# см. докстринг `services/i18n/i18n_sources.py`). Квик 260917-en: `event`/`game`/`pay` СНЯТЫ с
 # этого списка — приёмка 17.09 явно расширила объём на весь чат делегата (приветствие,
 # геймификация, оплата); их админские/нелингвистические ключи проверяются отдельно ниже
 # (`test_admin_only_game_keys_excluded`/`test_non_language_pay_event_keys_excluded`), не
