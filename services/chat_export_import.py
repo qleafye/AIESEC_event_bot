@@ -44,6 +44,7 @@ __all__ = ["ExportError", "parse_export"]
 _MSK = timezone(timedelta(hours=3))
 _TS_FORMAT = "%Y-%m-%d %H:%M:%S"
 _PER_CITY_PREFIX = "delegate_chat_id__city__"
+_BATCH = 1000  # сообщений в одной транзакции записи
 
 
 def _now() -> datetime:
@@ -257,7 +258,11 @@ def make_plan(conn, data: dict, chat_id: int) -> dict:
 
 def apply_plan(conn, plan: dict) -> tuple[int, int]:
     """Записывает ровно то, что показал `make_plan`: (новых сообщений, новых реакций).
-    Одна транзакция; повторный вызов ничего не добавляет."""
+
+    Пачками по `_BATCH` сообщений, каждая — своя транзакция вместе с реакциями и именами её
+    сообщений: одна длинная транзакция на весь файл держит блокировку записи, и живой учёт чата
+    (handlers/group_chat.py) ловил бы «database is locked». Сбой посередине оставляет целые
+    пачки; повторный вызов (запись по id сообщения) доделывает остальное и ничего не задваивает."""
     messages, reactions = plan["messages"], plan["reactions"]
     cutoff, names = plan["cutoff"], plan["stats"]["names"]
     added_reactions = 0
@@ -265,37 +270,42 @@ def apply_plan(conn, plan: dict) -> tuple[int, int]:
         r[1] for r in conn.execute("PRAGMA table_info(chat_usernames)")
     }
     now_ts = _now().strftime(_TS_FORMAT)
-    with conn:  # одна транзакция: либо всё, либо ничего
-        inserted = set()
-        for m in messages:
-            if m["ts"] < cutoff:
-                continue  # старше срока хранения — суточная чистка удалила бы сразу
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO chat_messages (chat_id, message_id, telegram_id, ts, "
-                "kind, text_len, reply_to_message_id, reply_to_author_id, is_channel_post, "
-                "reactions_extra, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'export')",
-                (m["chat_id"], m["message_id"], m["telegram_id"], m["ts"], m["kind"],
-                 m["text_len"], m["reply_to_message_id"], m["reply_to_author_id"],
-                 m["is_channel_post"], m["reactions_extra"]),
-            )
-            if cur.rowcount == 1:
-                inserted.add(m["message_id"])
-        for row in reactions:
-            if row[1] not in inserted:
-                continue  # у живой строки свои реакции — не смешиваем
-            cur = conn.execute(
-                "INSERT OR IGNORE INTO chat_reactions (chat_id, message_id, telegram_id, "
-                "reaction, ts) VALUES (?, ?, ?, ?, ?)", row,
-            )
-            added_reactions += cur.rowcount
-        if has_first_name:
-            people = {m["telegram_id"] for m in messages if m["message_id"] in inserted}
-            people |= {row[2] for row in reactions if row[1] in inserted}
-            for tid in sorted(p for p in people if p in names):
-                conn.execute(
-                    "INSERT INTO chat_usernames (telegram_id, username, first_name, updated_at) "
-                    "VALUES (?, NULL, ?, ?) ON CONFLICT(telegram_id) DO UPDATE SET "
-                    "first_name = COALESCE(chat_usernames.first_name, excluded.first_name)",
-                    (tid, names[tid], now_ts),
+    by_mid: dict = {}
+    for row in reactions:
+        by_mid.setdefault(row[1], []).append(row)
+    fresh = [m for m in messages if m["ts"] >= cutoff]  # старше срока хранения — суточная чистка удалила бы сразу
+    inserted = set()
+    for start in range(0, len(fresh), _BATCH):
+        with conn:
+            batch_inserted = set()
+            for m in fresh[start:start + _BATCH]:
+                cur = conn.execute(
+                    "INSERT OR IGNORE INTO chat_messages (chat_id, message_id, telegram_id, ts, "
+                    "kind, text_len, reply_to_message_id, reply_to_author_id, is_channel_post, "
+                    "reactions_extra, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'export')",
+                    (m["chat_id"], m["message_id"], m["telegram_id"], m["ts"], m["kind"],
+                     m["text_len"], m["reply_to_message_id"], m["reply_to_author_id"],
+                     m["is_channel_post"], m["reactions_extra"]),
                 )
+                if cur.rowcount == 1:
+                    batch_inserted.add(m["message_id"])
+            people = {m["telegram_id"] for m in fresh[start:start + _BATCH]
+                      if m["message_id"] in batch_inserted}
+            for mid in batch_inserted:  # у живой строки свои реакции — их не смешиваем
+                for row in by_mid.get(mid, ()):
+                    cur = conn.execute(
+                        "INSERT OR IGNORE INTO chat_reactions (chat_id, message_id, telegram_id, "
+                        "reaction, ts) VALUES (?, ?, ?, ?, ?)", row,
+                    )
+                    added_reactions += cur.rowcount
+                    people.add(row[2])
+            if has_first_name:
+                for tid in sorted(p for p in people if p in names):
+                    conn.execute(
+                        "INSERT INTO chat_usernames (telegram_id, username, first_name, updated_at) "
+                        "VALUES (?, NULL, ?, ?) ON CONFLICT(telegram_id) DO UPDATE SET "
+                        "first_name = COALESCE(chat_usernames.first_name, excluded.first_name)",
+                        (tid, names[tid], now_ts),
+                    )
+            inserted |= batch_inserted
     return len(inserted), added_reactions
