@@ -4,7 +4,7 @@
    waved through on the WIZARD state's capability, while aiogram's first-match dispatch runs
    the top-level COMMAND handler — letting e.g. a game_manager (moderate_game only) run
    /export (needs stats). Fix: a slash-command message must clear the command's OWN capability
-   as well as the state's (handlers/admin_caps.py::_required_caps_for_message).
+   as well as the state's (handlers/access/admin_caps.py::_required_caps_for_message).
 
 2. settings_edit_value stored the empty string for a non-text / whitespace-only send
    (message.text is None -> value ""), which the registry's text branch returns instead of the
@@ -20,7 +20,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from handlers.admin_caps import CapabilityMiddleware, required_capability
+from handlers.access.admin_caps import CapabilityMiddleware, required_capability
 from tests._dbtpl import fast_init_db
 
 
@@ -96,7 +96,7 @@ def test_slash_command_coins_in_editsetting_denied_for_settings_holder(tmp_path)
     A genuine settings-ONLY holder is built via a role_caps_ override (same idiom as
     test_roles_phase8.py:793) instead."""
     _ready(tmp_path)
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
     SETTINGS_ONLY_ID = 900805
     asyncio.run(db.add_staff(SETTINGS_ONLY_ID, "reg_manager", ADMIN_ID))
     asyncio.run(db.set_setting(role_caps_key("reg_manager"), "settings"))  # settings ONLY

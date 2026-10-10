@@ -2111,7 +2111,7 @@ async def send_wave_end_ping(wave_id: int) -> None:
     повторное срабатывание после переармирования, или менеджер уже объявил итоги руками) —
     молча выходим, ни одного сообщения (T-32-08-03).
 
-    Текстовая обёртка над капабилити в `handlers/admin_caps.py` не поддерживает `reply_markup`
+    Текстовая обёртка над капабилити в `handlers/access/admin_caps.py` не поддерживает `reply_markup`
     (текст и кнопки шли бы раздельно), поэтому здесь используется публичный примитив резолва
     получателей `capability_holders(cap, city=...)` напрямую — тот же city-скоуп и тот же
     fallback на `config.ADMIN_IDS`, если у capability вовсе нет держателей (T-32-08-02).
@@ -2125,7 +2125,7 @@ async def send_wave_end_ping(wave_id: int) -> None:
         import domain.game.labels as game_labels
         from services import quiet_hours
         from services.ambassador_waves import close_wave, wave_end_summary
-        from handlers.admin_caps import capability_holders
+        from handlers.access.admin_caps import capability_holders
 
         if not await close_wave(wave_id):
             return

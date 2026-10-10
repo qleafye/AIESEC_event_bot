@@ -24,7 +24,7 @@ import domain.cities as cities
 from config import config
 from database import db
 from handlers.sheets import admin_sheet_tabs
-from handlers.admin_caps import ADMIN_CAPS
+from handlers.access.admin_caps import ADMIN_CAPS
 import services.sheets as sheets
 import domain.settings.ops as settings_ops
 from tests._dbtpl import fast_init_db

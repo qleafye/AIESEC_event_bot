@@ -4,7 +4,7 @@
 `reg_manager`/`game_manager` с лишними правами или править их `role_caps_*`, ломая настоящих
 модераторов. Роль с единственным правом `stats` закрывает это без расширения модели прав.
 
-Почему хватает ОДНОЙ записи в `ROLES` (D-07, `handlers/admin_caps.py`): форма ролей
+Почему хватает ОДНОЙ записи в `ROLES` (D-07, `handlers/access/admin_caps.py`): форма ролей
 data-driven — `resolve_capabilities`, экран «👥 Роли и доступы» (`render_roles_text`,
 `build_roles_keyboard`, `roles_add`) и раздел «📊 Данные» уже итерируют `ROLES`/`ALL_CAPABILITIES`
 и не содержат захардкоженных под две роли мест. Новая роль появляется в UI сама — этот файл
@@ -35,7 +35,7 @@ def _ready(tmp_path):
 
 def test_stats_manager_capabilities_is_exactly_stats(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
     caps = asyncio.run(admin_caps.resolve_capabilities(MANAGER_ID))
@@ -44,7 +44,7 @@ def test_stats_manager_capabilities_is_exactly_stats(tmp_path):
 
 def test_stats_manager_disabled_role_grants_nothing(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
     asyncio.run(db.set_setting("role_stats_manager_enabled", "off"))
@@ -62,7 +62,7 @@ def test_role_caps_stats_manager_default_is_registry_default(tmp_path):
 
 def test_capability_holders_stats_includes_stats_manager(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_caps
+    from handlers.access import admin_caps
 
     asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
     stats_holders = asyncio.run(admin_caps.capability_holders("stats"))
@@ -86,7 +86,7 @@ def test_stats_manager_registry_keys_not_editable(tmp_path):
 
 
 def test_dashboard_role_defaults_do_not_drift_from_bot():
-    from handlers.admin_caps import ROLES
+    from handlers.access.admin_caps import ROLES
     from dashboard.access import _ROLE_DEFAULT_CAPS
 
     assert set(_ROLE_DEFAULT_CAPS) == set(ROLES)
@@ -131,7 +131,7 @@ def _flat_callback_data(kb):
 
 def test_roles_keyboard_has_toggle_and_caps_buttons_for_stats_manager(tmp_path):
     _ready(tmp_path)
-    from handlers import admin_roles
+    from handlers.access import admin_roles
 
     asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
     kb = asyncio.run(admin_roles.build_roles_keyboard())
@@ -178,8 +178,8 @@ def test_roles_toggle_stats_manager_flips_enabled_setting(tmp_path):
 
 
 def test_render_roles_text_shows_stats_manager_label_and_cap_label(tmp_path):
-    from handlers import admin_roles
-    from handlers.admin_caps import ROLES
+    from handlers.access import admin_roles
+    from handlers.access.admin_caps import ROLES
 
     _ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, STATS_ROLE, ADMIN_ID))
@@ -207,19 +207,19 @@ def test_stats_manager_sees_only_data_section_with_five_ops():
 
 
 def test_settings_guide_knows_both_stats_manager_keys():
-    from handlers.admin_roles import SETTINGS_GUIDE_KEYS
+    from handlers.access.admin_roles import SETTINGS_GUIDE_KEYS
 
     assert "role_caps_stats_manager" in SETTINGS_GUIDE_KEYS
     assert "role_stats_manager_enabled" in SETTINGS_GUIDE_KEYS
 
 
 def test_settings_guide_renders_label_not_raw_key():
-    from handlers.admin_roles import (
+    from handlers.access.admin_roles import (
         SETTINGS_GUIDE_SECTIONS,
         SETTINGS_GUIDE_KEYS,
         _render_settings_guide,
     )
-    from handlers.admin_caps import ROLES
+    from handlers.access.admin_caps import ROLES
 
     chunks = _render_settings_guide(
         SETTINGS_GUIDE_SECTIONS, {k: None for k in SETTINGS_GUIDE_KEYS}

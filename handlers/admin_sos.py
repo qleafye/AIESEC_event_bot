@@ -33,7 +33,7 @@ from database.db import (
     takeover_sos_report,
 )
 from handlers.admin import router
-from handlers.admin_caps import has_capability, required_capability
+from handlers.access.admin_caps import has_capability, required_capability
 from handlers.admin_core import _admin_city_view
 from handlers.states import EditSetting, SosChatBind
 from keyboards.builders import get_cancel_kb
@@ -570,7 +570,7 @@ async def _may_answer_from_dm(user_id: int, report: dict) -> bool:
     держателей/суперадминов, если в городе никого) — менеджер другого города, у которого
     оказалась пересланная копия, ответить делегату не может."""
     from config import config
-    from handlers.admin_caps import capability_holders
+    from handlers.access.admin_caps import capability_holders
 
     if user_id in config.ADMIN_IDS:
         return True
@@ -739,7 +739,7 @@ async def render_sos_settings_screen(admin_id: int) -> tuple[str, InlineKeyboard
         lines.append("")
         lines.append("<i>Тайминги выше меняются после выбора конкретного города.</i>")
 
-    from handlers.admin_caps import _holds, required_capability, resolve_capabilities
+    from handlers.access.admin_caps import _holds, required_capability, resolve_capabilities
     length_cb = "settings_edit:sos_active_days"
     if _holds(await resolve_capabilities(admin_id), required_capability(callback_data=length_cb)):
         buttons.append([InlineKeyboardButton(text="🗓 Сколько дней идёт форум", callback_data=length_cb)])

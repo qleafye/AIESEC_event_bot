@@ -28,7 +28,7 @@ _resolve_screen_city`/`handlers.admin_volunteer_invite.volinvite_entry` (сво�
   же прецедент, что `sos_claim:*`/`sos_resolve:*` в `handlers/admin_sos.py`), и её видит
   ЛЮБОЙ участник чата, не только штат. План явно называет ДВЕ аудитории («checkin» И
   «moderate_reg»), а один ключ карты — одно значение; здесь запись ANY_CAPABILITY
-  (навигационная, тот же приём, что «admin_city_pick:*» в `handlers/admin_caps.py`), а
+  (навигационная, тот же приём, что «admin_city_pick:*» в `handlers/access/admin_caps.py`), а
   настоящая проверка (OR двух прав) — вручную, внутри `lostfound_return` ниже.
 """
 import html
@@ -49,7 +49,7 @@ from domain.cities import (
 )
 from database.db import create_lost_found_item, get_lost_found_item, mark_lost_found_returned
 from handlers.admin import router
-from handlers.admin_caps import DENIAL_TEXT, resolve_capabilities
+from handlers.access.admin_caps import DENIAL_TEXT, resolve_capabilities
 from handlers.admin_checkin import (
     _CITY_FORBIDDEN_ALERT,
     _admin_city_scope,

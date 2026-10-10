@@ -22,7 +22,7 @@ from handlers import admin as admin_mod
 from handlers import admin_core
 from handlers.comms import admin_poll_wizard as wiz
 from handlers.comms import polls as polls_handlers
-from handlers.admin_caps import required_capability, ADMIN_CAPS
+from handlers.access.admin_caps import required_capability, ADMIN_CAPS
 from tests.test_roles_phase8 import FakeUser, FakeMessage, _flat_callback_data
 from tests._dbtpl import fast_init_db
 

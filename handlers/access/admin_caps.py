@@ -27,7 +27,7 @@ from database.db import get_staff_roles, get_staff_ids_by_role, get_staff_city, 
 from domain.settings.schema import get_setting_typed
 # Phase 09.2 (D): city filter for capability_holders/notify_by_capability. domain/cities.py imports
 # only config/database.db/settings_schema (see domain/cities.py's own module docstring) -- it never
-# imports handlers.*, so importing it here from handlers/admin_caps.py cannot form a cycle.
+# imports handlers.*, so importing it here from handlers/access/admin_caps.py cannot form a cycle.
 from domain.cities import cities_module_on, normalize_city
 from services import staff_reach  # 29.09: отметка «уведомления не доходят», fail-soft
 
@@ -787,7 +787,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "roles_add": "settings",
     "roles_addrole:*": "settings",
     # Phase 33 (delegate-card admin actions, задача 2): прямой вход в мастер выдачи роли с
-    # карточки /find (handlers/admin_roles.py::roles_add_for) — та же капа, что у остального
+    # карточки /find (handlers/access/admin_roles.py::roles_add_for) — та же капа, что у остального
     # мастера выше.
     "roles_addfor:*": "settings",
     "roles_del:*": "settings",
@@ -1253,7 +1253,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "forum_ready_re:*": "moderate_reg",
 
     # Идея №6 бэклога чек-ина (права со сроком действия): экран «⏳ Срок действия роли»
-    # (handlers/admin_roles.py) — та же капа, что весь остальной экран «👥 Роли и доступы»
+    # (handlers/access/admin_roles.py) — та же капа, что весь остальной экран «👥 Роли и доступы»
     # (admin_roles выше).
     "rexp:*": "settings",
     "rexp_go:*": "settings",
@@ -1282,7 +1282,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» — то же положение, что у
     # «admin_season_reset»/«season_reset_go» выше: «settings» тут необходимо, но НЕ
     # достаточно — настоящий гейт `config.ADMIN_IDS`, повторно проверяется внутри КАЖДОГО из
-    # трёх хендлеров handlers/admin_purge.py. Команда нигде не выведена в интерфейс — только
+    # трёх хендлеров handlers/access/admin_purge.py. Команда нигде не выведена в интерфейс — только
     # по точному имени.
     "cmd:delete_user": "settings",
     "delu_go:*": "settings",

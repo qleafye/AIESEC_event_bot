@@ -337,7 +337,7 @@ def test_run_job_sends_marks_and_reschedules_next_day(tmp_path, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_send_report_delivers_to_sos_chat_and_dm(tmp_path, monkeypatch):
-    from handlers.admin_caps import role_caps_key, role_enabled_key
+    from handlers.access.admin_caps import role_caps_key, role_enabled_key
 
     _ready(tmp_path)
     _run(db.set_setting(role_enabled_key("reg_manager"), "on"))

@@ -20,7 +20,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.game import admin_gamification
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import CoinsManual, GameReview
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db

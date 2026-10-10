@@ -110,7 +110,7 @@ def test_refresh_edits_message(tmp_path, monkeypatch):
 
 def test_checkin_screen_has_floor_button_next_to_stats_only_for_moderate_reg(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_caps import ADMIN_CAPS, role_caps_key
+    from handlers.access.admin_caps import ADMIN_CAPS, role_caps_key
     assert ADMIN_CAPS["checkin_floor"] == "moderate_reg"
     assert ADMIN_CAPS["checkin_floor_refresh"] == "moderate_reg"
     cb = _Cb("admin_checkin", ADMIN_ID)

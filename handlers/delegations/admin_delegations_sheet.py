@@ -13,7 +13,7 @@ ID ответа, сколько добавит, совпадает ли шапк
 Выключение возвращает режим `bot`, снимает вкладку и гасит предупреждение листа.
 
 Шов на общий `handlers.admin.router` (импортируется из хвоста handlers/delegations/admin_delegations.py,
-декораторы в одну строку). Права — `dlg_*` → `moderate_reg` (handlers/admin_caps.py).
+декораторы в одну строку). Права — `dlg_*` → `moderate_reg` (handlers/access/admin_caps.py).
 Названия вкладок и ячейки шапки — чужой текст, в HTML только через `_e()`.
 """
 import asyncio

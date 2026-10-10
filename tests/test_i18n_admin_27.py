@@ -19,7 +19,7 @@ from handlers.i18n import admin_i18n as mod
 from handlers.states import AdminI18nEdit
 from services.i18n import src_hash as compute_src_hash
 
-from handlers.admin_caps import role_caps_key, role_enabled_key
+from handlers.access.admin_caps import role_caps_key, role_enabled_key
 from tests.test_roles_phase8 import ADMIN_ID, MANAGER_ID, STRANGER_ID, _roles_ready, dispatch_callback
 from tests._dbtpl import fast_init_db
 

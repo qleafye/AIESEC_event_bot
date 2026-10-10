@@ -18,7 +18,7 @@ Drift vs. the 15.08 plan text: this region grew well past the plan's ~800-line e
 13-04-SUMMARY.md "Known Gap".
 
 `_resolve_staff_input`/`_STAFF_INPUT_ERROR` (coinsman_person_step's forward/@username lookup,
-reusing roles_add_person's own parser) come from handlers.admin_roles (13-04 Task 3 -- imported
+reusing roles_add_person's own parser) come from handlers.access.admin_roles (13-04 Task 3 -- imported
 straight from that seam module, not re-exported through the aggregator, since admin_roles is
 always imported before admin_gamification in handlers/admin.py's seam-import order).
 `_parse_positive_int`/`_parse_coins_amount`/`_notify_manual_coins` (coins parsing/delivery) are
@@ -131,7 +131,7 @@ from handlers.admin import (
     _parse_coins_amount,
     _parse_positive_int,
 )
-from handlers.admin_roles import _STAFF_INPUT_ERROR, _resolve_staff_input
+from handlers.access.admin_roles import _STAFF_INPUT_ERROR, _resolve_staff_input
 
 logger = logging.getLogger(__name__)
 
@@ -933,7 +933,7 @@ async def game_task_editphoto_invalid(message: types.Message, state: FSMContext)
 # forward/@username person lookup (reuses _resolve_staff_input/roles_add_person's pattern
 # verbatim, not a second parser), a card with the current balance, sign, amount (Task 2), then
 # reason + confirm + ledger write + notification (Task 3). Lives entirely under moderate_game
-# (handlers/admin_caps.py) -- T-14-16 (GAME-09's own threat register): monetary right, not
+# (handlers/access/admin_caps.py) -- T-14-16 (GAME-09's own threat register): monetary right, not
 # registration-queue right.
 
 async def _coinsman_card_text(user: dict, balance: int) -> str:

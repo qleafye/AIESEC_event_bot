@@ -177,7 +177,7 @@ def test_ready_screen_buttons_edit_the_traffic_light_city(tmp_path):
 
 def test_city_buttons_need_settings_right():
     """Кнопки с городом идут тем же маршрутом прав, что «✏️ Изменить для города»."""
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     assert required_capability(callback_data="settings_edit_city:forum_date@spb") == "settings"
 
 
@@ -293,7 +293,7 @@ def test_city_date_save_offers_way_back_to_readiness(tmp_path):
     """Текст поля объясняет, что дата включает QR/SOS/меню дня форума; после сохранения —
     «🚦 К готовности форума» этого города (только тому, у кого есть право светофора)."""
     from domain.cities import set_admin_city
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     from handlers.admin_settings import settings_edit_city, settings_edit_value
     from tests.test_roles_phase8 import FakeMessage
 

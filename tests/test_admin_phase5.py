@@ -20,7 +20,7 @@ from handlers import admin_settings  # Phase 13 (13-06): settings moved out of a
 from handlers.regform import admin_reg_config  # Phase 13 (13-05): reg-question/menu-button config moved here
 from handlers.regform import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.reg_schema import REG_FLOW, REG_PRESETS
 from tests._dbtpl import fast_init_db
 

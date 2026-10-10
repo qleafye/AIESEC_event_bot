@@ -402,7 +402,7 @@ def test_cfg_screen_toggle_flips_setting(tmp_path):
 
 def test_cfg_screen_writes_percity_key_when_module_on(tmp_path):
     from handlers import admin_forum_functions as aff
-    from handlers.admin_caps import role_caps_key
+    from handlers.access.admin_caps import role_caps_key
     _ready(tmp_path)
     _enable_cities()
     _run(db.set_setting(role_caps_key("reg_manager"), "moderate_reg"))

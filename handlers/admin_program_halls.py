@@ -5,7 +5,7 @@
 декоратор в одну строку; импортирован ХВОСТОМ `handlers/admin_program.py`, поэтому здесь можно
 безопасно, на уровне модуля, читать имена оттуда (`admin_program` к этому моменту уже полностью
 определён — тот же приём, что `handlers/applications/admin_reject_cond.py` поверх `admin_reject_rules.py`).
-Право — `settings`, тот же префиксный ключ `prog_*` (handlers/admin_caps.py)."""
+Право — `settings`, тот же префиксный ключ `prog_*` (handlers/access/admin_caps.py)."""
 import html as html_module
 
 from aiogram import F, types

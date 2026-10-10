@@ -18,7 +18,7 @@ test_gate_no_legacy_admin_check_remains`): исходник читается ц�
 from tests._paths import REPO_ROOT
 from pathlib import Path
 
-from handlers.admin_caps import ADMIN_CAPS, required_capability
+from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 
 
 

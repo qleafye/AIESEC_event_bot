@@ -18,7 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers.game import admin_gamification  # Phase 13 (13-04): grev_*/show_game_review moved here
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import GameReview
 from tests._dbtpl import fast_init_db
 

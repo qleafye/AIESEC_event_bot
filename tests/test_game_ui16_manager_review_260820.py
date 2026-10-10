@@ -17,7 +17,7 @@ from config import config
 from database import db
 from handlers.game import admin_gamification
 from handlers import admin_settings
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.states import CoinsManual
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db

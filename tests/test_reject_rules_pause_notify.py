@@ -192,7 +192,7 @@ def test_on_setting_written_swallows_notify_exception(tmp_path, monkeypatch):
     async def _boom(*args, **kwargs):
         raise RuntimeError("сеть легла")
 
-    from handlers import admin_caps
+    from handlers.access import admin_caps
     monkeypatch.setattr(admin_caps, "notify_by_capability", _boom)
 
     _run(db.set_setting("reg_q_course", "off"))

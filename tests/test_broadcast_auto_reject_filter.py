@@ -277,7 +277,7 @@ def test_count_and_list_filtered_via_picked_auto_reject_spec(tmp_path):
 def test_required_capability_filter_f_auto_reject_is_broadcast():
     """`filter_f_*` уже покрывает по префиксному матчу (тот же довод, что у `resume`) — новых
     записей в ADMIN_CAPS заводить не требуется."""
-    from handlers import admin_caps
+    from handlers.access import admin_caps
     assert admin_caps.required_capability(callback_data="filter_f_auto_reject") == "broadcast"
 
 

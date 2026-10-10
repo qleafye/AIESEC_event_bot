@@ -18,7 +18,7 @@
 
 Вынесено из handlers/user_actions.py и services/scheduler.py: оба у своих потолков
 (tests/test_module_size_convention_260816.py), хуки там — по одной строке. Импорт
-`handlers.admin_caps` — ленивый, внутри функций: модуль импортируется из user_actions при
+`handlers.access.admin_caps` — ленивый, внутри функций: модуль импортируется из user_actions при
 инициализации пакета handlers, верхнеуровневый импорт обратно в handlers замкнул бы цикл.
 """
 import html
@@ -112,7 +112,7 @@ def arm_digest_job(city: str | None, minutes: int) -> None:
 async def notify_submission(bot, *, submission_id: int, user_id: int, task_id: int,
                             task_text: str, submitter_name: str) -> None:
     """Точка входа из finalize_game_submission: выбрать режим и отправить/отложить."""
-    from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
+    from handlers.access.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     city = await resolve_submitter_city(user_id)
     mode = await get_setting_typed("game_submit_notify_mode")
     if mode == "digest":
@@ -134,7 +134,7 @@ async def notify_submission(bot, *, submission_id: int, user_id: int, task_id: i
 async def send_game_digest(city: str | None) -> int:
     """Date-job target (аргумент — только строка города, picklable; Bot — из
     services.scheduler._bot). Пустая очередь -> без сообщения. Возвращает число отправок."""
-    from handlers.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
+    from handlers.access.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     try:
         rows = await list_unsent_game_digest(city)
         if not rows:

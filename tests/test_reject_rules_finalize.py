@@ -470,7 +470,7 @@ def test_auto_reject_admin_notification_sent_when_admins_configured(tmp_path, mo
     monkeypatch.setattr(config, "ADMIN_IDS", [777])
 
     async def go():
-        from handlers import admin_caps
+        from handlers.access import admin_caps
         calls = []
 
         async def fake_notify(bot, cap, text, **kwargs):
@@ -506,7 +506,7 @@ def test_auto_reject_goes_to_pending_summary_when_applications_are_batched(tmp_p
     monkeypatch.setattr(config, "ADMIN_IDS", [777])
 
     async def go():
-        from handlers import admin_caps
+        from handlers.access import admin_caps
         calls = []
 
         async def fake_notify(bot, cap, text, **kwargs):

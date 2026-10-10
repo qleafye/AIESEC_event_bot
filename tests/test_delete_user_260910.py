@@ -5,7 +5,7 @@
   `purge_user`, `find_user_id_by_username` — плюс сторож дрейфа схемы (регулярка по исходнику
   `database/db.py`, тот же приём, что `test_kinds_match_module_docstring` в
   `tests/test_miniapp_outbox.py`).
-- Хендлер (`handlers/admin_purge.py`): карточка/подтверждение/отказ, права `config.ADMIN_IDS`.
+- Хендлер (`handlers/access/admin_purge.py`): карточка/подтверждение/отказ, права `config.ADMIN_IDS`.
 
 pytest-asyncio недоступен в этом окружении (см. tests/test_db_phase5.py) — каждый async-вызов
 обёрнут в `asyncio.run()`, `config.DB_PATH` указывает на файл в `tmp_path`. Фейки
@@ -275,7 +275,7 @@ def test_user_purge_tables_is_the_single_list():
     assert src.count("USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (") == 1
 
 
-# ── Хендлер handlers/admin_purge.py ─────────────────────────────────────────────────────────
+# ── Хендлер handlers/access/admin_purge.py ─────────────────────────────────────────────────────────
 # Фейки — по образцу tests/test_roles_phase8.py (запись текстов ответов, edit_text, answer),
 # хендлеры вызываются напрямую функцией, как в большинстве admin-тестов проекта.
 
@@ -314,9 +314,9 @@ class _FakeCallback:
 
 
 def _import_handlers():
-    # Ленивый импорт: handlers.admin_purge тянет aiogram + весь пакет handlers, тестам БД-
+    # Ленивый импорт: handlers.access.admin_purge тянет aiogram + весь пакет handlers, тестам БД-
     # слоя выше он не нужен.
-    from handlers import admin_purge
+    from handlers.access import admin_purge
     return admin_purge
 
 

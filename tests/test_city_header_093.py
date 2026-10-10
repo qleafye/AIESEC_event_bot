@@ -20,7 +20,7 @@ from handlers import admin as admin_mod
 from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers.cities import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers.game import admin_gamification
-from handlers.admin_caps import ADMIN_CAPS, ANY_CAPABILITY, required_capability, role_caps_key
+from handlers.access.admin_caps import ADMIN_CAPS, ANY_CAPABILITY, required_capability, role_caps_key
 from tests._dbtpl import fast_init_db
 
 

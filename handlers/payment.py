@@ -20,7 +20,7 @@ from domain.payment import parse_options as _parse_options  # квик-фикс 
 from domain.settings.schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
-from handlers.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
+from handlers.access.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
 # Квик 260917-en: экраны оплаты — group "pay" теперь в делегатском корпусе
 # (services/i18n_sources.py); reg_i18n не импортирует handlers.registration на уровне модуля
 # (лениво внутри say()), цикла нет. bot.send_message-вызовы этого файла не идут через

@@ -15,7 +15,7 @@ import pytest
 import domain.cities as cities
 from config import config
 from database import db
-from handlers.admin_caps import role_caps_key
+from handlers.access.admin_caps import role_caps_key
 from services.revert_pending import revert_to_pending
 from tests._dbtpl import fast_init_db
 
@@ -133,7 +133,7 @@ def test_revert_each_mode_admin_text_names_the_admin(tmp_path, monkeypatch):
         calls.append(text)
         return 1
 
-    monkeypatch.setattr("handlers.admin_caps.notify_by_capability", _fake_notify_by_capability)
+    monkeypatch.setattr("handlers.access.admin_caps.notify_by_capability", _fake_notify_by_capability)
 
     async def scenario():
         await _seed_user(DELEGATE_ID, status="approved")
@@ -156,7 +156,7 @@ def test_revert_each_mode_without_admin_name_keeps_old_text(tmp_path, monkeypatc
         calls.append(text)
         return 1
 
-    monkeypatch.setattr("handlers.admin_caps.notify_by_capability", _fake_notify_by_capability)
+    monkeypatch.setattr("handlers.access.admin_caps.notify_by_capability", _fake_notify_by_capability)
 
     async def scenario():
         await _seed_user(DELEGATE_ID, status="approved")
@@ -637,7 +637,7 @@ def test_regreset_cancel_changes_nothing(tmp_path):
 
 
 def test_regreset_capability_registered_for_every_callback():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     for prefix in ("regreset_start:*", "regreset_toggle:*", "regreset_apply:*", "regreset_cancel:*"):
         assert ADMIN_CAPS.get(prefix) == "moderate_reg", prefix
@@ -864,10 +864,10 @@ def test_find_reg_started_card_shows_reset_button_when_draft_exists(tmp_path):
     assert f"regreset_start:{STARTED_ONLY_ID}" in buttons
 
 
-# ── handlers/admin_roles.py — прямой вход в мастер выдачи роли ─────────────────────────────
+# ── handlers/access/admin_roles.py — прямой вход в мастер выдачи роли ─────────────────────────────
 
 def test_roles_add_for_shows_assign_screen_for_reg_started_person(tmp_path):
-    from handlers import admin_roles
+    from handlers.access import admin_roles
 
     _db_ready(tmp_path)
 
@@ -886,7 +886,7 @@ def test_roles_add_for_shows_assign_screen_for_reg_started_person(tmp_path):
 
 
 def test_roles_add_for_shows_assign_screen_for_users_row(tmp_path):
-    from handlers import admin_roles
+    from handlers.access import admin_roles
 
     _db_ready(tmp_path)
 
@@ -903,7 +903,7 @@ def test_roles_add_for_shows_assign_screen_for_users_row(tmp_path):
 
 
 def test_roles_add_for_rejects_malformed_callback(tmp_path):
-    from handlers import admin_roles
+    from handlers.access import admin_roles
 
     _db_ready(tmp_path)
 
@@ -918,7 +918,7 @@ def test_roles_add_for_rejects_malformed_callback(tmp_path):
 
 
 def test_roles_addfor_capability_registered():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     assert ADMIN_CAPS.get("roles_addfor:*") == "settings"
 
@@ -1303,7 +1303,7 @@ def test_resumerep_receive_other_reminds(tmp_path):
 
 
 def test_resumerep_capability_registered_for_every_callback():
-    from handlers.admin_caps import ADMIN_CAPS
+    from handlers.access.admin_caps import ADMIN_CAPS
 
     for prefix in ("resumerep_start:*", "resumerep_cancel:*", "state:ResumeReplace:*"):
         assert ADMIN_CAPS.get(prefix) == "moderate_reg", prefix

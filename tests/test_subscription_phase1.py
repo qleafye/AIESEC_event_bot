@@ -7,7 +7,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import registration as reg
-from handlers.admin_caps import required_capability
+from handlers.access.admin_caps import required_capability
 from handlers.registration import _membership_status_to_bool, is_subscribed, _normalize_channel_ref
 from tests._dbtpl import fast_init_db
 

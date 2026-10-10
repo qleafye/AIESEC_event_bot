@@ -15,7 +15,7 @@
 Форма шва — та же, что у соседей (`handlers/session_feedback.py`, `handlers/admin_sos.py`):
 своего `Router()` нет, `from handlers.admin import router`; импортирован из ХВОСТА
 `handlers/admin.py`, СРАЗУ ПОСЛЕ `admin_sos` (golden-снапшот роутера требует чистого аппенда).
-Право — `moderate_reg` (`handlers/admin_caps.py`), тот же довод, что у соседнего
+Право — `moderate_reg` (`handlers/access/admin_caps.py`), тот же довод, что у соседнего
 `checkinqr_cfg:*` (массовая рассылка + правка расписания, не рутинное сканирование волонтёра —
 то, для чего достаточно `checkin`). Отдельные строки хаба ведут на экраны с ДРУГИМИ, порой более
 узкими капами (`admin_checkin` — `checkin`, `admin_menu_buttons`/`admin_miniapp_settings` —
@@ -37,7 +37,7 @@ from domain.cities import (
     per_city_key,
 )
 from handlers.admin import router
-from handlers.admin_caps import _holds, has_capability, required_capability, resolve_capabilities
+from handlers.access.admin_caps import _holds, has_capability, required_capability, resolve_capabilities
 from handlers.admin_checkin import (
     _CITY_FORBIDDEN_ALERT,
     _admin_city_scope,

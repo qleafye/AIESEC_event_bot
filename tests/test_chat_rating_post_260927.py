@@ -593,7 +593,7 @@ def test_publish_to_unbound_chat_explains(tmp_path):
 
 
 def test_capabilities_registered():
-    from handlers.admin_caps import required_capability
+    from handlers.access.admin_caps import required_capability
     assert required_capability(callback_data="chpost:toggle:spb") == "settings"
     assert required_capability(callback_data="chpost:go:spb") == "settings"
     assert required_capability(raw_state="ChatRatingPostEdit:waiting_for_value") == "settings"

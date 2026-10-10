@@ -5,7 +5,7 @@
 сообщение, какое правило встало на паузу и почему.
 
 Отдельный файл, не `services/reject_rules.py` — там стоит сторож «модуль не грузит бот-фреймворк»,
-а рассылка держателям права идёт через `handlers.admin_caps.notify_by_capability`, которому нужны
+а рассылка держателям права идёт через `handlers.access.admin_caps.notify_by_capability`, которому нужны
 исключения и метод отправки самого бот-фреймворка. Второй файл держит эту границу чистой — сам
 пересчёт паузы (`active_rules`) по-прежнему живёт в сервисе без этой зависимости, здесь — только
 реакция и рассылка.
@@ -205,7 +205,7 @@ async def _recompute_and_notify() -> None:
     for rule in newly_paused.values():
         by_city.setdefault(rule.get("city"), []).append(rule)
 
-    from handlers.admin_caps import notify_by_capability  # lazy: aiogram-зависимость, см. докстринг модуля
+    from handlers.access.admin_caps import notify_by_capability  # lazy: aiogram-зависимость, см. докстринг модуля
 
     for city, rules_in_city in by_city.items():
         text = await _build_pause_message(rules_in_city)

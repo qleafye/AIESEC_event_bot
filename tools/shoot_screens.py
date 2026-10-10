@@ -119,7 +119,7 @@ MANAGER_SCREENS = [
 # "moderate_reg" (miniapp/routers/settings.py::require_cap("settings") / applications.py::
 # require_cap("moderate_reg")) — ни того, ни другого у GAME_MANAGER_ID нет (demo_server.py
 # сеет только game_manager); ADMIN_ID держит все 7 capability через bootstrap ADMIN_IDS
-# (handlers/admin_caps.py::resolve_capabilities).
+# (handlers/access/admin_caps.py::resolve_capabilities).
 MANAGER_SCREEN_PRINCIPAL = {"settings": ADMIN_ID, "settings-pay": ADMIN_ID, "applications": ADMIN_ID}
 # Phase 30 (30-08, задача 2): "form" снимается от лица FORM_DEMO_ID (см. выше), не DELEGATE_ID.
 DELEGATE_SCREEN_PRINCIPAL = {"form": FORM_DEMO_ID}

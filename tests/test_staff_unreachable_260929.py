@@ -20,7 +20,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from config import config
 from database import db
-from handlers import admin_caps, admin_roles
+from handlers.access import admin_caps, admin_roles
 from services import daily_digest as dd
 from services import staff_reach
 from services.timeutil import msk_now

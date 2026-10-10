@@ -5,7 +5,7 @@
 фильтрация в `get_staff_roles`/`get_staff_ids_by_role` (D-6: «истёкшая роль не даёт НИКАКИХ
 прав»), тот же контракт в `dashboard.access` (веб-дашборд И Mini App, который резолвит
 capability через ЭТОТ ЖЕ модуль — `miniapp/deps.py`), экран «⏳ Срок действия роли»
-(handlers/admin_roles.py).
+(handlers/access/admin_roles.py).
 
 pytest-asyncio недоступна — async через `asyncio.run()` (конвенция проекта, см. соседние
 test_roles_phase8.py/test_dashboard_auth.py). БД — `tmp_path`, шаблон `fast_init_db`."""
@@ -17,8 +17,8 @@ from config import config
 from database import db
 from dashboard import access as dash_access
 from dashboard import db as dash_db
-from handlers import admin_roles  # noqa: F401 -- регистрирует rexp:*/rexp_go:*/rexp_custom:*
-from handlers.admin_caps import ROLES, resolve_capabilities
+from handlers.access import admin_roles  # noqa: F401 -- регистрирует rexp:*/rexp_go:*/rexp_custom:*
+from handlers.access.admin_caps import ROLES, resolve_capabilities
 from services.staff_expiry import forum_end_date_iso, is_expiry_active, parse_ddmmyyyy, today_iso
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import _fresh_state, dispatch_callback, dispatch_message
@@ -131,7 +131,7 @@ def test_get_staff_ids_by_role_excludes_expired(tmp_path):
     assert ids == [other]
 
 
-# ── handlers/admin_caps.py: истёкшая роль не даёт НИКАКИХ прав в боте ──────────────────────
+# ── handlers/access/admin_caps.py: истёкшая роль не даёт НИКАКИХ прав в боте ──────────────────────
 
 def test_expired_role_grants_no_capabilities_in_bot(tmp_path):
     _ready(tmp_path)

@@ -6985,7 +6985,7 @@ async def set_staff_expiry(telegram_id: int, role: str, expires_at: str | None) 
 async def get_staff_roles(telegram_id: int) -> list[str]:
     """All CURRENTLY ACTIVE roles held by one person (empty list if they hold none). Идея №6
     (D-6): «истёкшая роль не даёт НИКАКИХ прав» -- filtered here, the ONE place
-    `handlers.admin_caps.resolve_capabilities` reads roles from, so the expiry check applies
+    `handlers.access.admin_caps.resolve_capabilities` reads roles from, so the expiry check applies
     to every capability decision downstream without touching admin_caps.py itself. A row is
     active when `expires_at` is NULL (бессрочно) or still >= today (действует ПО этот день
     включительно) -- string comparison is safe because both sides are ISO `YYYY-MM-DD`."""
@@ -10942,7 +10942,7 @@ async def get_stored_lang(telegram_id: int) -> str | None:
 
 # ── Quick 260910-ro7 (DELU-01..08): удаление тестового делегата одной транзакцией ──────────
 # Приёмка требует «чистого» тестового аккаунта — суперадмин должен уметь стереть человека из
-# ВСЕХ делегатских таблиц одним нажатием (handlers/admin_purge.py), без ручного лазания в
+# ВСЕХ делегатских таблиц одним нажатием (handlers/access/admin_purge.py), без ручного лазания в
 # SQLite на сервере. USER_PURGE_TABLES — ЕДИНСТВЕННЫЙ источник правды: и счёт следа
 # (count_user_footprint), и само удаление (purge_user) ходят по одному и тому же списку,
 # второго списка в коде нет.
@@ -11164,7 +11164,7 @@ _PURGE_ANONYMIZE_CREDIT_WHERE = (
 
 async def count_user_footprint(telegram_id: int) -> dict[str, int]:
     """Что пропадёт при purge_user(telegram_id) — заранее, для карточки подтверждения
-    (handlers/admin_purge.py). Все ключи из _PURGE_RESULT_GROUPS присутствуют в результате
+    (handlers/access/admin_purge.py). Все ключи из _PURGE_RESULT_GROUPS присутствуют в результате
     ВСЕГДА, даже нулевые — вызывающему не приходится гадать, какие бывают. Плюс
     `referrals_kept` — сколько делегатов привёл этот человек (users.referrer_id): в удаление
     НЕ входит (purge_user эту связь не трогает), считается только чтобы честно предупредить
