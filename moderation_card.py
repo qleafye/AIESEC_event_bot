@@ -2,7 +2,7 @@
 как их читать из `users`, как обрезать длинные значения и не влезающую в лимит Telegram
 карточку.
 
-Корневой модуль (сосед `reg_engine.py`/`reg_labels.py`/`settings_schema.py`) — БЕЗ импорта
+Корневой модуль (сосед `reg_engine.py`/`reg_labels.py`/`domain/settings/schema.py`) — БЕЗ импорта
 aiogram, БЕЗ импорта `miniapp.*`/`handlers.*`. Единственный источник схемы анкеты —
 `reg_engine.STEP_TO_COLUMN`/`reg_engine.label_for`; второй карты «шаг → подпись» здесь нет и
 не будет (план 21-13 закрыл алиасы, заводить их заново запрещено).

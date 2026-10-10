@@ -7,7 +7,7 @@
 """
 from __future__ import annotations
 
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_frontend import _js_without_comments
 from tests.test_miniapp_resume_fork_edit_js_260927 import FORM_SCREEN_JS, _between

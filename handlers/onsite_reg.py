@@ -47,7 +47,7 @@ from database.db import create_onsite_user, get_user, record_user_consent
 from handlers import reg_i18n
 from reg_engine import is_past_season_row, validate_answer
 from services.onsite_reg import onsite_enabled, parse_walkin_arg
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

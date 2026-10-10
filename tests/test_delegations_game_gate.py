@@ -19,7 +19,7 @@ from config import config
 from database import db
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb, MENU_BUTTONS
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from tests._dbtpl import fast_init_db
 
 

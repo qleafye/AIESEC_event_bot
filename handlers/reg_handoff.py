@@ -22,7 +22,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, TelegramObject
 
 from database.db import get_reg_draft, get_user, set_reg_draft_surface
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
 from reg_engine import has_submitted_anketa
 from handlers.registration import router

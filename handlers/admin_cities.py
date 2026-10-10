@@ -22,8 +22,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
+from services.settings.audit import set_setting_by_admin, delete_setting_by_admin
 from database.db import (
     get_setting,
     get_staff_city,

@@ -13,7 +13,7 @@
 (`miniapp/deps.py`: «Модуль aiogram-free»), а `admin_settings.py` стоит на потолке размера
 (`tests/test_module_size_convention_260816.py`). Без этого модуля веб-слой фазы 22 либо
 тянет за собой бота целиком, либо заводит вторую копию правил — та же формула, что у
-соседнего `handlers/settings_validation.py`.
+соседнего `domain/settings/validation.py`.
 
 Плюс — четыре карты, ВЫВЕДЕННЫЕ из `SETTINGS_SCHEMA`/`admin_settings.SETTINGS_GROUPS`/
 `admin_sections.SECTIONS`, отвечающие на вопрос «что веб даёт править, где это лежит и что
@@ -46,9 +46,9 @@ from cities import (
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from reg_presets import apply_reg_preset
 from services.sheets import _reset_sheet_cache
-import settings_placeholders
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
-from settings_validation import (
+import domain.settings.placeholders as settings_placeholders
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, multi_options
+from domain.settings.validation import (
     AMB_THRESHOLD_KEYS, amb_threshold_order_error, is_command_like, validate_setting_value,
 )
 
@@ -65,7 +65,7 @@ async def apply_event_type_preset(event_type: str, admin_id: int | None = None) 
     Пишет с автором (`admin_id`) через `write_setting_logged` и возвращает все записанные ключи:
     бот гонит по ним хуки (`settings_audit.run_setting_hooks_batch`), приложение ставит в очередь
     `settings_changed` — иначе пресет менял бы десятки настроек без следа в логе и без реакции."""
-    from settings_audit import write_setting_logged
+    from services.settings.audit import write_setting_logged
 
     writes: dict[str, str] = {}
     if event_type == "conference":
@@ -499,7 +499,7 @@ EXCLUDED_KEYS: frozenset[str] = (
 )
 
 # Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.admin_settings.SETTINGS_GROUPS) —
-# литерал, а не импорт: admin_settings.py тянет aiogram, settings_ops.py — нет (D-12), а
+# литерал, а не импорт: admin_settings.py тянет aiogram, domain/settings/ops.py — нет (D-12), а
 # импортировать оттуда сюда список токенов означало бы либо цикл (admin_settings уже
 # импортирует settings_ops), либо протаскивание aiogram транзитивно. Список — десять
 # литералов, меняющихся вместе с редкой перестановкой экранов бота, не риск дрейфа кода
@@ -1004,7 +1004,7 @@ async def validate_batch_item(
             # (чекбокс-пикеры скоринга, form.js рисует их тем же `multiControl`) — без этого
             # снятие ВСЕХ галочек в веб-настройках падало бы с «не понял значение», хотя
             # пустой набор здесь — обычное, ожидаемое правило («ни один вариант не даёт балл»,
-            # см. settings_schema.py).
+            # см. domain/settings/schema.py).
             base_meta = SETTINGS_SCHEMA.get(base_setting_key(key), {})
             is_checkbox_set = base_meta.get("type") == "multi" or bool(base_meta.get("options_from_step"))
             if not is_checkbox_set:
@@ -1064,7 +1064,7 @@ async def commit_batch_item(
     предупреждение (не блокирующее) либо `None`. `admin_id` — автор правки для лога настроек;
     `written` — список, в который дописываются ключи, записанные пресетом типа события (для
     очереди `settings_changed` приложения)."""
-    from settings_audit import write_setting_logged
+    from services.settings.audit import write_setting_logged
 
     warning = None
     await write_setting_logged(admin_id, key, value)

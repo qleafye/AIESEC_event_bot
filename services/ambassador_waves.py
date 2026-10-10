@@ -22,7 +22,7 @@ import statistics
 from datetime import datetime
 
 import cities
-import settings_ops
+import domain.settings.ops as settings_ops
 from database.db import (
     NO_DEADLINE_AT,
     announce_wave_atomic,
@@ -44,7 +44,7 @@ from database.db import (
     waves_overlapping,
 )
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 
 # ── Задача 1 (D-14/D-29/D-31/D-32/D-38): участие в волне и её рейтинг ──────────────────────

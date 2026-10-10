@@ -17,7 +17,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import admin_settings
-from handlers.settings_validation import is_command_like
+from domain.settings.validation import is_command_like
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900802

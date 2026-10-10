@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from config import config
 from database.db import get_setting
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.timeutil import MOSCOW_TZ, msk_now
 
 logger = logging.getLogger(__name__)
@@ -632,7 +632,7 @@ UNMUTE_TODAY_CALLBACK = "bc_unmute_today"
 MUTE_BUTTON_TEXT = "🔕 Не присылать сегодня"
 UNMUTE_BUTTON_TEXT = "🔔 Присылать всё"
 
-# D-34 (24.09): дефолт зеркалит registry-ключ `broadcast_mute_offer_text` (settings_schema.py)
+# D-34 (24.09): дефолт зеркалит registry-ключ `broadcast_mute_offer_text` (domain/settings/schema.py)
 # — менеджер правит текст в самом боте, здесь только fail-soft на случай пустого реестра.
 _MUTE_OFFER_TEXT = "Сегодня многовато рассылок? Можно отключить необязательные до завтра:"
 
@@ -663,7 +663,7 @@ async def _translated_button(text: str, callback_data: str, chat_id: int) -> Inl
 
 
 async def mute_button(chat_id: int) -> InlineKeyboardButton:
-    from settings_ui_text_fields import ui_text  # подпись — настройка «📋 Заявки»
+    from domain.settings.ui_text_fields import ui_text  # подпись — настройка «📋 Заявки»
     return await _translated_button(await ui_text("broadcast_mute_button_text"), MUTE_TODAY_CALLBACK, chat_id)
 
 
@@ -721,7 +721,7 @@ async def load_recipient_langs() -> RecipientLangs:
     except Exception:  # noqa: BLE001 — тот же широкий fail-soft, что у delegate_lang
         logger.error("load_recipient_langs: сбой чтения языков получателей", exc_info=True)
         return RecipientLangs(False, {}, {})
-    from settings_ui_text_fields import ui_text  # подпись «🔕» — настройка «📋 Заявки»
+    from domain.settings.ui_text_fields import ui_text  # подпись «🔕» — настройка «📋 Заявки»
     try:
         mute_text = await ui_text("broadcast_mute_button_text")
     except Exception:  # noqa: BLE001 — без настройки кнопка с подписью по умолчанию
@@ -731,7 +731,7 @@ async def load_recipient_langs() -> RecipientLangs:
 
 
 async def unmute_button(chat_id: int) -> InlineKeyboardButton:
-    from settings_ui_text_fields import ui_text
+    from domain.settings.ui_text_fields import ui_text
     return await _translated_button(await ui_text("broadcast_unmute_button_text"), UNMUTE_TODAY_CALLBACK, chat_id)
 
 
@@ -1647,7 +1647,7 @@ async def chat_history_prune_job():
     try:
         import shared.chat_score as chat_score
         from database.db import prune_chat_history
-        from settings_schema import get_setting_typed
+        from domain.settings.schema import get_setting_typed
 
         days = _int_or_default(await get_setting_typed(chat_score.RETENTION_KEY),
                                chat_score.DEFAULT_RETENTION_DAYS)

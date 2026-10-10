@@ -28,7 +28,7 @@ from database.db import current_consent_version, get_user_consent_versions
 # Квик 260914-k74 (LEAK-01): набор колонок резюме для снимка process_confirm_edit — тот же
 # источник правды, которым уже пользуется reg_engine.has_prior_resume, второй список не заводим.
 from database.db import RESUME_RECALL_COLUMNS
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.consent import tapped_button_text
 from cities import CITIES, is_city_registration_open
 from handlers.states import Registration

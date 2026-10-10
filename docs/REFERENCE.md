@@ -235,10 +235,10 @@ Cloudflare Worker (reverse-proxy `api.telegram.org` на своём домене
 AIESEC_event_bot/
 ├── main.py                    # Точка входа: роутеры, планировщик, фоновые циклы, логи
 ├── config.py                  # pydantic-settings поверх .env
-├── settings_schema.py         # SETTINGS_SCHEMA, реестр настроек bot_settings
-├── settings_ops.py            # Правила настроек, общие для бота и Mini App, без aiogram
-├── settings_validation.py     # Валидация значения настройки до записи в bot_settings
-├── settings_synonyms.py       # Синонимы для поиска по настройкам в Mini App
+├── domain/settings/schema.py         # SETTINGS_SCHEMA, реестр настроек bot_settings
+├── domain/settings/ops.py            # Правила настроек, общие для бота и Mini App, без aiogram
+├── domain/settings/validation.py     # Валидация значения настройки до записи в bot_settings
+├── domain/settings/synonyms.py       # Синонимы для поиска по настройкам в Mini App
 ├── cities.py                  # Реестр городов мероприятия (event_city)
 ├── reg_engine.py               # Ядро анкеты без aiogram, общее для бота и Mini App
 ├── reg_labels.py               # Подписи анкеты, корневой модуль без aiogram

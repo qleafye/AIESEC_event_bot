@@ -15,7 +15,7 @@ from config import config
 from database import db
 from handlers import admin
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 
@@ -123,7 +123,7 @@ def test_registry_new_keys_on_event_screen():
     assert "event_season" not in admin_settings.HTML_SETTINGS
 
 
-from settings_ui_text_fields import BOT_COMMAND_FIELD_ORDER, INFO_SCREEN_FIELD_ORDER  # noqa: E402
+from domain.settings.ui_text_fields import BOT_COMMAND_FIELD_ORDER, INFO_SCREEN_FIELD_ORDER  # noqa: E402
 
 
 def test_registry_event_order_unchanged_for_old_keys():

@@ -13,7 +13,7 @@ import pytest
 
 from miniapp.routers.page import SCREEN_TEXT_KEYS
 from services.i18n_miniapp_manual import MANUAL_EN
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 ROOT = REPO_ROOT
 HUB_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "hub.js"

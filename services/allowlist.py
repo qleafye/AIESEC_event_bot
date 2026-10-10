@@ -8,12 +8,12 @@ import asyncio
 import logging
 
 from database.db import get_setting
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
 # Quick 260815-3hw: source of truth for this default moved to the registry (preselect_tab,
-# settings_schema.py, "sheets" group) -- kept here only because tests/older callers may still
+# domain/settings/schema.py, "sheets" group) -- kept here only because tests/older callers may still
 # reference the module-level constant; refresh_allowlist below no longer reads it directly.
 DEFAULT_TAB = "Отобранные"
 

@@ -23,7 +23,7 @@ from database import db
 from handlers import admin_settings, admin_settings_lists
 from handlers.admin_caps import required_capability
 from handlers.states import EditSetting
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900822

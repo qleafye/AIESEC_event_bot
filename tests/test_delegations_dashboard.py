@@ -4,7 +4,7 @@ import asyncio
 from database import db as bot_db
 from dashboard import db as dash_db
 from dashboard.queries import Scope, dashboard_flags, delegations_block
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_dashboard_queries import _seed, _use_tmp_db
 from tests import test_dashboard_render as render

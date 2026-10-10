@@ -18,7 +18,7 @@ Phase 23 (23-02, APP-TINDER-01): the queue/card core (`_edit_badges_for`/`_forma
 sync, formerly `_welcome_flipped`) moved to `services/applications.py`/
 `services/application_effects.py` — aiogram-free ground floor the Mini App queue (`miniapp/`)
 can call without pulling the bot in. Module-level aliases under the old private names keep this
-file's handler bodies and order untouched (same technique as `settings_ops.py`, Phase 22).
+file's handler bodies and order untouched (same technique as `domain/settings/ops.py`, Phase 22).
 """
 import html as html_module
 import logging
@@ -59,7 +59,7 @@ from services.consent import consent_card_line  # noqa: F401 — читает ad
 from handlers.states import Approval, ReceiptReview
 from keyboards.builders import get_cancel_kb, get_main_menu_kb
 import moderation_card
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from cities import city_label, admin_selected_city, city_scope, city_codes, normalize_city, ALL_CITIES, ALL_CITIES_LABEL
 from handlers.admin_modcard_render import build_card_text
 from handlers.admin_core import admin_keyboard_for, _admin_city_view, _card_out_of_scope, _OUT_OF_SCOPE_ALERT

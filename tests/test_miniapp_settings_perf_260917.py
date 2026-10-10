@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import asyncio
 
-import settings_ops
+import domain.settings.ops as settings_ops
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_routes import ADMIN_ID, _cfg, _client, _seed, _set, _standard_seed, _use_tmp_db, _hdr
 

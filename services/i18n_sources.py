@@ -17,7 +17,7 @@
 `list`-ключи считаются текстом чата делегата и подлежат переводу:
 
 - `reg_prompts` — тексты вопросов анкеты (`reg_prompt_{step}`, генерируются циклом в конце
-  `settings_schema.py`);
+  `domain/settings/schema.py`);
 - `reg` — остальной текст регистрации: подписи кнопок мастера, тексты после одобрения/отказа,
   списки вариантов с реестровым override (`source_options`, `city_options`, ...);
 - `party` — тексты party-трека (форк «Полная регистрация / Гости»);
@@ -93,7 +93,7 @@ import logging
 from cities import CITIES, split_per_city_key
 import cities
 from config import config
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 import reg_engine
 import reg_labels
 import reg_options

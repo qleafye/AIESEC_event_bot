@@ -228,7 +228,7 @@ def poll_keyboard(labels: dict[str, str]):
 
 
 async def _option_labels() -> dict[str, str]:
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     return {
         reason: (await get_setting_typed(key)) or OPTION_DEFAULTS[reason]
@@ -240,7 +240,7 @@ async def send_poll(city: str | None) -> dict:
     """Отправляет опрос всем кандидатам города (`city=None` — все города, модуль выключен).
     Троттлинг/мут/тихие часы — докстринг модуля."""
     from database.db import forum_noshow_poll_mark_sent, forum_noshow_poll_pending_ids, get_user
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     from services import quiet_hours
     import cities as _cities
 
@@ -313,7 +313,7 @@ async def record_answer(telegram_id: int, reason: str, comment: str | None) -> b
     вызывающий отвечает тихо, не пишет вслепую (тот же приём, что `services.session_feedback.
     record_rating`)."""
     from database.db import record_forum_noshow_poll_response
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     season = (await get_setting_typed("event_season") or "").strip()
     stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
@@ -325,7 +325,7 @@ async def summary_text(*, city_scope=None) -> str:
     admin_forum_functions.py`). `total_sent == 0` — вызывающий сам решает, показывать ли строку
     вовсе (тот же приём, что `services.checkin_not_arrived.summary_text`)."""
     from database.db import forum_noshow_poll_summary
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     season = (await get_setting_typed("event_season") or "").strip()
     s = await forum_noshow_poll_summary(season, city_scope=city_scope)

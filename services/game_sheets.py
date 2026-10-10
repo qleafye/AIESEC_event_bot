@@ -28,7 +28,7 @@ from cities import (
     normalize_city,
     tab_suffix,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

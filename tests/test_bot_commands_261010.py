@@ -13,8 +13,8 @@ from config import config
 from database import db
 import services.scheduler as sched
 from services import bot_commands
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 _ALL = {

@@ -17,7 +17,7 @@ from database import amb_tiers_db as tdb
 from database import db
 from miniapp import outbox as web_outbox
 from services import amb_tiers_notify, applications, miniapp_outbox
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 from tests.test_amb_tiers_core_su5 import seed_journal_row
 

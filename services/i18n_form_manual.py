@@ -487,7 +487,7 @@ _CODE_LITERALS_EN = {
         "Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
     "Хорошо, снова присылаю все рассылки.": "Okay, sending all messages again.",
     # D-34 (24.09, решение владельца): реестровые ключи `broadcast_mute_confirm_text`/
-    # `broadcast_unmute_confirm_text` (settings_schema.py) хранят ПОЛНЫЙ текст С эмодзи-
+    # `broadcast_unmute_confirm_text` (domain/settings/schema.py) хранят ПОЛНЫЙ текст С эмодзи-
     # префиксом (в отличие от пары строк выше, которые ловит именно `reg_i18n.tr_text` после
     # снятия префикса) — сторож `tests/test_i18n_form_manual_coverage_260917.py` сверяет
     # корпус реестровых дефолтов байт-в-байт, без снятия префикса.
@@ -712,7 +712,7 @@ _REGISTRY_TEXTS_EN = {
     "Прикрепи файл резюме — PDF или DOCX до 10 МБ.": "Attach your CV file — PDF or DOCX up to 10 MB.",
     # Делегации вузов — тексты делегату, группа reg (delegation_welcome_text /
     # delegation_welcome_existing_text / delegation_game_off_text). RU-ключ — дефолт из
-    # settings_schema.py байт-в-байт; меняется дефолт — меняются оба места одним коммитом.
+    # domain/settings/schema.py байт-в-байт; меняется дефолт — меняются оба места одним коммитом.
     "Привет! Ты в списке делегации {university} на форум Юлид в Москве 🎉\n\nАнкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет QR на вход и все новости форума.": "Hi! You're on the {university} delegation list for the YouLead forum in Moscow 🎉\n\nNo need to fill in the questionnaire — your application is already approved. Below is the participant menu: your entry QR and all forum news will be there.",
     "Ты в списке делегации {university} — спасибо, что с нами! Заявка одобрена, меню участника ниже.": "You're on the {university} delegation list — thanks for being with us! Your application is approved, the participant menu is below.",
     "Задания и монеты для делегаций вузов на этом форуме выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.": "Tasks and coins for university delegations are switched off at this forum. Everything else — the programme, the entry QR, the news — works as usual.",
@@ -862,7 +862,7 @@ _REGISTRY_TEXTS_EN = {
     "Выбрано 0 из {max}. Можно ничего не выбирать — шаг необязательный.": "Selected 0 of {max}. You can choose nothing — this step is optional.",
     # Актуальный дефолт (main, «счётчик мультивыбора не обещает «можно ничего не выбирать» у
     # обязательного шага») — короче, без обещания необязательности; обязательность шага
-    # сообщает отдельная подсказка над вариантами (см. `settings_schema.py::reg_multi_limit_hint_zero_text`).
+    # сообщает отдельная подсказка над вариантами (см. `domain/settings/schema.py::reg_multi_limit_hint_zero_text`).
     "Выбрано 0 из {max}.": "Selected 0 of {max}.",
     "📱 Продолжить в приложении": "📱 Continue in the app",
     "💬 Продолжить в чате": "💬 Continue in chat",

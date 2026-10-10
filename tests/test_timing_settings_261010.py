@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from config import config
 from database import db
 from services import scheduler as sched
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 from tests.test_ambassador_wave_scheduling_32 import _run_scheduled
 

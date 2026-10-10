@@ -112,9 +112,9 @@ def test_load_config_admin_ids_skips_garbage_tokens():
 
 def test_dashboard_package_never_imports_bot_frameworks():
     forbidden = ("import aiogram", "from aiogram", "from handlers", "import handlers", "import gspread",
-                 # 31.08: settings_schema тянет database.db → aiosqlite, которого в slim-образе нет —
+                 # 31.08: domain.settings.schema тянет database.db → aiosqlite, которого в slim-образе нет —
                  # дашборд падал на старте ModuleNotFoundError. Корневые чистые модули (web_theme) — можно.
-                 "from settings_schema", "import settings_schema", "from database", "import database")
+                 "from domain", "import domain", "from database", "import database")
     offenders = []
     for py_file in DASHBOARD_DIR.rglob("*.py"):
         text = py_file.read_text(encoding="utf-8")

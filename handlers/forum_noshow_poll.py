@@ -37,7 +37,7 @@ async def fnsp_answer(callback: types.CallbackQuery, state: FSMContext):
     if reason == "other":
         await state.set_state(ForumNoshowPollOther.waiting)
         await callback.answer()
-        from settings_schema import get_setting_typed
+        from domain.settings.schema import get_setting_typed
 
         prompt = await get_setting_typed("forum_noshow_poll_other_prompt_text") or fnsp.DEFAULT_OTHER_PROMPT
         try:
@@ -53,7 +53,7 @@ async def fnsp_answer(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     thanks = await get_setting_typed("forum_noshow_poll_thanks_text") or fnsp.DEFAULT_THANKS
     await callback.answer(reg_i18n.tr_text(thanks, lang, tr_map), show_alert=True)
@@ -70,7 +70,7 @@ async def fnsp_other_step(message: types.Message, state: FSMContext):
         return  # заявка устарела/сезон сменился — тихо, без ошибки на пустом месте
 
     lang, tr_map = await reg_i18n.ctx_for(message)
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     thanks = await get_setting_typed("forum_noshow_poll_thanks_text") or fnsp.DEFAULT_THANKS
     await message.answer(reg_i18n.tr_text(thanks, lang, tr_map))

@@ -477,7 +477,7 @@ def test_bound_manager_allowed_config_for_own_city(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_reschedule_hook_composite_key_touches_only_that_city(tmp_path, monkeypatch):
-    from settings_reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
+    from services.settings.reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
 
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
@@ -496,7 +496,7 @@ def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
     """Голый `forum_date` пересчитывает все города одним вызовом, но при включённом модуле
     городов общий ключ больше НЕ даёт дату городу без своей: иначе Москва получала QR за чужой
     региональный форум. spb (своя дата) стоит, tyumen/msk (только общая) — нет."""
-    from settings_reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
+    from services.settings.reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
 
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
@@ -514,7 +514,7 @@ def test_reschedule_hook_bare_key_reconciles_every_city(tmp_path, monkeypatch):
 
 
 def test_reschedule_hook_ignores_unrelated_key(tmp_path, monkeypatch):
-    from settings_reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
+    from services.settings.reschedule import reschedule_for_setting as _reschedule_checkin_qr_if_forum_date
 
     _db_ready(tmp_path)
 
@@ -547,8 +547,8 @@ def test_forum_date_from_app_outbox_reschedules_jobs(tmp_path, monkeypatch):
 
 def test_bot_save_reschedules_exactly_once(tmp_path, monkeypatch):
     """Запись из бота идёт через ту же воронку: переплан ровно один раз, не дважды."""
-    import settings_reschedule
-    from settings_audit import set_setting_by_admin
+    import services.settings.reschedule as settings_reschedule
+    from services.settings.audit import set_setting_by_admin
 
     _db_ready(tmp_path)
     calls = []

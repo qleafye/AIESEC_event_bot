@@ -31,12 +31,12 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from database.db import get_setting
-from settings_audit import set_setting_by_admin, delete_setting_by_admin
+from services.settings.audit import set_setting_by_admin, delete_setting_by_admin
 from cities import ALL_CITIES, admin_selected_city, is_per_city, per_city_key
 from handlers.states import EditSetting
-from handlers.settings_validation import is_command_like
+from domain.settings.validation import is_command_like
 from handlers.admin import router
 from handlers.admin_settings import (
     SETTINGS_FIELDS,
@@ -53,7 +53,7 @@ _RESERVED_WORDS = {"отмена", "другое", "пропустить"}
 # Phase 30 (30-07, задача 4, A2-03, 30-CONTEXT.md § «Решения оркестратора», п.2): списки-
 # справочники типа `lookup` (university_options/city_options) получают три атрибута кнопками
 # на СВОЁМ экране правки списка — НЕ десятый тумблер группы «📝 Анкета». Ключ-спутник —
-# `<list_key>_<suffix>` (settings_schema.py, group="toggles"), второй карты имён не заводится.
+# `<list_key>_<suffix>` (domain/settings/schema.py, group="toggles"), второй карты имён не заводится.
 LOOKUP_LIST_ATTR_SUFFIXES = ("chips_enabled", "search_enabled", "other_allowed")
 _LOOKUP_ATTR_LABELS = {
     "chips_enabled": "Чипы", "search_enabled": "Поиск", "other_allowed": "Свой вариант",
@@ -114,7 +114,7 @@ async def _resolve_target(admin_id: int, key: str) -> tuple[str | None, str | No
     `settings_edit_city`: город виден этому админу, код из реестра). Иначе — сам `key`."""
     header = await admin_selected_city(admin_id)
     if not header or header == ALL_CITIES or not is_per_city(key):
-        from settings_ops import COMMON_DENIED_TEXT, can_write_common
+        from domain.settings.ops import COMMON_DENIED_TEXT, can_write_common
         if not await can_write_common(admin_id):  # общий список — не для привязанного к городу
             return None, None, COMMON_DENIED_TEXT
         return key, None, None
@@ -358,7 +358,7 @@ async def settings_list_attr_toggle(callback: types.CallbackQuery):
     if attr_key not in SETTINGS_SCHEMA:
         await callback.answer("Атрибут не найден", show_alert=True)
         return
-    from settings_ops import COMMON_DENIED_TEXT, can_write_common
+    from domain.settings.ops import COMMON_DENIED_TEXT, can_write_common
     if not await can_write_common(callback.from_user.id):  # атрибут общий на все города
         return await callback.answer(COMMON_DENIED_TEXT, show_alert=True)
     current = await get_setting_typed(attr_key) == "on"

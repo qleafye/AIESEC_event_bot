@@ -1,5 +1,5 @@
 """Общие подписи админки не называют конкретное событие: бот один на Юлид, РилТолк, СкиллАп."""
-import settings_schema
+import domain.settings.schema as settings_schema
 from reg_presets import REG_PRESETS
 
 

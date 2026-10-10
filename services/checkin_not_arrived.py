@@ -34,7 +34,7 @@ from database.db import (
 )
 from services import scheduler as _sched
 from services.timeutil import city_offset_hours, msk_now, shift_hours
-from settings_ui_text_fields import UI_TEXT_SCHEMA, ui_text
+from domain.settings.ui_text_fields import UI_TEXT_SCHEMA, ui_text
 
 logger = logging.getLogger(__name__)
 

@@ -38,8 +38,8 @@ from handlers.admin_amb_tiers import _edit_or_send, _is_cancel, _person_label, _
 from handlers.admin_caps import has_capability
 from handlers.states import AmbTierRevoke
 from services import amb_tiers
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

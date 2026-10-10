@@ -193,7 +193,7 @@ def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
     groups_after = {cb for cb in after if cb.startswith("settings_group:")}
     assert groups_after == _GROUPS_BEFORE | {
         "settings_group:apps", "settings_group:chat", "settings_group:amb", "settings_group:menu_labels",
-        # 10.10: тексты чата, правившиеся только в приложении (settings_chat_fields.py).
+        # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
     }

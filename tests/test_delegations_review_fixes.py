@@ -9,7 +9,7 @@ from config import config
 from database import db
 from database import delegations_db as ddb
 from services import delegations as dlg
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 from tests.test_delegations_core import (  # noqa: F401
     NEEDLE, SEASON, UNIVERSITY, _answer_from_fixture, _available, _delegation_form, _drow,
     _env, _reg_started, _row, _run, _user,

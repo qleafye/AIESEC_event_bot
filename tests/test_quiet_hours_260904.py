@@ -20,8 +20,8 @@ import pytest
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import validate_setting_value
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.validation import validate_setting_value
 
 
 # ── Task 1: реестр ──────────────────────────────────────────────────────────────────────

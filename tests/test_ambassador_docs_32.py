@@ -24,7 +24,7 @@ import pytest
 
 import handlers.admin_roles as roles
 import handlers.admin_sections as sec
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 DOCS_ROOT = REPO_ROOT / "docs"
 GUIDE = DOCS_ROOT / "ADMIN_GUIDE.md"

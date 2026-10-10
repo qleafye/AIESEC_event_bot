@@ -21,8 +21,8 @@ import logging
 from aiogram import Bot
 
 from database.db import get_setting, set_setting, get_user
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 # Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
 # здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
 # импортируют их отсюда как раньше).
@@ -92,7 +92,7 @@ def delegate_step_label(step_key: str | None) -> str:
 
 # --- Event-type presets (admin one-tap bulk toggle) ---
 # Phase 28 (28-10, SU-11): REG_PRESETS + the bulk-writer moved verbatim to the root
-# aiogram-free `reg_presets.py` — settings_ops.py (Mini App web process) needs the same
+# aiogram-free `reg_presets.py` — domain/settings/ops.py (Mini App web process) needs the same
 # writer without importing anything from `handlers.*`. Re-exported under the same name so
 # every existing import site here keeps working unchanged.
 from reg_presets import REG_PRESETS  # noqa: F401,E402

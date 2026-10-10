@@ -810,8 +810,8 @@ def test_notify_managers_job_no_pending_rows_sends_nothing(tmp_path, monkeypatch
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_defaults_and_format():
-    from settings_schema import SETTINGS_SCHEMA
-    import settings_ops
+    from domain.settings.schema import SETTINGS_SCHEMA
+    import domain.settings.ops as settings_ops
 
     enabled = SETTINGS_SCHEMA["regional_noshow_offer_enabled"]
     assert enabled["default"] == "off"
@@ -844,7 +844,7 @@ def test_registry_defaults_and_format():
 
 
 def test_registry_default_text_has_manual_en_translation():
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     from services.i18n_form_manual import FORM_DEFAULT_EN
 
     default = SETTINGS_SCHEMA["regional_noshow_offer_text"]["default"]

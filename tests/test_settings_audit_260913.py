@@ -1,4 +1,4 @@
-"""Квик 260913-16o (задача 1): сторож воронки `settings_audit.py`.
+"""Квик 260913-16o (задача 1): сторож воронки `services/settings/audit.py`.
 
 Инцидент прода 06.09: `full_approval` переключили в «авто», 38 заявок одобрились молча, и
 установить автора было нечем — `database.db.set_setting` логирует только ключ и значение.
@@ -30,7 +30,7 @@ from tests._dbtpl import fast_init_db
 
 HANDLERS_DIR = REPO_ROOT / "handlers"
 
-# Ровно два осознанных исключения (см. docstring settings_audit.py и 260913-16o-PLAN.md,
+# Ровно два осознанных исключения (см. docstring services/settings/audit.py и 260913-16o-PLAN.md,
 # задача 1): вызовы не из-под пользователя-админа, автора взять неоткуда.
 ALLOWLIST: dict[str, str] = {
     "admin_gamification.py": (
@@ -65,7 +65,7 @@ def test_no_raw_set_setting_calls_outside_allowlist():
     violations = _scan_violations()
     assert set(violations.keys()) == set(ALLOWLIST.keys()), (
         "незапланированные прямые вызовы set_setting()/delete_setting() в handlers/ "
-        f"(воронку settings_audit.py обойти нельзя): {violations}"
+        f"(воронку services/settings/audit.py обойти нельзя): {violations}"
     )
     for file, hits in violations.items():
         assert len(hits) == 1, (
@@ -81,9 +81,9 @@ def _db_ready(tmp_path):
 
 def test_set_setting_by_admin_logs_author_and_persists(tmp_path, caplog):
     _db_ready(tmp_path)
-    from settings_audit import set_setting_by_admin
+    from services.settings.audit import set_setting_by_admin
 
-    with caplog.at_level(logging.INFO, logger="settings_audit"):
+    with caplog.at_level(logging.INFO, logger="services.settings.audit"):
         asyncio.run(set_setting_by_admin(777, "test_key", "on"))
 
     assert any("admin=777" in r.getMessage() for r in caplog.records), [
@@ -94,12 +94,12 @@ def test_set_setting_by_admin_logs_author_and_persists(tmp_path, caplog):
 
 def test_delete_setting_by_admin_logs_author_and_removes(tmp_path, caplog):
     _db_ready(tmp_path)
-    from settings_audit import delete_setting_by_admin, set_setting_by_admin
+    from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 
     asyncio.run(set_setting_by_admin(777, "test_key", "on"))
     caplog.clear()
 
-    with caplog.at_level(logging.INFO, logger="settings_audit"):
+    with caplog.at_level(logging.INFO, logger="services.settings.audit"):
         asyncio.run(delete_setting_by_admin(777, "test_key"))
 
     assert any("admin=777" in r.getMessage() for r in caplog.records), [
@@ -113,9 +113,9 @@ def test_admin_id_none_is_allowed_and_logged_as_is(tmp_path, caplog):
     соседи) прокидывают `admin_id=None`, если вызывающий не смог его определить — воронка
     не должна падать, строка лога всё равно отличима префиксом `admin=`."""
     _db_ready(tmp_path)
-    from settings_audit import set_setting_by_admin
+    from services.settings.audit import set_setting_by_admin
 
-    with caplog.at_level(logging.INFO, logger="settings_audit"):
+    with caplog.at_level(logging.INFO, logger="services.settings.audit"):
         asyncio.run(set_setting_by_admin(None, "test_key", "on"))
 
     assert any("admin=None" in r.getMessage() for r in caplog.records)

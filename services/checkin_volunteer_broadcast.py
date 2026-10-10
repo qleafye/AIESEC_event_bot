@@ -44,7 +44,7 @@ from services import scheduler as _sched
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

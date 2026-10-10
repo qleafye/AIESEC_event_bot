@@ -35,7 +35,7 @@ from reg_engine import (
     repeatable_max,
     validate_answer,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 
 async def ask_step(step_key: str, message: types.Message, state: FSMContext,

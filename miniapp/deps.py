@@ -36,7 +36,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from dashboard.access import resolve_capabilities, staff_city
 from dashboard.db import read_conn
 from database.db import get_reg_draft
-from settings_schema import _parse_setting
+from domain.settings.schema import _parse_setting
 
 from miniapp.auth import verify_init_data
 # Квик 260922-wrg (задача 2, B-1): is_past_season_row — тот же предикат, что бот использует

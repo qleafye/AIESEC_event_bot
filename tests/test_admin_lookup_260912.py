@@ -15,7 +15,7 @@ import handlers.admin_lookup as admin_lookup
 import handlers.admin_settings_lists as admin_settings_lists
 import handlers.reg_types_lookup as reg_types_lookup
 import reg_engine
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services import lookup as lookup_service
 from tests._dbtpl import fast_init_db
 

@@ -16,7 +16,7 @@ from config import config as bot_config
 from database import db as bot_db
 from services import onsite_reg, venue_log
 from services.timeutil import msk_now
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_checkin_260924 import (
     BASE,

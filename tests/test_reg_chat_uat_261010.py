@@ -156,7 +156,7 @@ def test_unfinished_draft_keeps_step_label(tmp_path):
 
 def test_review_label_has_english():
     from services import i18n_form_manual
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     entry = SETTINGS_SCHEMA["reg_resume_review_label"]
     assert entry["group"] == "reg" and entry["type"] == "text"

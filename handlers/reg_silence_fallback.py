@@ -37,7 +37,7 @@ from handlers.registration import _resumable_draft_for
 from handlers import reg_i18n
 from keyboards.builders import get_main_menu_kb
 from reg_engine import has_submitted_anketa
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

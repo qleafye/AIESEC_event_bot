@@ -24,7 +24,7 @@ from handlers import reg_i18n
 from reg_engine import build_referral_link
 from services import amb_progress, amb_screen
 from services import i18n as i18n_service
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

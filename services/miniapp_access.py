@@ -8,7 +8,7 @@ _passes_when_off`, точки входа в боте — меню «📱 При�
 Модуль без aiogram и без fastapi: его импортируют и бот, и `miniapp/deps.py`."""
 from __future__ import annotations
 
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 # Права, у которых в приложении нет ни одного экрана: «🔗 Ссылки с метками» живут только в
 # боте. Держатель одной такой роли персоналом приложения не считается.

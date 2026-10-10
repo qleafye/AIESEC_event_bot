@@ -6,11 +6,11 @@ node без DOM, `labelText` к `document`/`window` не обращается).
 
 Design rule D-04 («в приложении нет эмодзи-иконок») требует, чтобы строка с отдельной Lucide-
 иконкой слева (`flatRow({ icon, title })`) не дублировала эмодзи, которым по конвенции реестра
-(`settings_schema.py`/`reg_labels.py`) начинается подпись раздела/вопроса анкеты. Сама подпись
+(`domain/settings/schema.py`/`reg_labels.py`) начинается подпись раздела/вопроса анкеты. Сама подпись
 в реестре не меняется — `labelText` снимает ведущий эмодзи-кластер только там, где подпись
 летит в DOM рядом с иконкой (hub.js/profile.js/form.js).
 
-Таблица кейсов — реальные подписи из реестра (settings_schema.py/reg_labels.py): одиночный
+Таблица кейсов — реальные подписи из реестра (domain/settings/schema.py/reg_labels.py): одиночный
 эмодзи + пробел; составной ZWJ/варианс-селектор («⚙️»); флаг из двух Regional Indicator
 («🇬🇧»); подпись без эмодзи (не трогаем); пустая/`null`/`undefined` подпись (не падаем).
 """
@@ -27,7 +27,7 @@ import pytest
 ROOT = REPO_ROOT
 UI_JS = ROOT / "miniapp" / "static" / "js" / "ui.js"
 
-# key -> (вход, ожидаемый результат). Значения — дословные подписи из settings_schema.py/
+# key -> (вход, ожидаемый результат). Значения — дословные подписи из domain/settings/schema.py/
 # reg_labels.py (кроме none/empty/null/undefined).
 CASES = {
     "section_tasks": ("\U0001f3af Задания", "Задания"),

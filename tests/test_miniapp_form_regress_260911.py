@@ -17,8 +17,8 @@ import json
 import re
 
 import reg_engine
-import settings_schema
-import settings_synonyms
+import domain.settings.schema as settings_schema
+import domain.settings.synonyms as settings_synonyms
 from database import db as bot_db
 
 from tests.test_miniapp_frontend import (

@@ -39,7 +39,7 @@ from handlers.admin_checkin import (
     _encode_city,
 )
 from services import forum_stats_card as fsc
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 
 
 async def _cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:

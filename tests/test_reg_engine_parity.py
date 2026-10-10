@@ -57,7 +57,7 @@ _EXPLICIT_DEFAULTS = {
     "local_committee": "Локальный комитет:",
     "position": "Твоя позиция:",
     "education_status": "Учишься ли ты сейчас?",
-    # reg_university_mode дефолт = "text" (settings_schema.py) -> текстовая ветка _ask_step.
+    # reg_university_mode дефолт = "text" (domain/settings/schema.py) -> текстовая ветка _ask_step.
     "university": "Введи название твоего ВУЗа:",
     "course": "На каком ты курсе?",
     "specialty": "Какая у тебя специальность?",

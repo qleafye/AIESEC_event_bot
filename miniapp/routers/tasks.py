@@ -42,7 +42,7 @@ from game_labels import (
 )
 from services import i18n
 from services.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp.deps import Principal, game_gate, require_section
 from miniapp.timeutil import today_msk

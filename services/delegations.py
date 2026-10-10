@@ -46,7 +46,7 @@ from services.ext_forms_match import username_from_value
 from services.reg_stuck_reset import _is_registration_state
 from services.reject_journal import AUTO_DECIDED_BY
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

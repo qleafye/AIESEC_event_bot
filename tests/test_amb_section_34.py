@@ -273,7 +273,7 @@ def test_limit_cancel_changes_nothing(tmp_path):
 
 def test_texts_menu_for_settings_holder(tmp_path):
     from handlers import admin_amb_section as h
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     _ready(tmp_path)
     cb = FakeCallback("ambs_texts")
     _run(h.amb_texts_menu(cb))

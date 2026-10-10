@@ -13,8 +13,8 @@
 """
 import pytest
 
-import settings_ops
-from settings_schema import SETTINGS_SCHEMA
+import domain.settings.ops as settings_ops
+from domain.settings.schema import SETTINGS_SCHEMA
 
 
 def test_tab_name_keys_are_not_web_editable():

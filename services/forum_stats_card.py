@@ -100,7 +100,7 @@ from services.checkin import ENTRY_POINT, checkin_denial
 from services.ru_plural import ru_plural
 from services.text_fill import event_kind
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

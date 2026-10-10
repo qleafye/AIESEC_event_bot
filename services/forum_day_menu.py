@@ -3,7 +3,7 @@
 get_main_menu_kb` поднимает «🎟 Мой QR»/«📅 Программа»/«❗ Важное»/«🆘 SOS» наверх (каждая — только
 если её СОБСТВЕННЫЙ гейт и так её показывает), остальное сдвигается вниз, не прячется.
 
-Окно: с вечера накануне `forum_date` (per_city, `settings_schema.py`) до конца последнего дня
+Окно: с вечера накануне `forum_date` (per_city, `domain/settings/schema.py`) до конца последнего дня
 форума. Отдельного ключа «дата окончания форума» в реестре нет — переиспользуем то же
 `sos_active_days` (per_city), которым уже считает длительность форума `services.sos.
 is_sos_active_for_city` (файл НЕ трогаем, только импортируем публичную константу и читаем тот
@@ -60,7 +60,7 @@ async def _forum_window_dates(city: str | None) -> tuple[date, date] | None:
 def _parse_hhmm(raw: str | None) -> tuple[int, int]:
     """«ЧЧ:ММ» -> `(час, минута)`; любая кривизна (пусто/не то число полей/не int/вне
     диапазона) -> `DEFAULT_START_TIME` (18:00) — та же терпимость, что у остальных
-    `format: "time"` полей реестра (settings_validation.py уже не пускает кривое значение
+    `format: "time"` полей реестра (domain/settings/validation.py уже не пускает кривое значение
     В БД, это дополнительный фолбэк на случай стороннего значения)."""
     text = (raw or DEFAULT_START_TIME).strip()
     try:

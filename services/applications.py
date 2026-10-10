@@ -11,7 +11,7 @@
 (`miniapp/deps.py`: «Модуль aiogram-free»), а `admin_moderation.py` стоит у потолка размера
 (`tests/test_module_size_convention_260816.py`). Без этого модуля веб-слой фазы 23 либо тянет
 бота целиком, либо заводит вторую копию правил очереди/карточки/решения — ИМЕННО тот «второй
-движок», который фаза 22 закрыла для настроек выносом `settings_ops.py`.
+движок», который фаза 22 закрыла для настроек выносом `domain/settings/ops.py`.
 
 Плюс — новая, но на переносимой механике, механика отбора: `manager_scope`/`out_of_scope`
 (форма `miniapp/routers/review.py::manager_scope`/`submission_out_of_scope`, но от привязки
@@ -60,7 +60,7 @@ from database.db import (
 from reg_engine import STEP_TO_COLUMN, label_for
 from services.consent import consent_card_line
 from services.timeutil import utc_naive_to_msk
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 # Phase 21 (21-07, D-14): edited_source — служебный литерал ('bot'|'miniapp', см.
 # database.db.mark_user_edited) — CLAUDE.md запрещает показывать код менеджеру, это ЕДИНСТВЕННОЕ

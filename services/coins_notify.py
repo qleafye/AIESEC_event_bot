@@ -23,7 +23,7 @@ import html as html_module
 import logging
 
 from services.ru_plural import agree_placeholder
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

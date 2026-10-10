@@ -39,7 +39,7 @@ def _plan(keys) -> list[tuple[str, str, str | None]]:
     Одна сверка на модуль: «все города» (голый ключ) покрывает городские сверки того же
     модуля, а повторы одного города схлопываются."""
     from cities import PER_CITY_SEP, split_per_city_key
-    from settings_ops import base_setting_key
+    from domain.settings.ops import base_setting_key
 
     whole: set[str] = set()
     per_city: dict[str, set[str | None]] = {}

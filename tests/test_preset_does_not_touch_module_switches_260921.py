@@ -23,7 +23,7 @@ from config import config
 from database import db
 from database.db import get_setting, set_setting
 from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from handlers.reg_schema import _apply_party_preset, _apply_short_preset
 from tests._dbtpl import fast_init_db

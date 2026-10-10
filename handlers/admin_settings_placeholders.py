@@ -19,9 +19,9 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_setting
 from handlers.admin import router
 from handlers.states import EditSetting
-from settings_ops import preview_samples, preview_text
-from settings_placeholders import TOKEN_RE, check, hint, problem_text
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.ops import preview_samples, preview_text
+from domain.settings.placeholders import TOKEN_RE, check, hint, problem_text
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

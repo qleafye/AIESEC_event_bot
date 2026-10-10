@@ -46,7 +46,7 @@ from reg_engine import STEP_TO_COLUMN, _SKIP_ALLOWED_STEPS, prompt, validate_ans
 logger = logging.getLogger(__name__)
 
 # Шаги, у которых бот показывает пояснение менеджера ПЕРЕД клавиатурой «Да»/«Нет»
-# (28-UI-SPEC.md §5) — сегодня только кейс-чемпионат, ключ per_city (settings_schema.py, 28-01).
+# (28-UI-SPEC.md §5) — сегодня только кейс-чемпионат, ключ per_city (domain/settings/schema.py, 28-01).
 _STEP_DESCRIPTION_SETTING = {
     "case_optin": "reg_case_optin_description_text",
 }

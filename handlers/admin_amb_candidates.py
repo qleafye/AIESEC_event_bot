@@ -36,7 +36,7 @@ from handlers.admin import router
 from handlers.admin_caps import has_capability
 from services import amb_status, amb_tiers
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

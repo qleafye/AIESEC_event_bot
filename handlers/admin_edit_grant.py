@@ -28,7 +28,7 @@ from database.db import get_user
 from handlers.admin import router
 from handlers.admin_checkin import _city_allowed
 from services import delegate_overrides
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ async def _notify_delegate(bot, telegram_id: int, event_city: str | None) -> boo
         from services import quiet_hours
         from services.i18n import context as _i18n_context, tr as _i18n_tr
         from services.scheduler import _now_moscow_naive
-        from settings_schema import SETTINGS_SCHEMA
+        from domain.settings.schema import SETTINGS_SCHEMA
 
         template = await get_setting_typed_for_city("edit_granted_notify_text", event_city)
         if not template:

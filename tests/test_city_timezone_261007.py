@@ -47,7 +47,7 @@ def test_clamp_offset_and_labels():
 
 
 def test_registry_entry_is_buttons_with_msk_default():
-    from settings_schema import SETTINGS_SCHEMA, option_labels
+    from domain.settings.schema import SETTINGS_SCHEMA, option_labels
     entry = SETTINGS_SCHEMA["city_tz_offset"]
     assert entry["per_city"] is True and entry["default"] == "0"
     labels = option_labels("city_tz_offset")

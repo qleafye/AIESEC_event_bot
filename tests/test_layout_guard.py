@@ -30,17 +30,6 @@ PENDING_ROOT_MODULES = {
     "reg_labels.py",
     "reg_options.py",
     "reg_presets.py",
-    "settings_amb_fields.py",
-    "settings_audit.py",
-    "settings_chat_fields.py",
-    "settings_ops.py",
-    "settings_placeholders.py",
-    "settings_reschedule.py",
-    "settings_schema.py",
-    "settings_search.py",
-    "settings_synonyms.py",
-    "settings_ui_text_fields.py",
-    "settings_validation.py",
 }
 
 # Нарушения, которые пока терпим: (файл относительно корня, импортируемый модуль).

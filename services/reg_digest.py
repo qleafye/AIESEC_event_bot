@@ -34,7 +34,7 @@ from database.db import (
     auto_reject_summary, enqueue_reg_digest, get_setting, get_user, list_unsent_reg_digest,
     mark_reg_digest_sent,
 )
-from settings_schema import REG_SUBMIT_NOTIFY_MODE_LABELS, get_setting_typed
+from domain.settings.schema import REG_SUBMIT_NOTIFY_MODE_LABELS, get_setting_typed
 from services import scheduler as _sched
 from services.timeutil import msk_now
 

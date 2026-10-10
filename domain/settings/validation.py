@@ -5,7 +5,7 @@
 admin_settings.py упирается в потолок test_module_size_convention_260816) и — с Phase 22
 (план 22-04, D-06) — из веб-слоя Mini App через `settings_ops.validate_batch_item`. Модуль
 живёт в КОРНЕ (не в `handlers/`): пакет `handlers` при импорте тянет aiogram, а веб-процессу
-и `settings_ops.py` это запрещено; `handlers/settings_validation.py` — шов-реэкспорт.
+и `domain/settings/ops.py` это запрещено; `domain/settings/validation.py` — шов-реэкспорт.
 
 Правила (согласованы с тем, как значения потом ЧИТАЮТСЯ — `settings_schema._parse_setting`
 и `services.scheduler._int_or_default`):
@@ -30,7 +30,7 @@ import re
 from datetime import datetime
 
 from cities import PER_CITY_SEP
-from settings_schema import SETTINGS_SCHEMA, multi_codes, option_labels
+from domain.settings.schema import SETTINGS_SCHEMA, multi_codes, option_labels
 
 # Тумблеры on/off в реестре без option_labels — человеку их показываем так (и так же
 # принимаем ввод текстом). Источник для кнопок бота (handlers/admin_settings_enum.py).

@@ -60,8 +60,8 @@ from handlers.admin_checkin import (
 from handlers.states import LostFoundNew
 from keyboards.builders import get_cancel_kb
 from services import chat_tracking
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

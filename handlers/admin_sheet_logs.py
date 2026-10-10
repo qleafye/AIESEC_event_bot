@@ -16,8 +16,8 @@ UX: после сохранения `_group_of_setting_key` вернёт `None` 
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
 from services.sheet_logs import sync_sheet_logs
 from handlers.admin import router
 

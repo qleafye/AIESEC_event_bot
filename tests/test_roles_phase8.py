@@ -263,7 +263,7 @@ def test_roles_screen_shows_role_toggle_state(tmp_path):
 
 def test_roles_toggle_flips_setting(tmp_path):
     _roles_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     dispatch_callback("roles_toggle:game_manager", ADMIN_ID)
     assert asyncio.run(get_setting_typed("role_game_manager_enabled")) == "off"
@@ -1388,7 +1388,7 @@ def test_stuck_questions_screen_denied_for_stranger(tmp_path):
 
 def test_settings_schema_role_caps_and_enabled_round_trip(tmp_path):
     _roles_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     from handlers.admin_caps import role_caps_key, role_enabled_key
 
     # Unset -> registry default (D-09), not an empty list or None.

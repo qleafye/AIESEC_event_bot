@@ -30,7 +30,7 @@ from datetime import datetime
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, NO_DEADLINE_AT, parse_proof_types, task_title
 from services.ru_plural import agree_placeholder
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 # code (GAME_CATEGORIES) -> registry key name (game_category_label_{light,medium,hard,
 # referral,special}) — один код на один ключ, порядок не важен (lookup by dict, not order).

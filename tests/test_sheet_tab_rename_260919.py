@@ -7,7 +7,7 @@
 
 Файл растёт по задачам квика (образец — 06-01-style структура, один файл на весь квик):
 - Task 1: примитивы `services/sheets.py` (`list_worksheet_titles`, `rename_worksheet`);
-- Task 2: `settings_ops.py` (`normalize_tab_prefix`, `current_tab_titles`, `plan_prefix_renames`);
+- Task 2: `domain/settings/ops.py` (`normalize_tab_prefix`, `current_tab_titles`, `plan_prefix_renames`);
 - Task 3: развилка при смене одного ключа-имени (`handlers/admin_sheet_tabs.py`);
 - Task 4: массовые кнопки «Добавить/Убрать префикс».
 
@@ -26,7 +26,7 @@ from database import db
 from handlers import admin_sheet_tabs
 from handlers.admin_caps import ADMIN_CAPS
 import services.sheets as sheets
-import settings_ops
+import domain.settings.ops as settings_ops
 from tests._dbtpl import fast_init_db
 
 
@@ -238,7 +238,7 @@ def test_list_worksheet_titles_returns_order(tmp_path, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Task 2: settings_ops.py — normalize_tab_prefix / current_tab_titles / plan_prefix_renames
+# Task 2: domain/settings/ops.py — normalize_tab_prefix / current_tab_titles / plan_prefix_renames
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 _CITIES_T2 = [

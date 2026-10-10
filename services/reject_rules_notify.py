@@ -15,7 +15,7 @@
 вопросы анкеты и списки вариантов ответа с НЕСКОЛЬКИХ экранов (общие настройки, per-city
 переопределения, списки вариантов, пресет типа события) — воронка записи одна, второго места,
 которое пришлось бы синхронно поддерживать при появлении нового экрана, не заводим. Тот же
-довод завёл `settings_audit.py` инцидентом 06.09 (автор записи в логе).
+довод завёл `services/settings/audit.py` инцидентом 06.09 (автор записи в логе).
 
 Один экран пишет НАПРЯМУЮ в `database.db.set_setting`, минуя воронку — `reg_presets.
 apply_reg_preset` (кнопка пресета события в боте и в Mini App, `settings_ops.
@@ -44,7 +44,7 @@ from database.db import list_reject_rules
 from reg_engine import MULTI_CONFIG, SELECT_CONFIG
 from services import scheduler as _sched
 from services.reject_rules import active_rules, rule_summary
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

@@ -52,7 +52,7 @@ def _seed_user(tid, **fields):
     _run(db.set_user_status(tid, status))
 
 
-# ── Ядро без aiogram (T-23-06 / D-... форма settings_ops.py) ────────────────────────────────
+# ── Ядро без aiogram (T-23-06 / D-... форма domain/settings/ops.py) ────────────────────────────────
 
 def test_applications_module_does_not_load_aiogram():
     loaded = _loaded_aiogram("import services.applications")

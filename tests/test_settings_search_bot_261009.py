@@ -14,8 +14,8 @@ from database import db
 from handlers import admin_settings, admin_settings_search as ss
 from handlers.admin_caps import required_capability
 from handlers.states import SettingsSearch
-from settings_search import Candidate, match_word, search, search_terms, words
-from settings_synonyms import SETTINGS_SYNONYMS
+from domain.settings.search import Candidate, match_word, search, search_terms, words
+from domain.settings.synonyms import SETTINGS_SYNONYMS
 from tests._dbtpl import fast_init_db
 
 ADMIN = 900261019
@@ -115,7 +115,7 @@ def test_city_keys_hidden_when_manager_cannot_edit_shared_value(tmp_path, monkey
     _ready(tmp_path)
     _run(db.set_setting("event_city_enabled", "on"))
     import cities
-    import settings_ops
+    import domain.settings.ops as settings_ops
 
     async def _visible(_admin):
         return [cities.city_codes()[0]]
@@ -287,7 +287,7 @@ def test_command_or_menu_tap_leaves_search_and_passes_through(tmp_path):
 
 
 def test_bot_only_synonyms_not_in_web_search():
-    from settings_synonyms import BOT_ONLY_SYNONYMS
+    from domain.settings.synonyms import BOT_ONLY_SYNONYMS
 
     key = next(iter(BOT_ONLY_SYNONYMS))
     assert search_terms(key) == []  # веб-поиск (роутер Mini App зовёт без bot=True)

@@ -166,7 +166,7 @@ UI_EN: dict[str, str] = {
 
     # ── Квик 260915-skg (P7): вход в приложение — handlers/user_actions.py::open_miniapp_button
     # переводит через reg_i18n.tr_text/tr_kb (ярус A), reply-кнопка меню уже переводилась
-    # раньше (keyboards/builders.py::MENU_EN). Дефолты реестра (settings_schema.py:
+    # раньше (keyboards/builders.py::MENU_EN). Дефолты реестра (domain/settings/schema.py:
     # miniapp_open_text/miniapp_open_button/miniapp_disabled_text) — три дословных ключа.
     # «📱 Открыть приложение» начинается с эмодзи -> tr_text отделяет его до перевода
     # (split_leading_symbols), ключ здесь БЕЗ эмодзи (тот же приём, что «Оставить»/«Изменить»).

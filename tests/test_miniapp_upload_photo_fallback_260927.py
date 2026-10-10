@@ -21,7 +21,7 @@ import pytest
 
 from miniapp import telegram_api
 from miniapp.routers.submissions import make_part_token
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_auth import TOKEN
 from tests.test_miniapp_submissions import (  # noqa: F401 — фикстура client

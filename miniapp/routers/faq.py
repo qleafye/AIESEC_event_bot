@@ -21,7 +21,7 @@ Quick 260906-nxp: полноценный экран управления FAQ в 
 `DELETE /app/api/admin/faq/{id}` — под `require_cap("moderate_reg")` + `require_section("faq")`.
 Раздел `faq` теперь гейтит и делегатский список (`GET /app/api/faq`), и менеджерское ведение
 (блок ниже) — второго чекбокса не заводится (см. `not_in_scope` плана 260906-nxp: новый раздел
-потребовал бы правки `settings_schema.py`/`SECTION_KEYS`, это касание бота, вне worktree квика).
+потребовал бы правки `domain/settings/schema.py`/`SECTION_KEYS`, это касание бота, вне worktree квика).
 Город пункта в мутациях НИКОГДА не приходит из тела — только `Principal.city` (та же дихотомия,
 что у делегатского города выше, только для другой стороны): PATCH принимает лишь пару
 `"all"`/`"mine"`, код города фронт не знает и прислать не может (T-nxp-02). Скоуп менеджера
@@ -45,7 +45,7 @@ from database.db import (
 )
 from services import applications, i18n
 from services.faq import apply_city_overrides, city_badge, normalize_question
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp.deps import Principal, delegate_gate, require_cap, require_section
 

@@ -14,7 +14,7 @@ import asyncio
 
 from database import db
 from services import background
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_amb_candidates_34 import (
     ADMIN_ID,
     FakeBot,

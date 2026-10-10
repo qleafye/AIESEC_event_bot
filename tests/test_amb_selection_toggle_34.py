@@ -20,7 +20,7 @@ from config import config
 from database import amb_status_db as sdb
 from database import db
 from services import amb_status, amb_tiers
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 SEASON = "YL 26/2"

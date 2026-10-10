@@ -22,7 +22,7 @@ import services.proxy_session as proxy_session
 from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, city_row_tab
 from cities import CITIES, is_city_enabled, is_default_city, seed_cities_if_empty, reload_cities
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import ErrorEvent

@@ -75,7 +75,7 @@ _stuck_minutes = STUCK_AFTER_MINUTES
 
 async def load_stuck_minutes() -> int:
     global _stuck_minutes
-    from settings_schema import get_setting_typed  # ленивый: модуль чистый для тестов
+    from domain.settings.schema import get_setting_typed  # ленивый: модуль чистый для тестов
 
     try:
         minutes = int(await get_setting_typed("question_stuck_minutes"))

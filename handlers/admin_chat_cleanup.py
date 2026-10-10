@@ -19,11 +19,11 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_chat_bot_state, get_setting
 from handlers.admin import router
-from handlers.settings_validation import validate_setting_value
+from domain.settings.validation import validate_setting_value
 from handlers.states import ChatCleanupEdit
 from services import chat_cleanup, chat_tracking
 from services.background import spawn
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
+from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 
 logger = logging.getLogger(__name__)
 

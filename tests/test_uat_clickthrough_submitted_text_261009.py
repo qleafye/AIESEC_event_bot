@@ -10,7 +10,7 @@ import asyncio
 
 from config import config
 from database import db
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_reg_handoff_260904 import USER_ID, _FakeMessage2, _ready, _texts2
 
 SUBMITTED_TEXT = SETTINGS_SCHEMA["reg_already_submitted_text"]["default"]

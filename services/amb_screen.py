@@ -16,7 +16,7 @@ import logging
 
 from database import db as _db
 from services import amb_status
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

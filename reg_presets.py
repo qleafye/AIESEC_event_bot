@@ -8,7 +8,7 @@ REG_PRESETS переехал сюда ДОСЛОВНО из `handlers/reg_schema
 поэтому семь существующих мест импорта (`handlers/admin.py`, `admin_reg_config.py`,
 `registration.py` и соседи) продолжают работать без правок.
 
-Причина выноса — `settings_ops.py` (импортируется веб-процессом Mini App, FastAPI) не имеет
+Причина выноса — `domain/settings/ops.py` (импортируется веб-процессом Mini App, FastAPI) не имеет
 права тянуть `aiogram`/`handlers.*` (та же причина, что у `reg_engine.py`/`reg_labels.py`), а
 веб-путь применения пресета «СкиллАп» обязан звать ТОТ ЖЕ bulk-writer, что кнопка в боте
 (T-28-10-01/03: один детерминированный писатель настроек — не две копии правила).
@@ -30,7 +30,7 @@ Mini App не имеет права тянуть тот корневой мод�
 """
 import logging
 
-from settings_audit import write_setting_logged
+from services.settings.audit import write_setting_logged
 from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
 
 logger = logging.getLogger(__name__)
@@ -151,7 +151,7 @@ REG_PRESETS = {
         # соседи) сюда НЕ входят намеренно: их значения зависят от списков вариантов
         # конкретного события — менеджер отмечает галочками на экране «🧮 Правила балла»
         # (план 28-08), пресет угадывать за него не должен (см. текст
-        # skillup_preset_confirm_text в settings_schema.py, который это же говорит
+        # skillup_preset_confirm_text в domain/settings/schema.py, который это же говорит
         # менеджеру прямо).
         "settings": {
             "reg_resume_mode": "fork",

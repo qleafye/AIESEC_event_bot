@@ -65,7 +65,7 @@ def test_form_screen_still_has_no_cyrillic_literals():
 # ── серверный: POST /app/api/reg/draft/submit ──────────────────────────────────────────────
 
 def test_submit_response_carries_home_cta_with_registry_default(client, bot_api):  # noqa: F811
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     _seed_draft(UNREGISTERED_ID, kind="new", patch={"age": 22, "full_name": "Иван Иванов"})
     resp = client.post("/app/api/reg/draft/submit", headers=_hdr(UNREGISTERED_ID))

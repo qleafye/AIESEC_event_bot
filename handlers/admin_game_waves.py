@@ -86,7 +86,7 @@ SET_REFERRAL_COINS_BUTTON = "💰 Задать баллы"
 
 
 async def _referral_coins_zero() -> bool:
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     try:
         return int(await get_setting_typed("ambassador_referral_coins") or 0) <= 0
     except Exception:

@@ -42,7 +42,7 @@ from aiogram.types import (
 )
 
 from config import config
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from database.db import (
     GAME_CATEGORIES,
@@ -77,7 +77,7 @@ from database.db import (
     update_task_photo,
     update_task_title,
 )
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 from keyboards.builders import get_cancel_kb
 from services.sheets import sync_named_worksheet
 from services.game_sheets import describe_plan, game_tab_plan, rows_for_entry

@@ -69,7 +69,7 @@ def test_no_deadline_text_uses_registry_key(tmp_path):
     _db_ready(tmp_path)
     task = _task(deadline_at=db.NO_DEADLINE_AT)
     text = asyncio.run(game_labels.task_deadline_text(task))
-    assert text == "без срока"  # дефолт game_task_no_deadline_text из settings_schema.py
+    assert text == "без срока"  # дефолт game_task_no_deadline_text из domain/settings/schema.py
 
 
 def test_deadline_text_is_short_date_when_deadline_exists(tmp_path):
@@ -144,7 +144,7 @@ def test_penalty_hint_line_none_without_deadline(tmp_path):
 
 def test_penalty_hint_line_none_when_percent_zero(tmp_path):
     _db_ready(tmp_path)
-    # game_late_penalty_percent не выставлен -> дефолт 0 (settings_schema.py).
+    # game_late_penalty_percent не выставлен -> дефолт 0 (domain/settings/schema.py).
     task = _task(deadline_at="2099-01-01 00:00:00", coins=100)
     assert asyncio.run(game_labels.penalty_hint_line(task)) is None
 
@@ -175,7 +175,7 @@ def test_card_byte_identical_at_zero_percent(tmp_path):
     собирается вручную по прежней формуле («до {dd.mm}», без строки штрафа) и сравнивается с
     результатом обновлённой render_task_card_text."""
     _db_ready(tmp_path)
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     task = _task(deadline_at="2026-05-05 12:00:00", coins=20, category="Medium")
 
     async def _old_style_expected() -> str:

@@ -53,7 +53,7 @@ from services.questions import (
     FILTER_LABELS, STATUSES, format_stamp, is_stuck, load_stuck_minutes, question_status, record_answer,
     status_label,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp import telegram_api
 from miniapp.deps import Principal, require_cap, require_section

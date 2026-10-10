@@ -32,13 +32,13 @@ import warnings
 from collections import defaultdict
 from pathlib import Path
 
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 ROOT = REPO_ROOT
-CHAT_DIRS = ("handlers", "services", "keyboards")
-# Корневые модули, где чтение настройки — не показ в чате: сам реестр (типизированное чтение
+CHAT_DIRS = ("handlers", "services", "keyboards", "domain", "shared")
+# Модули, где чтение настройки — не показ в чате: сам реестр (типизированное чтение
 # внутри get_setting_typed).
-ROOT_NOT_CHAT = {"settings_schema.py"}
+NOT_CHAT = {"domain/settings/schema.py"}
 # Функции общего с приложением кода, которые собирают экран ТОЛЬКО для приложения: их тексты
 # в чат не уходят (чат-анкета строит вопросы сама, handlers/registration.py).
 APP_ONLY_FUNCTIONS = {
@@ -148,15 +148,19 @@ def _fname(node) -> str | None:
 
 
 def _chat_files() -> list[Path]:
-    """Код бота: три каталога и корневые модули (`reg_engine.py`, `game_labels.py`, `main.py`…),
-    кроме самого реестра — там чтения служебные."""
-    root = [p for p in sorted(ROOT.glob("*.py")) if p.name not in ROOT_NOT_CHAT]
-    return [p for d in CHAT_DIRS for p in sorted((ROOT / d).rglob("*.py"))] + root
+    """Код бота: каталоги слоёв и корневые модули (`main.py`…), кроме самого реестра — там
+    чтения служебные."""
+    files = [p for d in CHAT_DIRS for p in sorted((ROOT / d).rglob("*.py"))] + sorted(ROOT.glob("*.py"))
+    return [p for p in files if _rel(p) not in NOT_CHAT]
+
+
+def _rel(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
 
 
 def _calls_outside_app_only(path: Path):
     """Вызовы модуля, кроме тел функций из `APP_ONLY_FUNCTIONS`."""
-    skip = APP_ONLY_FUNCTIONS.get(path.name, set())
+    skip = APP_ONLY_FUNCTIONS.get(_rel(path), set())
     stack = [_tree(path)]
     while stack:
         node = stack.pop()
@@ -269,7 +273,7 @@ def test_every_chat_read_key_is_reachable_from_a_bot_screen():
     missing = sorted(k for k in reads if k not in reachable)
     assert not missing, (
         "ключ читает код чата, а в боте его не поправить — выведите его в экран бота (группа в "
-        "handlers/admin_settings.py или settings_chat_fields.py) или запишите в EXCEPTIONS "
+        "handlers/admin_settings.py или domain/settings/chat_fields.py) или запишите в EXCEPTIONS "
         "с причиной:\n" + "\n".join(f"  {k}  ({', '.join(reads[k][:2])})" for k in missing)
     )
 
@@ -306,11 +310,11 @@ def test_every_reader_form_is_still_in_use():
 
 
 def test_new_chat_text_groups_are_screens_of_the_bot():
-    """Группы settings_chat_fields.py — настоящие экраны: строка раздела ведёт в группу, у
+    """Группы domain/settings/chat_fields.py — настоящие экраны: строка раздела ведёт в группу, у
     каждого ключа есть подпись и пояснение для менеджера, ключ не задвоен с другой группой."""
     from handlers import admin_sections as sec
     from handlers import admin_settings as st
-    from settings_chat_fields import CHAT_TEXT_GROUPS
+    from domain.settings.chat_fields import CHAT_TEXT_GROUPS
 
     for _label, token, keys in CHAT_TEXT_GROUPS:
         assert sec.section_of(f"settings_group:{token}"), token

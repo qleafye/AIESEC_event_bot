@@ -243,7 +243,7 @@ def test_draft_get_exposes_wizard_screen_texts(client):
 def test_continue_in_chat_and_profile_edit_defaults_have_no_emoji(client):
     """D-04: эмодзи-иконки убираем — кнопки и так рисуют icon("message-circle")/
     icon("pen-line"), эмодзи в подписи дублировал бы иконку."""
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     resp = client.get("/app/api/reg/draft", headers=_hdr(UNREGISTERED_ID))
     body = resp.json()

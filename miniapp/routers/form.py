@@ -57,7 +57,7 @@ from database.db import (
     upsert_reg_draft,
     set_user_lang,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services import i18n, reg_edit_policy
 from services.consent import outstanding_consents
 from services.lookup import search_lookup, top_chips

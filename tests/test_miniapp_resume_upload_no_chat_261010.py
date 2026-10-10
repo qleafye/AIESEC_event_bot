@@ -15,8 +15,8 @@ import httpx
 import pytest
 
 from services.i18n_form_manual import _REGISTRY_TEXTS_EN
-from settings_schema import SETTINGS_SCHEMA
-from settings_synonyms import SETTINGS_SYNONYMS
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.synonyms import SETTINGS_SYNONYMS
 
 from tests.test_miniapp_form import (  # noqa: F401 — фикстуры подтягиваются по имени
     bot_api,

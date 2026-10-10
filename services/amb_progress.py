@@ -30,7 +30,7 @@ from shared.amb_tier_keys import tier_key
 from database import amb_tiers_db
 from database import db as _db
 from services import amb_tiers
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

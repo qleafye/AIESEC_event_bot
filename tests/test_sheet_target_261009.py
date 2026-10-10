@@ -166,8 +166,8 @@ def test_check_access_no_key(env, monkeypatch):
 # ── Реестр, веб, права ───────────────────────────────────────────────────────────────────
 
 def test_registry_key_hidden_from_web_and_group_screens():
-    from settings_ops import editable_keys
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.ops import editable_keys
+    from domain.settings.schema import SETTINGS_SCHEMA
     from handlers.admin_settings import SETTINGS_FIELDS
 
     assert "google_sheet_id" in SETTINGS_SCHEMA
@@ -547,7 +547,7 @@ def test_command_instead_of_link_leaves_wizard(env):
 def test_dashboard_roles_match_bot_roles():
     from dashboard.access import _ROLE_DEFAULT_CAPS
     from handlers.admin_caps import ROLES
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     assert set(_ROLE_DEFAULT_CAPS) == set(ROLES)  # роль без записи в дашборде = ноль прав в приложении
     for role, meta in ROLES.items():

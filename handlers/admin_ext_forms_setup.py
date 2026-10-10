@@ -52,7 +52,7 @@ async def protected_tab_titles(form: dict) -> set[str]:
     """Вкладки, в которые зеркало писать нельзя: основная и служебные вкладки бота, вкладки
     других форм и таблица ответов самой Google-формы (иначе зеркало читалось бы как ответы)."""
     from services.sheet_reconcile import _known_non_delegate_tab_titles
-    from settings_ops import current_tab_titles
+    from domain.settings.ops import current_tab_titles
 
     hidden: set[str] = {t.title for t in await current_tab_titles()}
     try:
