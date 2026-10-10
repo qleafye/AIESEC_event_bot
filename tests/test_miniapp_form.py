@@ -1024,3 +1024,28 @@ def test_source_step_shown_for_returning_delegate_with_past_season_tag(client):
     assert body["kind"] == "new"
     assert "source" in [s["key"] for s in body["steps"]]
 
+
+
+def test_submit_auto_rejected_shows_reject_text_no_congrats_no_offer(client, bot_api, monkeypatch):
+    """Приёмка 10.10: правило автоотказа отклонило заявку — экран показывает текст отказа из
+    журнала, в чат «Заявка принята» не уходит (отказ пришлёт бот), оффера реф-ссылки нет."""
+    from miniapp.routers import form as form_router
+
+    async def fake_finalize(*a, **k):
+        return {"mode": "new", "status": "rejected", "remoderated": False, "resubmitted": False,
+                "auto_rejected": True}
+
+    async def fake_entry(tid):
+        return {"reject_texts": '["Пока берём только старшие курсы"]'}
+
+    monkeypatch.setattr(form_router, "finalize_data", fake_finalize)
+    monkeypatch.setattr(form_router.db, "get_live_auto_reject_log_entry", fake_entry)
+    _set("reg_offer_ref_link", "on")
+    _seed_draft(DELEGATE_ID, kind="edit", patch={"age": 25})
+
+    resp = client.post("/app/api/reg/draft/submit", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["heading"] == "Пока берём только старшие курсы"
+    assert "ambassador" not in body and "ambassador_link" not in body
+    assert bot_api.messages == []
