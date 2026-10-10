@@ -59,7 +59,7 @@ class ColumnOccupiedError(Exception):
 
 
 def _raw():
-    from services.sheets import _RAW
+    from services.sheets.sheets import _RAW
     return _RAW
 
 

@@ -259,7 +259,7 @@ def test_send_broadcast_reports_blocked_user(tmp_path, monkeypatch):
 
 def test_city_move_sheet_writes_mark_last_write(monkeypatch):
     from config import config
-    from services import sheets
+    from services.sheets import sheets
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "x")
     monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "y")
     monkeypatch.setattr(sheets, "_write_state", {"ok": None, "fail": None})

@@ -8,7 +8,7 @@
 `reg_q_resume=on`). HTTP-уровень мокает сам `_apply_resume_url` (лениво импортированный в
 `draft_patch` — монкипатч исходного модуля срабатывает, тот же приём, что описан в докстринге
 `tests/test_reg_finalize.py`). Один тест зовёт настоящий `_apply_resume_url` напрямую и мокает
-только `services.sheets.update_row_by_id` (сетевой хвост) — идиома `tests/
+только `services.sheets.sheets.update_row_by_id` (сетевой хвост) — идиома `tests/
 test_resume_retry_260907.py` — чтобы проверить реальный эффект на БД и на ячейку листа.
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ import logging
 from database import db as bot_db
 from handlers.reg.reg_schema import active_sheet_headers
 from services import reg_finalize as rf
-from services import sheets as sheets_service
+from services.sheets import sheets as sheets_service
 
 from tests.test_miniapp_form import _fill
 from tests.test_miniapp_routes import (

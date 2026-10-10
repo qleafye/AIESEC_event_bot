@@ -308,7 +308,7 @@ _SECTION_HINTS = {
 
 
 def sheet_url() -> str:
-    from services.sheet_target import sheet_url as _url  # тот же резолвер, что у записи в лист
+    from services.sheets.sheet_target import sheet_url as _url  # тот же резолвер, что у записи в лист
     return _url()
 
 
@@ -635,7 +635,7 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
                 continue
             buttons.append([InlineKeyboardButton(text=label, callback_data=row[1])])
         elif kind == "link":
-            from services.sheet_target import sheet_id as _sheet_id
+            from services.sheets.sheet_target import sheet_id as _sheet_id
             if _sheet_id():  # таблица не задана — кнопку не показываем
                 buttons.append([InlineKeyboardButton(text=row[2], url=sheet_url())])
         elif kind in ("screen", "screen_admin"):

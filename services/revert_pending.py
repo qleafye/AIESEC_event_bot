@@ -11,7 +11,7 @@
   - `services.scheduler.cancel_payment_reminders` — снимает T-3/T-1 напоминания об оплате,
     ТОЛЬКО если делегат был одобрен (у отклонённого напоминаний и так нет, вызов для него
     безвреден, но незачем);
-  - `services.sheets.update_status_in_sheet` — та же функция, что пишет решение модератора в
+  - `services.sheets.sheets.update_status_in_sheet` — та же функция, что пишет решение модератора в
     лист (`services/application_effects.py::apply_decision_effects`), лейбл — тот же, что у
     НОВОЙ заявки (`reg_labels.STATUS_LABELS["pending"]` = «Новая»), делегат в листе снова
     выглядит как неразобранная заявка;
@@ -51,7 +51,7 @@ import logging
 from database.db import get_balance, get_user, record_answer_history, revert_user_to_pending
 from domain.regform.labels import STATUS_LABELS
 from services.scheduler import cancel_payment_reminders
-from services.sheets import update_status_in_sheet
+from services.sheets.sheets import update_status_in_sheet
 
 logger = logging.getLogger(__name__)
 

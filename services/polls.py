@@ -258,7 +258,7 @@ async def export_polls_to_sheet() -> int:
     """Полная перезапись вкладки (название — настройка polls_sheet_tab). Возвращает число
     строк или -1, если таблица недоступна/не настроена — вызывающий показывает менеджеру
     «таблица недоступна, результаты в боте»."""
-    from services.sheets import sync_named_worksheet  # sheets тянет gspread — держим лениво
+    from services.sheets.sheets import sync_named_worksheet  # sheets тянет gspread — держим лениво
     tab = (await get_setting_typed("polls_sheet_tab") or "").strip() or SETTINGS_SCHEMA["polls_sheet_tab"]["default"]
     try:
         rows = await build_polls_sheet_rows()

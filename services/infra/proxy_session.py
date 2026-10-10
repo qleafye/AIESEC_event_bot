@@ -59,7 +59,7 @@ from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
-# Admin-alert hook, one-in-one-out with services/sheets.py's set_alert_bot pattern (P0 audit
+# Admin-alert hook, one-in-one-out with services/sheets/sheets.py's set_alert_bot pattern (P0 audit
 # T-dw1-02): fail-soft, never raises, warns once if no bot was injected (e.g.
 # scripts/backfill_resumes.py, which intentionally never calls set_alert_bot).
 _alert_bot = None

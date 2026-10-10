@@ -1,4 +1,4 @@
-"""Phase 21 (21-03, FORM-SYNC-04, D-16): contract for services/sheets.py::update_row_by_id —
+"""Phase 21 (21-03, FORM-SYNC-04, D-16): contract for services/sheets/sheets.py::update_row_by_id —
 point update of a delegate's ROW by telegram_id (col1 match), instead of the second
 append_row that today duplicates a row on every re-registration/edit (RESEARCH Pitfall 4).
 
@@ -20,7 +20,7 @@ import asyncio
 import logging
 
 from config import config
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from tests.test_sheets_update_row_safe_260926 import (
     _FakeWorksheet,
     _patch_gspread,

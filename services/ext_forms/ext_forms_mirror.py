@@ -18,11 +18,11 @@ import gspread
 from gspread.utils import rowcol_to_a1
 
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 from database import ext_forms_db as ef
 from shared.secret_redact import redact_secrets
 from services.delegations import delegations_mirror  # режим «как выгрузка Яндекса» (вкладка делегаций)
-from services.sheet_arrival_sync import backoff_seconds
+from services.sheets.sheet_arrival_sync import backoff_seconds
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ NOT_FOUND = "не найден"
 
 
 def _raw():
-    from services.sheets import _RAW
+    from services.sheets.sheets import _RAW
     return _RAW
 
 
@@ -44,7 +44,7 @@ def _configured() -> bool:
 
 def _open_tab_sync(tab: str):
     """Единственная точка доступа к листу. None = вкладки нет (не создаём)."""
-    from services.sheets import _open_named_or_main_sync
+    from services.sheets.sheets import _open_named_or_main_sync
     return _open_named_or_main_sync(tab)
 
 

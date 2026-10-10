@@ -6,10 +6,10 @@
 - Tier 1 (gspread-уровень, `_FakeSpreadsheet`/`_FakeWorksheet` — те же классы, что
   `tests/test_city_move_260925.py`, `_FakeWorksheet` дополнен `get_all_values()`): читающая
   половина `build_report` и добавление недостающих строк (`apply_append_missing`) — реальный
-  `services.sheets._open_named_or_main_sync`/`list_worksheet_titles`/
+  `services.sheets.sheets._open_named_or_main_sync`/`list_worksheet_titles`/
   `append_to_existing_named_sheet` (no-create контракт проверяется по-настоящему,
   `add_worksheet` роняет AssertionError, если его вообще позвали).
-- Tier 2 (монкипатч высокоуровневых функций `services.sheets.ensure_sheet_header`/
+- Tier 2 (монкипатч высокоуровневых функций `services.sheets.sheets.ensure_sheet_header`/
   `ensure_named_sheet_header`/`update_status_in_sheet` — record-only фейки): реконсиляция
   шапки и запись статуса уже покрыты СВОИМИ тестами (`tests/test_sheets_phase5.py`,
   `tests/test_sheet_status_city_tab_260819.py`) — здесь важно только то, что sheet_reconcile
@@ -27,8 +27,8 @@ import pytest
 import domain.cities as cities
 from config import config
 from database import db
-import services.sheets as sheets_mod
-from services import sheet_reconcile as sr
+import services.sheets.sheets as sheets_mod
+from services.sheets import sheet_reconcile as sr
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 260926401

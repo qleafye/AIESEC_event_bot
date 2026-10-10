@@ -26,7 +26,7 @@ from handlers.game import admin_gamification
 from handlers.settings.admin_sections import section_of
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 import domain.settings.ops as settings_ops
 import domain.cities as cities
 from tests._dbtpl import fast_init_db
@@ -214,7 +214,7 @@ def _patch_gspread_client(monkeypatch, titles):
 
 def _seed_setting(key, value):
     """Write straight into bot_settings via plain sqlite3 -- mirrors _get_sheet()'s own
-    sync-only read path (services/sheets.py::_load_main_tab_setting), so this is the correct
+    sync-only read path (services/sheets/sheets.py::_load_main_tab_setting), so this is the correct
     way to seed data for a test that calls the sync _get_sheet() directly."""
     conn = sqlite3.connect(config.DB_PATH)
     try:
@@ -501,7 +501,7 @@ def test_refresh_allowlist_reads_preselect_tab_via_registry(tmp_path, monkeypatc
             captured["tab"] = tab_name
             return ["header", "someone"]
 
-        monkeypatch.setattr("services.sheets._get_allowlist_rows_sync", fake_rows)
+        monkeypatch.setattr("services.sheets.sheets._get_allowlist_rows_sync", fake_rows)
         await allowlist.refresh_allowlist()
         return captured["tab"]
 
@@ -510,7 +510,7 @@ def test_refresh_allowlist_reads_preselect_tab_via_registry(tmp_path, monkeypatc
 
 def test_grep_no_sheet1_attribute_access():
     """Codified version of the plan's own acceptance grep: `sh.sheet1` (the gspread positional
-    accessor, actual CODE not prose) must never appear anywhere in services/sheets.py. Comments
+    accessor, actual CODE not prose) must never appear anywhere in services/sheets/sheets.py. Comments
     and docstrings explaining the 058def0 incident by name ("sheet1") are fine and excluded --
     tracked with a simple triple-quote/# toggle rather than a full tokenizer, good enough for
     this one file."""

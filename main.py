@@ -17,12 +17,12 @@ from handlers.access import admin_no_access
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.access.allowlist import warm_allowlist_if_gating_on
-from services.sheets import ensure_sheet_header
+from services.sheets.sheets import ensure_sheet_header
 from services.infra.background import spawn as _spawn, cancel_all as cancel_background_tasks
 import services.infra.miniapp_outbox as miniapp_outbox
 import services.delegations.delegations as delegations
 from services.heartbeat import PollingHeartbeatMiddleware, heartbeat_loop, clear_heartbeat
-import services.sheets as sheets_service
+import services.sheets.sheets as sheets_service
 import services.infra.proxy_session as proxy_session
 from services.infra.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, city_row_tab
@@ -193,7 +193,7 @@ async def seed_main_sheet_tab_from_env() -> bool:
     Idempotent by design (T-14-06): if a manager has already picked a tab from «⚙️ Настройки →
     📄 Вкладки таблицы», this function must NOT overwrite it — otherwise every container
     restart would silently revert the manager's own choice back to whatever .env still says.
-    Must run AFTER init_db() and BEFORE the first active_sheet_headers() resolve (services/sheets.py
+    Must run AFTER init_db() and BEFORE the first active_sheet_headers() resolve (services/sheets/sheets.py
     stage 2 still reads config.GOOGLE_SHEET_TAB as a safety-net fallback — leave that chain
     intact, this is only the one-time migration write)."""
     value = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
@@ -392,7 +392,7 @@ async def main():
 
     # Phase 14 (CFG-01): one-time GOOGLE_SHEET_TAB -> bot_settings.main_sheet_tab migration.
     # MUST run before active_sheet_headers() below — otherwise the very first header resolve
-    # would fall through to services/sheets.py stage 2 (reading .env directly) instead of
+    # would fall through to services/sheets/sheets.py stage 2 (reading .env directly) instead of
     # seeing the seeded registry value.
     await seed_main_sheet_tab_from_env()
     await seed_proxy_settings_from_env()

@@ -22,7 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import cities_module_on, city_label, city_scope, get_setting_typed_for_city, normalize_city
 from config import config
-from services import sheet_target as _sheet_target
+from services.sheets import sheet_target as _sheet_target
 from database.db import (
     checkin_qr_send_counts, get_staff_city, sheet_arrival_count_with_error, sheet_arrival_queue_stats,
 )
@@ -192,7 +192,7 @@ async def _row_sheet() -> dict:
     # 7 дней, и в «таблица не принимает запись» они бы горели жёлтым всю неделю. Отдельной
     # припиской к любой строке, цвет не меняют.
     if row["light"] != GRAY:
-        from services.sheet_arrival_sync import MISSING_ERROR
+        from services.sheets.sheet_arrival_sync import MISSING_ERROR
         no_row = await sheet_arrival_count_with_error(MISSING_ERROR)
         if no_row:
             row["text"] += (f"\n⏳ «Пришёл» ждут своей строки в листе: {no_row} — этих делегатов ещё "
@@ -203,12 +203,12 @@ async def _row_sheet() -> dict:
 async def _row_sheet_write() -> dict:
     if not _sheet_target.sheets_enabled():
         return _row(GRAY, "Таблица не подключена")
-    from services.sheets import last_write_state
-    from services.sheet_arrival_sync import MISSING_ERROR
+    from services.sheets.sheets import last_write_state
+    from services.sheets.sheet_arrival_sync import MISSING_ERROR
     state = last_write_state()
     now = time.time()
     ok, fail = state.get("ok"), state.get("fail")
-    # «Пришёл» пишется в лист джобой из очереди (services/sheet_arrival_sync.py) — застрявшая
+    # «Пришёл» пишется в лист джобой из очереди (services/sheets/sheet_arrival_sync.py) — застрявшая
     # очередь значит, что отметки входа до таблицы не доходят.
     queued, oldest = await sheet_arrival_queue_stats(exclude_error=MISSING_ERROR)
     age_min = int((msk_now() - datetime.strptime(oldest, "%Y-%m-%d %H:%M:%S")).total_seconds() // 60) if oldest else 0

@@ -184,7 +184,7 @@ def test_broadcast_filter_by_day_and_today(tmp_path, monkeypatch):
 # ── лист «Пришёл» ──────────────────────────────────────────────────────────────────────────
 
 def test_sheet_keeps_first_entry_and_recomputes_on_revoke(tmp_path, monkeypatch):
-    """Лист пишет джоба очереди (services/sheet_arrival_sync.py) — после каждой отметки
+    """Лист пишет джоба очереди (services/sheets/sheet_arrival_sync.py) — после каждой отметки
     прогоняем её проход и смотрим, что ушло в лист."""
     _ready(tmp_path)
     writes: list[tuple[int, str]] = []
@@ -193,8 +193,8 @@ def test_sheet_keeps_first_entry_and_recomputes_on_revoke(tmp_path, monkeypatch)
         writes.extend(sorted(id_to_value.items()))
         return {"written": set(id_to_value), "missing": set(), "failed": {}}
 
-    import services.sheets as sheets
-    from services import sheet_arrival_sync
+    import services.sheets.sheets as sheets
+    from services.sheets import sheet_arrival_sync
     monkeypatch.setattr(sheets, "write_arrivals_batch", fake_batch)
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "fake-id")
     monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "fake-creds.json")

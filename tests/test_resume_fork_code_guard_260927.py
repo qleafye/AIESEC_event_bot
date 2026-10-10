@@ -215,7 +215,7 @@ def test_retry_skips_fork_code_and_marks_dead_but_uploads_real_text(tmp_path, mo
 
     from services import reg_finalize
     from services import nextcloud as nextcloud_mod
-    from services import sheets as sheets_mod
+    from services.sheets import sheets as sheets_mod
 
     uploaded = []
 

@@ -9,7 +9,7 @@ from config import config
 from database import db
 from handlers import admin
 from handlers.regform import admin_reg_config  # Phase 13 (13-05): _refresh_party_sheet_header moved here
-import services.sheets as sheets
+import services.sheets.sheets as sheets
 from tests._dbtpl import fast_init_db
 
 

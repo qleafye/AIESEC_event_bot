@@ -1,6 +1,6 @@
 """Google-таблица события — настройкой в боте («📊 Данные → 🔗 Какая таблица»).
 
-Резолвер `services/sheet_target.py`: значение из бота, иначе `.env` (прод на .env не должен
+Резолвер `services/sheets/sheet_target.py`: значение из бота, иначе `.env` (прод на .env не должен
 заметить разницы); ввод ссылкой; проверка доступа сервисного аккаунта до сохранения; смена
 таблицы сбрасывает кэш листа; кнопка «📄 Открыть таблицу» берёт тот же резолвер. gspread
 подменён целиком — в сеть тесты не ходят.
@@ -20,8 +20,8 @@ from handlers import admin as admin_mod  # noqa: F401 — регистрируе
 from handlers.sheets import admin_sheet_target as st_handlers
 from handlers.access.admin_caps import ADMIN_CAPS
 from handlers.states import SheetTarget
-from services import sheet_target
-import services.sheets as sheets
+from services.sheets import sheet_target
+import services.sheets.sheets as sheets
 from tests._dbtpl import fast_init_db
 
 SUPER = 910001
