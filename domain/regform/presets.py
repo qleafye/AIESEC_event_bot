@@ -2,9 +2,9 @@
 bulk-writer, общий для бота (`handlers/admin_reg_config._apply_event_preset`) и веб-слоя
 (`settings_ops.apply_event_type_preset`).
 
-REG_PRESETS переехал сюда ДОСЛОВНО из `handlers/reg_schema.py` (Phase 13/5/7) — байт-в-байт,
+REG_PRESETS переехал сюда ДОСЛОВНО из `handlers/reg/reg_schema.py` (Phase 13/5/7) — байт-в-байт,
 без единой правки значений четырёх существующих пресетов (forum/conf/party/short).
-`handlers/reg_schema.py` реэкспортирует то же имя (`from domain.regform.presets import REG_PRESETS`),
+`handlers/reg/reg_schema.py` реэкспортирует то же имя (`from domain.regform.presets import REG_PRESETS`),
 поэтому семь существующих мест импорта (`handlers/admin.py`, `admin_reg_config.py`,
 `registration.py` и соседи) продолжают работать без правок.
 

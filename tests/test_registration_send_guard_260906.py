@@ -16,7 +16,7 @@
 админ-адресованный текст).
 
 Файлы сторожа — только те, что реально правились в этом квике (`handlers/registration.py`,
-`handlers/reg_flow.py`, `handlers/reg_consent.py`); `reg_steps.py`/`reg_flow.py`'s остальные
+`handlers/reg/reg_flow.py`, `handlers/reg/reg_consent.py`); `reg_steps.py`/`reg_flow.py`'s остальные
 хендлеры/`reg_resume.py`/`reg_handoff.py` уже покрыты собственными сторожами плана 27-05
 (`tests/test_i18n_bot_render_27.py`, `tests/test_i18n_service_words_27.py`) — не
 переизобретаем."""
@@ -29,8 +29,8 @@ ROOT = REPO_ROOT
 
 SCANNED_FILES = [
     ROOT / "handlers" / "registration.py",
-    ROOT / "handlers" / "reg_flow.py",
-    ROOT / "handlers" / "reg_consent.py",
+    ROOT / "handlers" / "reg" / "reg_flow.py",
+    ROOT / "handlers" / "reg" / "reg_consent.py",
 ]
 
 # Функции, которые ЯВЛЯЮТСЯ швом (реализуют перевод изнутри и потом сами шлют raw .answer/

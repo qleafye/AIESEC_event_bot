@@ -1789,13 +1789,13 @@ from handlers.forum import forum_noshow_poll  # noqa: E402,F401
 from handlers.forum import session_enroll  # noqa: E402,F401
 # Тест компетенций (кнопка меню, qz:*) — там же, до фолбэка.
 from handlers.forum import quiz as quiz_handlers  # noqa: E402,F401
-from handlers import menu_edit_anketa  # noqa: E402,F401  -- «✏️ Изменить анкету», до фолбэка
-from handlers import menu_tap_escape  # noqa: E402,F401  -- кнопка меню посреди ответа делегата
+from handlers.reg import menu_edit_anketa  # noqa: E402,F401  -- «✏️ Изменить анкету», до фолбэка
+from handlers.reg import menu_tap_escape  # noqa: E402,F401  -- кнопка меню посреди ответа делегата
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
-# handlers/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed
+# handlers/reg/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed
 # LAST, ПОСЛЕ open_miniapp_button — так все кнопки меню (F.text == "...") сохраняют приоритет:
 # аiogram останавливается на первом совпавшем хендлере в router, а этот фолбэк стоит в самом
 # хвосте. Вешать его на registration.router нельзя — registration.router подключён РАНЬШЕ
@@ -1805,13 +1805,13 @@ async def reg_handoff_idle_fallback(message: types.Message) -> None:
     """Квик 260919-u7e (находка #3): расширено вторым, самостоятельным поводом молчать боту
     без ответа. Раньше единственной причиной было «черновик держит приложение» (эстафета,
     260904-3vm) — теперь ЭТА ЖЕ, последняя реально достижимая точка приватного text-пайплайна
-    (см. докстринг `handlers/reg_silence_fallback.py` — тот модуль своей текстовой веткой сюда
+    (см. докстринг `handlers/reg/reg_silence_fallback.py` — тот модуль своей текстовой веткой сюда
     физически не дотягивается, аiogram останавливает апдейт уже здесь) обязана поймать и
     второй случай: черновик держит БОТ (или ничей), а живого FSM-состояния нет, потому что
     MemoryStorage не пережила рестарт контейнера — 14 из 38 делегатов, оказавшихся в анкете
     за 20 минут до рестарта 05-16.09, не вернулись ни разу."""
     from services.reg_handoff import draft_holder, SURFACE_APP
-    from handlers.reg_handoff import handoff_plate
+    from handlers.reg.reg_handoff import handoff_plate
 
     try:
         draft = await get_reg_draft(message.from_user.id)
@@ -1821,7 +1821,7 @@ async def reg_handoff_idle_fallback(message: types.Message) -> None:
     if draft_holder(draft) == SURFACE_APP:
         await handoff_plate(message)
         return
-    from handlers.reg_silence_fallback import reply_idle  # + «анкета уже отправлена» (09.10)
+    from handlers.reg.reg_silence_fallback import reply_idle  # + «анкета уже отправлена» (09.10)
     await reply_idle(message)
 
 

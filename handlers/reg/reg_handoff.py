@@ -27,9 +27,9 @@ from services.reg_handoff import SURFACE_APP, SURFACE_BOT, draft_holder
 from domain.regform.engine import has_submitted_anketa
 from handlers.registration import router
 # `reg_resume` — импортирован строкой ВЫШЕ этого модуля в хвосте handlers/registration.py
-# (см. докстринг), значит handlers.reg_resume уже полностью загружен к этому моменту —
+# (см. докстринг), значит handlers.reg.reg_resume уже полностью загружен к этому моменту —
 # верхнеуровневый импорт здесь безопасен, второго модуля циклом не образует.
-from handlers.reg_resume import resume_from_draft
+from handlers.reg.reg_resume import resume_from_draft
 # Phase 27 (27-05, LANG-02): say()/tr_for() переводят делегатские отправки этого шва (гвард
 # держит event = реальный Message/CallbackQuery делегата, ctx_for резолвит личность и по нему).
 from handlers.i18n import reg_i18n

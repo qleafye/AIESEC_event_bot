@@ -1,5 +1,5 @@
 """Приёмка 17.09 (живой прогон стенда, lang=en) — регрессия найденной дыры в
-`handlers/reg_types_lookup.py`: вопрос шага и подсказка «напиши первые буквы» склеивались в
+`handlers/reg/reg_types_lookup.py`: вопрос шага и подсказка «напиши первые буквы» склеивались в
 ОДНУ строку ДО перевода (`f"{prompt}\\n\\n{hint}"`, потом ОДИН вызов `reg_i18n.say` на всё) —
 `services.i18n.tr()` ищет перевод по хешу ВСЕГО текста, склейка не совпадала ни с одним из двух
 переводов по отдельности, делегат с lang=en видел русский вопрос и подсказку целиком, хотя обе
@@ -18,7 +18,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import db
 from handlers.i18n import reg_i18n
-from handlers import reg_types_lookup
+from handlers.reg import reg_types_lookup
 from services.i18n_form_manual import EVENT_TEXTS_260917, FORM_DEFAULT_EN
 from services.i18n_miniapp_manual import MANUAL_EN
 from services.i18n import src_hash

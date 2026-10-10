@@ -1,6 +1,6 @@
 """Phase 32 (32-10, D-06/D-09/D-10/D-11/D-13): админка амбассадорских волн — отдельный шов,
 своего `Router()` НЕТ, декорирует ОБЩИЙ `handlers.admin.router` (та же техника 13-02, что у
-`handlers/game/admin_game_tasks.py`/`handlers/reg_ambassador.py`).
+`handlers/game/admin_game_tasks.py`/`handlers/reg/reg_ambassador.py`).
 
 Почему отдельный файл: `handlers/game/admin_gamification.py` стоит вплотную к потолку размера
 (`tests/test_module_size_convention_260816.py`), новый экран волн туда не помещается —

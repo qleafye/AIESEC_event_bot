@@ -856,7 +856,7 @@ def test_engine_aliases_are_same_objects():
 
     assert reg._resolve_track is reg_engine.resolve_track
     assert reg._PARTY_TAG_MAP is reg_engine.PARTY_TAG_MAP
-    src = (REPO_ROOT / "handlers" / "reg_flow.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "handlers" / "reg" / "reg_flow.py").read_text(encoding="utf-8")
     for literal in ("Некорректный выбор.", "Регистрация на этот город закрыта.",
                     "Регистрация на вечеринку уже закрыта."):
         assert literal not in src, literal

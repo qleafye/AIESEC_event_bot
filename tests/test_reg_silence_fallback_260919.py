@@ -6,7 +6,7 @@ FSM (MemoryStorage) посреди анкеты делегата. `reg_drafts` �
 отфильтрован по группам. 14 из 38 делегатов, оказавшихся в анкете за 20 минут до рестарта
 (05-16.09), не вернулись ни разу.
 
-Механизм фикса (см. докстринг `handlers/reg_silence_fallback.py`): `handlers/user_actions.py::
+Механизм фикса (см. докстринг `handlers/reg/reg_silence_fallback.py`): `handlers/user_actions.py::
 reg_handoff_idle_fallback` (`StateFilter(None), F.text`) — уже существующий ПОСЛЕДНИЙ
 message-хендлер в `user_actions.router`, единственная реально достижимая точка приватного
 text-пайплайна без состояния (аiogram останавливает апдейт на первом совпавшем фильтре в
@@ -27,7 +27,7 @@ from aiogram.types import CallbackQuery, Chat, InlineKeyboardMarkup, Message, Up
 
 from config import config
 from database import db
-from handlers import reg_silence_fallback
+from handlers.reg import reg_silence_fallback
 from handlers import registration as registration_mod
 from handlers import user_actions as user_actions_mod
 from handlers.states import Registration

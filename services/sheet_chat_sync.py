@@ -1,7 +1,7 @@
 """Разбор очереди записи «В чате» в Google-лист (29.09).
 
 Вход и выход из чата (`database.db.upsert_chat_member`), одобрение делегата
-(`handlers.reg_schema.approve_user`) и сверка состава (`services.chat_tracking.refresh_chat`)
+(`handlers.reg.reg_schema.approve_user`) и сверка состава (`services.chat_tracking.refresh_chat`)
 пишут только в базу и кладут событие в `sheet_chat_queue`. Искать строку делегата по всем
 вкладкам на каждое событие чата нельзя — это сотни чтений подряд и упор в квоту Sheets (429).
 

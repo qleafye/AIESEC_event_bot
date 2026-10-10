@@ -738,7 +738,8 @@ def test_every_ambassador_join_path_checks_tiers():
     сама или через `services.amb_status.request_join` (он проверяет ступени при вступлении)."""
     import inspect
 
-    from handlers import reg_ambassador, user_actions
+    from handlers.reg import reg_ambassador
+    from handlers import user_actions
     from miniapp.routers import form
     from services import amb_status
 

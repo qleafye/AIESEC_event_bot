@@ -8,7 +8,7 @@
 Фикс — `database.db.settings_snapshot()` вокруг `_advance` (тонкая обёртка, `_advance_impl`
 хвост) и вокруг `reg_engine.enabled_steps`/`form_v2_flags` по отдельности (та же функция может
 быть вызвана и без внешнего снимка — `services/scheduler.py`, `miniapp/routers/profile.py`,
-`handlers/reg_resume.py`). Ни один вызов в подграфе `_advance` (reg_flow/reg_steps/
+`handlers/reg/reg_resume.py`). Ни один вызов в подграфе `_advance` (reg_flow/reg_steps/
 reg_extra_steps/reg_types_*/reg_resume_fork) не порождает asyncio.create_task/ensure_future —
 проверено статически ниже, а не только докстрингом.
 
@@ -97,7 +97,7 @@ class _FakeMessage:
 
 def test_text_step_answer_uses_bounded_connections_not_n_plus_one(tmp_path):
     _use_tmp_db(tmp_path)
-    from handlers import reg_steps
+    from handlers.reg import reg_steps
 
     state = _state(1)
     _run(state.update_data(full_name="Иван Иванов", participant_type="full", _reg_step=1, _reg_total=15))
@@ -115,7 +115,7 @@ def test_text_step_answer_uses_bounded_connections_not_n_plus_one(tmp_path):
 
 def test_choice_step_answer_uses_bounded_connections(tmp_path):
     _use_tmp_db(tmp_path)
-    from handlers import reg_steps
+    from handlers.reg import reg_steps
 
     state = _state(2)
     _run(state.update_data(full_name="Пётр Петров", participant_type="full", age="25", _reg_step=2, _reg_total=15))
@@ -132,7 +132,7 @@ def test_choice_step_answer_uses_bounded_connections(tmp_path):
 
 def test_date_step_answer_uses_bounded_connections(tmp_path):
     _use_tmp_db(tmp_path)
-    from handlers import reg_flow
+    from handlers.reg import reg_flow
 
     state = _state(4)
     _run(state.update_data(
@@ -201,13 +201,13 @@ def test_finalize_data_uses_bounded_connections(tmp_path):
 
 _HOTPATH_FILES = [
     "handlers/registration.py",
-    "handlers/reg_flow.py",
-    "handlers/reg_steps.py",
-    "handlers/reg_extra_steps.py",
-    "handlers/reg_resume_fork.py",
-    "handlers/reg_types_lookup.py",
-    "handlers/reg_types_composite.py",
-    "handlers/reg_types_repeatable.py",
+    "handlers/reg/reg_flow.py",
+    "handlers/reg/reg_steps.py",
+    "handlers/reg/reg_extra_steps.py",
+    "handlers/reg/reg_resume_fork.py",
+    "handlers/reg/reg_types_lookup.py",
+    "handlers/reg/reg_types_composite.py",
+    "handlers/reg/reg_types_repeatable.py",
     "services/reg_finalize.py",
     "domain/regform/engine.py",
 ]

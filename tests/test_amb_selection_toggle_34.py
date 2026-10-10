@@ -217,7 +217,7 @@ def _finalize(tid, *, yes):
 
 
 def _offer(tid):
-    from handlers import reg_ambassador
+    from handlers.reg import reg_ambassador
     _cb, msg_cls = _fakes()
     msg = msg_cls(tid)
     _run(reg_ambassador.offer_ref_link(msg, tid))
@@ -256,7 +256,7 @@ def test_offer_toggle_off_sends_nothing_even_to_candidate(off):
 
 
 def test_want_button_joins_and_sends_link_without_ack(off):
-    from handlers import reg_ambassador
+    from handlers.reg import reg_ambassador
     cb_cls, _msg = _fakes()
     _finalize(23, yes=True)
     _run(sdb.set_status(23, "candidate", at=AT))

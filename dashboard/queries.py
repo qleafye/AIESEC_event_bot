@@ -711,7 +711,7 @@ _INCOMPLETE_NOT_REGISTERED = (
     "AND (u.status IS NULL OR u.status != 'rejected'))"
 )
 
-# Дублирует handlers/reg_schema.py::REG_FLOW + REG_LABELS (step_key -> человеческий вопрос).
+# Дублирует handlers/reg/reg_schema.py::REG_FLOW + REG_LABELS (step_key -> человеческий вопрос).
 # Импортировать reg_schema.py нельзя — он тянет `aiogram`. Покрытие пунктов сверяет
 # test_dropout_labels_cover_flow_steps на актуальном REG_FLOW бота.
 _STEP_LABELS = {

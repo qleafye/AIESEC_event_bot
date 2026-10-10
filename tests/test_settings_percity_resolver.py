@@ -387,7 +387,7 @@ def test_menu_parse_equivalence_with_live_idiom():
 
 
 def test_menu_keys_not_in_reg_defaults():
-    from handlers.reg_schema import REG_DEFAULTS
+    from handlers.reg.reg_schema import REG_DEFAULTS
     from keyboards.builders import MENU_BUTTONS
 
     assert not (set(REG_DEFAULTS) & {k for k, _ in MENU_BUTTONS})

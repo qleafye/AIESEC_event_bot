@@ -1,7 +1,7 @@
 """Phase 30 (30-04, задача 1, A2-05) — сторож формата `repeatable` и двуформатного чтения
 `mini_portfolio`: `parse_repeatable`/`dump_repeatable`/`repeatable_display`/`repeatable_max` —
 единственные правила формата (30-04-PLAN.md `<interfaces>`), и лист/карточка заявки
-(`handlers/reg_schema.py::SHEET_COLUMNS`) читают их же, а не собственную копию.
+(`handlers/reg/reg_schema.py::SHEET_COLUMNS`) читают их же, а не собственную копию.
 
 pytest-asyncio недоступен — async через `asyncio.run()`, фикстура временной БД — тот же приём,
 что `tests/test_reg_drafts.py::_ready(tmp_path)`.
@@ -13,7 +13,7 @@ from config import config
 from database import db as db_mod
 
 import domain.regform.engine as reg_engine
-from handlers import reg_schema
+from handlers.reg import reg_schema
 from tests._dbtpl import fast_init_db
 
 

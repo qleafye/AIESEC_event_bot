@@ -1,5 +1,5 @@
 """Регистрация на месте (FORUM-CHECKIN.md D-41), чатовая часть: короткая анкета по ссылке
-`?start=walkin_<город>` (handlers/onsite_reg.py + перехват в handlers/registration.py::
+`?start=walkin_<город>` (handlers/reg/onsite_reg.py + перехват в handlers/registration.py::
 cmd_start) и экран менеджера «📝 Регистрация на месте» (handlers/forum/admin_onsite_reg.py, строка
 хаба «🎪 Форум: функции»).
 
@@ -13,7 +13,7 @@ import sqlite3
 import domain.cities as cities_mod
 from config import config
 from database import db
-from handlers import onsite_reg as onsite
+from handlers.reg import onsite_reg as onsite
 from handlers import registration as reg
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import _fresh_state
@@ -358,7 +358,7 @@ def test_start_walkin_goes_after_language_question(tmp_path, monkeypatch):
         called.append(1)
         return False  # язык уже известен / вопроса нет
 
-    import handlers.reg_lang as reg_lang
+    import handlers.reg.reg_lang as reg_lang
     monkeypatch.setattr(reg_lang, "offer_language", _fake_offer)
     with _Cities():
         _enable("spb")
@@ -374,7 +374,7 @@ def test_start_walkin_waits_for_language_choice(tmp_path, monkeypatch):
     async def _fake_offer(*a, **k):
         return True  # показан экран выбора языка
 
-    import handlers.reg_lang as reg_lang
+    import handlers.reg.reg_lang as reg_lang
     monkeypatch.setattr(reg_lang, "offer_language", _fake_offer)
     with _Cities():
         _enable("spb")

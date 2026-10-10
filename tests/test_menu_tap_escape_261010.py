@@ -16,7 +16,7 @@ import pytest
 from aiogram import Bot
 
 from database import db
-from handlers import menu_tap_escape
+from handlers.reg import menu_tap_escape
 from handlers.i18n import reg_i18n
 from handlers import user_actions as user_actions_mod
 from handlers.states import GameSubmit, Question, Registration

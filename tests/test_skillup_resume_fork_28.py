@@ -316,7 +316,7 @@ def test_link_verified_recomputed_by_server(tmp_path):
 def test_sheet_shows_human_resume_type(tmp_path):
     """Лист печатает человеческое слово способа резюме и «Да»/«-» для проверенной ссылки —
     кода `resume_type` в листе быть не должно."""
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
 
     row = reg_schema._sheet_value_map({"resume_type": "mini", "link_verified": 0})
     assert row["Способ резюме"] == "Мини-профиль"
@@ -341,7 +341,7 @@ def test_sheet_width_unchanged_when_resume_question_off(tmp_path):
     """Вопрос «Резюме» выключен (дефолт) — новые две колонки не просачиваются в ширину листа;
     включение `reg_q_resume` показывает их (тот же gate, что у существующих колонок резюме)."""
     _ready(tmp_path)
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
 
     async def go():
         off_headers = await reg_schema.active_sheet_headers()

@@ -13,7 +13,7 @@ aiogram-free»), а «отправить приветствие» и «отпр�
 в `handlers/applications/admin_moderation.py`), и (со следующего плана) джоба очереди событий веба, когда
 истечёт окно отмены (D-06) — один и тот же журнал вызовов и текстов для обеих поверхностей.
 
-Импорт `handlers.reg_schema` — ЛОКАЛЬНЫЙ внутри функции (тот же приём, что
+Импорт `handlers.reg.reg_schema` — ЛОКАЛЬНЫЙ внутри функции (тот же приём, что
 `services/reg_finalize.py::post_finalize`): `handlers/applications/admin_moderation.py` импортирует ИЗ этого
 модуля на своём верхнем уровне, обратный модульный импорт дал бы цикл при загрузке пакета
 `handlers`.
@@ -92,7 +92,7 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
     ложью.
 
     Координатор 25.09 («📨 Переотправить решения»): `resend=True` — для `approved` шлёт
-    `handlers.reg_schema.resend_approve_text` (только текст решения) ВМЕСТО `approve_user` —
+    `handlers.reg.reg_schema.resend_approve_text` (только текст решения) ВМЕСТО `approve_user` —
     шаг оплаты не открывается и FSM делегата не трогается, даже если `payment_enabled=on`
     (решение координатора: обычная переотправка через `approve_user` заново рисовала бы пикер
     тарифов уже одобренному делегату). Для `rejected` разницы нет — там шага оплаты никогда не
@@ -114,10 +114,10 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
     if status == "approved":
         if notify_now:
             if resend:
-                from handlers.reg_schema import resend_approve_text  # локальный импорт против цикла
+                from handlers.reg.reg_schema import resend_approve_text  # локальный импорт против цикла
                 send_err = await resend_approve_text(bot, telegram_id)  # текст решения, без шага оплаты
             else:
-                from handlers.reg_schema import approve_user  # локальный импорт против цикла
+                from handlers.reg.reg_schema import approve_user  # локальный импорт против цикла
                 send_err = await approve_user(bot, telegram_id)  # welcome exactly once (D-10)
             await _record_delivery_fail_soft(
                 telegram_id, "approved", "failed" if send_err else "delivered", send_err,
@@ -128,7 +128,7 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
         if notify_now:
             # Квик 260917-en (приёмка 17.09, п.4): «reject_text» — group "reg", уже в
             # делегатском корпусе — не хватало только точки перевода на отправке (тот же
-            # класс дыры, что у approve_text в handlers/reg_schema.py).
+            # класс дыры, что у approve_text в handlers/reg/reg_schema.py).
             from services.i18n import context as _i18n_context
             lang, tr_map = await _i18n_context(telegram_id)
             text = await reject_message_text(reason, lang, tr_map)
@@ -175,7 +175,7 @@ async def mass_approve_effects(bot, ids: list) -> None:
                 await _record_delivery_fail_soft(tid, "approved", "queued")
                 await asyncio.sleep(0.05)
                 continue
-            from handlers.reg_schema import approve_user  # локальный импорт против цикла
+            from handlers.reg.reg_schema import approve_user  # локальный импорт против цикла
             send_err = await approve_user(bot, tid)
             await _record_delivery_fail_soft(
                 tid, "approved", "failed" if send_err else "delivered", send_err,
@@ -183,7 +183,7 @@ async def mass_approve_effects(bot, ids: list) -> None:
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after + 1)
             try:
-                from handlers.reg_schema import approve_user  # локальный импорт против цикла
+                from handlers.reg.reg_schema import approve_user  # локальный импорт против цикла
                 send_err = await approve_user(bot, tid)
                 await _record_delivery_fail_soft(
                     tid, "approved", "failed" if send_err else "delivered", send_err,

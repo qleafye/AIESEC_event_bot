@@ -1,5 +1,5 @@
 """Quick 260917, п.5: 50 параллельных делегатов отвечают на шаг анкеты ОДНОВРЕМЕННО
-(`asyncio.gather` по реальному `handlers/reg_steps.py::process_age`, не по голым SQL) — модель
+(`asyncio.gather` по реальному `handlers/reg/reg_steps.py::process_age`, не по голым SQL) — модель
 вечернего пика (сезон 1000-1500 делегатов, CLAUDE.md constraint). Проверяет ДВЕ вещи разом:
 
 1. WAL + `busy_timeout` (`tests/test_db_wal_busy_timeout.py`) действительно не дают
@@ -76,7 +76,7 @@ async def _one_delegate_answers_age(reg_steps, base_id: int) -> tuple[int, objec
 
 def test_50_concurrent_delegates_answer_one_step_no_lock_errors(tmp_path):
     _use_tmp_db(tmp_path)
-    from handlers import reg_steps
+    from handlers.reg import reg_steps
 
     async def _run_all():
         t0 = time.perf_counter()

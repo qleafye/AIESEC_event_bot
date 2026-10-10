@@ -15,9 +15,9 @@
 (`tests/test_refac_snapshot_260816.py`) только дополняется, ничего не переставляется.
 
 Обработчики ответа ниже — тот же контур «канонизировать -> validate_answer -> сохранить под
-своей колонкой -> _advance», что образец шва `handlers/reg_steps.py`. `resume_link` показ
+своей колонкой -> _advance», что образец шва `handlers/reg/reg_steps.py`. `resume_link` показ
 получает (через `ask_step` выше), но СВОЕГО ОБРАБОТЧИКА НЕ ПОЛУЧАЕТ — обработчик ответа
-(валидация ссылки) живёт в `handlers/reg_resume_fork.py` (план 28-05).
+(валидация ссылки) живёт в `handlers/reg/reg_resume_fork.py` (план 28-05).
 
 Phase 28 (28-05, SU-04, deviation Rule 3): `ask_step()`/`_receive_step()` — ЕДИНСТВЕННОЕ
 место, где показываются и принимаются `resume_link`/`mini_projects`/`mini_portfolio`/
@@ -53,7 +53,7 @@ _STEP_DESCRIPTION_SETTING = {
 
 # Phase 28 (28-05, SU-04, A-03 CONTEXT): четыре шага развилки резюме — reply-кнопка «Назад»
 # добавляется к их обычной клавиатуре (skip/cancel), см. `_fork_branch_kb`. Литерал должен
-# дословно совпадать с `handlers.reg_resume_fork.BACK_LABEL`.
+# дословно совпадать с `handlers.reg.reg_resume_fork.BACK_LABEL`.
 _FORK_BACK_STEPS = {"resume_link", "mini_projects", "mini_portfolio", "mini_direction"}
 _FORK_BACK_LABEL = "⬅️ Назад"
 
@@ -117,7 +117,7 @@ async def _receive_step(step_key: str, message: types.Message, state: FSMContext
     `validate_answer` как обычный свободный текст мини-профиля (T-28-05-03 наоборот: там, где
     свободный текст СТАНОВИТСЯ значением — «Назад» просто обязан не стать текстом ответа)."""
     if step_key in _FORK_BACK_STEPS and message.text == _FORK_BACK_LABEL:
-        from handlers import reg_resume_fork  # ленивый шов (цикл импортов) — единая точка «Назад»
+        from handlers.reg import reg_resume_fork  # ленивый шов (цикл импортов) — единая точка «Назад»
         await reg_resume_fork.back_to_fork(message, state)
         return
     canon = await reg_i18n.canonicalize(message, step_key, message.text)

@@ -99,7 +99,7 @@ def test_apply_decision_effects_approved_calls_welcome_then_sheet(monkeypatch, t
     async def fake_update_status_in_sheet(tid, label):
         calls.append(("update_status_in_sheet", tid, label))
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
     monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
 
@@ -120,7 +120,7 @@ def test_apply_decision_effects_approved_welcome_exactly_once(monkeypatch, tmp_p
     async def fake_update_status_in_sheet(tid, label):
         return None
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
     monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
 
@@ -194,7 +194,7 @@ def test_mass_approve_effects_empty_list_no_calls(monkeypatch):
     async def fake_bulk(mapping):
         calls.append(("bulk", mapping))
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
     monkeypatch.setattr(application_effects, "bulk_update_status_in_sheet", fake_bulk)
 
@@ -216,7 +216,7 @@ def test_mass_approve_effects_welcomes_all_then_one_bulk_sync(monkeypatch, tmp_p
     async def fake_sleep(_seconds):
         return None
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
     monkeypatch.setattr(application_effects, "bulk_update_status_in_sheet", fake_bulk)
     monkeypatch.setattr(application_effects.asyncio, "sleep", fake_sleep)
@@ -248,7 +248,7 @@ def test_mass_approve_effects_retry_after_retries_once_others_continue(monkeypat
     async def fake_sleep(_seconds):
         return None
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
     monkeypatch.setattr(application_effects, "bulk_update_status_in_sheet", fake_bulk)
     monkeypatch.setattr(application_effects.asyncio, "sleep", fake_sleep)
@@ -451,7 +451,7 @@ def test_bot_and_web_reach_same_state(tmp_path, monkeypatch):
     async def fake_update_status_in_sheet(tid, label):
         calls.append(("update_status_in_sheet", tid, label))
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
     monkeypatch.setattr(application_effects, "update_status_in_sheet", fake_update_status_in_sheet)
 
@@ -634,7 +634,7 @@ def test_mass_approve_parity(tmp_path, monkeypatch):
     async def fake_bulk(mapping):
         calls.append(("bulk", mapping))
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
     monkeypatch.setattr(application_effects, "bulk_update_status_in_sheet", fake_bulk)
 

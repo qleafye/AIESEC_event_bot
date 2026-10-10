@@ -14,7 +14,7 @@ admin, payment` (полный бот на бот-фреймворке, см. д�
 `domain/regform/labels.py`). Разрешённые импорты «наверх»: `settings_schema`, `database.db` (только
 функции без бот-фреймворка), `reg_labels`, `reg_options`, `cities`, `config`. Поэтому `REG_FLOW` и его ближайшие зависимости
 (`_is_party_track`/`_is_short_track`/`REG_DEFAULTS`/`_is_step_enabled`/`_is_module_enabled`),
-раньше жившие в `handlers/reg_schema.py`, переехали СЮДА; `handlers/reg_schema.py` теперь
+раньше жившие в `handlers/reg/reg_schema.py`, переехали СЮДА; `handlers/reg/reg_schema.py` теперь
 реэкспортирует их обратно (тот же приём, каким она уже реэкспортирует `REG_LABELS` из
 корневого `domain/regform/labels.py` — комментарий там же).
 
@@ -50,10 +50,10 @@ from services.i18n import tr as _tr
 from domain.i18n.ui_en import EN_TO_RU as _EN_TO_RU
 
 # ── Registration Flow Engine: REG_FLOW + непосредственные зависимости ──────────────────────
-# Перенесено дословно из handlers/reg_schema.py (было там с Phase 13 REFAC 13-02) — только
+# Перенесено дословно из handlers/reg/reg_schema.py (было там с Phase 13 REFAC 13-02) — только
 # ЭТОТ модуль и его непосредственные зависимости, не весь файл (REG_PRESETS/_apply_*_preset/
 # REG_CATEGORIES — админские bulk-writer'ы настроек, не часть чтения анкеты, остаются в
-# handlers/reg_schema.py и просто читают REG_FLOW отсюда).
+# handlers/reg/reg_schema.py и просто читают REG_FLOW отсюда).
 
 # Phase 4 (D-07): each entry is (step_key, setting_key, type). type is "text" (default
 # free-text handler), "date" (ДД.ММ.ГГГГ validation), "select"/"multi" (configurable option
@@ -174,7 +174,7 @@ async def _is_step_enabled(setting_key: str) -> bool:
         # Quick 260921: read the registry default directly, not REG_DEFAULTS.get(key, "on")
         # — REG_DEFAULTS no longer carries every toggle key (see comment above), so that
         # fallback would silently flip an un-set module switch (e.g. reg_scoring_enabled,
-        # asked via SHEET_COLUMNS' "Балл"/"IT 3+" gate in handlers/reg_schema.py) from its
+        # asked via SHEET_COLUMNS' "Балл"/"IT 3+" gate in handlers/reg/reg_schema.py) from its
         # registered default "off" to "on". Byte-identical result for every reg_q_* key
         # (SETTINGS_SCHEMA[key]["default"] is exactly what REG_DEFAULTS used to hold).
         entry = SETTINGS_SCHEMA.get(setting_key)
@@ -203,7 +203,7 @@ STEP_TO_COLUMN["ambassador"] = "is_ambassador_candidate"
 # `users` нет (там resume_file_id/resume_text/resume_url), поэтому apply_answer клал текстовый
 # ответ шага «резюме» из Mini App в reg_drafts.answers["resume"], а add_user такую колонку не
 # знал — значение молча пропадало на финализации. Бот этой дыры не имел: он пишет resume_text
-# напрямую (handlers/reg_flow.py::process_resume_text), минуя STEP_TO_COLUMN. Теперь совпадают.
+# напрямую (handlers/reg/reg_flow.py::process_resume_text), минуя STEP_TO_COLUMN. Теперь совпадают.
 STEP_TO_COLUMN["resume"] = "resume_text"
 # ФИО спрашивается ВНЕ REG_FLOW (_ask_full_name, до движка шагов) — колонка совпадает с ключом.
 FULL_NAME_STEP = "full_name"
@@ -348,7 +348,7 @@ async def multi_requirement_hint(step_key: str, event_city: str | None = None) -
 async def option_list_for(setting_key: str, defaults: list[str]) -> list[str]:
     """Admin-editable option list (newline text) with a hardcoded fallback. Verbatim
     behaviour of the pre-move handlers/registration.py::_get_options — kept as a generic
-    2-arg helper (setting_key, defaults), because handlers/reg_flow.py::_multi_options calls
+    2-arg helper (setting_key, defaults), because handlers/reg/reg_flow.py::_multi_options calls
     it directly with an (opt_key, default) pair from MULTI_CONFIG."""
     raw = await get_setting(setting_key)
     if raw:
@@ -781,7 +781,7 @@ async def help_default(
 
     `surface` ("chat" дефолт | "app"): единственная ось, где формулировка называет РАЗНОЕ
     физическое место ответа — «в чате» неверно в Mini App (там кнопка «Написать текстом» под
-    самим полем, не чат). Бот (`handlers/reg_resume_fork.py`) зовёт с дефолтом "chat" —
+    самим полем, не чат). Бот (`handlers/reg/reg_resume_fork.py`) зовёт с дефолтом "chat" —
     поведение не меняется ни на байт; `step_spec()` (Mini App) зовёт с "app"."""
     if step_key == "resume":
         mode = await resume_mode(city_code)
@@ -1099,7 +1099,7 @@ async def pre_flow(answers: dict, meta: dict | None = None) -> list[str]:
 
 
 # ── Pre-flow: выбор города / трека (gap closure фазы 21, D-01/FORM-SYNC-02) ─────────────────
-# Тап по кнопке развилки в боте (`handlers/reg_flow.py::party_pick`/`city_pick`) и PATCH из
+# Тап по кнопке развилки в боте (`handlers/reg/reg_flow.py::party_pick`/`city_pick`) и PATCH из
 # приложения (`miniapp/routers/form.py::draft_patch`) проходят ОДНИ и те же проверки и тот же
 # `resolve_track` — здесь, а не в двух копиях. Тексты ошибок — прежние литералы бота,
 # переехавшие сюда как единый источник (не новый текст).
@@ -1706,9 +1706,9 @@ CHAT_PROJECTION: dict[str, str] = {
     "multi": "handlers.registration",
     "text": "handlers.registration",
     "link": "handlers.registration",
-    "lookup": "handlers.reg_types_lookup",
-    "composite": "handlers.reg_types_composite",
-    "repeatable": "handlers.reg_types_repeatable",
+    "lookup": "handlers.reg.reg_types_lookup",
+    "composite": "handlers.reg.reg_types_composite",
+    "repeatable": "handlers.reg.reg_types_repeatable",
 }
 
 # Правка плана 30-03 (задача 4) к решению 30-01: черновик 30-01 предполагал, что рестайл
@@ -1734,7 +1734,7 @@ APP_PROJECTION: dict[str, str] = {
 # Сторож `tests/test_reg_step_type_v2_260912.py::test_step_type_v2_has_both_projections`
 # пропускает импорт/проверку файла для типов из этого списка — КАЖДАЯ запись обязана называть
 # план, который её снимает (сам сторож это проверяет: пустой комментарий — красный тест).
-# Пусто с плана 30-06 (задача 4): `handlers/reg_types_lookup.py`/`reg_types_composite.py`/
+# Пусто с плана 30-06 (задача 4): `handlers/reg/reg_types_lookup.py`/`reg_types_composite.py`/
 # `reg_types_repeatable.py` заведены, `form_types.js` уже нёс их `case` с плана 30-04 — сторож
 # паритета (`test_step_type_v2_has_both_projections`) теперь требует обе проекции для ВСЕХ
 # семи типов, ни одного пропуска не осталось.
@@ -1919,7 +1919,7 @@ _SKIP_ALLOWED_STEPS = {
 # списка) — city/study_field через _reply_kb(options, add_other=True) в _ask_step,
 # local_committee/position/department/aiesec_role через builders.py.
 # Phase 30 (30-06, A2-03, deviation Rule 2): "university" добавлен — chat-проекция lookup
-# (handlers/reg_types_lookup.py) обязана предлагать «Другое» для ВУЗа так же, как для города
+# (handlers/reg/reg_types_lookup.py) обязана предлагать «Другое» для ВУЗа так же, как для города
 # (30-UI-SPEC.md § «2. lookup»: «до 5 совпадений + кнопка «Другое»» — без разделения по шагу);
 # `spec["other_allowed"]` для legacy-ветки university не читался (список строится безусловно
 # через `_reply_kb(options, add_other=True)`), поэтому добавление сюда не двигает GOLDEN.
@@ -1966,7 +1966,7 @@ async def lookup_render_flags(step_key: str, flags: dict[str, bool]) -> dict[str
     `off` (без похода в реестр списка вовсе — экономия чтения на шаге, где список всё равно
     ничего не решает), глобальный `on` → решает атрибут конкретного списка. Единственная точка
     правды для ОБЕИХ поверхностей — `form_types.js` читает `spec.lookup` (`reg_engine.step_
-    spec`), чат (`handlers/reg_types_lookup.py`) зовёт эту же функцию напрямую (там `step_spec`
+    spec`), чат (`handlers/reg/reg_types_lookup.py`) зовёт эту же функцию напрямую (там `step_spec`
     целиком не строится — чат ведёт шаг без полной спеки, тем же приёмом, что и `lookup_other_
     allowed` выше).
 
@@ -2180,7 +2180,7 @@ async def step_spec(step_key: str, participant_type: str | None = None,
     # `link_verified` всё равно пересчитывает сервер на финале (T-28-04-01).
     # Phase 28 (28-05, SU-04, deviation Rule 3): шаблоны нейтрального маркера домена
     # (`{domain}` подставляет клиент) — без них form.js не может нарисовать текст маркера,
-    # только иконку; те же реестровые ключи, что уже читает бот в R2b (handlers/reg_resume_fork.py).
+    # только иконку; те же реестровые ключи, что уже читает бот в R2b (handlers/reg/reg_resume_fork.py).
     if step_key == "resume_link":
         spec["link_whitelist"] = await resume_link_whitelist()
         spec["whitelist_hint_text"] = await get_setting_typed("reg_resume_link_whitelist_hint_text")
@@ -2617,9 +2617,9 @@ def is_past_season_row(row: dict | None, event_season: str | None) -> bool:
 # Phase 21 (21-06, FORM-SYNC-01/03) — validate_answer / apply_answer / merge_answers: вторая
 # половина движка. Судья ввода теперь один — и для чата бота, и (план 21-10) для Mini App
 # (T-21-05: «второго валидатора» быть не должно). Тексты ошибок и побочные правила перенесены
-# byte-for-byte из тел `process_*` (handlers/reg_steps.py, handlers/reg_flow.py) и вспомогательных
+# byte-for-byte из тел `process_*` (handlers/reg/reg_steps.py, handlers/reg/reg_flow.py) и вспомогательных
 # функций (`_parse_age`/`_is_allowed_resume`/`_resume_too_large`/`_validate_date_range`,
-# ранее handlers/registration.py и handlers/reg_flow.py) — паритет снят
+# ранее handlers/registration.py и handlers/reg/reg_flow.py) — паритет снят
 # `tests/test_reg_engine_parity.py` (VALIDATION_GOLDEN/APPLY_GOLDEN, Task 1) ДО переноса.
 #
 # Какую клавиатуру приложить к тексту ошибки (get_cancel_kb() для «Другое», ничего для обычной
@@ -2697,7 +2697,7 @@ def _extract_vk_nick(text: str) -> str | None:
 
 def validate_date_range(step_key: str, dt: datetime) -> str | None:
     """LOW: sanity range check for a parsed date step. Перенос дословный из
-    handlers/reg_flow.py::_validate_date_range."""
+    handlers/reg/reg_flow.py::_validate_date_range."""
     today = datetime.now()
     if step_key == "birth_date":
         if dt > today:
@@ -2714,7 +2714,7 @@ def validate_date_range(step_key: str, dt: datetime) -> str | None:
 
 # ── validate_answer: единая точка проверки ответа ────────────────────────────────────────────
 
-# _store_choice-паттерн (handlers/reg_steps.py): непустой текст, «Другое» -> свободный ввод,
+# _store_choice-паттерн (handlers/reg/reg_steps.py): непустой текст, «Другое» -> свободный ввод,
 # текст ошибки/подсказки ОДИН на все шаги набора (не свой у каждого).
 _CHOICE_STEPS = {
     "department", "aiesec_role", "needs_certificate", "english_level",
@@ -2724,7 +2724,7 @@ _CHOICE_EMPTY_ERROR = "Выбери вариант на клавиатуре и�
 _CHOICE_OTHER_PROMPT = "Напиши свой вариант:"
 
 # Шаги с собственным (не generic) текстом ошибки/«Другое»-подсказки — отдельные ветки в
-# handlers/reg_steps.py (не через _store_choice): step_key -> (empty_error, other_prompt).
+# handlers/reg/reg_steps.py (не через _store_choice): step_key -> (empty_error, other_prompt).
 _BESPOKE_CHOICE = {
     "city": ("Выбери город на клавиатуре или напиши свой.", "Напиши название своего города:"),
     "source": ("Выбери один из вариантов или напиши свой.", "Напиши свой вариант:"),
@@ -2982,7 +2982,7 @@ def validate_answer(
             return None, text.replace("{max}", str(max_select))
     # Phase 30 (30-04, A2-05): ветка входит ТОЛЬКО когда `raw` уже пришёл списком (Mini App
     # repeatable-контрол шлёт `onChange` массивом объектов, form_types.js докстринг) — голая
-    # строка (сегодняшний бот, `handlers/reg_extra_steps.py::process_mini_portfolio`, ИЛИ
+    # строка (сегодняшний бот, `handlers/reg/reg_extra_steps.py::process_mini_portfolio`, ИЛИ
     # легаси-Mini App при выключенном `reg_form_repeatable`) идёт СТАРЫМ путём ниже
     # (`_SKIP_TEXT_ERRORS["mini_portfolio"]`) БЕЗ единого изменения байта — иначе включение
     # этого плана само по себе начало бы JSON-оборачивать текущий свободный ответ делегата,
@@ -3023,7 +3023,7 @@ def apply_answer(
 
     Phase 28 (28-01, SU-03, R-A3 CONTEXT): `studying_statuses` — keyword-only, дефолт `None`
     воспроизводит прежнее правило `startswith("Да")` байт-в-байт (APPLY_GOLDEN не двигается);
-    вызывающий в async-контексте (handlers/reg_steps.py, miniapp/routers/form.py) передаёт
+    вызывающий в async-контексте (handlers/reg/reg_steps.py, miniapp/routers/form.py) передаёт
     `await reg_engine.studying_statuses()`."""
     result = dict(answers)
     column = STEP_TO_COLUMN.get(step_key, step_key)

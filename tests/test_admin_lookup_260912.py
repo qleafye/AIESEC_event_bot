@@ -13,7 +13,7 @@ from database.db import init_db
 
 import handlers.admin_lookup as admin_lookup
 import handlers.admin_settings_lists as admin_settings_lists
-import handlers.reg_types_lookup as reg_types_lookup
+import handlers.reg.reg_types_lookup as reg_types_lookup
 import domain.regform.engine as reg_engine
 from domain.settings.schema import get_setting_typed
 from services import lookup as lookup_service

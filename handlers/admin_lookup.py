@@ -10,7 +10,7 @@
 `handlers.admin_sections.back_button` — ленивый импорт внутри функций (D-03: цикл на уровне
 модуля, admin_sections импортирует этот шов хвостом).
 
-`LookupAdmin` — `StatesGroup` в `handlers/states.py` (не локально в шве): `tests/test_roles_phase8.py`'s автовывод capability-ключа для message-хендлеров admin-роутера находит группу состояний ТОЛЬКО там (`hasattr(states_mod, group_name)`), в отличие от `handlers/reg_types_lookup.py` (30-06, чат-роутер регистрации, другая проверка).
+`LookupAdmin` — `StatesGroup` в `handlers/states.py` (не локально в шве): `tests/test_roles_phase8.py`'s автовывод capability-ключа для message-хендлеров admin-роутера находит группу состояний ТОЛЬКО там (`hasattr(states_mod, group_name)`), в отличие от `handlers/reg/reg_types_lookup.py` (30-06, чат-роутер регистрации, другая проверка).
 
 Callback-схема — один префикс `admin_lookup` (капабилити `settings`, `handlers/access/admin_caps.py`:
 `admin_lookup` + `admin_lookup:*`):

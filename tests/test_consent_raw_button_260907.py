@@ -189,7 +189,7 @@ def _fsm_state(user_id):
 
 def test_consent_accept_records_tapped_button_text_even_if_setting_changed_after(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import reg_flow as reg_flow_mod
+    from handlers.reg import reg_flow as reg_flow_mod
 
     async def _noop(*a, **kw):
         return None
@@ -217,7 +217,7 @@ def test_consent_accept_records_tapped_button_text_even_if_setting_changed_after
 
 def test_consent_accept_falls_back_to_setting_when_markup_lost(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import reg_flow as reg_flow_mod
+    from handlers.reg import reg_flow as reg_flow_mod
 
     async def _noop(*a, **kw):
         return None
@@ -238,7 +238,7 @@ def test_consent_accept_falls_back_to_setting_when_markup_lost(tmp_path, monkeyp
 
 def test_consent_accept_falls_back_to_default_literal_when_setting_empty(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import reg_flow as reg_flow_mod
+    from handlers.reg import reg_flow as reg_flow_mod
 
     async def _noop(*a, **kw):
         return None
@@ -259,7 +259,7 @@ def test_consent_accept_falls_back_to_default_literal_when_setting_empty(tmp_pat
 
 def test_consent_renew_accept_records_tapped_button_text(tmp_path, monkeypatch):
     _ready(tmp_path)
-    from handlers import reg_consent
+    from handlers.reg import reg_consent
 
     asyncio.run(db.set_setting("consent_enabled", "on"))
     asyncio.run(db.set_setting("consent_recollect_enabled", "on"))

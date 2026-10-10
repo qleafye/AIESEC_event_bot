@@ -23,7 +23,7 @@ async def show_summary(message: types.Message, state: FSMContext, data: dict) ->
     `reg_city_gate.summary_data`. `_build_summary`/`_safe_answer` берутся через модуль
     `registration` в момент вызова — монкипатч в тестах продолжает работать."""
     from handlers import registration
-    from handlers.reg_city_gate import summary_data
+    from handlers.reg.reg_city_gate import summary_data
 
     lang, tr_map = await reg_i18n.ctx_for(message)
     value_maps = await reg_i18n.summary_value_maps(lang, tr_map)

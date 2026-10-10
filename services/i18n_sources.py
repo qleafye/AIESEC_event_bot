@@ -305,7 +305,7 @@ def code_literals() -> list[tuple[str, str]]:
     ))
 
     # UAT run 2 (Quick 260906, второй проход после 2773791/44c77df/222340a): те же два aiogram-
-    # free модуля (handlers/reg_resume.py, handlers/reg_flow.py, handlers/reg_consent.py,
+    # free модуля (handlers/reg/reg_resume.py, handlers/reg/reg_flow.py, handlers/reg/reg_consent.py,
     # handlers/registration.py) НЕ импортируются отсюда (докстринг модуля выше) — литералы
     # продублированы буквально, `tests/test_i18n_sources_27.py` держит их байт-в-байт списком.
     items.append((
@@ -320,7 +320,7 @@ def code_literals() -> list[tuple[str, str]]:
         "Изменения отменены — анкета осталась прежней.",
     ))
     items.append((
-        # Тот же литерал шлёт handlers/reg_handoff.py::reg_handoff_to_bot — один корпусный
+        # Тот же литерал шлёт handlers/reg/reg_handoff.py::reg_handoff_to_bot — один корпусный
         # источник на оба сайта, дедуп по strip()-нутому тексту в corpus() ниже.
         "lit:reg_resume.reg_resume_continue",
         "Черновик не найден — начни заново с /start.",
@@ -440,7 +440,7 @@ def code_literals() -> list[tuple[str, str]]:
     ))
     items.append(("lit:user_actions.process_question_none_configured", "Администраторы не настроены."))
     items.append(("lit:user_actions.cancel_question", "Действие отменено."))
-    # handlers/menu_tap_escape.py::ESCAPE_NOTICES — кнопка меню посреди ответа делегата.
+    # handlers/reg/menu_tap_escape.py::ESCAPE_NOTICES — кнопка меню посреди ответа делегата.
     for group, text in (
         ("Question", "Вопрос не отправлен."),
         ("GameSubmit", "Подтверждение задания не отправлено."),

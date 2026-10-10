@@ -13,7 +13,7 @@ aiogram — тот же приём, что `tests/test_city_flow_phase71.py`/`te
 регистрирует реферера перед /start). Новые ссылки везде выдаются только в `amb_`-формате
 (`reg_engine.build_referral_link`).
 
-Задача 2: шов `handlers/reg_ambassador.py` — второе сообщение-предложение после «поздравляем»
+Задача 2: шов `handlers/reg/reg_ambassador.py` — второе сообщение-предложение после «поздравляем»
 (тумблер `reg_offer_ref_link`), «Хочу свою ссылку» ставит `is_ambassador=1` и шлёт голый URL
 третьим сообщением, «Позже» ничего не пишет.
 
@@ -35,7 +35,7 @@ from config import config
 from database import db
 import domain.regform.engine as reg_engine
 from handlers import registration as reg
-from handlers import reg_ambassador
+from handlers.reg import reg_ambassador
 
 from tests.test_miniapp_routes import DELEGATE_ID, UNREGISTERED_ID, _cfg, _client, _hdr, _set, _standard_seed
 from tests.test_miniapp_routes import _use_tmp_db as _use_tmp_http_db

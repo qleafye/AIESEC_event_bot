@@ -18,7 +18,7 @@ import domain.regform.engine as reg_engine
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_flow
+from handlers.reg import reg_flow
 # Ловушка цикла admin <-> admin_settings (см. tests/test_delegate_texts_registry_260819.py):
 # handlers.admin импортируется ПЕРВЫМ, admin_settings в одиночку не импортируется.
 from handlers import admin as _admin_mod  # noqa: F401

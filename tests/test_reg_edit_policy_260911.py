@@ -397,9 +397,9 @@ def test_submit_kind_new_passes_even_when_never(tmp_path, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 from handlers import registration as reg
-from handlers import reg_flow
-from handlers import reg_handoff
-from handlers import reg_resume
+from handlers.reg import reg_flow
+from handlers.reg import reg_handoff
+from handlers.reg import reg_resume
 
 from tests.test_returning_delegate_073 import (
     FakeCommand,

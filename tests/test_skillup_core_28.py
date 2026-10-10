@@ -138,7 +138,7 @@ def test_new_steps_hidden_by_default(tmp_path):
 
 def test_sheet_width_unchanged_when_new_questions_off(tmp_path):
     _ready(tmp_path)
-    from handlers import reg_schema
+    from handlers.reg import reg_schema
 
     headers = asyncio.run(reg_schema.active_sheet_headers())
     leaked = set(headers) & _NEW_SHEET_HEADERS

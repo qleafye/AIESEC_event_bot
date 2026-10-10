@@ -3,7 +3,7 @@
 Genuinely cross-domain private helpers pulled out of `handlers/admin.py` so every seam module
 (admin_gamification.py, admin_roles.py, and later admin plans) can import them without reaching
 back into the god-file or recreating a circular import. No `Router` here, no `@router.*`
-handler — this module is plumbing only, mirroring the `handlers/reg_schema.py` pattern from
+handler — this module is plumbing only, mirroring the `handlers/reg/reg_schema.py` pattern from
 13-02.
 
 Two clusters live here (.planning CONCERNS.md "Internal coupling inside handlers/admin.py"):

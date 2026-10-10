@@ -8,7 +8,7 @@ defined in handlers/registration.py -- imported below, not redefined -- so main.
 includes registration.router by object reference) never changes.
 
 Import order matters (T-13-04): this module is imported from the bottom of
-handlers/registration.py BEFORE `handlers.reg_steps`, matching this block's original
+handlers/registration.py BEFORE `handlers.reg.reg_steps`, matching this block's original
 position immediately after cmd_start/the FSM engine and immediately before the per-state
 process_* step block.
 
@@ -221,7 +221,7 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot |
         await callback.answer(await reg_i18n.tr_for(callback, CITY_CLOSED_TEXT), show_alert=True)
         return
     # Приёмка 09.10 (C12): язык спрашивается раньше города — тап до выбора языка его не обходит.
-    from handlers.reg_lang import lang_first_gate
+    from handlers.reg.reg_lang import lang_first_gate
     if await lang_first_gate(callback, state):
         return
 
@@ -231,7 +231,7 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot |
     except Exception:
         pass
     # callback.message.from_user is the BOT — swap in the tapping user, same fix as party_pick.
-    from handlers.reg_city_gate import confirm_city_choice
+    from handlers.reg.reg_city_gate import confirm_city_choice
     await confirm_city_choice(callback.message, code)
     tap_message = callback.message.model_copy(update={"from_user": callback.from_user})
     data = await state.get_data()
@@ -239,7 +239,7 @@ async def city_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot |
         # Квик 27.09: город спрашивали посреди продолжения черновика (`resume_from_draft`) —
         # пишем выбранный город в ЭТОТ черновик и продолжаем его, а не начинаем анкету заново.
         from database.db import get_reg_draft, upsert_reg_draft
-        from handlers.reg_resume import resume_from_draft
+        from handlers.reg.reg_resume import resume_from_draft
         draft = await get_reg_draft(callback.from_user.id)
         if draft:
             await upsert_reg_draft(

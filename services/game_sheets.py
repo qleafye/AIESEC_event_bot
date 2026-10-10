@@ -8,7 +8,7 @@ With the cities module ON, the manager gets — besides the two whole-event tabs
 
 A city whose tab base is empty (the default city, Moscow, whose registration rows live on
 the main tab) gets NO per-city gamification tabs — `"" + " Гейма"` would collide with the
-whole-event «Гейма» tab. Same rule as `handlers/reg_schema.py::city_row_tab` (no base -> the
+whole-event «Гейма» tab. Same rule as `handlers/reg/reg_schema.py::city_row_tab` (no base -> the
 shared tab). The manager can give such a city its own tabs by naming its tab base on the
 «🏙 Города» screen (`city_tab__{code}`).
 

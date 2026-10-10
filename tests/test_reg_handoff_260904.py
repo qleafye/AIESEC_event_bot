@@ -360,7 +360,7 @@ async def _handler_stub(event, data):
 
 def test_guard_holder_app_blocks_text_and_shows_plate(tmp_path):
     _ready(tmp_path)
-    from handlers.reg_handoff import RegHandoffGuard
+    from handlers.reg.reg_handoff import RegHandoffGuard
 
     async def go():
         await bot_db.upsert_reg_draft(
@@ -385,7 +385,7 @@ def test_guard_holder_app_blocks_text_and_shows_plate(tmp_path):
 
 def test_guard_after_submit_clears_state_and_blocks_text(tmp_path):
     _ready(tmp_path)
-    from handlers.reg_handoff import RegHandoffGuard
+    from handlers.reg.reg_handoff import RegHandoffGuard
 
     async def go():
         await bot_db.set_setting("event_season", "2026")
@@ -411,7 +411,7 @@ def test_guard_after_submit_clears_state_and_blocks_text(tmp_path):
 
 def test_guard_after_submit_still_passes_slash_commands(tmp_path):
     _ready(tmp_path)
-    from handlers.reg_handoff import RegHandoffGuard
+    from handlers.reg.reg_handoff import RegHandoffGuard
 
     async def go():
         await bot_db.set_setting("event_season", "2026")
@@ -436,7 +436,7 @@ def test_guard_after_submit_still_passes_slash_commands(tmp_path):
 
 def test_guard_holder_bot_does_not_intercept(tmp_path):
     _ready(tmp_path)
-    from handlers.reg_handoff import RegHandoffGuard
+    from handlers.reg.reg_handoff import RegHandoffGuard
 
     async def go():
         await bot_db.upsert_reg_draft(
@@ -456,7 +456,7 @@ def test_guard_holder_bot_does_not_intercept(tmp_path):
 
 def test_guard_callback_holder_app_shows_alert_not_advance(tmp_path):
     _ready(tmp_path)
-    from handlers.reg_handoff import RegHandoffGuard
+    from handlers.reg.reg_handoff import RegHandoffGuard
 
     async def go():
         await bot_db.upsert_reg_draft(
@@ -479,7 +479,7 @@ def test_guard_callback_holder_app_shows_alert_not_advance(tmp_path):
 
 def test_guard_exempt_callbacks_always_pass_through(tmp_path):
     _ready(tmp_path)
-    from handlers.reg_handoff import RegHandoffGuard
+    from handlers.reg.reg_handoff import RegHandoffGuard
 
     async def go(data_str):
         await bot_db.upsert_reg_draft(
@@ -500,7 +500,7 @@ def test_guard_exempt_callbacks_always_pass_through(tmp_path):
 
 def test_guard_db_failure_is_fail_soft(tmp_path, monkeypatch):
     _ready(tmp_path)
-    import handlers.reg_handoff as rh_mod
+    import handlers.reg.reg_handoff as rh_mod
 
     async def boom(_uid):
         raise RuntimeError("db down")
@@ -521,7 +521,7 @@ def test_guard_db_failure_is_fail_soft(tmp_path, monkeypatch):
 
 def test_reg_handoff_to_bot_sets_surface_and_resumes_unanswered_step(tmp_path):
     _ready(tmp_path)
-    from handlers import reg_handoff as rh_mod
+    from handlers.reg import reg_handoff as rh_mod
 
     async def go():
         await bot_db.set_setting("reg_q_phone", "on")
@@ -545,7 +545,7 @@ def test_reg_handoff_to_bot_sets_surface_and_resumes_unanswered_step(tmp_path):
 
 def test_reg_handoff_to_bot_missing_draft_shows_alert(tmp_path):
     _ready(tmp_path)
-    from handlers import reg_handoff as rh_mod
+    from handlers.reg import reg_handoff as rh_mod
 
     async def go():
         callback = _FakeCallback2("reg_handoff:to_bot", USER_ID, "delegate")
@@ -975,7 +975,7 @@ def test_guard_payment_step_keeps_state_and_passes_old_buttons(tmp_path):
     инлайн-кнопка (напр. выбор языка) проходит к своему хендлеру, состояние оплаты не
     снимается — присланный следом чек попадёт в оплату."""
     _ready(tmp_path)
-    from handlers.reg_handoff import RegHandoffGuard
+    from handlers.reg.reg_handoff import RegHandoffGuard
 
     async def go():
         await bot_db.set_setting("event_season", "2026")
