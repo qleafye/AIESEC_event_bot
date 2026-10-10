@@ -500,10 +500,16 @@ def test_admin_empty_state_keys_removed_hardcode():
 
 
 def test_miniapp_keys_not_in_settings_fields_or_groups():
-    """Своя поверхность правки (план 19-08) — иначе ключи всплывут в «📦 Прочие»."""
+    """Своя поверхность правки (план 19-08) — иначе ключи всплывут в «📦 Прочие».
+    Исключение — тексты, которые бот показывает в чате (`settings_chat_fields.py`): у них своя
+    группа бота, без неё на событии без приложения их не поправить."""
+    from settings_chat_fields import CHAT_TEXT_KEYS
+
     field_keys = {k for k, _, _ in SETTINGS_FIELDS}
     group_keys = {k for _, _, keys in SETTINGS_GROUPS for k in keys}
     for key in MINIAPP_KEYS:
+        if key in CHAT_TEXT_KEYS:
+            continue
         assert key not in field_keys, key
         assert key not in group_keys, key
 
