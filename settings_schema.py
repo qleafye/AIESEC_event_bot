@@ -7917,6 +7917,19 @@ SETTINGS_SCHEMA = {
         "format": "time",
         "per_city": True,
     },
+    # Ночь 10.10 (бэклог «🛠», P1): граница утреннего догона была зашита — 12:00
+    # (services/checkin_broadcast.py::MORNING_CATCHUP_UNTIL — теперь только дефолт). Читается на
+    # каждой сверке джоб QR (раз в 10 минут и сразу после правки) — перезапуск не нужен.
+    "checkin_qr_morning_catchup_until": {
+        "type": "text", "group": "system", "label": "🎟 QR: догонять утренний повтор до",
+        "prompt": (
+            "Если бот не работал во время утреннего повтора QR, он отправит повтор позже — но "
+            "только до этого времени: после него QR «на вход» уже не нужен. Формат "
+            "<code>ЧЧ:ММ</code>, например <code>12:00</code> (по умолчанию) или <code>15:00</code>, "
+            "если форум начинается днём. Время — по часовому поясу города."
+        ),
+        "default": "12:00", "format": "time", "per_city": True,
+    },
     "checkin_qr_morning_repeat_time": {
         "type": "text", "group": "system", "label": "🎟 QR: утренний повтор неподтвердившим",
         "prompt": (

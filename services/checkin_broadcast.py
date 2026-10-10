@@ -72,12 +72,26 @@ _DEFAULT_MORNING_TIME = "08:00"
 # До какого часа утренний повтор (и утренняя шпаргалка волонтёру) ещё догоняется, если бот
 # лежал в его время: рестарт в 08:20 раньше молча терял повтор (окно было 2 минуты), а делегаты
 # идут на вход до обеда. Позже полудня QR «на вход» уже не нужен.
+# Это дефолт: менеджер меняет границу настройкой «🎟 QR: догонять утренний повтор до»
+# (`checkin_qr_morning_catchup_until`, по городу).
 MORNING_CATCHUP_UNTIL = time(12, 0)
 
 
-def morning_catchup_ok(run_at: datetime, now: datetime) -> bool:
-    """Опоздавший утренний запуск ещё уместен: тот же день и раньше `MORNING_CATCHUP_UNTIL`."""
-    return run_at.date() == now.date() and now.time() < MORNING_CATCHUP_UNTIL
+def morning_catchup_ok(run_at: datetime, now: datetime, until: time = MORNING_CATCHUP_UNTIL) -> bool:
+    """Опоздавший утренний запуск ещё уместен: тот же день и раньше `until`."""
+    return run_at.date() == now.date() and now.time() < until
+
+
+async def morning_catchup_until(city: str | None) -> time:
+    """Граница утреннего догона для города; пусто или не «ЧЧ:ММ» — `MORNING_CATCHUP_UNTIL`."""
+    from cities import get_setting_typed_for_city
+
+    raw = (await get_setting_typed_for_city("checkin_qr_morning_catchup_until", city) or "").strip()
+    hours, _, minutes = raw.partition(":")
+    try:
+        return time(int(hours), int(minutes))
+    except ValueError:
+        return MORNING_CATCHUP_UNTIL
 # Потолок догона накануне форума: позже 22:00 МСК «через минуту» не шлём ни QR, ни шпаргалку
 # волонтёру — ночное служебное сообщение (тихие часы на него не действуют) будит людей. QR
 # подберёт утренний повтор неподтвердившим, шпаргалка уйдёт утром дня форума в то же время.
@@ -202,7 +216,7 @@ async def schedule_city_jobs(city: str | None) -> dict:
         morn_at = _KEEP
     elif morn_at <= now:
         pending = sched.get_job(morn_id) is not None
-        if pending and morning_catchup_ok(morn_at, now):
+        if pending and morning_catchup_ok(morn_at, now, await morning_catchup_until(city)):
             morn_at = now + timedelta(minutes=1)
         else:
             morn_at = None
