@@ -1,10 +1,10 @@
-"""Импорт экспорта Telegram Desktop в историю живого рейтинга чата (tools/chat_export_import.py).
+"""Импорт экспорта Telegram Desktop в историю живого рейтинга чата (services/chat_export_import.py,
+кнопка «🏆 Рейтинг чата» -> «📥 Загрузить историю чата»).
 
-По умолчанию — пробный прогон (ничего не пишет); --apply пишет INSERT OR IGNORE, повторный
+Предпросмотр (`make_plan`) ничего не пишет; запись (`apply_plan`) — INSERT OR IGNORE, повторный
 запуск ничего не добавляет, живые строки не трогает. Текста в БД нет — только длины.
 """
 import calendar
-import json
 import sqlite3
 from datetime import datetime
 
@@ -21,7 +21,6 @@ from tests.test_chat_rating_parity_260927 import (
     live_scores,
 )
 from services import chat_export_import as svc
-from tools import chat_export_import as imp
 
 EXPORT_ID = 3333333333
 CHAT_ID = -1003333333333
@@ -101,12 +100,6 @@ def _setting(path, key, value):
     conn.close()
 
 
-def _write_export(tmp_path, data) -> str:
-    path = tmp_path / "result.json"
-    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    return str(path)
-
-
 def _count(path, table) -> int:
     conn = sqlite3.connect(path)
     try:
@@ -124,32 +117,33 @@ def _rows(path, sql, params=()):
         conn.close()
 
 
-def _run(argv):
-    return imp.main(argv)
+def _import(path, data, chat_id=CHAT_ID, *, apply=True):
+    """Предпросмотр и (при apply) запись — те же два шага, что у кнопки в боте."""
+    conn = sqlite3.connect(path)
+    try:
+        plan = svc.make_plan(conn, data, chat_id)
+        added = svc.apply_plan(conn, plan) if apply else None
+        return plan, added
+    finally:
+        conn.close()
 
 
 # ── пробный прогон ───────────────────────────────────────────────────────────────────────
 
-def test_dry_run_prints_counts_and_city_and_writes_nothing(db_path, tmp_path, capsys):
-    export = _write_export(tmp_path, _fixture_export([CHANNEL_POST, COMMENT_TO_CHANNEL]))
-    code = _run([export, "--db", db_path])
-    out = capsys.readouterr().out
-    assert code == 0
-    assert str(CHAT_ID) in out
-    assert "spb" in out
-    assert "Пробный прогон" in out
-    assert "--apply" in out
-    assert "2026-09-01" in out and "2026-09-03" in out
+def test_preview_shows_city_and_period_and_writes_nothing(db_path):
+    plan, _ = _import(db_path, _fixture_export([CHANNEL_POST, COMMENT_TO_CHANNEL]), apply=False)
+    assert plan["chat_id"] == CHAT_ID
+    assert plan["is_bound"] and plan["city"] == "spb"
+    assert plan["days"][0] == "2026-09-01" and plan["days"][1] == "2026-09-03"
+    assert plan["to_add"] > 0
     assert _count(db_path, "chat_messages") == 0
     assert _count(db_path, "chat_reactions") == 0
 
 
 # ── запись ───────────────────────────────────────────────────────────────────────────────
 
-def test_apply_writes_rows_like_live_capture(db_path, tmp_path):
-    export = _write_export(tmp_path, _fixture_export(
-        [CHANNEL_POST, COMMENT_TO_CHANNEL, ANON_ADMIN, MANY_REACTIONS]))
-    assert _run([export, "--db", db_path, "--apply"]) == 0
+def test_apply_writes_rows_like_live_capture(db_path):
+    _import(db_path, _fixture_export([CHANNEL_POST, COMMENT_TO_CHANNEL, ANON_ADMIN, MANY_REACTIONS]))
     rows = {r["message_id"]: r for r in _rows(
         db_path, "SELECT * FROM chat_messages WHERE chat_id = ?", (CHAT_ID,))}
     assert ROOT_ID not in rows          # сервисное сообщение не журналируется
@@ -176,9 +170,8 @@ def test_apply_writes_rows_like_live_capture(db_path, tmp_path):
     assert not {"text", "caption"} & cols
 
 
-def test_reactions_recent_become_rows_and_rest_goes_to_extra(db_path, tmp_path):
-    export = _write_export(tmp_path, _fixture_export([MANY_REACTIONS]))
-    assert _run([export, "--db", db_path, "--apply"]) == 0
+def test_reactions_recent_become_rows_and_rest_goes_to_extra(db_path):
+    _import(db_path, _fixture_export([MANY_REACTIONS]))
     reactions = _rows(db_path, "SELECT telegram_id, reaction FROM chat_reactions "
                                "WHERE chat_id = ? AND message_id = 33", (CHAT_ID,))
     assert sorted((r["telegram_id"], r["reaction"]) for r in reactions) == [
@@ -188,7 +181,7 @@ def test_reactions_recent_become_rows_and_rest_goes_to_extra(db_path, tmp_path):
     assert msg["reactions_extra"] == 3
 
 
-def test_second_apply_adds_nothing_and_live_row_untouched(db_path, tmp_path, capsys):
+def test_second_apply_adds_nothing_and_live_row_untouched(db_path):
     conn = sqlite3.connect(db_path)
     conn.execute(
         "INSERT INTO chat_messages (chat_id, message_id, telegram_id, ts, kind, text_len, source) "
@@ -196,62 +189,40 @@ def test_second_apply_adds_nothing_and_live_row_untouched(db_path, tmp_path, cap
     )
     conn.commit()
     conn.close()
-    export = _write_export(tmp_path, _fixture_export())
-    assert _run([export, "--db", db_path, "--apply"]) == 0
+    data = _fixture_export()
+    _import(db_path, data)
     first_msgs, first_reacts = _count(db_path, "chat_messages"), _count(db_path, "chat_reactions")
     live = _rows(db_path, "SELECT * FROM chat_messages WHERE message_id = 19")[0]
     assert live["source"] == "live" and live["text_len"] == 7 and live["reactions_extra"] == 0
     assert _rows(db_path, "SELECT COUNT(*) AS n FROM chat_reactions WHERE message_id = 19")[0]["n"] == 0
-    capsys.readouterr()
-    assert _run([export, "--db", db_path, "--apply"]) == 0
+    plan, added = _import(db_path, data)
+    assert plan["to_add"] == 0
+    assert added == (0, 0)
     assert _count(db_path, "chat_messages") == first_msgs
     assert _count(db_path, "chat_reactions") == first_reacts
-    assert "Новых сообщений: 0" in capsys.readouterr().out
 
 
 # ── чат и привязка ───────────────────────────────────────────────────────────────────────
 
-def test_chat_id_override(db_path, tmp_path):
+def test_chat_id_override(db_path):
     other = -1009999999999
     _setting(db_path, "delegate_chat_id__city__msk", str(other))
-    export = _write_export(tmp_path, _fixture_export())
-    assert _run([export, "--db", db_path, "--chat-id", str(other), "--apply"]) == 0
+    _import(db_path, _fixture_export(), chat_id=other)
     assert _rows(db_path, "SELECT DISTINCT chat_id FROM chat_messages") == [{"chat_id": other}]
 
 
-def test_unbound_chat_refused_without_force(db_path, tmp_path, capsys):
-    export = _write_export(tmp_path, _fixture_export())
-    code = _run([export, "--db", db_path, "--chat-id", "-1008888888888", "--apply"])
-    err = capsys.readouterr().err
-    assert code == 1
-    assert "не привязан" in err and "--force" in err
+def test_unbound_chat_is_marked_in_preview(db_path):
+    plan, _ = _import(db_path, _fixture_export(), chat_id=-1008888888888, apply=False)
+    assert plan["is_bound"] is False
     assert _count(db_path, "chat_messages") == 0
-    assert _run([export, "--db", db_path, "--chat-id", "-1008888888888", "--apply", "--force"]) == 0
-    assert _count(db_path, "chat_messages") > 0
-
-
-def test_bad_export_exit_1(db_path, tmp_path, capsys):
-    bad = tmp_path / "bad.json"
-    bad.write_text("[]", encoding="utf-8")
-    assert _run([str(bad), "--db", db_path]) == 1
-    assert "экспорт" in capsys.readouterr().err.lower()
-
-
-def test_db_without_rating_tables_exit_1(tmp_path, capsys):
-    db = tmp_path / "old.db"
-    sqlite3.connect(db).close()
-    export = _write_export(tmp_path, _fixture_export())
-    assert _run([export, "--db", str(db), "--force"]) == 1
-    assert "chat_messages" in capsys.readouterr().err
 
 
 # ── паритет: импорт -> дашборд == тул по экспорту ────────────────────────────────────────
 
 @pytest.mark.parametrize("since", [None, datetime(2026, 9, 2).date()])
-def test_scores_after_import_equal_export_tool(db_path, tmp_path, since):
+def test_scores_after_import_equal_export_tool(db_path, since):
     data = _fixture_export([CHANNEL_POST, COMMENT_TO_CHANNEL, MANY_REACTIONS])
-    export = _write_export(tmp_path, data)
-    assert _run([export, "--db", db_path, "--apply"]) == 0
+    _import(db_path, data)
     _aggs, exp = export_scores(data, since=since)
     _laggs, live = live_scores(db_path, since=since, chat_id=CHAT_ID)
 

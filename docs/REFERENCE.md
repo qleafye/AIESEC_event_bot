@@ -224,9 +224,10 @@ Cloudflare Worker (reverse-proxy `api.telegram.org` на своём домене
 `{NEXTCLOUD_PUBLIC_URL}/s/{FOLDER_SHARE_TOKEN}/download?path=%2F&files=<имя файла>`.
 
 Загрузка fail-soft: недоступное облако не ломает регистрацию, участник проходит анкету, файл
-остаётся доступен через `file_id`. Бэкфилл ранее загруженных резюме, `scripts/backfill_resumes.py`,
-перенос уже сохранённых ссылок на новый домен Nextcloud, `scripts/backfill_nextcloud_urls.py`
-(`--old-base`/`--new-base`, сначала `--dry-run`).
+остаётся доступен через `file_id`. Резюме без ссылки бот догружает в облако сам: фоновая джоба
+повтора (`services/reg_finalize.py::retry_pending_resume_uploads`) берёт из базы всех, у кого есть
+файл или текст резюме, но нет ссылки. Перенос уже сохранённых ссылок на новый домен Nextcloud —
+`scripts/backfill_nextcloud_urls.py` (`--old-base`/`--new-base`, сначала `--dry-run`).
 
 ## Структура проекта
 
