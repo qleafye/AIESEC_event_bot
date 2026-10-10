@@ -104,6 +104,8 @@ def test_schema_keys_present_with_human_labels():
     assert at["format"] == "time"
     # Честная приписка про перезапуск — как у остальных таймингов фоновых джоб.
     assert "действует сразу" in at["prompt"]
+    # Джоба закреплена на Москве (scheduler timezone=MOSCOW_TZ): подсказка не ссылается на «как везде».
+    assert "всегда московское" in at["prompt"] and "как везде" not in at["prompt"]
 
 
 def test_time_key_is_editable_from_the_system_group():
