@@ -115,3 +115,25 @@ def test_only_approved_hidden_when_none_approved(tmp_path):
     run(_seed())
     text, rows = run(bst.status_block([21, 31], [], "bcstatus_only"))
     assert "⚠️" in text and rows == []
+
+
+def test_line_stays_after_only_approved(tmp_path):
+    """После «Только одобренные» строка «Получатели: Одобрены N» остаётся — фильтр виден."""
+    ready(tmp_path)
+    run(_seed())
+    state = _fresh_state(ADMIN_ID)
+    run(state.update_data(filters=[{"field": "event_city", "value": "msk", "exclude": [], "label": "Москва"}]))
+    cb = FakeCallback("bcstatus_filter", ADMIN_ID)
+    run(bst.bcstatus_filter(cb, state))
+    assert "Получатели: Одобрены 2" in cb.message.text
+
+
+def test_staff_note_splits_no_form_and_not_approved(tmp_path):
+    ready(tmp_path)
+    run(_seed())
+    note = run(bst.staff_missing_note({21, NOT_SUBMITTED_ID}))
+    assert "2 из команды (админы и менеджеры) рассылку не получат" in note
+    assert "без анкеты делегата — 1" in note and "анкета не одобрена — 1" in note
+    assert "не зарегистрированы" not in note
+    only_no_form = run(bst.staff_missing_note({NOT_SUBMITTED_ID}))
+    assert "не зарегистрированы как делегаты" in only_no_form

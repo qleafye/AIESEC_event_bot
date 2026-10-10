@@ -120,7 +120,8 @@ def test_all_confirm_shows_past_and_button(tmp_path):
     run(state.update_data(target_type="all", bc_users=users))
     bot = _RecBot()
     _confirm(state, bot, users)
-    assert "из них прошлого сезона: 1" in bot.sent[-1][1]
+    # сезон — строкой сразу под «Получатели», не отдельным числом после предупреждений
+    assert "Получатели: Одобрены 2\nПрошлого сезона среди получателей: 1\n\n" in bot.sent[-1][1]
     assert "bcseason_only" in _flat(bot.markups[-1])
 
 
@@ -147,7 +148,7 @@ def test_incomplete_path_same(tmp_path):
     run(state.update_data(target_type="list", target_users=users, bc_users=users))
     bot = _RecBot()
     _confirm(state, bot, users)
-    assert "из них прошлого сезона: 1" in bot.sent[-1][1]
+    assert "Прошлого сезона среди получателей: 1" in bot.sent[-1][1]
     assert "bcseason_only" in _flat(bot.markups[-1])
 
 
@@ -170,7 +171,7 @@ def test_schedule_all_only_current(tmp_path, monkeypatch):
     msg = FakeMessage()
     run(ab._send_schedule_confirm_prompt(msg, state))
     text, _pm, kb = msg.answers[-1]
-    assert "прошлого сезона: 1" in text
+    assert "Прошлого сезона среди получателей: 1" in text
     assert "bcseason_sched" in _flat(kb)
 
     cb = FakeCallback("bcseason_sched", ADMIN_ID)
@@ -198,7 +199,7 @@ def test_no_past_no_noise(tmp_path):
     run(state.update_data(target_type="all", bc_users=[1]))
     bot = _RecBot()
     _confirm(state, bot, [1])
-    assert bot.sent[-1][1] == "Отправить это 1 пользователям?"
+    assert bot.sent[-1][1] == "Получатели: Одобрены 1\n\nОтправить это 1 пользователям?"
     assert "bcseason_only" not in _flat(bot.markups[-1])
 
 
