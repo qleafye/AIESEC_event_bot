@@ -79,15 +79,7 @@ async def reject_retro_menu(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("rjretro_p:"))
-async def reject_retro_preview(callback: types.CallbackQuery):
-    if not await can_edit_city(callback.from_user.id, None):
-        await callback.answer(_DENIED, show_alert=True)
-        return
-    period = _period_of(callback.data)
-    if period is None:
-        await callback.answer("Период не распознан — откройте экран заново.", show_alert=True)
-        return
+async def _render_preview(period: str) -> tuple[str, InlineKeyboardMarkup, dict]:
     report = await reject_retro.preview(_since(period))
     again = [InlineKeyboardButton(text="← Другой период", callback_data="rjretro")]
     if not report["pending"] and not report["rejected"]:
@@ -97,9 +89,7 @@ async def reject_retro_preview(callback: types.CallbackQuery):
         )
         if report["approved"]:
             text += f"\nОдобренных, которые подошли бы под правила: {report['approved']} — их бот не трогает."
-        await _edit(callback, text, InlineKeyboardMarkup(inline_keyboard=[again, _back_row()]))
-        await callback.answer()
-        return
+        return text, InlineKeyboardMarkup(inline_keyboard=[again, _back_row()]), report
     lines = [
         f"<b>🕘 Проверка заявок {_period_label(period)}</b>",
         "",
@@ -121,11 +111,24 @@ async def reject_retro_preview(callback: types.CallbackQuery):
         "утра (тихие часы).",
     ]
     rows = [
-        [InlineKeyboardButton(text="✅ Применить", callback_data=f"rjretro_go:{period}")],
+        [InlineKeyboardButton(text="✅ Применить", callback_data=f"rjretro_go:{period}:{report['digest']}")],
         again,
         _back_row(),
     ]
-    await _edit(callback, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows), report
+
+
+@router.callback_query(F.data.startswith("rjretro_p:"))
+async def reject_retro_preview(callback: types.CallbackQuery):
+    if not await can_edit_city(callback.from_user.id, None):
+        await callback.answer(_DENIED, show_alert=True)
+        return
+    period = _period_of(callback.data)
+    if period is None:
+        await callback.answer("Период не распознан — откройте экран заново.", show_alert=True)
+        return
+    text, kb, _ = await _render_preview(period)
+    await _edit(callback, text, kb)
     await callback.answer()
 
 
@@ -134,30 +137,54 @@ async def reject_retro_go(callback: types.CallbackQuery):
     if not await can_edit_city(callback.from_user.id, None):
         await callback.answer(_DENIED, show_alert=True)
         return
-    period = _period_of(callback.data)
-    if period is None:
+    parts = callback.data.split(":")
+    period = parts[1] if len(parts) > 1 and parts[1] in dict(_PERIODS) else None
+    if period is None or len(parts) != 3:
         await callback.answer("Период не распознан — откройте экран заново.", show_alert=True)
         return
+    digest = parts[2]
     if _lock.locked():
         await callback.answer("Применение уже идёт — дождитесь итога.", show_alert=True)
         return
     async with _lock:
+        targets = reject_retro.split_targets(await reject_retro.collect(_since(period)))
+        current = targets["pending"] + targets["rejected"]
+        if reject_retro.ids_digest(current) != digest:
+            text, kb, _ = await _render_preview(period)
+            await callback.answer("Список изменился, проверьте ещё раз.", show_alert=True)
+            await _edit(callback, text, kb)
+            return
         await callback.answer("Применяю, это займёт немного времени…")
-        done = await reject_retro.apply(callback.bot, _since(period))
+        ids = {int(u["telegram_id"]) for u, _ in current}
+        try:
+            done = await reject_retro.apply(callback.bot, _since(period), ids=ids)
+        except Exception:
+            logger.exception("reject_retro: применение оборвалось by=%s period=%s", callback.from_user.id, period)
+            await callback.message.answer(
+                "Применение оборвалось на полпути. Часть заявок могла успеть обработаться — "
+                "откройте «Применить к уже поданным» заново: бот покажет, что осталось, и "
+                "обработанное не задвоится."
+            )
+            return
     logger.info("reject_retro: by=%s period=%s итог=%s", callback.from_user.id, period, done)
     text = (
         f"Готово. Отклонено правилами: {done['pending']}, "
         f"пометка у отклонённых вручную: {done['rejected']}."
     )
+    if done.get("skipped"):
+        text += f"\nПропущено: {done['skipped']} — их успели одобрить или отклонить вручную, пока шло применение."
     if done["failed"]:
         text += (
             f"\nНе удалось обработать: {done['failed']} — нажмите «Применить» ещё раз, "
             "обработанное не задвоится."
         )
-    from handlers.admin_reject_rules import render_rules_screen
-    screen, kb = await render_rules_screen(callback.from_user.id)
     await callback.message.answer(text)
-    await callback.message.answer(screen, parse_mode="HTML", reply_markup=kb)
+    try:
+        from handlers.admin_reject_rules import render_rules_screen
+        screen, kb = await render_rules_screen(callback.from_user.id)
+        await callback.message.answer(screen, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        logger.exception("reject_retro: экран правил не показан")
 
 
 __all__ = ["reject_retro_menu", "reject_retro_preview", "reject_retro_go"]

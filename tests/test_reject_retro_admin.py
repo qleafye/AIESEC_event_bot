@@ -78,6 +78,10 @@ def _state():
     return {t: (s, a) for t, s, a in _sql("SELECT telegram_id, status, auto_reject_rule_ids FROM users")}
 
 
+def _digest(since="2026-01-01"):
+    return _run(reject_retro.preview(since))["digest"]
+
+
 class FakeBotCallback(FakeCallback):
     bot = object()
 
@@ -101,14 +105,14 @@ def test_screen_preview_shows_people_words_and_apply_button(tmp_path, monkeypatc
     assert "писем не будет: 1" in text
     assert "@p_one" in text
     datas = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert "rjretro_go:7" in datas and "admin_reject_rules" in datas
+    assert f"rjretro_go:7:{_digest()}" in datas and "admin_reject_rules" in datas
     assert _state()[1][0] == "pending"
 
 
 def test_apply_changes_exactly_previewed_and_is_idempotent(tmp_path, monkeypatch):
     sent = _setup(tmp_path, monkeypatch)
     monkeypatch.setattr(h, "_since", lambda p: "2026-01-01")
-    cb = FakeBotCallback("rjretro_go:7")
+    cb = FakeBotCallback(f"rjretro_go:7:{_digest()}")
     _run(h.reject_retro_go(cb))
     st = _state()
     assert st[1][0] == st[2][0] == st[3][0] == "rejected"
@@ -121,7 +125,7 @@ def test_apply_changes_exactly_previewed_and_is_idempotent(tmp_path, monkeypatch
     assert cb.message.answers[0][0] == "Готово. Отклонено правилами: 2, пометка у отклонённых вручную: 1."
 
     sent.clear()
-    again = FakeBotCallback("rjretro_go:7")
+    again = FakeBotCallback(f"rjretro_go:7:{_digest()}")
     _run(h.reject_retro_go(again))
     assert again.message.answers[0][0] == "Готово. Отклонено правилами: 0, пометка у отклонённых вручную: 0."
     assert sent == []
@@ -146,7 +150,7 @@ def test_menu_has_period_buttons_and_denied_for_city_manager(tmp_path, monkeypat
 
 def test_bad_period_is_explained(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
-    cb = FakeBotCallback("rjretro_go:zzz")
+    cb = FakeBotCallback("rjretro_go:zzz:abcd")
     _run(h.reject_retro_go(cb))
     assert "Период не распознан" in cb.answers[0][0]
 
@@ -161,4 +165,90 @@ def test_button_on_rules_screen_and_caps(tmp_path, monkeypatch):
     ]
     for key in ("rjretro", "rjretro_p:*", "rjretro_go:*"):
         assert ADMIN_CAPS[key] == "settings"
-    assert required_capability(callback_data="rjretro_go:7") == "settings"
+    assert required_capability(callback_data="rjretro_go:7:abcd1234") == "settings"
+
+
+def test_failure_after_effects_does_not_lose_row(tmp_path, monkeypatch):
+    """Сбой посередине обработки: метка автоотказа не должна «закрыть» строку, иначе повтор её
+    пропустит навсегда."""
+    sent = _setup(tmp_path, monkeypatch)
+    calls = {"n": 0}
+
+    async def flaky(bot, tid, status, reason, **kw):
+        if tid == 1 and calls["n"] == 0:
+            calls["n"] += 1
+            raise RuntimeError("telegram упал")
+        sent.append((tid, status, reason))
+
+    monkeypatch.setattr("services.application_effects.apply_decision_effects", flaky)
+    first = _run(reject_retro.apply(object(), "2026-01-01", pause=0))
+    assert first["failed"] == 1
+    assert _state()[1][1] is None  # метка не поставлена — строка видна повтору
+    second = _run(reject_retro.apply(object(), "2026-01-01", pause=0))
+    assert second["failed"] == 0
+    assert _state()[1][1]  # дообработана
+    assert sorted(t for t, _, _ in sent).count(1) == 0  # второго письма не было: уже rejected
+
+
+def test_manager_approval_during_run_is_not_overwritten(tmp_path, monkeypatch):
+    sent = _setup(tmp_path, monkeypatch)
+    real = reg_finalize._auto_reject_patch
+    seen = {"n": 0}
+
+    async def approving(tid, answers):
+        patch = await real(tid, answers)
+        seen["n"] += tid == 2
+        if tid == 2 and seen["n"] >= 2:  # менеджер одобрил, пока шёл многоминутный цикл
+            _sql("UPDATE users SET status = 'approved' WHERE telegram_id = 2")
+        return patch
+
+    monkeypatch.setattr(reg_finalize, "_auto_reject_patch", approving)
+    pairs = _run(reject_retro.collect("2026-01-01"))
+    ids = {int(u["telegram_id"]) for u, _ in pairs}
+    done = _run(reject_retro.apply(object(), "2026-01-01", pause=0, ids=ids))
+    assert _state()[2][0] == "approved"
+    assert 2 not in [t for t, _, _ in sent]
+    assert done["skipped"] >= 1
+
+
+def test_apply_only_previewed_ids(tmp_path, monkeypatch):
+    sent = _setup(tmp_path, monkeypatch)
+    _run(reject_retro.apply(object(), "2026-01-01", pause=0, ids={1}))
+    assert _state()[1][0] == "rejected" and _state()[2][0] == "pending"
+    assert [t for t, _, _ in sent] == [1]
+
+
+def test_stale_digest_recounts_instead_of_applying(tmp_path, monkeypatch):
+    sent = _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(h, "_since", lambda p: "2026-01-01")
+    stale = _digest()
+    _seed(8, "pending")  # появился ещё один подходящий после предпросмотра
+    cb = FakeBotCallback(f"rjretro_go:7:{stale}")
+    _run(h.reject_retro_go(cb))
+    assert sent == [] and _state()[1][0] == "pending"
+    assert "делегаты получат письмо с причиной: 3" in cb.message.edits[0][0]
+
+
+def test_sheet_updated_with_one_bulk_call(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    calls = []
+
+    async def bulk(mapping):
+        calls.append(mapping)
+
+    monkeypatch.setattr("services.sheets.bulk_update_status_in_sheet", bulk)
+    _run(reject_retro.apply(object(), "2026-01-01", pause=0))
+    assert len(calls) == 1 and set(calls[0]) == {"1", "2"}
+
+
+def test_apply_error_is_reported_and_summary_before_screen(tmp_path, monkeypatch):
+    _setup(tmp_path, monkeypatch)
+    monkeypatch.setattr(h, "_since", lambda p: "2026-01-01")
+
+    async def boom(*a, **k):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(reject_retro, "apply", boom)
+    cb = FakeBotCallback(f"rjretro_go:7:{_digest()}")
+    _run(h.reject_retro_go(cb))
+    assert "оборвалось" in cb.message.answers[0][0]
