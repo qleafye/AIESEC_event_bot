@@ -3662,8 +3662,9 @@ _COIN_JOURNAL_SELECT = (
 )
 
 
-# Экран журнала — операции людей: ручные, «+N» в чате, перенос из таблицы. Начисления за
-# задания и автоматические — только в CSV.
+# Экран журнала — операции людей: ручные, «+N» в чате, перенос из таблицы (решение владельца
+# 11.10: экран так и называется — «Ручные начисления»). Начисления за задания и автоматические —
+# построчно только в CSV, итогом — в «📊 Статистика геймы» (`get_game_stats()["coins_awarded"]`).
 _JOURNAL_SOURCES = "c.source IN ('manual', 'chat', 'transfer')"
 
 
@@ -10117,8 +10118,10 @@ async def list_all_submissions() -> list[dict]:
 
 
 async def get_game_stats() -> dict:
-    """Four aggregate reads for the stats screen (wave 6): distinct participants, counts by
-    submission status, and an approved-only breakdown by task category."""
+    """Aggregate reads for the stats screen (wave 6): distinct participants, counts by
+    submission status, an approved-only breakdown by task category, and `coins_awarded` --
+    the total of points credited for approved submissions (уже со штрафом за просрочку: это
+    ровно то число, что ушло в `claim_submission` и в журнал баллов)."""
     async with _connect() as db:
         async with db.execute(
             "SELECT COUNT(DISTINCT user_id) FROM game_submissions"
@@ -10143,6 +10146,12 @@ async def get_game_stats() -> dict:
             for category, count in await cursor.fetchall():
                 by_category[category] = int(count)
         stats["by_category"] = by_category
+
+        async with db.execute(
+            "SELECT COALESCE(SUM(coins_awarded), 0) FROM game_submissions WHERE status = 'approved'"
+        ) as cursor:
+            row = await cursor.fetchone()
+            stats["coins_awarded"] = int(row[0]) if row and row[0] is not None else 0
 
         return stats
 

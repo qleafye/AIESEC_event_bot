@@ -125,6 +125,24 @@ def test_get_game_stats_by_category_only_counts_approved(tmp_path):
     asyncio.run(go())
 
 
+def test_get_game_stats_sums_coins_awarded_for_approved_only(tmp_path):
+    """Приёмка 10.10: в статистике не было суммы начисленных баллов. Считается по
+    `coins_awarded` одобренных сдач — то, что реально ушло делегатам (со штрафом)."""
+    _db_ready(tmp_path)
+
+    async def go():
+        assert (await db.get_game_stats())["coins_awarded"] == 0  # пустая база — ноль, не None
+        t = await _make_task(coins=20)
+        s1 = await db.create_submission(t, DELEGATE_A, "text", "a", "2026-08-14 10:00:00")
+        await db.claim_submission(s1, ADMIN_ID, "approved", coins_awarded=20)
+        s2 = await db.create_submission(t, DELEGATE_B, "text", "b", "2026-08-14 10:05:00")
+        await db.claim_submission(s2, ADMIN_ID, "approved", coins_awarded=14)  # со штрафом
+        await db.create_submission(t, 930604, "text", "c", "2026-08-14 10:10:00")  # pending
+        assert (await db.get_game_stats())["coins_awarded"] == 34
+
+    asyncio.run(go())
+
+
 # ── Task 1: capability map ──────────────────────────────────────────────────────────────────
 
 def test_admin_game_stats_key_maps_to_moderate_game():
@@ -157,6 +175,7 @@ def test_show_game_stats_renders_all_fields(tmp_path):
         assert "На проверке: 1" in text
         assert "Одобрено: 1" in text
         assert "Отклонено: 1" in text
+        assert "🪙 Начислено баллов за задания: 20" in text
         # Phase 16 (16-04): approved-only category breakdown -- RU-подпись + unicode-полоса
         # внутри <pre>, не «• Light: 1».
         assert "<pre>" in text and "Лёгкое" in text and "▇" in text

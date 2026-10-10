@@ -74,7 +74,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("🎯 Задания", "admin_game_tasks"),  # Phase 16 (16-03): same label as the delegate's section
     ("🎮 Проверка заданий", "admin_game_review"),
     ("🪙 Баллы вручную", "admin_coins_manual"),
-    ("📜 Журнал баллов", "admin_coins_journal"),
+    ("📜 Ручные начисления", "admin_coins_journal"),
     ("📥 Перенос баллов из таблицы", "admin_coins_transfer"),
     ("🔄 Таблица геймы", "admin_game_sync_sheet"),
     ("📊 Статистика геймы", "admin_game_stats"),
