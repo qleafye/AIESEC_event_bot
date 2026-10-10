@@ -726,6 +726,9 @@ from handlers import admin_reject_rules  # noqa: E402,F401
 # admin_reject_rules, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_reject_reports  # noqa: E402,F401
 
+# Ретро-применение правил автоотказа к поданным заявкам — тот же хвостовой приём.
+from handlers import admin_reject_retro  # noqa: E402,F401
+
 # Форум-ночь п.4 (расписание форума в боте): шов «🗓 Программа форума» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_reports, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers import admin_program  # noqa: E402,F401

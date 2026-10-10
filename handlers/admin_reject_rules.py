@@ -227,6 +227,7 @@ async def render_rules_screen(admin_id: int, offset: int = 0) -> tuple[str, Inli
     if await can_edit_city(admin_id, None):
         master_label = "🚫 Выключить все правила" if kill_switch_on else "✅ Включить все правила"
         buttons.append([InlineKeyboardButton(text=master_label, callback_data="arr_master")])
+        buttons.append([InlineKeyboardButton(text="🕘 Применить к уже поданным", callback_data="rjretro")])
     # План 31-11: журнал живёт отдельным швом (handlers/admin_reject_journal.py) — вход отсюда,
     # где менеджер только что настраивал правила.
     buttons.append([InlineKeyboardButton(text="🤖 Автоотказы", callback_data="admin_reject_journal")])
