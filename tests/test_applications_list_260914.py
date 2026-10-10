@@ -402,7 +402,7 @@ def test_count_applications_empty_db_returns_zeros(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Задача 2 — экран «📇 Список заявок» бота (handlers/admin_app_list.py) + права
+# Задача 2 — экран «📇 Список заявок» бота (handlers/applications/admin_app_list.py) + права
 #
 # FakeCallback — из tests/test_admin_sections_ia20.py (простой dummy для прямого вызова
 # хендлера); ADMIN_ID/STRANGER_ID/_roles_ready — из tests/test_roles_phase8.py; хендлеры зовутся
@@ -411,7 +411,7 @@ def test_count_applications_empty_db_returns_zeros(tmp_path):
 
 import domain.cities as cities_mod
 import handlers.admin_sections as sec
-from handlers import admin_app_list
+from handlers.applications import admin_app_list
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from tests.test_admin_sections_ia20 import FakeCallback
 from tests.test_roles_phase8 import ADMIN_ID, STRANGER_ID, _roles_ready

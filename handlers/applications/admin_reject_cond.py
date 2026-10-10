@@ -2,7 +2,7 @@
 вопрос → оператор → значения, группы И/ИЛИ, заготовки в один тап, счётчик dry-run перед
 включением.
 
-Отдельный шов от `handlers/admin_reject_rules.py` — потолок размера модуля (тот файл уже стоит
+Отдельный шов от `handlers/applications/admin_reject_rules.py` — потолок размера модуля (тот файл уже стоит
 на 850 строках), НЕ архитектурная граница. Импортируется хвостом из `admin_reject_rules.py`
 (`from handlers import admin_reject_cond` в самом конце файла) — тот же приём, каким
 `admin_sections.py` подключает соседние швы; цикла нет, тот модуль уже полностью загружен.
@@ -34,7 +34,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 from config import config
 from database.db import get_reject_rule, get_staff_city
 from handlers.admin import router
-from handlers.admin_reject_rules import render_rule_card
+from handlers.applications.admin_reject_rules import render_rule_card
 from handlers.states import RejectCond
 from keyboards.builders import get_cancel_kb
 from domain.regform.engine import (
@@ -906,4 +906,4 @@ async def arc_dry_go(callback: types.CallbackQuery):
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("✅ Правило включено и теперь действует на подходящие заявки.", show_alert=True)
 
-from handlers import admin_reject_journal  # noqa: E402,F401 — журнал автоотказов (arj_*), хвостом
+from handlers.applications import admin_reject_journal  # noqa: E402,F401 — журнал автоотказов (arj_*), хвостом

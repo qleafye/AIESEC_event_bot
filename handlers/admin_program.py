@@ -2,7 +2,7 @@
 «🗓 Программа форума»: залы и сессии, per-city, менеджер заводит их сам, без разработчика и без
 импорта из таблицы (решение владельца).
 
-Форма шва — эталон `handlers/admin_reject_rules.py`/`handlers/admin_checkin.py`: своего
+Форма шва — эталон `handlers/applications/admin_reject_rules.py`/`handlers/admin_checkin.py`: своего
 `Router()` нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`, каждый декоратор — в ОДНУ
 строку (инвариант cap-теста `tests/test_roles_phase8.py`). Импортирован ХВОСТОМ
 `handlers/admin_sections.py` (после `admin_reject_reports`).

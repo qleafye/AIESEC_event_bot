@@ -748,7 +748,7 @@ from handlers import admin_lookup  # noqa: E402,F401
 
 # Квик 260914-rgq (RGQ-01): шов «📇 Список заявок» — импорт СРАЗУ ПОСЛЕ admin_lookup, тот же
 # хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
-from handlers import admin_app_list  # noqa: E402,F401
+from handlers.applications import admin_app_list  # noqa: E402,F401
 
 # Квик 260919-mlu (Task 3): шов «развилка при смене имени вкладки» — импорт СРАЗУ ПОСЛЕ
 # admin_app_list, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
@@ -756,14 +756,14 @@ from handlers.sheets import admin_sheet_tabs  # noqa: E402,F401
 
 # Phase 31 (31-08, D-09/D-15): шов «🚫 Правила автоотказа» — импорт СРАЗУ ПОСЛЕ admin_sheet_tabs,
 # тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
-from handlers import admin_reject_rules  # noqa: E402,F401
+from handlers.applications import admin_reject_rules  # noqa: E402,F401
 
 # Квик 260923 (AUTOREJ-REPORT, D-I): шов «📊 Отчётность автоотказа» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_rules, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
-from handlers import admin_reject_reports  # noqa: E402,F401
+from handlers.applications import admin_reject_reports  # noqa: E402,F401
 
 # Ретро-применение правил автоотказа к поданным заявкам — тот же хвостовой приём.
-from handlers import admin_reject_retro  # noqa: E402,F401
+from handlers.applications import admin_reject_retro  # noqa: E402,F401
 
 # Форум-ночь п.4 (расписание форума в боте): шов «🗓 Программа форума» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_reports, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).

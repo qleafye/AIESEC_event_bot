@@ -14,8 +14,8 @@ import json
 
 from config import config
 from database import db
-from handlers import admin_reject_journal as j
-from handlers import admin_reject_rules
+from handlers.applications import admin_reject_journal as j
+from handlers.applications import admin_reject_rules
 from handlers.admin_caps import required_capability
 from services.timeutil import msk_now
 from tests._dbtpl import fast_init_db
@@ -467,7 +467,7 @@ async def _seed_pending(uid, *, flagged_rule_id=None, city=None):
 
 
 def test_flag_chip_hidden_when_module_off(tmp_path):
-    from handlers import admin_moderation
+    from handlers.applications import admin_moderation
     from tests.test_city_admin_phase72 import FakeMessage, _new_state
 
     _ready(tmp_path)
@@ -481,7 +481,7 @@ def test_flag_chip_hidden_when_module_off(tmp_path):
 
 
 def test_flag_chip_shown_when_module_on(tmp_path):
-    from handlers import admin_moderation
+    from handlers.applications import admin_moderation
     from tests.test_city_admin_phase72 import FakeMessage, _new_state
 
     _ready(tmp_path)
@@ -496,7 +496,7 @@ def test_flag_chip_shown_when_module_on(tmp_path):
 
 
 def test_appr_flag_toggle_filters_queue_to_flagged_only(tmp_path):
-    from handlers import admin_moderation
+    from handlers.applications import admin_moderation
     from tests.test_city_admin_phase72 import FakeCallback, _new_state
 
     _ready(tmp_path)
@@ -516,7 +516,7 @@ def test_appr_flag_toggle_filters_queue_to_flagged_only(tmp_path):
 
 
 def test_empty_flagged_queue_explains_filter_with_the_word(tmp_path):
-    from handlers import admin_moderation
+    from handlers.applications import admin_moderation
     from tests.test_city_admin_phase72 import FakeMessage, _new_state
 
     _ready(tmp_path)

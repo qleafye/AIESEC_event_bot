@@ -16,7 +16,8 @@ from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 from services import consent as consent_svc
 from handlers import admin_settings
 from handlers.regform import admin_reg_config, admin_reg_percity, admin_consent
-from handlers import admin_moderation, reg_consent
+from handlers.applications import admin_moderation
+from handlers import reg_consent
 from handlers.admin_caps import required_capability
 
 ADMIN_ID = 900822

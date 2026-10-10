@@ -44,7 +44,7 @@ def _approve_immediate(tid, by=1):
     `claim_approve` — оно переехало в `record_decision`/`flush_due_decisions`, чтобы веб-путь
     с 5-секундным окном «Отменить» не дарил баллы за решение, которое ещё можно откатить.
     Этот помощник — бот-путь целиком, ровно та же пара вызовов, что
-    `handlers/admin_moderation.py::appr_approve` (флип, затем `record_decision` с
+    `handlers/applications/admin_moderation.py::appr_approve` (флип, затем `record_decision` с
     `effects_already_sent=True` — эффекты применяются сразу, без окна): весь этот файл
     проверяет НАЧИСЛЕНИЕ, а не сам флип, поэтому вызывающие эти тесты не различают "claim_approve
     начисляет" и "claim_approve + запись решения начисляют" — обе версии значат «одно
@@ -147,7 +147,7 @@ def test_single_approve_credits_ambassador_once(tmp_path):
 
 def test_credit_fires_through_claim_approve_hook(tmp_path):
     """Врезка №1 (бот-путь, `_approve_immediate` — `claim_approve` + `record_decision` с
-    `effects_already_sent=True`, тот же шов, что `handlers/admin_moderation.py::appr_approve`):
+    `effects_already_sent=True`, тот же шов, что `handlers/applications/admin_moderation.py::appr_approve`):
     начисление происходит ТОЛЬКО при реально выигранном флипе, возвращаемое значение
     `claim_approve` не меняется."""
     _ready(tmp_path)
