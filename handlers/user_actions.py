@@ -271,7 +271,7 @@ async def render_leaderboard(
 
 
 def _format_coin_entry_line(row: dict, manual_label: str, task_label: str, referral_label: str = "") -> str:
-    """`"{dd.mm} {sign}{delta}🪙 — {reason or source label}"` — shared by the balance summary
+    """`"{dd.mm} {sign}🪙 — {reason or source label}"` (sign уже содержит число со знаком) — shared by the balance summary
     (last 5) and the paginated «📜 История» screen. `reason` wins when set; otherwise falls
     back to the RU source label (manual/task), or a plain "—" for NULL/legacy rows.
 
@@ -295,7 +295,7 @@ def _format_coin_entry_line(row: dict, manual_label: str, task_label: str, refer
         label = referral_label or "—"
     else:
         label = "—"
-    return f"{when} {sign}{delta}🪙 — {label}"
+    return f"{when} {sign}🪙 — {label}"
 
 
 async def _balance_screen(
