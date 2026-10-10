@@ -56,6 +56,16 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
             await hook(key)
         except Exception as exc:  # noqa: BLE001 — реакция на правку не имеет права уронить запись
             logger.error("settings_audit: реакция на %r сорвалась: %s", key, exc)
+    if key == "miniapp_open_button":
+        # Подпись кнопки приложения стоит и на кнопке меню чата — Telegram держит её до новой
+        # установки, иначе новая подпись появилась бы там только после перезапуска бота.
+        try:
+            from handlers.admin_miniapp import sync_chat_menu_button
+            from services.scheduler import get_bot
+
+            await sync_chat_menu_button(get_bot())
+        except Exception as exc:  # noqa: BLE001 — недоступный Telegram не роняет правку
+            logger.error("settings_audit: кнопка меню приложения не обновилась: %s", exc)
 
 
 async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True) -> None:
