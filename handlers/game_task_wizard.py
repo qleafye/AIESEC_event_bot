@@ -304,9 +304,13 @@ def _safe_schedule_reminder(task_id: int, deadline_at: str | None):
     if when is None:
         return
     try:
-        schedule_task_deadline_reminder(task_id, when)
+        if not schedule_task_deadline_reminder(task_id, when):
+            from services.scheduler import _deadline_reminder_hours as hours
+
+            return f"⏰ Напоминания о дедлайне не будет: до дедлайна меньше {hours} ч."
     except Exception:
         logger.warning("task deadline reminder schedule failed for task %s", task_id, exc_info=True)
+    return None
 
 
 def _safe_cancel_reminder(task_id: int):
