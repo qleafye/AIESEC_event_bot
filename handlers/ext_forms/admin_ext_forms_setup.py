@@ -18,8 +18,8 @@ from database import ext_forms_db as xdb
 from handlers.admin import router
 from handlers.ext_forms.admin_ext_forms import _e, _show, render_form_card
 from services import sheets
-from services.ext_forms_google import list_tabs as google_list_tabs
-from services.ext_forms_mirror import create_mirror_tab
+from services.ext_forms.ext_forms_google import list_tabs as google_list_tabs
+from services.ext_forms.ext_forms_mirror import create_mirror_tab
 
 _TAB_BTN_LIMIT = 40
 _STALE = "Список вкладок устарел — откройте выбор ещё раз"

@@ -1328,7 +1328,7 @@ async def ext_forms_pending_job():
     """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
     Сбой прохода не роняет планировщик."""
     try:
-        from services.ext_forms_yandex_sync import drain_pending
+        from services.ext_forms.ext_forms_yandex_sync import drain_pending
         await drain_pending()
     except Exception as e:
         logger.error(f"ext_forms_pending_job failed: {e}")
@@ -1338,7 +1338,7 @@ async def ext_forms_reconcile_job():
     """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
     Сбой прохода не роняет планировщик."""
     try:
-        from services.ext_forms_yandex_sync import reconcile_all
+        from services.ext_forms.ext_forms_yandex_sync import reconcile_all
         await reconcile_all()
     except Exception as e:
         logger.error(f"ext_forms_reconcile_job failed: {e}")
@@ -1348,7 +1348,7 @@ async def ext_forms_google_job():
     """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
     Сбой прохода не роняет планировщик."""
     try:
-        from services.ext_forms_google import poll_google_forms
+        from services.ext_forms.ext_forms_google import poll_google_forms
         await poll_google_forms()
     except Exception as e:
         logger.error(f"ext_forms_google_job failed: {e}")
@@ -1358,7 +1358,7 @@ async def ext_forms_sheet_drain_job():
     """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
     Сбой прохода не роняет планировщик."""
     try:
-        from services.ext_forms_mirror import drain_mirror
+        from services.ext_forms.ext_forms_mirror import drain_mirror
         await drain_mirror()
     except Exception as e:
         logger.error(f"ext_forms_sheet_drain_job failed: {e}")
@@ -1368,7 +1368,7 @@ async def ext_forms_notify_job():
     """Interval-job target (no args, picklable): тонкая обёртка, логика в сервисе внешних форм.
     Сбой прохода не роняет планировщик."""
     try:
-        from services.ext_forms_notify import alert_reauth, notify_new_answers
+        from services.ext_forms.ext_forms_notify import alert_reauth, notify_new_answers
         await notify_new_answers(_bot)
         await alert_reauth(_bot)
     except Exception as e:

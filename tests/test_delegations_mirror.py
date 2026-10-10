@@ -5,7 +5,7 @@ import logging
 import pytest
 
 from services.delegations import delegations_mirror as dm
-from services import ext_forms_mirror as mir
+from services.ext_forms import ext_forms_mirror as mir
 from tests._fake_ws import GREEN, GREY, PROBE_HEADER, WHITE, FakeWS, probe_sheet
 
 TAB = "UR REGS"

@@ -9,8 +9,8 @@ import httpx
 from config import config
 from database import db
 from database import ext_forms_db as ef
-from services import ext_forms_yandex as Y
-from services import ext_forms_yandex_sync as S
+from services.ext_forms import ext_forms_yandex as Y
+from services.ext_forms import ext_forms_yandex_sync as S
 from services.sheet_arrival_sync import backoff_seconds
 from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db

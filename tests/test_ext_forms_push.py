@@ -9,9 +9,9 @@ import pytest
 
 from database import db as bot_db
 from database import ext_forms_db as ef
-from services import ext_forms_yandex as Y
-from services import ext_forms_yandex_sync as S
-from services.ext_forms_parse import parse_push_body
+from services.ext_forms import ext_forms_yandex as Y
+from services.ext_forms import ext_forms_yandex_sync as S
+from services.ext_forms.ext_forms_parse import parse_push_body
 
 from tests.test_miniapp_routes import _cfg, _client, _use_tmp_db
 
@@ -225,7 +225,7 @@ def test_reconcile_and_backfill_skip_push(env, monkeypatch):
 def test_push_answers_double_escaped_string_from_prod():
     # Прод 09.10: интеграция «JSON-RPC POST» прислала answers строкой с \" и \uXXXX внутри.
     import json as _json
-    from services.ext_forms_parse import parse_push_body
+    from services.ext_forms.ext_forms_parse import parse_push_body
 
     inner = r'{\"ФИО\": \"фвфы\", \"Ник в телеграмме (через @)\": \"awdaw\"}'
     body = _json.loads(_json.dumps({"jsonrpc": "2.0", "method": "answer", "id": 1,
@@ -237,12 +237,12 @@ def test_push_answers_double_escaped_string_from_prod():
 
 
 def test_push_answers_single_encoded_string_still_works():
-    from services.ext_forms_parse import parse_push_body
+    from services.ext_forms.ext_forms_parse import parse_push_body
     parsed = parse_push_body({"params": {"answer_id": "1", "answers": '{"\u0424\u0418\u041e": "x"}'}})
     assert [(i["q"], i["value"]) for i in parsed["items"]] == [("ФИО", "x")]
 
 
 def test_push_keys_trimmed_like_export_header():
-    from services.ext_forms_parse import parse_push_body
+    from services.ext_forms.ext_forms_parse import parse_push_body
     parsed = parse_push_body({"params": {"answer_id": "1", "answers": {"Название университета ": "МГУ"}}})
     assert [(i["q"], i["label"]) for i in parsed["items"]] == [("Название университета", "Название университета")]

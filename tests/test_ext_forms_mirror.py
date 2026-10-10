@@ -6,7 +6,7 @@ import pytest
 from config import config
 from database import db
 from database import ext_forms_db as ef
-from services import ext_forms_mirror as mir
+from services.ext_forms import ext_forms_mirror as mir
 from tests._dbtpl import fast_init_db
 
 
