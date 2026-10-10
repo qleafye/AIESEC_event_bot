@@ -1065,6 +1065,8 @@ admin|callback_query|extff_start|extff_start
 admin|callback_query|extff_form|extff_form:*
 admin|callback_query|extff_pick|extff_pick:*
 admin|callback_query|extff_cancel|extff_cancel
+admin|callback_query|bcstatus_only|bcstatus_only
+admin|callback_query|bcstatus_filter|bcstatus_filter
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -2292,7 +2294,9 @@ def test_snapshot_total_handler_count_is_292():
     # 09.10 (переотправка решения одному делегату, handlers/admin_resend_decision.py): +3 admin.
     # callback_query (decresend_start/decresend_go/decresend_cancel) перед prog_fbday_open; чистая
     # вставка (1089 -> 1092).
-    assert len(GOLDEN_SNAPSHOT) == 1092
+    # 10.10: bcstatus_only/bcstatus_filter (разбивка рассылки по статусу заявки) перед
+    # admin_event_preset (1092 -> 1094).
+    assert len(GOLDEN_SNAPSHOT) == 1094
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
