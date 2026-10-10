@@ -2177,6 +2177,10 @@ async def settings_photo_start(callback: types.CallbackQuery, state: FSMContext)
     await callback.answer()
 
 
+def _caller_screen(data: dict) -> tuple[str, str] | None:
+    return (data["return_cb"], data.get("return_label") or "← Назад") if data.get("return_cb") else None
+
+
 def _return_hint_from_state(data: dict, raw_state: str | None = None) -> dict:
     """Phase 20 (20-04): подсказка «откуда пришли» для `settings_return_screen`, собранная из
     данных FSM. Объявлена ОДИН раз и используется обеими отменами (кнопкой «❌ Отмена» и
@@ -2189,6 +2193,8 @@ def _return_hint_from_state(data: dict, raw_state: str | None = None) -> dict:
 
     T-20-20: пустые/протухшие данные (MemoryStorage сбрасывается при рестарте) дают `{}` —
     резолвер уйдёт на корень, необработанного исключения и «зависшего» сообщения не будет."""
+    if data.get("return_cb"):  # правку открыл свой экран — назад на него (settings_return_screen, шаг 0)
+        return {"return_to": _caller_screen(data)}
     # `consent_pdf_{key}` — не ключ SETTINGS_SCHEMA, группы у него нет: резолвер вернёт
     # менеджера в РАЗДЕЛ-владелец экрана «🧾 PDF согласий», то есть в «📝 Анкета».
     flows = (
@@ -2675,7 +2681,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     # «✏️ …» живёт только там). Предупреждение о вариантах/вкладке приклеивается к тексту
     # экрана возврата так же, как раньше приклеивалось к тексту лендинга.
     from handlers.admin_sections import settings_return_screen  # ленивый шов
-    text, kb = await settings_return_screen(message.from_user.id, setting_key=key)
+    text, kb = await settings_return_screen(message.from_user.id, setting_key=key, return_to=_caller_screen(data))
     await message.answer(text + warning, parse_mode="HTML", reply_markup=kb)
 
 

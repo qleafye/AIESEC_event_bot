@@ -435,8 +435,14 @@ async def settings_return_screen(
     callback_data: str | None = None,
     setting_key: str | None = None,
     group_token: str | None = None,
+    return_to: tuple[str, str] | None = None,
 ) -> tuple[str, InlineKeyboardMarkup]:
     """ЕДИНСТВЕННЫЙ ответ на вопрос «куда вернуть менеджера ПОСЛЕ действия».
+
+    0. `return_to=(callback_data, подпись)` — правку открыл свой экран (SOS, тексты теста,
+       запись на сессии, отзыв о сессии) и положил себя в данные FSM (`return_cb`): его
+       перерисовывает свой обработчик, поэтому возвращаем кнопкой на него, а не экраном группы
+       реестра, где кнопки этой правки нет.
 
     Возвращает ПАРУ (текст, клавиатура): экран возврата меняет и то, и другое, поэтому
     вызывающий делает `text, kb = await settings_return_screen(...)` и один edit_text/answer.
@@ -473,6 +479,9 @@ async def settings_return_screen(
     )
     from handlers.admin_core import admin_keyboard_for
 
+    if return_to:
+        cb, label = return_to
+        return "Готово.", InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=label, callback_data=cb)]])
     token = group_token or (_group_of_setting_key(setting_key) if setting_key else None)
     if token and token in {tok for _label, tok, _keys in SETTINGS_GROUPS} | {"misc"}:
         return (await render_settings_group_text(token, admin_id),
