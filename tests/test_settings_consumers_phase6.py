@@ -629,6 +629,8 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
             pass
 
     async def go_university():
+        # Пустой список вузов = свободный ввод даже в режиме «list», поэтому список задан.
+        await set_setting("university_options", "МГУ ВШЭ")
         for raw in [None, "", "list", "text"]:
             await delete_setting("reg_university_mode")
             if raw is not None:

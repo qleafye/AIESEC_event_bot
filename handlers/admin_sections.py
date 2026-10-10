@@ -646,6 +646,11 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
             if row[1] not in toggles:
                 logger.warning("Раздел %s: тумблер %s не объявлен в settings_toggle_rows — пропущен", token, row[1])
                 continue
+            if row[1] == "toggle_uni_mode":
+                from handlers.admin_settings import UNI_V2_NOTE, uni_controls_hidden_by_v2  # ленивый шов
+                if await uni_controls_hidden_by_v2():
+                    buttons.append([InlineKeyboardButton(text=UNI_V2_NOTE, callback_data="settings_group_noop")])
+                    continue
             buttons.extend(toggles[row[1]])
         elif kind == "group":
             buttons.append([InlineKeyboardButton(text=section_group_label(token, row[1]), callback_data=f"settings_group:{row[1]}")])
