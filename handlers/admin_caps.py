@@ -522,7 +522,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "filter_schedule": "broadcast",
     "filter_send_now": "broadcast",
     # Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …»
-    # (handlers/admin_broadcast_session_filter.py) — тот же мастер фильтра рассылки, та же
+    # (handlers/comms/admin_broadcast_session_filter.py) — тот же мастер фильтра рассылки, та же
     # капа, что filter_f_*/filter_opt:* выше.
     "cksf_start:*": "broadcast",
     "cksf_city:*": "broadcast",
@@ -535,13 +535,13 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "extff_*": "broadcast",
     "sched_cancel_*": "broadcast",
     # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности + подтверждение/отмена планирования
-    # отложенной рассылки (handlers/admin_broadcasts.py::sched_*) — та же capability, что и
+    # отложенной рассылки (handlers/comms/admin_broadcasts.py::sched_*) — та же capability, что и
     # весь мастер планирования (sched_cancel_* выше).
     "sched_important_toggle": "broadcast",
     "sched_go": "broadcast",
     "sched_no": "broadcast",
     "state:Broadcast:*": "broadcast",
-    # «📊 Опросы» (handlers/admin_polls.py + admin_poll_wizard.py) — то же право, что и
+    # «📊 Опросы» (handlers/comms/admin_polls.py + admin_poll_wizard.py) — то же право, что и
     # рассылки: опрос уходит той же аудитории тем же каналом. Без нового capability.
     "admin_polls": "broadcast",
     "admin_polls_closed": "broadcast",

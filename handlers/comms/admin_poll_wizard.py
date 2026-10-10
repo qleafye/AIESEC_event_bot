@@ -1,7 +1,7 @@
 """Мастер «➕ Новый опрос» (раздел «📊 Опросы»): вопрос → варианты → тумблеры → аудитория →
 превью → отправить сейчас / запланировать.
 
-Шов на общий `admin.router`; импортируется из хвоста handlers/admin_polls.py. Право —
+Шов на общий `admin.router`; импортируется из хвоста handlers/comms/admin_polls.py. Право —
 `broadcast` ("state:PollCreate:*" + poll_* ключи в handlers/admin_caps.py).
 
 По правилу «бот для людей»: текстом вводятся только вопрос, варианты и дата; всё остальное —
@@ -38,7 +38,7 @@ from keyboards.builders import get_cancel_kb
 from domain.cities import cities_module_on, city_label, city_scope, enabled_cities
 from handlers.states import PollCreate
 from handlers.admin_core import _admin_city_view
-from handlers.admin_broadcasts import _TRACK_LABELS
+from handlers.comms.admin_broadcasts import _TRACK_LABELS
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)
@@ -280,7 +280,7 @@ async def poll_settings_next(callback: types.CallbackQuery, state: FSMContext):
 
 async def _quiet_hours_warning() -> str:
     """Строка предупреждения для экрана подтверждения — та же идиома, что у рассылок
-    (`handlers/admin_broadcasts.py::_send_confirm_prompt`): модуль оттуда НЕ импортируем,
+    (`handlers/comms/admin_broadcasts.py::_send_confirm_prompt`): модуль оттуда НЕ импортируем,
     там свой Router и своя цепочка импортов, а формулировка здесь всё равно ДРУГАЯ.
 
     У рассылки «отправить сейчас» тишину не ждёт (она копирует уже разрешённый список

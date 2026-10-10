@@ -82,7 +82,7 @@ DELEGATE_LABELS = {
 STATUS_LABELS = {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
 
 # Статус оплаты (users.payment_status) -> подпись. Единственный источник: рассылки
-# (`handlers/admin_broadcasts.py`) и профиль Mini App читают отсюда.
+# (`handlers/comms/admin_broadcasts.py`) и профиль Mini App читают отсюда.
 PAYMENT_STATUS_LABELS = {
     "not_paid": "Не оплатил", "overdue": "Просрочил",
     "receipt_sent": "Чек на проверке", "paid": "Оплатил",

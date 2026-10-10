@@ -914,7 +914,7 @@ async def init_db():
         await _ensure_column(db, "scheduled_broadcasts", "important", "INTEGER DEFAULT 0")
 
         # Quick 260910-okb (BC-01..06): журнал НЕМЕДЛЕННЫХ рассылок («отправить сейчас» из
-        # handlers/admin_broadcasts.py). Отдельный путь от scheduled_broadcasts* выше — те
+        # handlers/comms/admin_broadcasts.py). Отдельный путь от scheduled_broadcasts* выше — те
         # держат отложенные рассылки APScheduler'а, эти таблицы их не трогают и не смешивают.
         await db.execute('''
             CREATE TABLE IF NOT EXISTS broadcasts (
@@ -5498,25 +5498,25 @@ _FILTER_COLUMNS = {
     # not by the generic `{field} = ?` one — see there.
     "event_city",
     # Квик 260910-vfl (SEASON-FILTER-01): сезон события как поле фильтра рассылки. Поле
-    # ОБЯЗАНО быть ЗАРЕГИСТРИРОВАНО ДВАЖДЫ (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`)
+    # ОБЯЗАНО быть ЗАРЕГИСТРИРОВАНО ДВАЖДЫ (здесь и в `handlers.comms.admin_broadcasts._PICKER_FIELDS`)
     # — иначе фильтр виден на экране и молча не доходит до SQL (тот же прецедент фазы 5, D-19,
     # что уже сработал для `event_city`). Обрабатывается собственной веткой в
     # `_build_filter_clause`, не общей — легаси-строки без сезона нужно ловить сентинелом.
     "season",
     # Квик 260911-0fh (RESUME-FILTER-01): «резюме есть/нет» как поле фильтра рассылки. Та же
-    # двойная регистрация (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`), тот же
+    # двойная регистрация (здесь и в `handlers.comms.admin_broadcasts._PICKER_FIELDS`), тот же
     # прецедент D-19. Поле ВИРТУАЛЬНОЕ — колонки `users.resume` не существует, условие
     # собирается из нескольких колонок (`RESUME_COLUMNS`) собственной веткой
     # `_build_filter_clause`; см. `_FILTER_VIRTUAL_FIELDS` ниже.
     "resume",
     # Квик 260914-rgr (RGR-01..07): членство в ЧАТЕ мероприятия как поле фильтра рассылки. Та
-    # же двойная регистрация (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`), тот же
+    # же двойная регистрация (здесь и в `handlers.comms.admin_broadcasts._PICKER_FIELDS`), тот же
     # прецедент D-19. Поле ВИРТУАЛЬНОЕ — колонки `users.delegate_chat` не существует, условие
     # собирается по `chat_members` собственной веткой `_build_filter_clause`; см.
     # `_FILTER_VIRTUAL_FIELDS` ниже.
     "delegate_chat",
     # Phase 31 (31-02, D-28): «автоотказ по правилу» как поле фильтра рассылки. Та же двойная
-    # регистрация (здесь и в `handlers.admin_broadcasts._PICKER_FIELDS`, план 31-07), тот же
+    # регистрация (здесь и в `handlers.comms.admin_broadcasts._PICKER_FIELDS`, план 31-07), тот же
     # прецедент D-19 — поле, зарегистрированное только тут, видно на экране и молча не
     # доходит до SQL. Поле ВИРТУАЛЬНОЕ — условие собирается по `users.auto_reject_rule_ids`
     # (не `users.auto_reject`, такой колонки нет) собственной веткой `_build_filter_clause`;
@@ -5524,7 +5524,7 @@ _FILTER_COLUMNS = {
     "auto_reject",
     # Форум-ночь п.6 (D-25, идея №14): «Отметка на форуме» (пришли/не пришли) как поле
     # фильтра рассылки. Та же двойная регистрация (здесь и в
-    # `handlers.admin_broadcasts._PICKER_FIELDS`), тот же прецедент D-19. Поле ВИРТУАЛЬНОЕ —
+    # `handlers.comms.admin_broadcasts._PICKER_FIELDS`), тот же прецедент D-19. Поле ВИРТУАЛЬНОЕ —
     # условие собирается по таблице `checkins` собственной веткой `_build_filter_clause`; см.
     # `_FILTER_VIRTUAL_FIELDS` ниже.
     "checkin_entry",
@@ -5534,14 +5534,14 @@ _FILTER_COLUMNS = {
     # `get_distinct_filter_values` — у него собственный UI-мастер (город → день → сессия),
     # не входит в `_PICKER_FIELDS`.
     "checkin_session",
-    # Внешние формы: двойная регистрация с handlers/admin_broadcasts.py, поле ВИРТУАЛЬНОЕ —
+    # Внешние формы: двойная регистрация с handlers/comms/admin_broadcasts.py, поле ВИРТУАЛЬНОЕ —
     # значение (форма + заполнил/не заполнил) задаёт шов admin_broadcast_ext_form_filter.
     "ext_form",
     # Делегации вузов (D-07): `delegation` — вуз делегации ИЗ ФОРМЫ (users.delegation), не
     # путать с `university` анкеты выше; обычная колонка, общая ветка `{field} = ?`.
     # `delegation_any` — ВИРТУАЛЬНОЕ «делегация вуза / не делегация» по той же колонке,
     # собственная ветка `_build_filter_clause`. Та же двойная регистрация с
-    # `handlers.admin_broadcasts._PICKER_FIELDS`, тот же прецедент D-19.
+    # `handlers.comms.admin_broadcasts._PICKER_FIELDS`, тот же прецедент D-19.
     "delegation", "delegation_any",
 }
 

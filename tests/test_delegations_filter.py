@@ -3,7 +3,7 @@
 Две стороны одной фичи:
 - SQL (`database/db.py`): виртуальное поле `delegation_any` (любая делегация / не делегация,
   fail closed на незнакомом значении) и обычная колонка `delegation` (вуз из формы, равенство);
-- экран (`handlers/admin_broadcasts.py`): подписи, двойная регистрация в `_PICKER_FIELDS`,
+- экран (`handlers/comms/admin_broadcasts.py`): подписи, двойная регистрация в `_PICKER_FIELDS`,
   кнопка меню только когда в базе есть обе стороны, пикер с человеческими подписями.
 
 Образец — `tests/test_broadcast_auto_reject_filter.py` (тот же приём двойной регистрации, тот же
@@ -21,7 +21,7 @@ from tests._dbtpl import fast_init_db
 # ── двойная регистрация + подписи ────────────────────────────────────────────────────────────
 
 def test_delegation_fields_double_registration():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert "delegation_any" in admin_broadcasts._PICKER_FIELDS
     assert "delegation" in admin_broadcasts._PICKER_FIELDS
     assert "delegation_any" in db._FILTER_COLUMNS
@@ -34,7 +34,7 @@ def test_delegation_any_is_virtual_and_delegation_is_a_real_column():
 
 
 def test_filter_field_labels():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert admin_broadcasts._FILTER_FIELD_LABELS["delegation_any"] == "Делегация вуза"
     assert admin_broadcasts._FILTER_FIELD_LABELS["delegation"] == "Вуз делегации"
 
@@ -137,7 +137,7 @@ def _flat(kb):
 
 
 def test_filter_menu_kb_delegations_button_only_when_asked():
-    from handlers.admin_broadcasts import _filter_menu_kb
+    from handlers.comms.admin_broadcasts import _filter_menu_kb
     before = _filter_menu_kb([])
     assert ("🏫 Делегации", "filter_f_delegation_any") not in _flat(before)
     with_flag = _filter_menu_kb([], show_delegations=True)
@@ -182,7 +182,7 @@ class _FakeState:
 
 
 def test_value_picker_delegation_any_gate_when_one_side(tmp_path):
-    from handlers.admin_broadcasts import _show_value_picker
+    from handlers.comms.admin_broadcasts import _show_value_picker
     _seed(tmp_path, "dlg_picker_gate.db", [(1, None), (2, None)])
     cb, st = _FakeCallback("filter_f_delegation_any"), _FakeState()
     asyncio.run(_show_value_picker(cb, st, "delegation_any", "Выберите значение"))
@@ -191,7 +191,7 @@ def test_value_picker_delegation_any_gate_when_one_side(tmp_path):
 
 
 def test_value_picker_delegation_any_human_labels(tmp_path):
-    from handlers.admin_broadcasts import _show_value_picker
+    from handlers.comms.admin_broadcasts import _show_value_picker
     _seed(tmp_path, "dlg_picker.db", [(1, "МГУ"), (2, None)])
     cb, st = _FakeCallback("filter_f_delegation_any"), _FakeState()
     asyncio.run(_show_value_picker(cb, st, "delegation_any", "Выберите значение"))
@@ -205,7 +205,7 @@ def test_value_picker_delegation_any_human_labels(tmp_path):
 
 
 def test_value_picker_delegation_lists_universities(tmp_path):
-    from handlers.admin_broadcasts import _show_value_picker
+    from handlers.comms.admin_broadcasts import _show_value_picker
     _seed(tmp_path, "dlg_picker_uni.db", [(1, "МГУ"), (2, None), (3, "ВШЭ")])
     cb, st = _FakeCallback("filter_f_delegation"), _FakeState()
     asyncio.run(_show_value_picker(cb, st, "delegation", "Выберите значение"))

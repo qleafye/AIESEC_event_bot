@@ -2,7 +2,7 @@
 
 УАТ-находка ночи 10-11.09: раздел «📋 Заявки» показывал только тумблер, поле времени лежало
 внутри обезличенной группы «⚙️ Тексты и настройки», недостижимой прямым тапом. Этот файл
-покрывает новый шов `handlers/admin_quiet_hours.py`.
+покрывает новый шов `handlers/comms/admin_quiet_hours.py`.
 
 Стиль и фейки — `tests/test_admin_sections_ia20.py` (FakeCallback/FakeMessage, `asyncio.run`,
 tmp_path, `_roles_ready`).
@@ -13,7 +13,7 @@ import pytest
 
 from config import config
 from database import db
-from handlers import admin_quiet_hours as qh_screen
+from handlers.comms import admin_quiet_hours as qh_screen
 from handlers.admin_caps import ADMIN_CAPS
 
 from tests.test_roles_phase8 import ADMIN_ID, _roles_ready

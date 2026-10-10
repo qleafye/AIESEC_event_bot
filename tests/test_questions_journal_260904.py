@@ -382,7 +382,7 @@ def test_list_questions_page_orphan_kept_without_city_scope(tmp_path):
 # хендлеры зовутся напрямую, тот же приём, что у tests/test_coins_manual_260818.py.
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-from handlers import admin_questions
+from handlers.comms import admin_questions
 from handlers.states import QuestionAnswer
 from tests.test_admin_sections_ia20 import FakeCallback
 from tests.test_roles_phase8 import ADMIN_ID, FakeUser as _RolesFakeUser, MANAGER_ID, STRANGER_ID, _roles_ready

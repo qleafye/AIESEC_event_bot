@@ -1,6 +1,6 @@
 """Доставка ответа менеджера на «❓ Задать вопрос» с записью результата — общий шов для
 ответа reply'ем в чате (`handlers/admin.py::admin_reply_to_question`) и для журнала вопросов
-(`handlers/admin_questions.py::aq_answer_step`). Вынесено из `handlers/admin.py` (потолок
+(`handlers/comms/admin_questions.py::aq_answer_step`). Вынесено из `handlers/admin.py` (потолок
 размера модуля); сама отправка и тексты ошибок по-прежнему там (`_deliver_question_reply`,
 `_reply_with_delivery_error`) — импортируются лениво, `handlers/admin.py` импортирует этот
 модуль на уровне модуля.

@@ -728,7 +728,7 @@ from handlers.sheets import admin_sheet_logs  # noqa: E402,F401
 # (тот же хвостовой приём), а не в handlers/admin.py: тот модуль на своём документированном
 # потолке 915 строк (см. tests/test_module_size_convention_260816.py), и вставка ещё одного
 # шва-импорта туда потребовала бы поднимать потолок агрегатора-ядра ради одной строки.
-from handlers import admin_quiet_hours  # noqa: E402,F401
+from handlers.comms import admin_quiet_hours  # noqa: E402,F401
 
 # Phase 30 (30-01, A2-08): шов «📝 Анкета» (девять тумблеров «Анкета 2.0») — импорт СРАЗУ ПОСЛЕ
 # admin_quiet_hours, тот же хвостовой приём; `handlers.admin_reg_form` читает

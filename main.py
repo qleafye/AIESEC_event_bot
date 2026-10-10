@@ -8,7 +8,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from shared.secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
-from handlers import registration, user_actions, admin, payment, polls, uat_seed
+from handlers import registration, user_actions, admin, payment
+from handlers.comms import polls
+from handlers import uat_seed
 from handlers.chat import group_chat
 from handlers import reg_silence_fallback, onsite_reg, admin_no_access
 from services.reminders import pending_reminder_loop

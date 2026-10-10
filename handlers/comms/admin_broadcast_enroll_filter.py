@@ -7,7 +7,7 @@
 
 Форма шва — `admin_broadcast_session_filter.py`: `router` из `handlers.admin`, состояние мастера
 в FSM (`Broadcast.filter_field`): `enrf_kind` и `enrf_city`; ленивый импорт
-`handlers.admin_broadcasts` (он импортирует этот модуль хвостом)."""
+`handlers.comms.admin_broadcasts` (он импортирует этот модуль хвостом)."""
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -54,7 +54,7 @@ async def enroll_menu_rows() -> list[list[InlineKeyboardButton]]:
 
 
 async def _redraw(callback: types.CallbackQuery, filters: list[dict]) -> None:
-    from handlers.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг
+    from handlers.comms.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг
 
     await _render_filter_menu(callback.message, filters, edit=True)
 

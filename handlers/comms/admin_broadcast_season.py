@@ -8,7 +8,7 @@
 аудитория пересчитывается в момент отправки.
 
 Форма шва — как `admin_broadcast_session_filter.py`: `router` из `handlers.admin`, ленивый
-импорт `handlers.admin_broadcasts` (он сам импортирует этот модуль хвостом)."""
+импорт `handlers.comms.admin_broadcasts` (он сам импортирует этот модуль хвостом)."""
 from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton
@@ -36,7 +36,7 @@ async def season_menu_row(filters: list[dict]) -> list[InlineKeyboardButton] | N
 
 async def menu_extra_rows(filters: list[dict]) -> list[list[InlineKeyboardButton]]:
     """Все дополнительные ряды меню фильтров: сезон + запись на сессии/тест."""
-    from handlers.admin_broadcast_enroll_filter import enroll_menu_rows
+    from handlers.comms.admin_broadcast_enroll_filter import enroll_menu_rows
 
     rows = []
     season_row = await season_menu_row(filters)
@@ -46,7 +46,7 @@ async def menu_extra_rows(filters: list[dict]) -> list[list[InlineKeyboardButton
 
 
 async def _redraw_filter_menu(callback: types.CallbackQuery, filters: list[dict]) -> None:
-    from handlers.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг
+    from handlers.comms.admin_broadcasts import _render_filter_menu  # ленивый шов — см. докстринг
 
     await callback.answer()
     await _render_filter_menu(callback.message, filters, edit=True)
@@ -95,7 +95,7 @@ async def schedule_season_extra(state: FSMContext) -> tuple[str, list]:
 
 @router.callback_query(F.data == "bcseason_only", Broadcast.confirm)
 async def bcseason_only(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
-    from handlers.admin_broadcasts import _send_confirm_prompt  # ленивый шов — см. докстринг
+    from handlers.comms.admin_broadcasts import _send_confirm_prompt  # ленивый шов — см. докстринг
 
     users_ids = await current_season_only((await state.get_data()).get("bc_users", []))
     await state.update_data(bc_users=users_ids)
@@ -109,7 +109,7 @@ async def bcseason_only(callback: types.CallbackQuery, state: FSMContext, bot: B
 
 @router.callback_query(F.data == "bcseason_sched", Broadcast.schedule_confirm)
 async def bcseason_sched(callback: types.CallbackQuery, state: FSMContext):
-    from handlers.admin_broadcasts import _send_schedule_confirm_prompt  # ленивый шов
+    from handlers.comms.admin_broadcasts import _send_schedule_confirm_prompt  # ленивый шов
 
     cond = await season_default_filter() or {
         "field": "season", "value": SEASON_CURRENT, "label": "Текущий сезон",

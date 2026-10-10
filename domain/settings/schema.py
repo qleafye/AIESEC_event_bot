@@ -7465,7 +7465,7 @@ SETTINGS_SCHEMA = {
     },
     # Форум-ночь п.7 (переделка, ревью 470ce5e..3703ba4): пометка ВСТРОЕНА в само сообщение
     # (первая строка текста/подписи) рассылки, помеченной важной в мастере
-    # (handlers/admin_broadcasts.py::bc_important_toggle / sched_important_toggle) — раньше
+    # (handlers/comms/admin_broadcasts.py::bc_important_toggle / sched_important_toggle) — раньше
     # уходила отдельным сообщением, что дублировалось при 429-ретрае и терялось при
     # crash-resume отложенной рассылки. group "system", НЕ входит в DELEGATE_GROUPS
     # (services/i18n_sources.py) — тот же приём, что у остальных технических текстов этой

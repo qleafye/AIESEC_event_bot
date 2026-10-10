@@ -668,7 +668,7 @@ def test_admin_faq_wired_into_apps_section_and_menu_rows():
 # Задача 4: кнопка «❓ В FAQ» из журнала вопросов делегатов
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-from handlers import admin_questions  # noqa: E402 -- канонический порядок импорта хендлеров
+from handlers.comms import admin_questions  # noqa: E402 -- канонический порядок импорта хендлеров
 from tests._dbtpl import fast_init_db
 
 

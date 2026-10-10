@@ -244,7 +244,7 @@ def test_arrived_counts_use_approved_current_season(tmp_path, monkeypatch):
 def test_second_day_everyone_came_yesterday_button_visible(tmp_path, monkeypatch):
     """Москва, день 2: все одобренные пришли в день 1, сегодня ещё никто. У каждого варианта
     одна сторона пустая, но кнопка «Отметка на форуме» видна, «не пришли сегодня» = все."""
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     from tests.test_roles_phase8 import FakeCallback, FakeMessage, _fresh_state
 
     _ready(tmp_path)
@@ -278,7 +278,7 @@ def test_second_day_everyone_came_yesterday_button_visible(tmp_path, monkeypatch
 
 
 def test_filter_pick_value_parses_concrete_day(tmp_path):
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     from tests.test_roles_phase8 import FakeCallback, _fresh_state
 
     _ready(tmp_path)
