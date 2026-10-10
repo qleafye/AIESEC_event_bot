@@ -2,8 +2,8 @@
 
 - `dashboard/amb_tiers_block.py` — четыре агрегата без персональных данных, паритет
   определений с ботом (`database/amb_tiers_db.referral_counts`), старая БД без таблиц;
-- `services.amb_tiers.preview_backfill` + `tools/backfill_amb_tiers.py` — предпросмотр по
-  умолчанию, `--apply` тихо, `--apply --notify` с одним событием на амбассадора, отказы.
+- `services.amb_tiers.preview_backfill` — предпросмотр пересчёта ступеней (кнопка
+  «🔁 Пересчитать ступени» проверяется в tests/test_amb_excl_backfill_261009.py).
 
 pytest-asyncio нет — async через `asyncio.run()`.
 """
@@ -12,8 +12,6 @@ from __future__ import annotations
 import asyncio
 import json
 import sqlite3
-
-import pytest
 
 from config import config
 from dashboard import db as dash_db
@@ -192,66 +190,6 @@ def test_preview_quota_order_by_approval_time(tmp_path):
     assert preview[0]["tiers"][1]["o2o_status"] == "granted"
     assert preview[1]["tiers"][1]["o2o_status"] == "waitlist"
 
-    from tools import backfill_amb_tiers as tool
-    assert tool.main(["--apply"]) == 0
-    o2o = {r["telegram_id"]: r["o2o_status"] for r in _run(tdb.list_tiers()) if r["tier"] == 2}
-    assert o2o == {110: "granted", 100: "waitlist"}
-
-
-def test_cli_apply_is_silent_and_idempotent(tmp_path, capsys):
-    from tools import backfill_amb_tiers as tool
-    _three_approved_before_program(tmp_path)
-    assert tool.main([]) == 0
-    assert "предпросмотр" in capsys.readouterr().out
-    assert _run(tdb.list_tiers()) == []
-
-    assert tool.main(["--apply"]) == 0
-    rows = _run(tdb.list_tiers(100))
-    assert [r["tier"] for r in rows] == [1, 2]
-    assert all(r["notified_at"] for r in rows)
-    assert _outbox_events() == []
-
-    assert tool.main(["--apply"]) == 0
-    assert len(_run(tdb.list_tiers(100))) == 2
-    assert "Новых ступеней к выдаче нет" in capsys.readouterr().out
-
-
-def test_cli_apply_notify_one_event_per_ambassador(tmp_path):
-    from tools import backfill_amb_tiers as tool
-    _three_approved_before_program(tmp_path)
-    assert tool.main(["--apply", "--notify"]) == 0
-    events = _outbox_events()
-    assert len(events) == 1 and events[0]["telegram_id"] == 100 and events[0]["tier"] == 2
-
-
-def test_cli_notify_without_apply_is_error(tmp_path):
-    from tools import backfill_amb_tiers as tool
-    _three_approved_before_program(tmp_path)
-    with pytest.raises(SystemExit) as exc:
-        tool.main(["--notify"])
-    assert exc.value.code == 2
-
-
-def test_cli_apply_works_silently_when_program_off(tmp_path, capsys):
-    """Порядок «сначала пересчёт, потом включение»: --apply при выключенной программе пишет
-    ступени тихо, живые одобрения их не обгоняют; --notify без включённой программы — отказ."""
-    from tools import backfill_amb_tiers as tool
-    _three_approved_before_program(tmp_path, program="off")
-    # предпросмотр при выключенной программе работает
-    assert tool.main([]) == 0
-    assert "выключена" in capsys.readouterr().out
-    assert _run(tdb.list_tiers()) == []
-
-    assert tool.main(["--apply", "--notify"]) == 2
-    assert "без --notify" in capsys.readouterr().out
-    assert _run(tdb.list_tiers()) == []
-
-    assert tool.main(["--apply"]) == 0
-    assert "включите программу" in capsys.readouterr().out
-    rows = _run(tdb.list_tiers(100))
-    assert [r["tier"] for r in rows] == [1, 2]
-    assert all(r["notified_at"] for r in rows)
-    assert _outbox_events() == []
 
 
 def test_block_quota_zero_is_zero_not_default(tmp_path):

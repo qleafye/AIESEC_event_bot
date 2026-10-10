@@ -577,7 +577,7 @@ async def amb_fill_preview(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("ambt_fill_go:"))
 async def amb_fill_go(callback: types.CallbackQuery):
-    """Тот же цикл, что `tools/backfill_amb_tiers.py --apply [--notify]`: по одному амбассадору
+    """Пересчёт ступеней с выдачей (с уведомлением или без): по одному амбассадору
     в порядке предпросмотра (от него зависит раздача квоты), `check_tiers(force=True)`."""
     notify = callback.data.endswith(":n")
     if notify and not await amb_tiers.program_on():
