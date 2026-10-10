@@ -17,7 +17,7 @@ import pytest
 
 import reg_engine
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_form import (  # noqa: F401 — фикстуры подтягиваются по имени
     bot_api,

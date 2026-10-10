@@ -20,8 +20,8 @@ import json
 from database import db as bot_db
 
 from miniapp.routers import page as page_module
-from settings_schema import SETTINGS_SCHEMA
-from settings_synonyms import SETTINGS_SYNONYMS
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.synonyms import SETTINGS_SYNONYMS
 
 from tests.test_miniapp_frontend import _client
 from tests.test_miniapp_routes import (

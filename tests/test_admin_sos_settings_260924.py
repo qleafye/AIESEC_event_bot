@@ -356,8 +356,8 @@ def test_forum_length_sits_next_to_forum_date():
     """Подпись по смыслу (длина форума, не «SOS»), подсказка с примерами, место — сразу под
     датой начала форума на экране «🎪 Событие/Медиа»."""
     from handlers.admin_settings import _settings_group_keys
-    from settings_schema import SETTINGS_SCHEMA
-    from settings_synonyms import SETTINGS_SYNONYMS
+    from domain.settings.schema import SETTINGS_SCHEMA
+    from domain.settings.synonyms import SETTINGS_SYNONYMS
 
     spec = SETTINGS_SCHEMA["sos_active_days"]
     assert spec["label"] == "🗓 Сколько дней идёт форум"
@@ -377,7 +377,7 @@ def test_event_screen_shows_forum_length_default(tmp_path):
 
 def test_escalation_minutes_refuses_zero_with_explanation():
     """10.10: «напомнить через 0 мин» — не пауза; ввод «Другое» объясняет, что нужно от 1."""
-    from settings_validation import validate_setting_value
+    from domain.settings.validation import validate_setting_value
 
     value, error = validate_setting_value("sos_escalation_minutes__city__msk", "0")
     assert value is None and "1 или больше" in error

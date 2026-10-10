@@ -29,8 +29,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import reg_engine
 from moderation_card import EMPTY_SENTINEL
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from handlers.admin import router
 
 # (ключ реестра, step_key анкеты, заголовок группы на экране, вес в формуле ТЗ §3.6 — только

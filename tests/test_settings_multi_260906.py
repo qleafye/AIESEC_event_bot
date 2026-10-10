@@ -12,9 +12,9 @@ from __future__ import annotations
 import asyncio
 
 import moderation_card as mc
-import settings_ops
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, multi_codes, multi_labels, multi_options
-from settings_validation import validate_setting_value
+import domain.settings.ops as settings_ops
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, multi_codes, multi_labels, multi_options
+from domain.settings.validation import validate_setting_value
 
 
 def _run(coro):

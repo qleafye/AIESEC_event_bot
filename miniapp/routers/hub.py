@@ -29,7 +29,7 @@ from database.db import get_checkin_status, get_referrals, get_setting, get_user
 from payment_options import parse_options
 import reg_engine
 from services import amb_progress, amb_screen, applications, i18n, reg_edit_policy
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.text_fill import fill_collapsing
 
 from dashboard.db import read_conn

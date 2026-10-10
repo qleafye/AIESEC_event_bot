@@ -25,9 +25,9 @@ from handlers import admin_settings  # Phase 13 (13-06): settings moved out of a
 from handlers import admin_gamification
 from handlers.admin_sections import section_of
 from handlers.admin_caps import ADMIN_CAPS, required_capability
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 import services.sheets as sheets
-import settings_ops
+import domain.settings.ops as settings_ops
 import cities
 from tests._dbtpl import fast_init_db
 
@@ -724,7 +724,7 @@ def test_preselect_and_suffix_keys_never_trigger_the_gate(tmp_path, monkeypatch)
 
 def test_saving_main_sheet_tab_resets_sheet_cache_on_all_three_paths(tmp_path, monkeypatch):
     reset_calls = []
-    # Phase 22 (22-01, D-12): _after_tab_setting_saved переехал в settings_ops.py — сбрасывает
+    # Phase 22 (22-01, D-12): _after_tab_setting_saved переехал в domain/settings/ops.py — сбрасывает
     # кэш листа через settings_ops-локальную ссылку на _reset_sheet_cache, не через
     # handlers.admin_settings (тот больше её не импортирует, только алиасит саму функцию).
     monkeypatch.setattr(settings_ops, "_reset_sheet_cache", lambda: reset_calls.append(1))

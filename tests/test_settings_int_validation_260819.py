@@ -5,7 +5,7 @@
   раньше.
 - enum-ключ: значение вне options -> отказ; значение в другом регистре -> каноническое.
 - text-ключ: без изменений (любой текст сохраняется).
-- Чистый валидатор handlers/settings_validation.py: согласован с _parse_setting (что
+- Чистый валидатор domain/settings/validation.py: согласован с _parse_setting (что
   прошло валидацию — читается как число, а не как дефолт).
 
 pytest-asyncio недоступен — async через asyncio.run(), config.DB_PATH -> tmp. Фейки
@@ -18,8 +18,8 @@ import pytest
 from config import config
 from database import db
 from handlers import admin_settings
-from handlers.settings_validation import validate_setting_value
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
+from domain.settings.validation import validate_setting_value
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 900801

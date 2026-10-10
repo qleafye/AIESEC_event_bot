@@ -1,9 +1,9 @@
 """Реестр настроек записи на сессии и теста компетенций: ключи, дедлайн, подстановки."""
 import re
 
-import settings_ops
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import validate_setting_value
+import domain.settings.ops as settings_ops
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.validation import validate_setting_value
 
 _PH = re.compile(r"\{(\w+)\}")
 _PHASE_KEYS = [

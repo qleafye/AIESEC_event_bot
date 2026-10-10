@@ -41,7 +41,7 @@ from database.db import (
     get_staff_city,
 )
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

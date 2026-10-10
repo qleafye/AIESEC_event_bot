@@ -26,8 +26,8 @@ from cities import cities_module_on, city_label, enabled_cities
 from database.db import checkin_qr_send_counts
 from handlers.admin import router
 from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT, _city_allowed, _decode_city, _encode_city
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ async def sees_all_cities(admin_id: int) -> bool:
     города с правом «Настройки» иначе выключил бы QR и чужим городам."""
     if not await cities_module_on():
         return True
-    import settings_ops
+    import domain.settings.ops as settings_ops
     from cities import city_codes
     return set(city_codes()) <= set(await settings_ops.per_city_visible_codes(admin_id))
 HUB_BACK_TEXT = "◀️ К «Форум: функции»"

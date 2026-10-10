@@ -459,8 +459,8 @@ def test_fnsp_other_step_empty_text_does_not_record(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_defaults_and_format():
-    from settings_schema import SETTINGS_SCHEMA
-    import settings_ops
+    from domain.settings.schema import SETTINGS_SCHEMA
+    import domain.settings.ops as settings_ops
 
     enabled = SETTINGS_SCHEMA["forum_noshow_poll_enabled"]
     assert enabled["default"] == "off"
@@ -492,7 +492,7 @@ def test_registry_defaults_and_format():
 
 
 def test_registry_defaults_have_manual_en_translation():
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     from services.i18n_form_manual import FORM_DEFAULT_EN
 
     for key in (

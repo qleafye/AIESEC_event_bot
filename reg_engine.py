@@ -38,7 +38,7 @@ from urllib.parse import urlparse
 
 from config import config
 from database.db import get_setting, get_user, RESUME_RECALL_COLUMNS, RESUME_COLUMNS, settings_snapshot
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 from cities import (
     ALL_CITIES, cities_module_on, city_codes, city_label,
     get_setting_typed_for_city, is_city_registration_open,
@@ -1629,7 +1629,7 @@ _REPEATABLE_NOUNS: dict[str, str] = {"mini_portfolio": "проект"}
 # Phase 30 (30-01, A2-08): девять тумблеров группы «📝 Анкета» — имена без префикса `reg_form_`
 # (сам префикс добавляет `form_v2_flags` при чтении реестра), порядок — как в артборде 13
 # (мастер первым). Единственное место, откуда обе поверхности (Mini App/чат) читают набор имён —
-# `settings_schema.py`/`handlers/admin_reg_form.py` строят свои списки из тех же девяти строк.
+# `domain/settings/schema.py`/`handlers/admin_reg_form.py` строят свои списки из тех же девяти строк.
 FORM_V2_TOGGLE_KEYS = (
     "v2_enabled", "chips", "lookup_search", "edu_card", "repeatable",
     "limit_counter", "status_screen", "header_settings", "haptics",

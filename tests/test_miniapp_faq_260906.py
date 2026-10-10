@@ -172,7 +172,7 @@ def test_faq_other_city_delegate_does_not_see_kzn_item(client, _restore_cities_c
 def test_faq_wired_into_sections_and_nav():
     from miniapp.deps import SECTIONS
     from handlers.admin_miniapp import SECTION_KEYS
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
 
     assert "faq" in SECTIONS
     assert "miniapp_section_faq" in SECTION_KEYS

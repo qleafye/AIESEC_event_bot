@@ -90,7 +90,7 @@ from services.game_digest import notify_submission
 from services.game_sync import request_resync
 from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -269,7 +269,7 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         return
     if kind == "settings_changed":
         # 09.10: правка в приложении запускает те же реакции, что запись из бота.
-        from settings_audit import run_setting_hooks_batch  # ленивый, как выше
+        from services.settings.audit import run_setting_hooks_batch  # ленивый, как выше
 
         if "bot_name" in (payload.get("keys") or []):
             # Имя бота из приложения: ставит бот, отказ Telegram — сообщением автору правки.

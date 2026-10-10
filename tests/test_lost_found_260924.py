@@ -22,7 +22,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers import admin_lost_found as alf  # noqa: F401 -- регистрирует lost_found_*/lostfound_*
 from handlers.admin_caps import resolve_capabilities
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import _fresh_state
 

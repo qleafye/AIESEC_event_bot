@@ -1,8 +1,8 @@
 import subprocess
 import sys
 
-import settings_placeholders as sp
-from settings_schema import SETTINGS_SCHEMA
+import domain.settings.placeholders as sp
+from domain.settings.schema import SETTINGS_SCHEMA
 
 
 def test_missing_detected():
@@ -74,6 +74,6 @@ def test_problem_text():
 
 
 def test_module_does_not_load_aiogram():
-    code = "import sys, settings_placeholders; sys.exit(1 if 'aiogram' in sys.modules else 0)"
+    code = "import sys, domain.settings.placeholders; sys.exit(1 if 'aiogram' in sys.modules else 0)"
     r = subprocess.run([sys.executable, "-c", code], capture_output=True)
     assert r.returncode == 0, r.stderr

@@ -60,7 +60,7 @@ def _enable(city="spb"):
 
 
 def _setting(key):
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     return _run(get_setting_typed(key))
 
 

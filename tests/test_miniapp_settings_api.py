@@ -11,7 +11,7 @@ import asyncio
 
 from cities import PER_CITY_SEP
 from database import db as bot_db
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp.routers import settings as settings_router
 from miniapp.routers.settings import DANGER_CONFIRM, EDITABLE_KEYS
@@ -308,7 +308,7 @@ def test_toggle_logs_author_and_queues_hooks(tmp_path, caplog):
 
 def test_outbox_handler_runs_setting_hooks_for_queued_keys(tmp_path, monkeypatch):
     from services import miniapp_outbox
-    import settings_audit
+    import services.settings.audit as settings_audit
 
     _setup(tmp_path, "miniapp_settings_audit_hooks.db")
     seen = []

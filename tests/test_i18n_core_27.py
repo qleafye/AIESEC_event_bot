@@ -15,7 +15,7 @@ from config import config
 from database import db
 from i18n_ui_en import UI_EN
 from services.i18n import context, delegate_lang, load_map, resolve_lang, src_hash, tr
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 
@@ -215,7 +215,7 @@ def test_delegate_lang_fails_soft_to_russian(monkeypatch):
     async def boom(key):
         raise RuntimeError("db is on fire")
 
-    import settings_schema as ss
+    import domain.settings.schema as ss
     monkeypatch.setattr(ss, "get_setting_typed", boom)
     # services.i18n imported get_setting_typed by reference — patch it there too.
     import services.i18n as i18n_mod

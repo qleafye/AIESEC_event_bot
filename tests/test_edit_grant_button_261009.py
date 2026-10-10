@@ -5,7 +5,7 @@ import asyncio
 from config import config
 from handlers import admin_edit_grant
 from services import quiet_hours
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 

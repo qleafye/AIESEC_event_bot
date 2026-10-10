@@ -50,7 +50,7 @@ from handlers.admin_caps import has_capability
 from handlers.states import AmbAppoint
 from services import amb_status, person_search
 from services.background import spawn
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

@@ -97,7 +97,7 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # original 09.1-Wave-1 baseline of 9. Phase 14 (14-04, GAME-09) added an 11th key,
     # "coins_manual_notify_text". Quick 260819-gtl added two more ("game_task_title_prompt",
     # "game_task_photo_prompt") -- 13. Test name kept for git-blame continuity.
-    import settings_schema as s
+    import domain.settings.schema as s
     keys = [k for k, v in s.SETTINGS_SCHEMA.items() if v["group"] == "game"]
     # Phase 17.1 (17.1-01): +7 ключей хвоста монетного блока -- рейтинг (3), заголовок
     # истории (1), рефералка (3).
@@ -119,7 +119,7 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # Ключи амбассадорки переехали в группу amb: в game остаются только игровые, а переехавшие
     # обязаны лежать в amb.
     # 09.10: три текста ссылки и приглашённых переехали в группу «amb» (−3).
-    # 10.10: +5 -- подписи кнопок экранов «🪙 Баланс» и «📜 История» (settings_ui_text_fields.py).
+    # 10.10: +5 -- подписи кнопок экранов «🪙 Баланс» и «📜 История» (domain/settings/ui_text_fields.py).
     assert len(keys) == 52
     for moved in ("amb_tier1_threshold", "amb_progress_text", "wave_start_message_text"):
         assert s.SETTINGS_SCHEMA[moved]["group"] == "amb"

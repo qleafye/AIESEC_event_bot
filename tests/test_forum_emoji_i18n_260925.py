@@ -13,7 +13,7 @@ from handlers import reg_i18n
 from services import i18n
 from services.i18n_form_manual import FORM_DEFAULT_EN
 from services.i18n_glossary import split_leading_symbols
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 _TR_MAP = {i18n.src_hash(ru): en for ru, en in FORM_DEFAULT_EN.items()}
 

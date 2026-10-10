@@ -78,7 +78,7 @@ async def _city_allowed(admin_id: int, code: str | None) -> bool:
     привязки менеджера между рендером и тапом."""
     if not code:
         return True
-    import settings_ops
+    import domain.settings.ops as settings_ops
     return code in await settings_ops.per_city_visible_codes(admin_id)
 
 

@@ -68,7 +68,7 @@ from database.db import (
     get_resume_upload_backlog,
     settings_snapshot,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from services.timeutil import msk_now
 
 logger = logging.getLogger(__name__)

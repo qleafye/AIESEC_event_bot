@@ -228,7 +228,7 @@ def test_preset_apply_skillup_shows_registry_confirm_text_and_applies_nothing(tm
 
 
 def test_preset_apply_skillup_default_text_says_tiers_are_manual(tmp_path):
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_apply:skillup")
     asyncio.run(admin_reg_config.preset_apply(cb))

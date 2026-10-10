@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
-import settings_ops
+import domain.settings.ops as settings_ops
 from config import config
 from database import db
 from handlers import admin_settings, admin_settings_placeholders as ph

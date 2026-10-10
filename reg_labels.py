@@ -4,7 +4,7 @@
 реэкспортирует ЭТИ объекты, тест `tests/test_miniapp_labels_drift.py` сверяет `is`).
 Причина выноса: пакетный `handlers/__init__.py` при импорте любого `handlers.x` тянет
 `registration, user_actions, admin, payment`, то есть aiogram, — а веб-процесс Mini App
-обязан оставаться aiogram-free (D-01). Соседи по корню — `settings_schema.py`, `cities.py`.
+обязан оставаться aiogram-free (D-01). Соседи по корню — `domain/settings/schema.py`, `cities.py`.
 
 Здесь только литеральные словари — никакой логики, никаких импортов проекта.
 """

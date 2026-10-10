@@ -349,7 +349,7 @@ def test_menu_counter_uses_effective_percity_values_at_header(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     total = len(admin_mod.MENU_BUTTONS)
     # Phase 27 (27-04, LANG-01): menu_lang -- единственный menu_* с default "off" (кнопка
-    # включается менеджером ПОСЛЕ модуля перевода, settings_schema.py) -- базовая строка
+    # включается менеджером ПОСЛЕ модуля перевода, domain/settings/schema.py) -- базовая строка
     # счётчика больше не "total из total"; MENU_BUTTONS[0]/[1] ниже остаются
     # menu_referral/menu_invites (menu_lang дописан в конец списка), сам сценарий теста не
     # трогает menu_lang вовсе.

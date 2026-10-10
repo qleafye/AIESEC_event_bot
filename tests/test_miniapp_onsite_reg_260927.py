@@ -14,7 +14,7 @@ from config import config as bot_config
 from database import db as bot_db
 from miniapp import outbox as outbox_mod
 from services import venue_log
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_checkin_260924 import (
     BASE,

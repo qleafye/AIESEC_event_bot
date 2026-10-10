@@ -62,9 +62,9 @@ from services.forum_day_report import schedule_city_job as schedule_day_report_j
 from services.forum_noshow_poll import schedule_city_job as schedule_noshow_poll_job
 from services.reject_rules import forum_date_for
 from services.sos import is_sos_active_for_city
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
-from settings_validation import validate_setting_value
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
+from domain.settings.validation import validate_setting_value
 
 async def _resolve_screen_city(admin_id: int) -> str | None:
     """Тот же трёхветочный резолвер «город из шапки», что `handlers.admin_checkin.

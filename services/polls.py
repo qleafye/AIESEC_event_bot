@@ -29,7 +29,7 @@ from database.db import (
     _sheet_safe,  # квик 260919 (08-sheets-dashboard): _csv_safe -> _sheet_safe, см. её докстринг
 )
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

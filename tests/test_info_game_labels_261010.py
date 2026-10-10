@@ -7,7 +7,7 @@ import asyncio
 from config import config
 from database import db
 from handlers import reg_i18n
-from settings_ui_text_fields import (
+from domain.settings.ui_text_fields import (
     GAME_SCREEN_FIELD_ORDER, INFO_SCREEN_FIELD_ORDER, UI_TEXT_SCHEMA, ui_text, ui_tr,
 )
 from tests._dbtpl import fast_init_db
@@ -20,7 +20,7 @@ def _ready(tmp_path):
 
 def test_keys_on_bot_screens():
     from handlers.admin_settings import _settings_group_keys
-    from settings_amb_fields import AMB_FIELD_ORDER
+    from domain.settings.amb_fields import AMB_FIELD_ORDER
 
     event = _settings_group_keys("event")
     game = _settings_group_keys("game")

@@ -23,8 +23,8 @@ from keyboards.menu_dynamic import (
     caption_for,
     menu_key_for_text,
 )
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import validate_setting_value
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.validation import validate_setting_value
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 961009
@@ -264,7 +264,7 @@ def _as_delegate(monkeypatch, city=None, lang=None):
 
 def test_same_custom_label_on_two_buttons_is_refused(ready):
     """Своя подпись другой кнопки — общая или любого города — занята (бот и приложение)."""
-    from settings_ops import cross_setting_error
+    from domain.settings.ops import cross_setting_error
     a, _b = _two_cities()
 
     async def go():
@@ -414,6 +414,6 @@ def test_old_captions_keep_working_after_rename(ready):
 
 def test_history_hook_wired_into_setting_writes():
     import inspect
-    import settings_audit
+    import services.settings.audit as settings_audit
 
     assert "menu_labels.on_setting_written" in inspect.getsource(settings_audit.run_setting_hooks)

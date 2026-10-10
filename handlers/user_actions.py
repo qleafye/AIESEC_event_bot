@@ -50,7 +50,7 @@ from handlers.registration import DEFAULT_START_RETURNING_TEXT
 # Квик 260915-skg (P7): перевод входа в приложение при lang=en — тот же общий механизм, что
 # reg_i18n.say() уже применяет к анкете (ярус A -> tr_map -> русский как есть, T-skg).
 from handlers import reg_i18n
-from settings_ui_text_fields import ui_text, ui_tr  # подписи, вынесенные из кода в настройки
+from domain.settings.ui_text_fields import ui_text, ui_tr  # подписи, вынесенные из кода в настройки
 from handlers.game_labels import (  # Phase 16 (16-01): single RU-label source; 16-03: shared card render
     category_label, proof_types_label, sort_tasks_for_delegate,
     render_task_card_text as _render_task_card_text, task_deadline_short as _game_task_deadline_short,
@@ -81,7 +81,7 @@ from keyboards.builders import (
 )
 from keyboards.menu_dynamic import MenuButton  # подпись кнопки — настройка, узнаём любую актуальную
 from handlers.states import Question, GameSubmit
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # Phase 09.1 (A): flow texts live in the registry
 from services.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
@@ -2235,7 +2235,7 @@ async def regional_noshow_move_decline(callback: types.CallbackQuery):
 # алертом `callback.answer(..., show_alert=True)`, а не правкой текста.
 
 # D-34 (24.09): дефолты зеркалят registry-ключи `broadcast_mute_confirm_text`/
-# `broadcast_unmute_confirm_text` (settings_schema.py) — менеджер правит текст в самом боте,
+# `broadcast_unmute_confirm_text` (domain/settings/schema.py) — менеджер правит текст в самом боте,
 # здесь только fail-soft на случай пустого реестра.
 _MUTE_TODAY_CONFIRM_TEXT = (
     "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё»."

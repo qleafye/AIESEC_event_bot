@@ -9,7 +9,7 @@ from database import db
 from services import checkin_not_arrived as cna
 from services import regional_noshow_move as rnm
 import services.scheduler as sched
-from settings_ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER, UI_TEXT_SCHEMA
+from domain.settings.ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER, UI_TEXT_SCHEMA
 from tests._dbtpl import fast_init_db
 
 

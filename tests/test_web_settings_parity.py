@@ -13,11 +13,11 @@ from __future__ import annotations
 import asyncio
 
 import handlers.admin_sections as admin_sections
-import settings_ops
+import domain.settings.ops as settings_ops
 from database import db as bot_db
 from handlers.admin_settings import SETTINGS_GROUPS, _settings_group_label
 from miniapp.routers import settings as settings_router
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -202,9 +202,9 @@ def test_section_and_group_labels_match_bot_verbatim(tmp_path):
     )
 
     # ── группы ──
-    from settings_chat_fields import CHAT_TEXT_GROUPS
+    from domain.settings.chat_fields import CHAT_TEXT_GROUPS
 
-    # Сборные группы бота из settings_chat_fields.py — не группы реестра: в приложении те же
+    # Сборные группы бота из domain/settings/chat_fields.py — не группы реестра: в приложении те же
     # ключи лежат в своих группах реестра, отдельной группы-двойника там нет.
     bot_group_tokens = {tok for _label, tok, _keys in SETTINGS_GROUPS} - {tok for _l, tok, _k in CHAT_TEXT_GROUPS}
     mismatches = []

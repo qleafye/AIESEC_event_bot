@@ -69,7 +69,7 @@ from reg_engine import SHORT_TRACK, answer_columns, columns_for_step, consent_en
 from services.checkin import ENTRY_POINT
 from services.scheduler import cancel_payment_reminders
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

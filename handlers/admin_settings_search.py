@@ -31,8 +31,8 @@ from config import config
 from cities import ALL_CITIES, admin_selected_city, city_codes, city_label, cities_module_on, is_per_city
 from handlers.admin import router
 from handlers.states import SettingsSearch
-from settings_schema import SETTINGS_SCHEMA
-from settings_search import Candidate, search, search_terms
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.search import Candidate, search, search_terms
 
 # INVARIANT (13-01 cap-test): каждый `@router.*` декоратор ниже — в ОДНУ строку.
 
@@ -125,7 +125,7 @@ async def _hide_city_keys(admin_id: int, header: str | None) -> bool:
     (общее значение городской настройки ему не принадлежит)."""
     if not await cities_module_on():
         return False
-    from settings_ops import per_city_visible_codes
+    from domain.settings.ops import per_city_visible_codes
 
     visible = await per_city_visible_codes(admin_id)
     if visible == city_codes():

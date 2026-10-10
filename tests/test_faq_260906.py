@@ -19,7 +19,7 @@ from database import db
 from services import faq as faq_service
 from handlers import user_actions as ua_mod
 from keyboards.builders import get_main_menu_kb
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 
 def _run(coro):

@@ -23,8 +23,8 @@ from handlers import reg_flow
 # handlers.admin импортируется ПЕРВЫМ, admin_settings в одиночку не импортируется.
 from handlers import admin as _admin_mod  # noqa: F401
 from handlers import admin_settings
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import validate_setting_value
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.validation import validate_setting_value
 from tests._dbtpl import fast_init_db
 
 

@@ -287,8 +287,8 @@ def test_split_for_telegram_hard_cuts_long_line_among_normal_lines():
 
 from pathlib import Path
 
-from settings_schema import SETTINGS_SCHEMA, _parse_setting
-from settings_synonyms import SETTINGS_SYNONYMS
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
+from domain.settings.synonyms import SETTINGS_SYNONYMS
 from handlers import admin_sections as sec
 from handlers import admin_settings
 from handlers import admin_modcard

@@ -5,7 +5,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from config import config
 from services import daily_digest, scheduler
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 
 
@@ -35,7 +35,7 @@ def test_other_key_and_no_scheduler_are_noops(tmp_path, monkeypatch):
 
 def test_miniapp_outbox_runs_setting_hooks(monkeypatch):
     from services import miniapp_outbox
-    import settings_audit
+    import services.settings.audit as settings_audit
 
     seen = []
 

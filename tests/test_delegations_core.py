@@ -27,7 +27,7 @@ from database import db
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from services import delegations as dlg
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "ext_forms",

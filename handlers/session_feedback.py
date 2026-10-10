@@ -39,8 +39,8 @@ from handlers.admin import router
 from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
 from handlers.states import EditSetting, SessionFeedbackComment
 from handlers.user_actions import router as delegate_router
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 from services import session_feedback as sf
 
 logger = logging.getLogger(__name__)
@@ -118,7 +118,7 @@ async def _is_marked(telegram_id: int, session_id: int) -> bool:
 
 
 async def _setting_or(key: str, default: str) -> str:
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
     return await get_setting_typed(key) or default
 
 

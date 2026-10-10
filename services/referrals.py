@@ -46,7 +46,7 @@ from database.db import (
     get_user,
     list_applications_page,
 )
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

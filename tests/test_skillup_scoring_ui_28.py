@@ -32,12 +32,12 @@ import pytest
 
 import handlers.admin_reg_scoring as admin_reg_scoring
 import services.applications as applications
-import settings_ops
+import domain.settings.ops as settings_ops
 from config import config
 from database import db as bot_db
 from handlers.admin_caps import required_capability
 from moderation_card import EMPTY_SENTINEL
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,

@@ -24,7 +24,7 @@ from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from config import config
 from database.db import get_staff_roles, get_staff_ids_by_role, get_staff_city, get_user
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 # Phase 09.2 (D): city filter for capability_holders/notify_by_capability. cities.py imports
 # only config/database.db/settings_schema (see cities.py's own module docstring) -- it never
 # imports handlers.*, so importing it here from handlers/admin_caps.py cannot form a cycle.

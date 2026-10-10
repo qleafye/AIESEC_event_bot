@@ -27,7 +27,7 @@ from services.menu_labels import (  # noqa: F401 — реэкспорт для �
     caption_for,
     default_caption,
 )
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

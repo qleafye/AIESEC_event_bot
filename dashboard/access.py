@@ -70,7 +70,7 @@ def _get_setting(conn, key: str) -> str | None:
 
 
 def _role_enabled(conn, role: str) -> bool:
-    """Дефолт всех `role_<role>_enabled` в реестре — `"on"` (см. settings_schema.py); значит
+    """Дефолт всех `role_<role>_enabled` в реестре — `"on"` (см. domain/settings/schema.py); значит
     отсутствующая в `bot_settings` строка тоже означает «включена», как и в боте."""
     raw = _get_setting(conn, _role_enabled_key(role))
     return raw != "off"

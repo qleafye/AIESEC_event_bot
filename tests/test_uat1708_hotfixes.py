@@ -380,7 +380,7 @@ def test_newcomer_path_unaffected_gets_start_text(tmp_path):
 
 
 def test_start_text_registered_key_in_registry_and_admin_screen():
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     assert "start_text_registered" in SETTINGS_SCHEMA
     assert SETTINGS_SCHEMA["start_text_registered"]["type"] == "text"
     assert SETTINGS_SCHEMA["start_text_registered"]["group"] == "event"

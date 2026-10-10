@@ -10,12 +10,12 @@ import asyncio
 
 import pytest
 
-import settings_ops
-import settings_placeholders
+import domain.settings.ops as settings_ops
+import domain.settings.placeholders as settings_placeholders
 from cities import ALL_CITIES, PER_CITY_SEP, city_codes
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
-from settings_synonyms import SETTINGS_SYNONYMS
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.synonyms import SETTINGS_SYNONYMS
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -520,7 +520,7 @@ def test_counter_defaults_carry_three_plural_forms(key):
 # ── quick 260906-6xe: «🧾 Поля карточки заявки» — чекбоксы с подписями, не коды ─────────────
 
 import moderation_card as mc
-from settings_schema import multi_options as _multi_options
+from domain.settings.schema import multi_options as _multi_options
 
 
 def test_multi_item_never_leaks_step_codes(tmp_path):

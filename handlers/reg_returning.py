@@ -19,7 +19,7 @@ import reg_engine
 from database.db import get_setting
 from handlers import reg_i18n
 from services import reg_edit_policy
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 logger = logging.getLogger(__name__)
 

@@ -37,7 +37,7 @@ from dashboard.main import create_app
 from handlers import admin_miniapp_theme as theme_mod
 from handlers import admin_settings as st
 from handlers.states import EditSetting
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from tests.test_admin_sections_ia20 import FakeAnswerMessage, FakeCallback, FakePhoto, FakeState
 from tests.test_roles_phase8 import ADMIN_ID, _flat_callback_data, _roles_ready

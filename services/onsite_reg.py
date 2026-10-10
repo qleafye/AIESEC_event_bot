@@ -28,7 +28,7 @@ from database.db import approve_onsite, get_user
 from reg_engine import is_past_season_row
 from services.checkin import DENIAL_REASON_TEXT, ENTRY_POINT, checkin_denial, record_arrival
 from services.timeutil import msk_now
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

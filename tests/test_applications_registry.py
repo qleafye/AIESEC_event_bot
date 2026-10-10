@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from handlers.admin_settings import _APPS_FIELD_ORDER
 from miniapp.deps import SECTIONS
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 APPLICATIONS_TEXT_KEYS = [
     "miniapp_empty_applications",

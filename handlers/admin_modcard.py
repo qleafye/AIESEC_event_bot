@@ -17,8 +17,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import moderation_card
 import reg_engine
-from settings_audit import set_setting_by_admin
-from settings_schema import get_setting_typed
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import get_setting_typed
 from handlers.admin import router
 
 # Пресеты длины ответа (символов); последний — «не обрезать» (2 полных сообщения Telegram

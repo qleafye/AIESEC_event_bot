@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 from services import amb_screen
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_miniapp_routes import (
     DELEGATE_ID, _cfg, _client, _hdr, _set, _standard_seed, _use_tmp_db,
 )

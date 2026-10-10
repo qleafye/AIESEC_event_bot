@@ -103,7 +103,7 @@ def test_english_delegate_gets_english_disabled_text_when_app_off(tmp_path):
 
     async def go():
         await _enable_lang_module()
-        # miniapp_enabled НЕ включаем -- дефолт "off" (settings_schema.py).
+        # miniapp_enabled НЕ включаем -- дефолт "off" (domain/settings/schema.py).
         await _seed_user("en")
         message = _FakeMessage("📱 App")
         await ua_mod.open_miniapp_button(message)

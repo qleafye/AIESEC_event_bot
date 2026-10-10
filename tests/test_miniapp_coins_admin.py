@@ -18,7 +18,7 @@ import aiosqlite
 
 from cities import city_scope
 from database import db as bot_db
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from tests.test_miniapp_routes import (
     DELEGATE_ID,

@@ -254,12 +254,12 @@ def test_city_own_enum_screen_says_what_applies_when_inherited(tmp_path):
 
 
 def SETTINGS_SCHEMA_DEFAULT(key):
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     return SETTINGS_SCHEMA[key]["default"]
 
 
 def test_enum_without_registry_default_says_not_chosen(monkeypatch):
-    from settings_schema import SETTINGS_SCHEMA
+    from domain.settings.schema import SETTINGS_SCHEMA
     monkeypatch.setitem(SETTINGS_SCHEMA, "event_type", {**SETTINGS_SCHEMA["event_type"], "default": None})
     assert admin_settings_enum.enum_now_line("event_type", None) == "Сейчас: <i>не выбрано</i>"
 
@@ -267,7 +267,7 @@ def test_enum_without_registry_default_says_not_chosen(monkeypatch):
 # ── Ввод текстом: подписи вместо кодов (подсказки без кодов, 10.10) ─────────────────────────
 
 def test_enum_text_input_accepts_labels_and_error_lists_no_codes():
-    from settings_validation import validate_setting_value
+    from domain.settings.validation import validate_setting_value
     assert validate_setting_value("event_type", "конференция") == ("conference", None)
     assert validate_setting_value("event_type", "skillup") == ("skillup", None)  # коды — как раньше
     assert validate_setting_value("payment_enabled", "Выключено") == ("off", None)

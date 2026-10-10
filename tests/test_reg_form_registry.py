@@ -15,7 +15,7 @@ import re
 
 import handlers.admin_miniapp as admin_miniapp
 import miniapp.deps as miniapp_deps
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 # Закрытый список 36 текстов фазы (Task 1 + Phase 23.1 + Phase 25) — добавление 37-го обязано
 # осознанно ломать этот тест.

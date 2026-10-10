@@ -33,7 +33,7 @@ from database.db import (
     list_manual_coin_entries,
     search_users_by_name,
 )
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.outbox import enqueue

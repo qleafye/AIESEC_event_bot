@@ -25,7 +25,7 @@ from handlers import admin_checkin
 from handlers.states import CheckinImport
 from services.checkin import build_payload
 from services import timeutil as timeutil_mod
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 910101

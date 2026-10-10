@@ -9,7 +9,7 @@
 `.planning/backlog.md`) — это кнопки и текст, им нельзя нести бизнес-правила. Между ними обязан
 стоять aiogram-free сервис: веб-процесс Mini App (редактор правил появится следующей фазой, D-08)
 не имеет права импортировать aiogram, а второго формата правил/второй копии логики заводить
-нельзя (та же формула, что закрыла `settings_ops.py`/`services/applications.py` для своих
+нельзя (та же формула, что закрыла `domain/settings/ops.py`/`services/applications.py` для своих
 экранов).
 
 Отвечает за:
@@ -62,8 +62,8 @@ from reg_engine import (
     rule_pause_reason,
 )
 from services.i18n import src_hash
-from settings_ops import per_city_visible_codes
-from settings_schema import _parse_setting, get_setting_typed
+from domain.settings.ops import per_city_visible_codes
+from domain.settings.schema import _parse_setting, get_setting_typed
 
 logger = logging.getLogger(__name__)
 

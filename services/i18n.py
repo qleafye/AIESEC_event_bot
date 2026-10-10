@@ -21,7 +21,7 @@ import logging
 
 from database import db
 from i18n_ui_en import UI_EN
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +168,7 @@ async def tr_setting(key: str, lang: str, tr_map: dict[str, str]) -> str | None:
     FAQ, обзор). Ленивый импорт `settings_schema` — тот же приём, что уже использует
     `database/db.py::_maybe_enqueue_translation`, ради разрыва цикла (`settings_schema`
     импортирует `database.db` на уровне модуля)."""
-    from settings_schema import get_setting_typed
+    from domain.settings.schema import get_setting_typed
 
     value = await get_setting_typed(key)
     return tr(value, lang, tr_map) if value else value

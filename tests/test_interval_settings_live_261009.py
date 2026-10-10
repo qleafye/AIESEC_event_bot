@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 from config import config
 from services import scheduler as sched
 from services.scheduler import MOSCOW_TZ
-from settings_audit import set_setting_by_admin
-from settings_schema import SETTINGS_SCHEMA
+from services.settings.audit import set_setting_by_admin
+from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
 
 KEYS = ("nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
@@ -91,7 +91,7 @@ def test_reset_to_default_and_no_scheduler_are_safe(tmp_path, monkeypatch):
         try:
             await set_setting_by_admin(1, "resume_retry_minutes", "30")
             assert s.get_job("resume_upload_retry").trigger.interval == timedelta(minutes=30)
-            from settings_audit import delete_setting_by_admin
+            from services.settings.audit import delete_setting_by_admin
             await delete_setting_by_admin(1, "resume_retry_minutes")
             assert s.get_job("resume_upload_retry").trigger.interval == timedelta(minutes=10)
         finally:

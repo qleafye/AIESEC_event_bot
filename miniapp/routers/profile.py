@@ -79,7 +79,7 @@ from reg_labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services import i18n, reg_edit_policy
 from services.applications import format_edited_date
 from services.nextcloud import file_name_from_link
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 from miniapp import file_tokens
 from miniapp.avatars import resolve_avatar

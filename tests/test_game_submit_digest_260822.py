@@ -81,7 +81,7 @@ async def _submit(bot, user_id, submission_id=1, task_id=7):
 # ── Реестр и UI ───────────────────────────────────────────────────────────────
 
 def test_schema_keys_present_with_human_labels():
-    from settings_schema import SETTINGS_SCHEMA, GAME_SUBMIT_NOTIFY_MODE_LABELS
+    from domain.settings.schema import SETTINGS_SCHEMA, GAME_SUBMIT_NOTIFY_MODE_LABELS
     mode = SETTINGS_SCHEMA["game_submit_notify_mode"]
     assert mode["type"] == "enum" and mode["group"] == "game"
     assert mode["options"] == ["each", "digest"] and mode["default"] == "each"

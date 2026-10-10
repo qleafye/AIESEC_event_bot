@@ -23,7 +23,7 @@ from database.db import (
     get_all_users_dicts,
     _sheet_safe,  # квик 260919 (08-sheets-dashboard): _csv_safe -> _sheet_safe, см. её докстринг
 )
-from settings_schema import get_setting_typed, SETTINGS_SCHEMA
+from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
 from services.questions import format_stamp as _fmt_dt, status_label
 import reg_engine
 

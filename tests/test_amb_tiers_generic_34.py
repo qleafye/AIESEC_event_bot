@@ -21,8 +21,8 @@ from config import config
 from database import amb_tiers_db
 from database import db
 from services import amb_tiers
-from settings_schema import SETTINGS_SCHEMA
-from settings_validation import amb_threshold_order_error, validate_setting_value
+from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.validation import amb_threshold_order_error, validate_setting_value
 from tests._dbtpl import fast_init_db
 
 ROOT = REPO_ROOT
@@ -169,7 +169,7 @@ def test_threshold_order_generalised():
 
 
 def test_cross_setting_error_uses_tiers_count(tmp_path):
-    import settings_ops
+    import domain.settings.ops as settings_ops
 
     _ready(tmp_path)
     assert _run(settings_ops.cross_setting_error("amb_tier3_threshold", "3"))

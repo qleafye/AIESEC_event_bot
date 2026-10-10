@@ -19,7 +19,7 @@ import asyncio
 
 from config import config
 from database import db
-import settings_schema as s
+import domain.settings.schema as s
 import cities
 from tests._dbtpl import fast_init_db
 
@@ -29,7 +29,7 @@ from tests._dbtpl import fast_init_db
 # Явный список-литерал первой волны + Task 2 (menu_*) — 22 имени (12 CONTEXT B + 10
 # MENU_BUTTONS). Новый per_city-ключ обязан быть осознанным изменением ЭТОГО списка, а не
 # побочным эффектом правки реестра (T-092-03).
-# menu_miniapp (Phase 19 D-10) — обычная enum-запись группы "menu" (settings_schema.py:1466),
+# menu_miniapp (Phase 19 D-10) — обычная enum-запись группы "menu" (domain/settings/schema.py:1466),
 # per_city у неё такой же, как у остальных menu_*; этого требуют соседние тесты
 # test_menu_keys_match_menu_buttons_literal / test_menu_keys_are_enum_on_off_default_on_per_city.
 EXPECTED_PER_CITY_KEYS = {
@@ -239,7 +239,7 @@ EXPECTED_PER_CITY_KEYS = {
     "checkin_volunteer_guide_broadcast_enabled", "checkin_volunteer_guide_broadcast_time",
     # Форум-ночь п.6 (D-25, идея №14): шаблон «Не пришёл» — per_city, тот же довод, что у
     # checkin_qr_broadcast_text выше (регионы и Москва живут в разных фазах форума одновременно,
-    # settings_schema.py:5708).
+    # domain/settings/schema.py:5708).
     "checkin_not_arrived_text",
     # Форум-ночь п.7 («❗ Важное»): кнопка меню — та же ось per_city, что остальные menu_*
     # выше (menu_checkin_qr/menu_program).
@@ -261,7 +261,7 @@ EXPECTED_PER_CITY_KEYS = {
     # D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): «таблица/фото» в Mini App — per_city,
     # готовность программы города к моменту запуска приложения может отличаться (Москва —
     # таблица сессий заведена заранее, регион — пока только фото). Само фото (composite-ключ,
-    # мимо этого резолвера, D-10) в этот список НЕ входит — см. settings_schema.py комментарий
+    # мимо этого резолвера, D-10) в этот список НЕ входит — см. domain/settings/schema.py комментарий
     # у "program_miniapp_view" и `test_no_per_city_key_is_photo_or_file_type` ниже.
     "program_miniapp_view",
     # Трек «форум: делегат» 24.09: меню «день форума», приветствие, отчёт дня, опрос неявившихся,
@@ -289,7 +289,7 @@ EXPECTED_PER_CITY_KEYS = {
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): тумблер + подпись — per_city, тот же
     # довод, что forum_welcome_enabled/forum_welcome_text выше (регионы 03.10 и Москва 30-31.10
     # в разных фазах). Фон (composite-ключ, мимо этого резолвера, D-10) в этот список НЕ
-    # входит — см. settings_schema.py комментарий у "forum_stats_card".
+    # входит — см. domain/settings/schema.py комментарий у "forum_stats_card".
     "forum_stats_card_enabled",
     "forum_stats_card_caption_text",
     # Фаза 33 (действия карточки делегата): тексты уведомлений делегату — по городу, как
@@ -340,7 +340,7 @@ def test_menu_keys_match_menu_buttons_literal():
 
 # Phase 27 (27-04, LANG-01): единственное отступление от конвенции menu_* default "on" —
 # `menu_lang` рождается выключенной, менеджер включает её сам ПОСЛЕ модуля перевода
-# (обоснование — комментарий у ключа в settings_schema.py). Explicit override, а не смена
+# (обоснование — комментарий у ключа в domain/settings/schema.py). Explicit override, а не смена
 # самого инварианта: любой ДРУГОЙ будущий menu_* ключ по-прежнему обязан быть default "on".
 _MENU_DEFAULT_OVERRIDES = {"menu_lang": "off"}
 

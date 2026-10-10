@@ -19,7 +19,7 @@ import re
 
 from handlers import user_actions
 from handlers.admin_settings import SETTINGS_FIELDS, SETTINGS_GROUPS
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 import shared.web_theme as web_theme
 from miniapp import config as miniapp_config
@@ -479,7 +479,7 @@ def test_plate_pattern_asset_key_wired_into_theme_and_file_proxy():
     `/app/api/me`, и доступ к файлу через `can_read_file` — руками `page.py`/`files.py`
     не правятся, проверяем именно эту проводку."""
     import shared.web_theme as web_theme
-    import settings_ops
+    import domain.settings.ops as settings_ops
 
     assert web_theme.ASSET_KEYS["plate_pattern_file_id"] == "miniapp_theme_pattern"
     assert "miniapp_theme_pattern" in settings_ops.file_setting_keys()
@@ -504,9 +504,9 @@ def test_admin_empty_state_keys_removed_hardcode():
 
 def test_miniapp_keys_not_in_settings_fields_or_groups():
     """Своя поверхность правки (план 19-08) — иначе ключи всплывут в «📦 Прочие».
-    Исключение — тексты, которые бот показывает в чате (`settings_chat_fields.py`): у них своя
+    Исключение — тексты, которые бот показывает в чате (`domain/settings/chat_fields.py`): у них своя
     группа бота, без неё на событии без приложения их не поправить."""
-    from settings_chat_fields import CHAT_TEXT_KEYS
+    from domain.settings.chat_fields import CHAT_TEXT_KEYS
 
     field_keys = {k for k, _, _ in SETTINGS_FIELDS}
     group_keys = {k for _, _, keys in SETTINGS_GROUPS for k in keys}

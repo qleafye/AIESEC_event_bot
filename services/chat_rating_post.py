@@ -35,7 +35,7 @@ from cities import cities_module_on, enabled_cities, get_setting_typed_for_city,
 from config import config
 from database.db import get_setting
 from services.timeutil import MOSCOW_TZ, msk_now
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 

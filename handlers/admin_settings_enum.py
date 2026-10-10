@@ -17,8 +17,8 @@ from aiogram.types import InlineKeyboardButton
 from database.db import get_setting
 from handlers import admin_settings
 from handlers.admin import router
-from settings_schema import SETTINGS_SCHEMA, option_label
-from settings_validation import ON_OFF_LABELS
+from domain.settings.schema import SETTINGS_SCHEMA, option_label
+from domain.settings.validation import ON_OFF_LABELS
 
 
 def enum_options(key: str) -> list[str]:

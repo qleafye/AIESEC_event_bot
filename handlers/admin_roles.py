@@ -22,7 +22,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 from database.db import (
     add_staff,
     get_reg_started_by_id,  # Phase 33 (задача 2): экран назначения роли для «только /start»
@@ -43,7 +43,7 @@ from services.staff_expiry import (
     is_expiry_active,
     parse_ddmmyyyy,
 )
-from settings_audit import set_setting_by_admin
+from services.settings.audit import set_setting_by_admin
 from handlers.states import RolesExpiryEdit, StaffAdd
 from handlers.admin_caps import (
     ALL_CAPABILITIES,
@@ -596,7 +596,7 @@ async def toggle_role_enabled(callback: types.CallbackQuery, bot: Bot | None = N
 # старому экрану не требует миграции данных.
 #
 # Пустой набор пишется СЕНТИНЕЛОМ, а не пустой строкой: _parse_setting для type:"list"
-# возвращает `default` на falsy raw (settings_schema.py), то есть пустая строка молча вернула
+# возвращает `default` на falsy raw (domain/settings/schema.py), то есть пустая строка молча вернула
 # бы роли права по умолчанию — противоположность тому, что нажал менеджер. Сентинел не входит
 # в ALL_CAPABILITIES, а resolve_capabilities отбрасывает всё, чего там нет
 # (handlers/admin_caps.py) — на выходе честный нулевой набор прав.

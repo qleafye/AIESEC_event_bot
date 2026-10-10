@@ -315,8 +315,8 @@ def test_menu_reorder_translates_to_english_labels(tmp_path):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_registry_defaults_and_format():
-    from settings_schema import SETTINGS_SCHEMA
-    import settings_ops
+    from domain.settings.schema import SETTINGS_SCHEMA
+    import domain.settings.ops as settings_ops
 
     enabled = SETTINGS_SCHEMA["forum_day_menu_enabled"]
     assert enabled["default"] == "off"

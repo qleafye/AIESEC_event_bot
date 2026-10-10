@@ -7,7 +7,7 @@
 Сайдкар LibreTranslate НЕ поднимается по умолчанию (хост держит 237 МБ физически свободных на
 ~26 контейнеров — постоянные 400-700 МБ сайдкара туда не влезают), но код HTTP-драйвера
 остаётся рабочим фоллбэком за тем же контрактом — переключение `delegate_lang_driver`
-("embedded" -> "http") в реестре, а не правка кода (`settings_schema.py`).
+("embedded" -> "http") в реестре, а не правка кода (`domain/settings/schema.py`).
 
 Оба драйвера реализуют `TranslationDriver.translate_batch` — СИНХРОННЫЙ метод (зовётся из
 `asyncio.to_thread`, CLAUDE.md/27-RESEARCH.md Pitfall 7: ct2-инференс — CPU-bound C++, прямой
@@ -30,7 +30,7 @@ import time
 
 import httpx
 
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 

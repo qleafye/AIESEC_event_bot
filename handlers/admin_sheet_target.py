@@ -25,7 +25,7 @@ from handlers.admin import router
 from handlers.states import SheetTarget
 from keyboards.builders import get_cancel_kb
 from services import sheet_target
-from settings_audit import delete_setting_by_admin, set_setting_by_admin
+from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 
 logger = logging.getLogger(__name__)
 

@@ -10,7 +10,7 @@ import asyncio
 
 from config import config
 from database import db
-from settings_ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER
+from domain.settings.ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.admin_caps import required_capability
@@ -102,7 +102,7 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
         "settings_group:consent", "settings_group:game", "settings_group:amb",
         # Квик 260927: «💬 Чат делегатов» (веса рейтинга чата) — перед «🔧 Система».
         "settings_group:chat", "settings_group:system",
-        # 10.10: тексты чата, правившиеся только в приложении (settings_chat_fields.py).
+        # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
     ]
@@ -185,7 +185,7 @@ def test_settings_group_noop_just_answers(tmp_path):
 # does not exist yet, this file will fail to collect with ModuleNotFoundError). See
 # .planning/phases/06-settings-schema-registry/06-01-PLAN.md / 06-CONTEXT.md (D-15/D-16/D-17).
 
-from settings_schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed  # noqa: E402
+from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed  # noqa: E402
 from tests._dbtpl import fast_init_db
 
 

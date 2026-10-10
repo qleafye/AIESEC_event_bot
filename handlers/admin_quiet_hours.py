@@ -20,7 +20,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from cities import ALL_CITIES, admin_selected_city, city_label, get_setting_typed_for_city
 from handlers.admin import router
 from services import quiet_hours
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 
 def _fmt_raw(raw: str | None) -> str:

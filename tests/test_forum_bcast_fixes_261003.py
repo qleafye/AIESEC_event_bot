@@ -94,8 +94,8 @@ def test_evening_send_keeps_tomorrow_text(tmp_path, monkeypatch):
 def test_morning_text_registered_like_neighbours():
     from handlers.admin_settings import SETTINGS_FIELDS
     from services.i18n_form_manual import FORM_DEFAULT_EN
-    from settings_schema import SETTINGS_SCHEMA
-    from settings_synonyms import SETTINGS_SYNONYMS
+    from domain.settings.schema import SETTINGS_SCHEMA
+    from domain.settings.synonyms import SETTINGS_SYNONYMS
 
     entry = SETTINGS_SCHEMA["checkin_qr_morning_text"]
     assert entry["group"] == "reg" and entry["per_city"] is True
@@ -182,13 +182,13 @@ def test_not_arrived_blocked_user_stays_marked(tmp_path, monkeypatch):
 # ── Форумные тексты: разметка и длина подписи проверяются при сохранении ─────────────────────
 
 def test_forum_texts_are_html_settings():
-    from settings_ops import HTML_SETTINGS
-    from settings_validation import FORUM_HTML_KEYS
+    from domain.settings.ops import HTML_SETTINGS
+    from domain.settings.validation import FORUM_HTML_KEYS
     assert FORUM_HTML_KEYS <= HTML_SETTINGS
 
 
 def test_stray_lt_rejected_with_human_error():
-    from settings_validation import validate_setting_value
+    from domain.settings.validation import validate_setting_value
     value, err = validate_setting_value("checkin_qr_broadcast_text", "Паспорт обязателен <3")
     assert value is None and "Telegram" in err
     value, err = validate_setting_value("checkin_not_arrived_text__city__spb", "<регистрация> закрыта")
@@ -196,20 +196,20 @@ def test_stray_lt_rejected_with_human_error():
 
 
 def test_unknown_and_unbalanced_tags_rejected():
-    from settings_validation import validate_setting_value
+    from domain.settings.validation import validate_setting_value
     assert validate_setting_value("forum_welcome_text", "Привет <div>x</div>")[0] is None
     assert validate_setting_value("forum_welcome_text", "Привет <b>x")[0] is None
     assert validate_setting_value("forum_welcome_text", "Привет x</b>")[0] is None
 
 
 def test_valid_markup_and_escaped_text_pass():
-    from settings_validation import validate_setting_value
+    from domain.settings.validation import validate_setting_value
     ok = "Сегодня <b>форум</b> в {time}! Паспорт &lt;3 &amp; <a href=\"https://x.y\">карта</a>"
     assert validate_setting_value("forum_welcome_text", ok) == (ok, None)
 
 
 def test_caption_longer_than_1024_rejected():
-    from settings_validation import validate_setting_value
+    from domain.settings.validation import validate_setting_value
     long_text = "а" * 1025
     value, err = validate_setting_value("checkin_qr_morning_text", long_text)
     assert value is None and "1024" in err

@@ -25,7 +25,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_setting
 from handlers.admin import router
-from settings_schema import get_setting_typed
+from domain.settings.schema import get_setting_typed
 
 
 def _tab_label(tab: str | None) -> str:

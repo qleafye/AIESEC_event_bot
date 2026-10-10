@@ -29,7 +29,7 @@ import re
 from shared.amb_tier_keys import tier_key
 from database import amb_tiers_db
 from services.timeutil import msk_now
-from settings_schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 logger = logging.getLogger(__name__)
 

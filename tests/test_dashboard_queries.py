@@ -18,7 +18,7 @@ import pytest
 
 from config import config
 from database import db as bot_db
-from settings_schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 from dashboard import db as dash_db
 from dashboard.timeutil import msk_now
