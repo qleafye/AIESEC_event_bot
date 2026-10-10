@@ -1,11 +1,11 @@
 """Пересборка Google-таблицы из БД без бота — та же логика, что кнопка «♻️ Пересобрать таблицу»
-(`handlers/admin_sheets.py::rebuild_sheet`): главная вкладка + именованные вкладки городов/
+(`handlers/sheets/admin_sheets.py::rebuild_sheet`): главная вкладка + именованные вкладки городов/
 short/party по тому же строителю `build_sheet_batches`, что и живой хендлер и `sync_sheet`.
 
 Квик 260915-4is: раньше скрипт строил СОБСТВЕННУЮ раскладку (одна шапка `active_sheet_headers()`
 на ВСЕ вкладки, без учёта трека и даже без учёта города — хуже самого хендлера, который хотя бы
 считал шапку по городу). Теперь единственный источник правды — `build_sheet_batches` из
-`handlers/admin_sheets.py`; здесь никакой второй копии правил маршрутизации.
+`handlers/sheets/admin_sheets.py`; здесь никакой второй копии правил маршрутизации.
 
 Запуск внутри контейнера бота:
     python tools/rebuild_sheet_headless.py            # сухой прогон: сколько строк куда ляжет
@@ -22,7 +22,7 @@ _KIND_LABEL = {"main": "полная", "short": "короткая", "party": "pa
 
 
 async def main(apply: bool) -> int:
-    from handlers.admin_sheets import (  # noqa: WPS433 — те же имена, что у хендлера
+    from handlers.sheets.admin_sheets import (  # noqa: WPS433 — те же имена, что у хендлера
         build_sheet_batches,
         get_all_users_dicts,
         rebuild_main_sheet,

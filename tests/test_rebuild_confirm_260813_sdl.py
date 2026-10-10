@@ -12,7 +12,7 @@ monkeypatch, no real Google API).
 import asyncio
 
 from handlers import admin as admin_mod
-from handlers import admin_sheets  # module-size split: rebuild moved out of admin_sheets.py
+from handlers.sheets import admin_sheets  # module-size split: rebuild moved out of admin_sheets.py
 from handlers import admin_caps
 
 

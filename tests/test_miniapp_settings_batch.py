@@ -150,7 +150,7 @@ def test_batch_without_settings_cap_403(tmp_path, no_tab):
 # переименовать СТАРУЮ вкладку вместе с данными. Из-за этого правка имени из приложения
 # оставляла строки в осиротевшем листе; на проде так появились три поколения «Незавершённых»
 # (956 / 20 / 432 строки) и два «Геймы». Развилка живёт в боте
-# (handlers/admin_sheet_tabs.py), а веб-поверхность эти ключи больше не принимает.
+# (handlers/sheets/admin_sheet_tabs.py), а веб-поверхность эти ключи больше не принимает.
 
 @pytest.mark.parametrize("key", ["main_sheet_tab", "game_matrix_tab", "incomplete_sheet_tab"])
 def test_tab_name_keys_are_rejected_as_not_editable(tmp_path, key):

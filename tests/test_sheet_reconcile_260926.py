@@ -576,7 +576,7 @@ def test_apply_append_missing_partial_failure_does_not_abort_rest(tmp_path, monk
 def test_apply_append_missing_unexpected_crash_preserves_partial_done(tmp_path, monkeypatch):
     """Неожиданное исключение (настоящий raise, не штатный код «error» из fail-soft-контракта
     append_to_existing_named_sheet) НЕ должно стереть уже накопленный done -- хендлер
-    (handlers/admin_sheet_reconcile.py) должен суметь сказать «записано N из M», а не просто
+    (handlers/sheets/admin_sheet_reconcile.py) должен суметь сказать «записано N из M», а не просто
     «упало». Возврат несёт `ok=False, crashed=True` плюс то, что реально успело."""
     _db_ready(tmp_path)
     _reset_sheets_state()
@@ -745,7 +745,7 @@ def test_build_sheet_batches_users_rows_stay_aligned_for_zip(tmp_path):
         await _seed_user(260926531, city="spb", participant_type="short", full_name="Боря СПб")
         await _seed_user(260926532, city="msk", participant_type="short", full_name="Вика Мск")
         users = await db.get_all_users_dicts()
-        from handlers.admin_sheets import build_sheet_batches
+        from handlers.sheets.admin_sheets import build_sheet_batches
         return await build_sheet_batches(users)
 
     batches = _run(scenario())

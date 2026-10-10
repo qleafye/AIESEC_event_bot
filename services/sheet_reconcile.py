@@ -6,7 +6,7 @@
 is_past_season_row` — те же 482 импортированных делегата прошлого сезона иначе завалили бы
 отчёт ложными «нет строки») с РЕАЛЬНЫМИ вкладками таблицы. Раскладка «пользователь → вкладка →
 шапка → строка» — тот же единый строитель, что у «🔄 Синхронизация»/«♻️ Пересобрать таблицу»
-(`handlers.admin_sheets.build_sheet_batches`, Phase 25/квик 260915-4is) — не изобретаем
+(`handlers.sheets.admin_sheets.build_sheet_batches`, Phase 25/квик 260915-4is) — не изобретаем
 собственное правило резолва вкладки, DRY и ноль риска разъехаться.
 
 Координатор 25.09 (живой прогон на стенде): читает и разбирает по строкам ТОЛЬКО делегатские
@@ -26,7 +26,7 @@ is_past_season_row` — те же 482 импортированных делег�
 задвоит работу.
 
 aiogram-free (тот же разрез, что `services/city_move.py`/`services/reject_journal.py`) — вызывающий
-хендлер (`handlers/admin_sheet_reconcile.py`) строит текст/клавиатуры сам."""
+хендлер (`handlers/sheets/admin_sheet_reconcile.py`) строит текст/клавиатуры сам."""
 from __future__ import annotations
 
 import asyncio
@@ -65,7 +65,7 @@ _SHEET_RESULT_TEXT = {
 # Координатор 25.09: недоставленные решения (одобрение/отказ) теперь читаются из БД —
 # `users.decision_delivery_*` (database/db.py, пишет services/application_effects.py),
 # раскладка на категории — `services.decision_delivery.summarize_deliveries` (общая точка с
-# «📨 Переотправить решения», handlers/admin_sheet_reconcile.py). Решения ДО этой миграции
+# «📨 Переотправить решения», handlers/sheets/admin_sheet_reconcile.py). Решения ДО этой миграции
 # остаются NULL и попадают в отдельную категорию «неизвестно», не смешиваются с «не доставлено».
 
 
@@ -201,7 +201,7 @@ async def build_report(*, city_scope: tuple | None = None) -> dict:
     `missing_rows` (иначе «Дописать недостающие строки» завела бы вторую строку рядом с уже
     существующей), а идёт в отдельную категорию `other_tab_rows`."""
     users = await _current_season_users(city_scope=city_scope)
-    from handlers.admin_sheets import build_sheet_batches  # ленивый импорт против цикла
+    from handlers.sheets.admin_sheets import build_sheet_batches  # ленивый импорт против цикла
 
     batches = await build_sheet_batches(users)
     main_batch, named_batches = batches[0], batches[1:]
@@ -394,7 +394,7 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
         total = len(report["missing_rows"])
 
         users = await _current_season_users(city_scope=city_scope)
-        from handlers.admin_sheets import build_sheet_batches  # ленивый импорт против цикла
+        from handlers.sheets.admin_sheets import build_sheet_batches  # ленивый импорт против цикла
 
         batches = await build_sheet_batches(users)
         main_batch, named_batches = batches[0], batches[1:]

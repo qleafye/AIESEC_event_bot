@@ -1,4 +1,4 @@
-"""Квик 260915-4is: `build_sheet_batches` (handlers/admin_sheets.py) — единый строитель
+"""Квик 260915-4is: `build_sheet_batches` (handlers/sheets/admin_sheets.py) — единый строитель
 «пользователь → вкладка → шапка → строка» для «♻️ Пересобрать» и «🔄 Синхронизация». До этой
 правки обе операции брали набор колонок ТОЛЬКО по городу (active_sheet_headers(code)), даже
 когда живой аппенд для той же именованной вкладки кладёт короткую/party-шапку
@@ -9,7 +9,7 @@
 всё замокано на уровне модуля admin_sheets, БД не трогается."""
 import asyncio
 
-from handlers import admin_sheets
+from handlers.sheets import admin_sheets
 from tests.test_rebuild_confirm_260813_sdl import _FakeCallback, ADMIN_ID
 
 
