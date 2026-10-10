@@ -271,3 +271,51 @@ def test_no_key_code_in_any_editable_label():
     for key in settings_ops.editable_keys():
         label = SETTINGS_SCHEMA[settings_ops.base_setting_key(key)]["label"]
         assert "_" not in label
+
+
+def test_event_type_preset_returns_keys_and_logs_author(tmp_path, caplog):
+    async def _run():
+        _use_tmp_db(tmp_path)
+        fast_init_db()
+        with caplog.at_level("INFO"):
+            return await settings_ops.apply_event_type_preset("conference", ADMIN_ID)
+
+    keys = asyncio.run(_run())
+    assert keys == ["payment_enabled", "consent_enabled", "reg_q_lc"]
+    assert f"admin={ADMIN_ID} setting payment_enabled <- 'on'" in caplog.text
+
+
+def test_reg_preset_returns_every_written_key_with_author(tmp_path, caplog):
+    import reg_presets
+
+    async def _run():
+        _use_tmp_db(tmp_path)
+        fast_init_db()
+        with caplog.at_level("INFO"):
+            return await reg_presets.apply_reg_preset("forum", ADMIN_ID)
+
+    keys = asyncio.run(_run())
+    assert set(reg_presets.REG_DEFAULTS) <= set(keys) and "payment_enabled" in keys
+    assert f"admin={ADMIN_ID} setting payment_enabled" in caplog.text
+
+
+def test_batch_hooks_run_per_key_but_reject_rules_once(monkeypatch):
+    import settings_audit
+    from services import reject_rules_notify
+
+    seen, per_key, batch = [], [], []
+
+    async def fake_hooks(key, *, reject_rules=True):
+        seen.append((key, reject_rules))
+
+    async def fake_batch(keys):
+        batch.append(list(keys))
+
+    monkeypatch.setattr(settings_audit, "run_setting_hooks", fake_hooks)
+    monkeypatch.setattr(reject_rules_notify, "on_settings_written_batch", fake_batch)
+    asyncio.run(settings_audit.run_setting_hooks_batch(["a", "b", "a"]))
+    assert seen == [("a", False), ("b", False)]  # по ключу — без автоотказа, дубли схлопнуты
+    assert batch == [["a", "b", "a"]]  # автоотказ — один раз на пачку
+    batch.clear()
+    asyncio.run(settings_audit.run_setting_hooks_batch(["a"], reject_rules=False))
+    assert batch == []

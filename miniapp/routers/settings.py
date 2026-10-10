@@ -736,7 +736,8 @@ async def settings_batch(
                     key = failing_key = change.key
                     logger.info(f"admin {p.telegram_id} правит настройку {key}")
                     event_keys.append(key)
-                    warning = await settings_ops.commit_batch_item(key, checked[key], p.telegram_id)
+                    warning = await settings_ops.commit_batch_item(
+                        key, checked[key], p.telegram_id, written=event_keys)
                     if warning:
                         warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
                     saved.append(key)
