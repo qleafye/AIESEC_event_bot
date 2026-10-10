@@ -33,6 +33,7 @@ export async function render(root, params, ctx) {
       tile("check", stats.submissions.approved, "Одобрено"),
       tile("x", stats.submissions.rejected, "Отклонено"),
     ),
+    h("p", { class: "muted", text: `Начислено баллов за задания: ${stats.coins_awarded ?? 0}` }),
   );
 
   const rows = stats.by_category.filter((r) => r.count > 0);
