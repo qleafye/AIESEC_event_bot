@@ -11,7 +11,7 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import city_label, get_setting_typed_for_city, open_cities
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 
 
 async def open_city_kb() -> InlineKeyboardMarkup:

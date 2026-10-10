@@ -16,7 +16,7 @@ from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.user_actions import router
 from keyboards.menu_dynamic import menu_key_for_text
 

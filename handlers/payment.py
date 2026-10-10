@@ -26,7 +26,7 @@ from handlers.admin_caps import notify_by_capability  # D-13: fan out by capabil
 # (лениво внутри say()), цикла нет. bot.send_message-вызовы этого файла не идут через
 # say()/_safe_answer (нет message-объекта в start_payment_step) — контекст резолвим напрямую
 # через services.i18n.context(telegram_id), tr_text/tr_kb/tr_fmt применяем вручную.
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from services import i18n as i18n_service
 
 router = Router()
@@ -99,7 +99,7 @@ _PAY_LATER_BTN = InlineKeyboardButton(text="⏭ Оплачу позже", callba
 def _pay_later_btn(lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardButton:
     """Квик 260917-en: `_PAY_LATER_BTN` — общая константа трёх экранов (пикер/детали оплаты),
     перевод на лету через `reg_i18n.tr_text` (тот же объект при lang="ru", см. докстринг
-    `handlers/reg_i18n.py`), без пересборки самой константы."""
+    `handlers/i18n/reg_i18n.py`), без пересборки самой константы."""
     new_text = reg_i18n.tr_text(_PAY_LATER_BTN.text, lang, tr_map or {})
     if new_text is _PAY_LATER_BTN.text:
         return _PAY_LATER_BTN

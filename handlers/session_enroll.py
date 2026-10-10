@@ -26,7 +26,7 @@ from aiogram import F
 from domain.cities import get_setting_typed_for_city, normalize_city
 from database import session_enroll_db as edb
 from database.db import get_user
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.user_actions import _returning_text_if_past_season, ensure_registered, router
 from keyboards.menu_dynamic import DynamicMenuText
 from services import session_enroll as svc

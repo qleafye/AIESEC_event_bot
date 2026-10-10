@@ -17,7 +17,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import domain.regform.engine as reg_engine
 from database.db import get_setting
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from services import reg_edit_policy
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 

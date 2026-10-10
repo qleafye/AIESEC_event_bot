@@ -15,7 +15,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin_i18n as mod
+from handlers.i18n import admin_i18n as mod
 from handlers.states import AdminI18nEdit
 from services.i18n import src_hash as compute_src_hash
 

@@ -1,6 +1,6 @@
 """Тексты форума с ведущим эмодзи (checkin_*/sos_*/program_*) на английском.
 
-Бот шлёт делегатские тексты через `handlers.reg_i18n.tr_text`, который снимает ведущий эмодзи
+Бот шлёт делегатские тексты через `handlers.i18n.reg_i18n.tr_text`, который снимает ведущий эмодзи
 ДО поиска перевода: ручной словарь обязан держать ключ и без префикса, иначе EN-делегат
 получает русский текст (подпись QR, «сигнал SOS отправлен»). Mini App переводит целиком через
 `services.i18n.tr` — там нужен ключ С эмодзи. Проверяем обе дороги без БД: карта `src_hash ->
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from services import i18n
 from services.i18n_form_manual import FORM_DEFAULT_EN
 from services.i18n_glossary import split_leading_symbols

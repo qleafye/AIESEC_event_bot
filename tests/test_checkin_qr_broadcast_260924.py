@@ -520,7 +520,7 @@ def test_confirm_button_literal_matches_callback():
 
 def test_send_broadcast_translates_caption_for_english_delegate(tmp_path, monkeypatch):
     """Задача 3 (D-03): текст рассылки уходит через тот же перевод, что «🎟 Мой QR»
-    (`handlers.reg_i18n.tr_text`) — делегат с языком «en» получает английскую подпись
+    (`handlers.i18n.reg_i18n.tr_text`) — делегат с языком «en» получает английскую подпись
     (`services.i18n_form_manual.FORM_DEFAULT_EN`), а не русский дефолт как есть."""
     from services.i18n_form_manual import FORM_DEFAULT_EN, seed
 

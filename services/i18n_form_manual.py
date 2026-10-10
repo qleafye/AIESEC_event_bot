@@ -471,7 +471,7 @@ _CODE_LITERALS_EN = {
     "Ты уже отмечен(а) на входе в {time} — всё в порядке, хорошего дня!":
         "You're already checked in at the entrance at {time} — all good, have a great day!",
     # Ведущий эмодзи "🎟 " отделяется `split_leading_symbols` ДО перевода (см. докстринг
-    # `handlers/reg_i18n.py::tr_text`) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
+    # `handlers/i18n/reg_i18n.py::tr_text`) — ключ здесь БЕЗ эмодзи, тот же, что реально ищет `tr()`.
     "Мой QR": "My QR",
     "Спасибо, передали организаторам!": "Thanks, we let the organizers know!",
     "Жаль! Спасибо, что предупредил.": "Too bad! Thanks for letting us know.",
@@ -951,7 +951,7 @@ _REGISTRY_TEXTS_EN = {
         "You're checked in at {time} ✅ Welcome to YouLead!"
     ),
     # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» (кнопка «🎟 Мой QR», хаб Mini
-    # App) — group "reg", checked_in_status_text. Ключ БЕЗ ведущего «✅ » — `handlers.reg_i18n.
+    # App) — group "reg", checked_in_status_text. Ключ БЕЗ ведущего «✅ » — `handlers.i18n.reg_i18n.
     # tr_text`/`split_leading_symbols` отделяет ведущий эмодзи-префикс ДО перевода и
     # приклеивает его назад нетронутым (докстринг `services/i18n_glossary.py::
     # split_leading_symbols`); словарь с эмодзи внутри ключа НИКОГДА не совпал бы по хешу с

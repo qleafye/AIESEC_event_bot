@@ -21,7 +21,7 @@ from aiogram.fsm.context import FSMContext
 from domain.cities import normalize_city
 from database import quiz_db
 from database.db import get_user
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.session_enroll import _Ctx, _btn, _kb, _show
 from handlers.user_actions import _returning_text_if_past_season, ensure_registered, router
 from keyboards.menu_dynamic import DynamicMenuText

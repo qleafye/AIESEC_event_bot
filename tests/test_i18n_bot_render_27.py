@@ -1,4 +1,4 @@
-"""Phase 27 (27-05, LANG-02) — перевод чата бота НА ОТПРАВКЕ: `handlers/reg_i18n.py`
+"""Phase 27 (27-05, LANG-02) — перевод чата бота НА ОТПРАВКЕ: `handlers/i18n/reg_i18n.py`
 (`tr_text`/`tr_kb`) и врезка в `handlers/registration.py::_safe_answer`/`_build_summary`.
 
 Как и соседние тесты фазы (`tests/test_i18n_lang_27.py`) — Fake message, `asyncio.run()`,
@@ -19,7 +19,7 @@ from aiogram.types import (
 
 from config import config
 from database import db
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers import registration as reg
 from tests._dbtpl import fast_init_db
 
@@ -43,7 +43,7 @@ class _FakeMessage:
     """Минимальный message — тот же контракт, что у _FakeMessage в
     tests/test_registration_send_guard_260816.py: _safe_answer трогает только .chat.id и
     .answer. Намеренно БЕЗ .from_user — reg_i18n.ctx_for обязан резолвить личность делегата по
-    chat.id (см. докстринг handlers/reg_i18n.py), не падать на отсутствии from_user."""
+    chat.id (см. докстринг handlers/i18n/reg_i18n.py), не падать на отсутствии from_user."""
 
     def __init__(self, chat_id=UID):
         self.chat = _FakeChat(chat_id)

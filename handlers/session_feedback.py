@@ -34,7 +34,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
 from database.db import get_program_session
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from handlers.admin import router
 from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
 from handlers.states import EditSetting, SessionFeedbackComment

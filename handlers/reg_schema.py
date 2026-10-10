@@ -46,7 +46,7 @@ from keyboards.builders import get_main_menu_kb
 # у этой функции нет message-объекта — только telegram_id). reg_i18n не импортирует
 # handlers.reg_schema ни статически, ни лениво — цикла нет; модуль не заводит Router/хендлеры,
 # порядок регистрации хендлеров (golden-снимок) не затронут.
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from services import i18n as i18n_service
 
 logger = logging.getLogger(__name__)

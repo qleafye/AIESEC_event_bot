@@ -183,7 +183,7 @@ def sort_tasks_for_delegate(tasks: list[dict]) -> list[dict]:
 
 def fill_template(template: str, **subs) -> str:
     """Подстановка в шаблон, который правит менеджер (T-073-03-05, тот же приём, что
-    `handlers/reg_i18n.py::tr_fmt`) — `.replace("{key}", str(value))` цепочкой, НЕ
+    `handlers/i18n/reg_i18n.py::tr_fmt`) — `.replace("{key}", str(value))` цепочкой, НЕ
     `.format()`. Менеджерский текст может содержать посторонний `{`/`}` (случайно набранный
     символ, скопированная ссылка вида `{id}`), на котором `.format()` поднимает `KeyError`/
     `IndexError`/`ValueError` и роняет всю отправку; лишний неизвестный `{плейсхолдер}`

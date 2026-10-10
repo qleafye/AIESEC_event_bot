@@ -1,7 +1,7 @@
 """Переводы SOS для делегата на английском (приёмка 01.10): кнопка геопозиции, шапка ответа."""
 from aiogram.types import ReplyKeyboardMarkup
 
-from handlers import reg_i18n
+from handlers.i18n import reg_i18n
 from services import i18n
 from services.i18n_form_manual import FORM_DEFAULT_EN
 
