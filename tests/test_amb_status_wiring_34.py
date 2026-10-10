@@ -280,7 +280,7 @@ def _schema_default(key):
 
 
 def _offer(tid):
-    from handlers import reg_ambassador
+    from handlers.reg import reg_ambassador
     _cb, msg_cls = _fakes()
     msg = msg_cls(tid)
     _run(reg_ambassador.offer_ref_link(msg, tid))
@@ -288,7 +288,7 @@ def _offer(tid):
 
 
 def _want(tid):
-    from handlers import reg_ambassador
+    from handlers.reg import reg_ambassador
     cb_cls, _msg = _fakes()
     cb = cb_cls("regamb:want", tid)
     _run(reg_ambassador.regamb_want(cb))
@@ -326,7 +326,7 @@ def test_offer_on_selection_candidate_gets_ack_and_link_without_offer(ready):
 
 
 def test_offer_candidate_without_bot_username_sends_only_ack(ready):
-    from handlers import reg_ambassador
+    from handlers.reg import reg_ambassador
     from tests.test_skillup_referral_28 import _FakeBot, _FakeMessage
     _mode("selection")
     _finalize(46, yes=True)

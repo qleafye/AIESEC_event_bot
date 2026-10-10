@@ -48,7 +48,7 @@ def test_recall_screen_uses_delegate_label(tmp_path):
 
 def test_admin_dropout_label_keeps_service_suffix():
     """Аналитика отвалов в админке по-прежнему различает «общие» ожидания и трековые."""
-    from handlers.reg_schema import dropout_step_label
+    from handlers.reg.reg_schema import dropout_step_label
 
     assert "(общие)" in dropout_step_label("expectations")
 
@@ -59,7 +59,7 @@ def test_recall_change_on_goal_skips_education_recap(tmp_path):
     """Рекап «Проверь образование» решает «группа только что закончена» по наличию ответов в
     FSM — на правке со сводки они есть всегда. «Изменить» на «Цели участия» обязан сразу
     спросить цель, а не показывать карточку образования, которое делегат не трогал."""
-    from handlers import reg_types_composite
+    from handlers.reg import reg_types_composite
     from tests.test_reg_resume_draft import _FakeCallback
 
     _use_tmp_db(tmp_path, "uat261010_edu.db")
@@ -89,7 +89,7 @@ def test_recall_change_then_next_step_skips_education_recap(tmp_path):
     следующий `_ask_step` (уже не в `recall_pending`) снова видел «группа образования
     закончена» и показывал «Проверь образование». Правка одного вопроса снимает рекап групп,
     к которым этот вопрос не относится, до конца сессии."""
-    from handlers import reg_types_composite
+    from handlers.reg import reg_types_composite
     from tests.test_reg_resume_draft import _FakeCallback
 
     _use_tmp_db(tmp_path, "uat261010_edu_next.db")
@@ -121,7 +121,7 @@ def test_recall_change_then_next_step_skips_education_recap(tmp_path):
 # ── Кнопка «Продолжить» на дочитанной анкете ──────────────────────────────────────────────
 
 async def _continue_label(draft_step):
-    from handlers import reg_resume
+    from handlers.reg import reg_resume
     from tests.test_reg_resume_draft import _seed_new_draft
 
     await _seed_new_draft(USER_ID, step=draft_step, patch={"full_name": "Иванова Мария", "age": "22"})
@@ -212,7 +212,7 @@ def test_resume_fork_buttons_attach_to_question(tmp_path):
     способа теперь вешаются на само сообщение с вопросом — порядок перепутать нечем, а
     reply-клавиатура прошлого вопроса всё равно снимается этим же сообщением."""
     from aiogram.types import InlineKeyboardMarkup
-    from handlers import reg_resume_fork
+    from handlers.reg import reg_resume_fork
 
     _use_tmp_db(tmp_path, "uat261010_fork.db")
     msg = _ReturningMessage(USER_ID, "delegate")
@@ -231,7 +231,7 @@ def test_resume_fork_buttons_attach_to_question(tmp_path):
 def test_resume_fork_falls_back_to_separate_buttons_message(tmp_path):
     """Telegram не дал сменить разметку — кнопки уходят отдельным сообщением ПОСЛЕ вопроса."""
     from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardRemove
-    from handlers import reg_resume_fork
+    from handlers.reg import reg_resume_fork
 
     _use_tmp_db(tmp_path, "uat261010_fork_fb.db")
     msg = _ReturningMessage(USER_ID, "delegate", fail_edit=True)
@@ -250,7 +250,7 @@ def test_resume_fork_timeout_does_not_send_second_pick(tmp_path):
     Telegram (`TelegramBadRequest`)."""
     import pytest
     from aiogram.exceptions import TelegramNetworkError
-    from handlers import reg_resume_fork
+    from handlers.reg import reg_resume_fork
 
     _use_tmp_db(tmp_path, "uat261010_fork_timeout.db")
     msg = _ReturningMessage(USER_ID, "delegate", fail_edit="timeout")

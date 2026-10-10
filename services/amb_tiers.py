@@ -17,7 +17,7 @@
 - `services/reg_finalize.py` — авто-одобрение на финале анкеты.
 
 И отдельно — при вступлении в амбассадоры (`check_tiers_for_new_ambassador`: бот
-`handlers/reg_ambassador.py`, возврат `handlers/user_actions.py::ambassador_join`, Mini App
+`handlers/reg/reg_ambassador.py`, возврат `handlers/user_actions.py::ambassador_join`, Mini App
 `miniapp/routers/form.py::draft_ambassador`).
 
 Сторож `tests/test_referral_credit_32.py::test_every_credit_call_site_also_checks_tiers`

@@ -13,7 +13,7 @@ from aiogram.types import InlineKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_lang
+from handlers.reg import reg_lang
 from keyboards.builders import get_main_menu_kb
 from tests._dbtpl import fast_init_db
 

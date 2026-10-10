@@ -831,7 +831,7 @@ def test_form_spec_full_track_matches_golden_enabled_steps(tmp_path):
 # жила в отдельной функции (`_parse_age`/`_is_allowed_resume`/`_resume_too_large`/
 # `_validate_date_range`) — тест вызывал её напрямую; где проверка сидела внутри тела
 # `process_*` (нет отдельной функции) — тест сверял, что дословный текст ошибки/литерал кода
-# присутствует в исходнике хендлера (grep по `handlers/reg_steps.py`/`reg_flow.py`/
+# присутствует в исходнике хендлера (grep по `handlers/reg/reg_steps.py`/`reg_flow.py`/
 # `registration.py` — доказательство, что строка не сочинена, зафиксировано тем самым первым
 # коммитом в git-истории).
 #
@@ -972,7 +972,7 @@ def test_validate_matches_golden():
 
 
 # ── APPLY_GOLDEN: побочные правила при ответе (education_status/work_status) ────────────────────
-# Источник (снято Task 1): process_education_status/process_work_status (handlers/reg_steps.py).
+# Источник (снято Task 1): process_education_status/process_work_status (handlers/reg/reg_steps.py).
 APPLY_GOLDEN = [
     {
         "step": "education_status", "value": "Нет, завершил(а) обучение",

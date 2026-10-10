@@ -153,7 +153,7 @@ def test_draft_patch_canonicalizes_select_step_study_field(client, monkeypatch):
     шаге без вариантов получает `[]` (no-op). Для `study_field` (`SELECT_CONFIG`, тип "select")
     список НЕ пуст -- ровно тот шаг, где UAT на стороне чата бота (не Mini App) поймал
     непереведённую английскую подпись `study_field` в драфте (`process_select_input` без
-    канонизации, см. `handlers/reg_flow.py`). Здесь тест подтверждает, что Mini App-путь УЖЕ
+    канонизации, см. `handlers/reg/reg_flow.py`). Здесь тест подтверждает, что Mini App-путь УЖЕ
     канонизирует его правильно генерическим циклом -- фикса на этой стороне не потребовалось."""
     monkeypatch.setattr(i18n_mod, "tr", _fake_tr)
     monkeypatch.setattr(reg_engine, "_tr", _fake_tr)

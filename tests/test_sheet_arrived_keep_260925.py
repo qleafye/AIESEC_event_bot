@@ -12,7 +12,7 @@ import asyncio
 
 from database import db
 from handlers.sheets import admin_sheets
-from handlers import reg_schema
+from handlers.reg import reg_schema
 from handlers.registration import (
     active_sheet_row, party_sheet_headers, party_sheet_row, short_sheet_headers, short_sheet_row,
 )

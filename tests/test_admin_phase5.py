@@ -21,7 +21,7 @@ from handlers.regform import admin_reg_config  # Phase 13 (13-05): reg-question/
 from handlers.regform import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.comms import admin_broadcasts  # Phase 13 (13-05): broadcast handlers moved here
 from handlers.access.admin_caps import required_capability
-from handlers.reg_schema import REG_FLOW, REG_PRESETS
+from handlers.reg.reg_schema import REG_FLOW, REG_PRESETS
 from tests._dbtpl import fast_init_db
 
 
@@ -386,7 +386,7 @@ def test_preset_confirm_party_leaves_global_reg_q_untouched(tmp_path):
     """D-07: applying the party preset must never write a bare reg_q_* global key. WR-03:
     the overnight-only trio (housing/bed_sharing/bed_partner) is exempt from the explicit
     on/off __party write — it stays at inherit so D-08's skip rule keeps governing it."""
-    from handlers.reg_schema import _PARTY_PRESET_OVERNIGHT_EXEMPT
+    from handlers.reg.reg_schema import _PARTY_PRESET_OVERNIGHT_EXEMPT
     _admin_ready(tmp_path)
     cb = FakeCallback("preset_confirm:party")
     asyncio.run(admin_reg_config.preset_confirm(cb))

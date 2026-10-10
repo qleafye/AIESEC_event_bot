@@ -1,6 +1,6 @@
 """Швы Phase 13 REFAC устойчивы к порядку импорта (quick 260819).
 
-Швы (`handlers/admin_*.py`, `handlers/reg_flow.py`, `handlers/reg_steps.py`) регистрируют
+Швы (`handlers/admin_*.py`, `handlers/reg/reg_flow.py`, `handlers/reg/reg_steps.py`) регистрируют
 хендлеры на общий `router` владельца (`handlers.admin` / `handlers.registration`) и импортируются
 из ТЕЛА владельца в фиксированной позиции — так воспроизводится порядок регистрации (first-match)
 исходного god-file. До фикса порядок зависел от того, какой модуль пакета `handlers` импортирован
@@ -39,16 +39,16 @@ SEAMS = [
     "handlers.game.admin_game_tasks",
     "handlers.comms.admin_polls",
     "handlers.comms.admin_poll_wizard",
-    "handlers.reg_flow",
-    "handlers.reg_steps",
+    "handlers.reg.reg_flow",
+    "handlers.reg.reg_steps",
     # quick 260822: согласия -- версия/пересогласие (шов admin_settings) и делегатский
     # пересбор (шов registration)
     "handlers.regform.admin_consent",
-    "handlers.reg_consent",
+    "handlers.reg.reg_consent",
     # Phase 15 (15-02): экран «📊 Дашборд» — тумблеры блоков веб-дашборда.
     "handlers.admin_dashboard",
     # Phase 27 (27-04, LANG-01): выбор языка делегатской анкеты — экран/переключатель/запись.
-    "handlers.reg_lang",
+    "handlers.reg.reg_lang",
     # Phase 27 (27-05, LANG-02): перевод чата на отправке (say()/tr_kb()). Регистрирует НОЛЬ
     # хендлеров на router (не декорирует @router.* вовсе) — добавлен ради симметрии со
     # списком выше и как страховка от будущей регрессии, если модуль когда-нибудь обзаведётся

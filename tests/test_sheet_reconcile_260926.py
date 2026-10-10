@@ -77,7 +77,7 @@ async def _seed_user(telegram_id, *, city="spb", participant_type="short", statu
 
 
 async def _resolve_tab(city, participant_type):
-    from handlers.reg_schema import city_row_tab
+    from handlers.reg.reg_schema import city_row_tab
     return await city_row_tab(city, participant_type)
 
 

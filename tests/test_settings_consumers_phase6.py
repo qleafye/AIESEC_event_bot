@@ -428,7 +428,7 @@ def test_payment_reminders_gate_equiv(tmp_path):
 def test_reg_bonus_enabled_equiv(tmp_path):
     _db_ready(tmp_path)
     import handlers.registration as reg_mod
-    import handlers.reg_schema as reg_schema_mod  # 13-02 (REFAC-02): send_completion_and_bonus lives here now
+    import handlers.reg.reg_schema as reg_schema_mod  # 13-02 (REFAC-02): send_completion_and_bonus lives here now
 
     sent = []
 
@@ -479,7 +479,7 @@ def test_reg_bonus_enabled_equiv(tmp_path):
 def test_is_module_enabled_gate_equiv(tmp_path):
     _db_ready(tmp_path)
     import handlers.registration as reg_mod
-    import handlers.reg_schema as reg_schema_mod  # 13-02 (REFAC-02): _is_module_enabled lives here now
+    import handlers.reg.reg_schema as reg_schema_mod  # 13-02 (REFAC-02): _is_module_enabled lives here now
 
     async def go():
         for key in ("payment_enabled", "consent_enabled"):
@@ -525,12 +525,12 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py -- its own
+    # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg/reg_steps.py -- its own
     # calls to finalize_registration/_get_enabled_steps resolve via reg_steps's OWN module
     # globals (bound at import time), not reg_mod's, so patch targets follow the function's
     # real home. _ask_step stays patched on reg_mod: it's called from _ask_step_or_recall,
     # which still lives in handlers/registration.py (unmoved engine helper).
-    import handlers.reg_steps as reg_steps_mod
+    import handlers.reg.reg_steps as reg_steps_mod
 
     class _Chat:
         def __init__(self, cid=1):
@@ -804,8 +804,8 @@ def test_raw_read_sites_preserved(tmp_path):
     _db_ready(tmp_path)
     import inspect
     import handlers.registration as reg_mod
-    # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg_steps.py.
-    import handlers.reg_steps as reg_steps_mod
+    # Phase 13 REFAC (13-03): process_full_name moved to handlers/reg/reg_steps.py.
+    import handlers.reg.reg_steps as reg_steps_mod
     from domain.settings.schema import get_setting_typed
 
     # Site 1: registration_mode raw read (process_full_name) -- branch is `mode != "full"`.

@@ -154,7 +154,7 @@ def test_build_prompts_keyboard_marks_own_vs_common(tmp_path):
     texts = _kb_texts(kb)
     assert not any("spb" in t for t in texts)
 
-    from handlers.reg_schema import REG_LABELS
+    from handlers.reg.reg_schema import REG_LABELS
     label = REG_LABELS["reg_q_expectations"]
     own_text = [t for t in texts if label in t][0]
     assert own_text.startswith("✅")
@@ -383,7 +383,7 @@ def test_reg_prompt_rst_confirm_names_city_and_question(tmp_path):
 
     spb_label = asyncio.run(cities.city_label("spb"))
     assert spb_label in cb.message.text
-    from handlers.reg_schema import REG_LABELS
+    from handlers.reg.reg_schema import REG_LABELS
     assert REG_LABELS["reg_q_expectations"] in cb.message.text
     callbacks = _kb_callbacks(cb.message.markup)
     assert f"reg_prompt_rst_go:spb:{STEP_KEY}" in callbacks

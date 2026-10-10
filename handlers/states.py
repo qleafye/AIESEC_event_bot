@@ -54,17 +54,17 @@ class Registration(StatesGroup):
     # Phase 28 (28-02, SU-01/SU-04, СкиллАп 5): пять новых текстовых шагов анкеты — свои
     # State нужны только им; stack/experience/readiness типа multi/select и обслуживаются
     # select_input/multi_input выше (RESEARCH Pattern 1, п.6). Показ и приём — в шве
-    # handlers/reg_extra_steps.py.
+    # handlers/reg/reg_extra_steps.py.
     resume_link = State()       # развилка резюме R2b: ссылка (SU-04); обработчик — план 28-04
     mini_projects = State()     # мини-профиль R2c, подшаг 1/3: над какими проектами работал(а)
     mini_portfolio = State()    # мини-профиль R2c, подшаг 2/3: портфолио/GitHub (можно пропустить)
     mini_direction = State()    # мини-профиль R2c, подшаг 3/3: желаемое направление развития
     case_optin = State()        # участие в кейс-чемпионате (Да/Нет), с пояснением менеджера
-    # Phase 30 (30-06, A2-05): чат-проекция типа `repeatable` (handlers/reg_types_repeatable.py)
+    # Phase 30 (30-06, A2-05): чат-проекция типа `repeatable` (handlers/reg/reg_types_repeatable.py)
     # — ОДНО состояние на весь цикл «Название? -> Опиши коротко -> Добавить ещё?», стадия блока
     # хранится в данных FSM (`_repeat_stage`), не отдельным State на под-вопрос (30-06-PLAN.md
     # <action>). Не переиспользует `Registration.mini_portfolio` — то состояние уже занято
-    # приёмным хендлером `handlers/reg_extra_steps.py::process_mini_portfolio`, зарегистрированным
+    # приёмным хендлером `handlers/reg/reg_extra_steps.py::process_mini_portfolio`, зарегистрированным
     # РАНЬШЕ по порядку импорта хвоста `registration.py` (aiogram матчит по порядку регистрации).
     mini_portfolio_repeat = State()
 

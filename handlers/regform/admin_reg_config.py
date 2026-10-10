@@ -31,7 +31,7 @@ from services.sheets import ensure_sheet_header
 from services.background import spawn as _spawn
 from keyboards.builders import MENU_BUTTONS, menu_hidden_reason
 from keyboards.menu_dynamic import caption_for
-from handlers.reg_schema import (
+from handlers.reg.reg_schema import (
     REG_LABELS,
     REG_PRESETS,
     active_sheet_headers,
@@ -88,7 +88,7 @@ async def _refresh_sheet_header(city_code: str | None = None, setting_key: str |
       — main tab only, exactly as before this phase.
     Each city tab is its own try/except (mirrors the party/short siblings below) so one city's
     Sheets failure never cancels the rest."""
-    from handlers.reg_schema import city_row_tab
+    from handlers.reg.reg_schema import city_row_tab
     from services.sheets import ensure_named_sheet_header
 
     if city_code is not None:
@@ -144,7 +144,7 @@ async def _refresh_party_sheet_header(city_code: str | None = None, setting_key:
     override" check reads the TRACK-SPECIFIC key `{setting_key}__party`, not the base key —
     a city can override the party question independently of its full-track override."""
     from handlers.registration import party_sheet_headers, PARTY_SHEET_TAB_DEFAULT
-    from handlers.reg_schema import city_row_tab
+    from handlers.reg.reg_schema import city_row_tab
     from services.sheets import ensure_named_sheet_header
     try:
         # REG-02 (06-05): gate read migrated to the registry; behavior unchanged.
@@ -206,7 +206,7 @@ async def _refresh_short_sheet_header(city_code: str | None = None, setting_key:
     override check against the TRACK-SPECIFIC `{setting_key}__short` key — same reasoning as
     the party sibling above."""
     from handlers.registration import short_sheet_headers, SHORT_SHEET_TAB_DEFAULT
-    from handlers.reg_schema import city_row_tab
+    from handlers.reg.reg_schema import city_row_tab
     from services.sheets import ensure_named_sheet_header
     try:
         if (await get_setting_typed("registration_mode")) != "short":

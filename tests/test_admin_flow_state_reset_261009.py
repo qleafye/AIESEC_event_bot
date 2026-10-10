@@ -43,9 +43,9 @@ class _Cb:
 
 
 def _delegate_states():
-    from handlers.onsite_reg import OnsiteReg
-    from handlers.reg_types_composite import _CompositeChat
-    from handlers.reg_types_lookup import _LookupChat
+    from handlers.reg.onsite_reg import OnsiteReg
+    from handlers.reg.reg_types_composite import _CompositeChat
+    from handlers.reg.reg_types_lookup import _LookupChat
 
     groups = [states.Registration, _CompositeChat, _LookupChat, OnsiteReg, states.Question,
               states.GameSubmit, states.SosReport, states.SessionFeedbackComment,

@@ -1,6 +1,6 @@
 """Инцидент «не все заявки доходят» (разбор прод-логов 14.09), правка №1: «Изменить» на
 сводке анкеты перестаёт рестартовать весь флоу и становится правкой по полям через уже
-существующий recall-механизм возвращенца (`handlers/reg_flow.py::process_confirm_edit`,
+существующий recall-механизм возвращенца (`handlers/reg/reg_flow.py::process_confirm_edit`,
 `services/reg_finalize.py`).
 
 Прод 05-14.09: 175 рестартов через «Изменить», 19 делегатов бросили анкету, увидев снова
@@ -24,7 +24,7 @@ import domain.regform.options as reg_options
 from config import config
 from database import db
 from handlers import registration as reg
-from handlers import reg_flow
+from handlers.reg import reg_flow
 from handlers.states import Registration
 from tests._dbtpl import fast_init_db
 

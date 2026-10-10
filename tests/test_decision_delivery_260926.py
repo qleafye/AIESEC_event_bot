@@ -156,7 +156,7 @@ def test_apply_decision_effects_approved_success_records_delivered(tmp_path, mon
     async def fake_approve_user(bot, tid):
         return None  # успех
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
 
     async def fake_update_status_in_sheet(tid, label):
@@ -179,7 +179,7 @@ def test_apply_decision_effects_approved_blocked_records_bot_blocked_label(tmp_p
     async def fake_approve_user(bot, tid):
         return exc
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
 
     async def fake_update_status_in_sheet(tid, label):
@@ -201,7 +201,7 @@ def test_apply_decision_effects_approved_deactivated_records_deactivated_label(t
     async def fake_approve_user(bot, tid):
         return exc
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
 
     async def fake_update_status_in_sheet(tid, label):
@@ -343,7 +343,7 @@ def test_record_delivery_fail_soft_does_not_break_decision(tmp_path, monkeypatch
     async def fake_approve_user(bot, tid):
         return None
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     monkeypatch.setattr(reg_schema, "approve_user", fake_approve_user)
 
     sheet_calls = []
@@ -381,7 +381,7 @@ def test_mass_approve_effects_records_delivered_and_failed(tmp_path, monkeypatch
     exc = TelegramForbiddenError(method=None, message="Forbidden: bot was blocked by the user")
     bot = _FakeBot()
 
-    import handlers.reg_schema as reg_schema
+    import handlers.reg.reg_schema as reg_schema
     real_approve_user = reg_schema.approve_user
 
     async def fake_approve_user(b, tid):

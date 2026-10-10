@@ -8,7 +8,7 @@
 import asyncio
 
 from database import db
-from handlers import reg_resume
+from handlers.reg import reg_resume
 
 from tests.test_reg_resume_draft import (
     USER_ID, _FakeCallback, _KBCapturingMessage, _new_state, _seed_new_draft, _use_tmp_db,

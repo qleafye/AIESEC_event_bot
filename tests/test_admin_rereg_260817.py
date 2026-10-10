@@ -19,8 +19,8 @@ from aiogram.types import InlineKeyboardMarkup, ReplyKeyboardMarkup
 from config import config
 from database import db
 from handlers import registration as reg
-# Phase 13 REFAC (13-03): admin_rereg moved to handlers/reg_flow.py.
-from handlers import reg_flow
+# Phase 13 REFAC (13-03): admin_rereg moved to handlers/reg/reg_flow.py.
+from handlers.reg import reg_flow
 from handlers.states import Registration
 from tests._dbtpl import fast_init_db
 

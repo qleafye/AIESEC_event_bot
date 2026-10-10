@@ -685,7 +685,7 @@ def test_walkin_asks_language_when_event_is_multilingual_then_speaks_english(tmp
     assert _run(state.get_state()) is None  # анкета ещё не начата
     assert _run(state.get_data()).get("_deeplink_resume_args") == "walkin"
 
-    # Тап «English» (handlers/reg_lang.py::lang_pick_choose): язык записан, /start повторён
+    # Тап «English» (handlers/reg/reg_lang.py::lang_pick_choose): язык записан, /start повторён
     # с теми же аргументами ссылки.
     _run(bot_db.set_user_lang(uid, "en"))
     again = _Msg(uid)
@@ -736,7 +736,7 @@ def test_approval_message_uses_person_language(tmp_path, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def _phone_step(uid, contact):
-    from handlers import onsite_reg as onsite_handlers
+    from handlers.reg import onsite_reg as onsite_handlers
     from tests.test_onsite_reg_chat_260927 import _Msg
     from tests.test_roles_phase8 import _fresh_state
     state = _fresh_state(uid)
@@ -748,7 +748,7 @@ def _phone_step(uid, contact):
 
 
 def test_foreign_contact_card_is_rejected(tmp_path):
-    from handlers import onsite_reg as onsite_handlers
+    from handlers.reg import onsite_reg as onsite_handlers
     from tests.test_onsite_reg_chat_260927 import _Contact
     _chat_ready(tmp_path)
     msg, state = _phone_step(953701, _Contact("79991234567", user_id=111))
@@ -758,7 +758,7 @@ def test_foreign_contact_card_is_rejected(tmp_path):
 
 
 def test_empty_or_short_contact_number_is_rejected(tmp_path):
-    from handlers import onsite_reg as onsite_handlers
+    from handlers.reg import onsite_reg as onsite_handlers
     from tests.test_onsite_reg_chat_260927 import _Contact
     _chat_ready(tmp_path)
     for uid, phone in ((953702, ""), (953703, "12345")):
@@ -768,7 +768,7 @@ def test_empty_or_short_contact_number_is_rejected(tmp_path):
 
 
 def test_own_contact_is_accepted(tmp_path):
-    from handlers import onsite_reg as onsite_handlers
+    from handlers.reg import onsite_reg as onsite_handlers
     from tests.test_onsite_reg_chat_260927 import _Contact
     _chat_ready(tmp_path)
     msg, state = _phone_step(953704, _Contact("79991234567", user_id=953704))
@@ -972,7 +972,7 @@ def test_remove_texts_in_registry():
 
 
 def test_walkin_starts_are_rate_limited_per_user(tmp_path):
-    from handlers import onsite_reg as onsite_handlers
+    from handlers.reg import onsite_reg as onsite_handlers
     from tests.test_onsite_reg_chat_260927 import _Msg
     from tests.test_roles_phase8 import _fresh_state
     _chat_ready(tmp_path)
@@ -1106,7 +1106,7 @@ def test_failed_scheduled_post_is_retried_same_week(tmp_path, monkeypatch):
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_consent_write_failure_stops_with_human_text(tmp_path, monkeypatch):
-    from handlers import onsite_reg as onsite_handlers
+    from handlers.reg import onsite_reg as onsite_handlers
     from tests.test_onsite_reg_chat_260927 import _Cb
     from tests.test_roles_phase8 import _fresh_state
     _chat_ready(tmp_path)
@@ -1196,7 +1196,7 @@ def test_approve_at_door_with_empty_event_season_keeps_season(tmp_path):
 
 
 def test_university_answer_is_capped_with_hint(tmp_path):
-    from handlers import onsite_reg as onsite_handlers
+    from handlers.reg import onsite_reg as onsite_handlers
     from services.i18n_form_manual import FORM_DEFAULT_EN
     from tests.test_onsite_reg_chat_260927 import _Msg
     from tests.test_roles_phase8 import _fresh_state

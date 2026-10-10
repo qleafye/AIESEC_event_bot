@@ -24,7 +24,7 @@
 
 Литералы сверены копированием из `domain/regform/engine.py` (`_CHOICE_EMPTY_ERROR`, `_CHOICE_OTHER_PROMPT`,
 `_BESPOKE_CHOICE`, `_SKIP_TEXT_ERRORS`, `_MEMBERSHIP_STEPS`, `_GENERIC_FALLBACK_LABEL`,
-`validate_date_range`), `handlers/reg_flow.py` (кнопки подтверждения/отмены/сохранения) и
+`validate_date_range`), `handlers/reg/reg_flow.py` (кнопки подтверждения/отмены/сохранения) и
 `keyboards/builders.py` (`get_cancel_kb`/`get_confirm_kb`/`get_phone_kb`/`get_skip_kb`) на дату
 плана (2026-09-06) — несовпадение хотя бы на один символ (кавычку-ёлочку, точку) означает, что
 `services/i18n.py::tr()` не найдёт строку в этом словаре и молча пропустит её в машинный ярус
@@ -38,7 +38,7 @@
 UI_EN: dict[str, str] = {
     # ── Служебные слова (aiogram-фильтры + инлайн-кнопки мастера регистрации) ──────────────
     "Готово": "Done",
-    # Приёмка 09.10: заголовок кнопок развилки резюме (handlers/reg_resume_fork.py::FORK_PICK_TITLE).
+    # Приёмка 09.10: заголовок кнопок развилки резюме (handlers/reg/reg_resume_fork.py::FORK_PICK_TITLE).
     "👇 Выбери способ:": "👇 Choose an option:",
     "Отмена": "Cancel",
     "Пропустить": "Skip",
@@ -128,7 +128,7 @@ UI_EN: dict[str, str] = {
     # process_recall_ignore (handlers/registration.py) — текст цитирует подписи кнопок
     # «✅ Оставить»/«✏️ Изменить» дословно, машинный перевод рассинхронизировал бы кавычки.
     "Нажми «✅ Оставить» или «✏️ Изменить».": "Tap «✅ Keep» or «✏️ Edit».",
-    # process_consent_ignore (handlers/reg_flow.py) — шаблон с {btn} НЕ статичная строка
+    # process_consent_ignore (handlers/reg/reg_flow.py) — шаблон с {btn} НЕ статичная строка
     # (btn_text — реестровая настройка `consent_button_text`, LANG-09 её не переводит):
     # переводится ТОЛЬКО обёртка вокруг подписи кнопки, сама подпись остаётся русской и
     # подставляется в оба языка одинаково после словарного поиска.
@@ -155,10 +155,10 @@ UI_EN: dict[str, str] = {
     # handlers/game/game_submit_counter.py::game_counter_kb — та же пара «с эмодзи для
     # test_i18n_literal_corpus_guard_260906.py / без эмодзи для реального перевода».
     "❌ Отмена": "❌ Cancel",
-    # cancel_registration_dismiss (handlers/reg_flow.py) — алерт «Продолжаем» после «Нет,
+    # cancel_registration_dismiss (handlers/reg/reg_flow.py) — алерт «Продолжаем» после «Нет,
     # продолжить» на экране отмены; тот же класс, что «Сохранено»/«✅ Принято» выше.
     "Продолжаем 👍": "Continuing 👍",
-    # reg_resume_restart (handlers/reg_resume.py) — вторая кнопка экрана подтверждения
+    # reg_resume_restart (handlers/reg/reg_resume.py) — вторая кнопка экрана подтверждения
     # «Начать заново». Пара с «Нет, продолжить» (уже в словаре) — раньше «Да, начать заново»
     # была голым литералом мимо любого перевода, и экран показывал смесь языков в одной паре
     # кнопок (тот же класс бага, что у «Оставить»/«Изменить» выше).
@@ -282,7 +282,7 @@ UI_EN: dict[str, str] = {
     # короткая, детерминированная, не меняется годами — тот же довод, что у остального яруса A.
     # `handlers/registration.py::_start_registration_flow` (сразу после согласий/до ФИО).
     "Отлично, начинаем регистрацию.": "Great, let's start your application.",
-    # Приёмка 09.10: «Изменить» на сводке (handlers/reg_flow.py::start_confirm_edit) и пропуск
+    # Приёмка 09.10: «Изменить» на сводке (handlers/reg/reg_flow.py::start_confirm_edit) и пропуск
     # на экране «Прошлый ответ» (handlers/i18n/reg_i18n.py::display_value_for_step).
     "Давай поправим ответы — пройдём по ним по очереди.": "Let's fix your answers — we'll go through them one by one.",
     "Нажми «Всё верно», чтобы отправить анкету, или «Изменить», чтобы поправить ответы.": "Tap «Looks good» to submit the form, or «Edit» to change your answers.",
@@ -293,7 +293,7 @@ UI_EN: dict[str, str] = {
     # ── Квик 260917-en (живая проверка 17.09, находка «б»): НАЗВАНИЕ документа согласия
     # (`reg_engine.DEFAULT_CONSENTS`), не юридический текст самого согласия — тот остаётся
     # русским всегда (LANG-09). Переводится через `handlers/registration.py::_ask_step` и
-    # `handlers/reg_consent.py::_send_renew_card` с ПУСТЫМ tr_map — только точное совпадение
+    # `handlers/reg/reg_consent.py::_send_renew_card` с ПУСТЫМ tr_map — только точное совпадение
     # с этим литералом; менеджерский override (`reg_prompt_consent_personal_data`) с реальным
     # легальным текстом сюда не попадёт и останется непереведённым намеренно.
     "Согласие на обработку персональных данных": "Consent to personal data processing",
@@ -348,7 +348,7 @@ NO_WORDS = frozenset({"Нет", UI_EN["Нет"]})
 # матчинг (`keyboards.builders.MENU_TEXTS`) разойдётся на невидимом символе.
 #
 # `menu_lang` («🌐 Язык / Language») сюда не входит — подпись уже двуязычна по построению
-# (`handlers/reg_lang.py::LANG_MENU_BUTTON_TEXT`). «💳 Оплата» — литерал `keyboards.builders
+# (`handlers/reg/reg_lang.py::LANG_MENU_BUTTON_TEXT`). «💳 Оплата» — литерал `keyboards.builders
 # .get_main_menu_kb` (кнопка «загрузить чек», не запись `MENU_BUTTONS`), добавлена отдельно.
 MENU_EN: dict[str, str] = {
     "🔗 Моя реферальная ссылка": "🔗 My referral link",
