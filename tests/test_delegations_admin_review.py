@@ -1,4 +1,4 @@
-"""«❔ Проверить курс», «⏳ Не зашли» и «🔗 Привязать вручную» (handlers/admin_delegations_review.py):
+"""«❔ Проверить курс», «⏳ Не зашли» и «🔗 Привязать вручную» (handlers/delegations/admin_delegations_review.py):
 карточки неразобранных курсов с решением кнопками (в т.ч. отклонённого в боте — с пометкой),
 список ЦА без аккаунта по вузам, ручная привязка через пересылку / @ник / id с подтверждением.
 
@@ -14,7 +14,7 @@ from types import SimpleNamespace
 from config import config
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
-from handlers import admin_delegations_review as mod
+from handlers.delegations import admin_delegations_review as mod
 from handlers.admin_caps import required_capability
 from handlers.states import DelegationLink
 from services import delegations as dlg

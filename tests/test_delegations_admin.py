@@ -1,4 +1,4 @@
-"""Экран «🏫 Делегации» в «📋 Заявки» (handlers/admin_delegations.py): вход под `moderate_reg`,
+"""Экран «🏫 Делегации» в «📋 Заявки» (handlers/delegations/admin_delegations.py): вход под `moderate_reg`,
 выбор формы делегаций из подключённых форм, подтверждение ключевых вопросов по подписям,
 счётчики и сводка по вузам, предупреждения листа, настройки модуля кнопками экрана
 (тумблер геймификации, дата отсечки ЦА, курсы не ЦА, тексты делегату).
@@ -17,7 +17,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import config
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
-from handlers import admin_delegations as mod
+from handlers.delegations import admin_delegations as mod
 from handlers import admin_sections as sec
 from handlers.admin_caps import required_capability
 from services import delegations as dlg

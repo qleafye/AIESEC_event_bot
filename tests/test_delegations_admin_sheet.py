@@ -1,4 +1,4 @@
-"""«📋 Лист UR REGS» на экране «🏫 Делегации» (handlers/admin_delegations_sheet.py): выбор
+"""«📋 Лист UR REGS» на экране «🏫 Делегации» (handlers/delegations/admin_delegations_sheet.py): выбор
 вкладки из реального списка листа, сухая сверка по ID ответа, включение записи только через
 подтверждение, выключение; редирект пикера фазы внешних форм для формы делегаций.
 
@@ -13,7 +13,7 @@ import pytest
 
 from config import config
 from database import ext_forms_db as ef
-from handlers import admin_delegations_sheet as mod
+from handlers.delegations import admin_delegations_sheet as mod
 from handlers.ext_forms import admin_ext_forms_setup as setup
 from handlers.admin_caps import required_capability
 from tests.test_delegations_admin import (

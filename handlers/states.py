@@ -600,7 +600,7 @@ class ExtFormOAuth(StatesGroup):
 
 
 class DelegationEdit(StatesGroup):
-    # Экран «🏫 Делегации» (handlers/admin_delegations.py): ввод даты отсечки ЦА и текстов
+    # Экран «🏫 Делегации» (handlers/delegations/admin_delegations.py): ввод даты отсечки ЦА и текстов
     # делегату своими кнопками экрана под правом модерации заявок (не через общий редактор
     # настроек). Ключ редактируемого текста — в state.get_data()["dlg_text_key"].
     waiting_cutoff = State()
@@ -608,7 +608,7 @@ class DelegationEdit(StatesGroup):
 
 
 class DelegationLink(StatesGroup):
-    # «🏫 Делегации → ⏳ Не зашли → 🔗 Привязать вручную» (handlers/admin_delegations_review.py):
+    # «🏫 Делегации → ⏳ Не зашли → 🔗 Привязать вручную» (handlers/delegations/admin_delegations_review.py):
     # менеджер присылает @ник / Telegram ID / пересланное сообщение делегата, затем подтверждает
     # привязку. В state.get_data(): dlg_link_row (id строки ответа), dlg_link_tid (кого нашли).
     waiting_person = State()

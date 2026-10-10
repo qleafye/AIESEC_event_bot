@@ -16,7 +16,7 @@
 подтверждения делегат превращается с `link_how='manual'`, строка листа уходит на перезапись
 (колонка M покажет «✅ зашёл») — это делает сам `convert_to_delegate`.
 
-Шов на общий `handlers.admin.router` (импорт из хвоста handlers/admin_delegations.py,
+Шов на общий `handlers.admin.router` (импорт из хвоста handlers/delegations/admin_delegations.py,
 декораторы в одну строку). Права — `dlg_*` и `state:DelegationLink:*` → `moderate_reg`.
 ФИО, вуз, курс и ник — чужой текст, в HTML только через `_e()`; в лог — только id.
 """
@@ -31,7 +31,7 @@ from database import delegations_db as ddb
 from database import ext_forms_db as ef
 from database.db import get_reg_started_by_id, get_user
 from handlers.admin import router
-from handlers.admin_delegations import (
+from handlers.delegations.admin_delegations import (
     _admin_id, _btn, _cancel_input, _cancel_kb, _current_form, _cut, _e, _is_cancel, _kb,
     _show, _tail_int, _to_screen, render_screen,
 )
