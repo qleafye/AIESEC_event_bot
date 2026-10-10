@@ -110,8 +110,10 @@ def arm_digest_job(city: str | None, minutes: int) -> None:
 
 
 async def notify_submission(bot, *, submission_id: int, user_id: int, task_id: int,
-                            task_text: str, submitter_name: str) -> None:
-    """Точка входа из finalize_game_submission: выбрать режим и отправить/отложить."""
+                            task_title: str, submitter_name: str) -> None:
+    """Точка входа из finalize_game_submission: выбрать режим и отправить/отложить.
+    `task_title` — название задания (`db.task_title`), не его текст: текст задания длинный
+    и в уведомлении менеджеру читался как обрезанная простыня."""
     from handlers.access.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     city = await resolve_submitter_city(user_id)
     mode = await get_setting_typed("game_submit_notify_mode")
@@ -125,7 +127,7 @@ async def notify_submission(bot, *, submission_id: int, user_id: int, task_id: i
         return
     await notify_by_capability(
         bot, CAP,
-        f"🎮 Новая сдача по заданию «{html.escape(str(task_text)[:60])}» от "
+        f"🎮 Новая сдача по заданию «{html.escape(str(task_title)[:60])}» от "
         f"{html.escape(str(submitter_name))}",
         parse_mode="HTML", city=city,
     )
