@@ -71,7 +71,7 @@ def test_claim_link_expired(tmp_path):
 
 def test_claim_link_not_yet_expired_today_inclusive(tmp_path):
     _ready(tmp_path)
-    from services.staff_expiry import today_iso
+    from services.access.staff_expiry import today_iso
     _run(db.create_volunteer_invite("c1", "spb", ADMIN_ID, today_iso(), None, None))
     assert _run(db.claim_volunteer_invite("c1", VOLUNTEER_ID)) == "ok"
 
@@ -454,7 +454,7 @@ def test_create_link_wizard_full_flow(tmp_path):
     inv = invites[0]
     assert inv["max_uses"] == 30
     assert inv["rights_expires_at"] is None
-    from services.staff_expiry import relative_days_iso
+    from services.access.staff_expiry import relative_days_iso
     assert inv["link_expires_at"] == relative_days_iso(7)
     # Ссылка показана менеджеру.
     assert any("?start=vol_" in a[0] for a in event.message.answers)

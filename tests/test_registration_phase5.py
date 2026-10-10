@@ -802,7 +802,7 @@ def test_me05_registered_user_not_locked_out_by_preselect_gate(tmp_path, monkeyp
     """ME-05: an already-registered (non-rejected) user must reach their menu even with
     pre-selection ON and a non-empty allowlist that excludes them — the gate is intake-only."""
     _use_tmp_db(tmp_path)
-    from services import allowlist
+    from services.access import allowlist
     monkeypatch.setattr(allowlist, "_allowlist", {"someoneelse"})  # non-empty, excludes our user
 
     async def go():
@@ -827,7 +827,7 @@ def test_me05_new_user_still_gated_by_preselect(tmp_path, monkeypatch):
     """Companion: the gate must STILL lock out a brand-new (unregistered) excluded user —
     the ME-05 bypass must be scoped to already-registered rows only, not a blanket disable."""
     _use_tmp_db(tmp_path)
-    from services import allowlist
+    from services.access import allowlist
     monkeypatch.setattr(allowlist, "_allowlist", {"someoneelse"})
 
     async def go():

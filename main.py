@@ -16,7 +16,7 @@ from handlers.reg import reg_silence_fallback, onsite_reg
 from handlers.access import admin_no_access
 from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
-from services.allowlist import warm_allowlist_if_gating_on
+from services.access.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
 from services.infra.background import spawn as _spawn, cancel_all as cancel_background_tasks
 import services.infra.miniapp_outbox as miniapp_outbox
@@ -467,9 +467,9 @@ async def main():
     # живость поллинга, а не event loop. Семантика целиком — в services/heartbeat.py.
     bot.session.middleware(PollingHeartbeatMiddleware())
     # 29.09: сотрудник сам написал боту в личку -> снимаем отметку «уведомления не доходят»
-    # (services/staff_reach.py). Outer на update — после встроенного UserContextMiddleware,
+    # (services/access/staff_reach.py). Outer на update — после встроенного UserContextMiddleware,
     # поэтому event_from_user/event_chat уже в data. Хендлер вызывается всегда.
-    from services.staff_reach import StaffReachMiddleware
+    from services.access.staff_reach import StaffReachMiddleware
     dp.update.outer_middleware(StaffReachMiddleware())
 
     # CR-8: global error handler. Without this, any unhandled exception in a handler is

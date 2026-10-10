@@ -90,7 +90,7 @@ from services.scheduler import (
     # Только альбом — media_group не принимает reply_markup, см. докстринг там же.
     send_mute_offer_if_eligible,
 )
-from services.allowlist import refresh_allowlist, allowlist_size
+from services.access.allowlist import refresh_allowlist, allowlist_size
 from services.infra.background import spawn as _spawn
 from services.broadcast_run import run_broadcast, run_revoke, request_stop, can_revoke
 from services.broadcast_scope import (

@@ -58,7 +58,7 @@ STAFF_UPLOAD_CAPS = frozenset({"moderate_game", "settings"})
 # одно правило с ботом). Отбрасываются в `principal`, иначе держатель одной такой роли считался
 # бы сотрудником (`is_staff`): терял бы привет-экран делегата, видел плитку дашборда и проходил
 # cookie-вход.
-from services.miniapp_access import BOT_ONLY_CAPS  # noqa: E402
+from services.access.miniapp_access import BOT_ONLY_CAPS  # noqa: E402
 
 # Разделы-чекбоксы D-06: имя раздела -> ключ реестра `miniapp_section_{section}`.
 # "form" (Phase 21 Plan 02, FORM-SYNC-05, D-08) — рядом с "profile": оба делегатские разделы.

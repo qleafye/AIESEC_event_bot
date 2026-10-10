@@ -41,7 +41,7 @@ from handlers.admin import router
 from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT, _admin_city_scope, _city_allowed, _decode_city, _encode_city
 from handlers.states import VolunteerInviteWizard
 from keyboards.builders import get_cancel_kb
-from services.staff_expiry import format_ddmmyyyy, forum_end_date_iso, is_expiry_active, parse_ddmmyyyy, relative_days_iso
+from services.access.staff_expiry import format_ddmmyyyy, forum_end_date_iso, is_expiry_active, parse_ddmmyyyy, relative_days_iso
 from services.settings.audit import set_setting_by_admin
 
 VOLUNTEER_ROLE = "volunteer"  # handlers.access.admin_caps.ROLES — держит ровно "checkin"
