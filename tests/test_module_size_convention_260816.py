@@ -1235,7 +1235,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
 
 
 def _handler_modules() -> list[Path]:
-    return sorted(HANDLERS_DIR.glob("*.py"))
+    return sorted(HANDLERS_DIR.rglob("*.py"))
 
 
 def _line_count(path: Path) -> int:

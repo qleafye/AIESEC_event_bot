@@ -132,14 +132,14 @@ def test_no_bare_datetime_now_in_bot_and_miniapp_code():
     как историческую справку — текстовый grep-гейт самовалидировался бы на них."""
     patterns = [
         "database/db.py",
-        "services/*.py",
-        "handlers/*.py",
+        "services/**/*.py",
+        "handlers/**/*.py",
         "miniapp/*.py",
         "miniapp/routers/*.py",
     ]
     offenders: dict[str, list[int]] = {}
     for pattern in patterns:
-        for path_str in glob.glob(pattern):
+        for path_str in glob.glob(pattern, recursive=True):
             norm = path_str.replace("\\", "/")
             if norm in _ALLOWED_BARE_DATETIME_NOW:
                 continue

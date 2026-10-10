@@ -1444,7 +1444,7 @@ def test_gate_single_capability_map():
     handlers_dir = repo_root / "handlers"
 
     definitions = [
-        path.name for path in sorted(handlers_dir.glob("*.py"))
+        path.name for path in sorted(handlers_dir.rglob("*.py"))
         if re.search(r"^ADMIN_CAPS\s*[:=]", _non_comment_source(path), re.MULTILINE)
     ]
     assert definitions == ["admin_caps.py"], (

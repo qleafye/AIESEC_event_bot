@@ -28,37 +28,37 @@ import pytest
 ROOT = REPO_ROOT
 
 SEAMS = [
-    "admin_settings",
-    "admin_settings_lists",
-    "admin_cities",
-    "admin_broadcasts",
-    "admin_reg_config",
-    "admin_moderation",
-    "admin_roles",
-    "admin_gamification",
-    "admin_game_tasks",
-    "admin_polls",
-    "admin_poll_wizard",
-    "reg_flow",
-    "reg_steps",
+    "handlers.admin_settings",
+    "handlers.admin_settings_lists",
+    "handlers.admin_cities",
+    "handlers.admin_broadcasts",
+    "handlers.admin_reg_config",
+    "handlers.admin_moderation",
+    "handlers.admin_roles",
+    "handlers.admin_gamification",
+    "handlers.admin_game_tasks",
+    "handlers.admin_polls",
+    "handlers.admin_poll_wizard",
+    "handlers.reg_flow",
+    "handlers.reg_steps",
     # quick 260822: согласия -- версия/пересогласие (шов admin_settings) и делегатский
     # пересбор (шов registration)
-    "admin_consent",
-    "reg_consent",
+    "handlers.admin_consent",
+    "handlers.reg_consent",
     # Phase 15 (15-02): экран «📊 Дашборд» — тумблеры блоков веб-дашборда.
-    "admin_dashboard",
+    "handlers.admin_dashboard",
     # Phase 27 (27-04, LANG-01): выбор языка делегатской анкеты — экран/переключатель/запись.
-    "reg_lang",
+    "handlers.reg_lang",
     # Phase 27 (27-05, LANG-02): перевод чата на отправке (say()/tr_kb()). Регистрирует НОЛЬ
     # хендлеров на router (не декорирует @router.* вовсе) — добавлен ради симметрии со
     # списком выше и как страховка от будущей регрессии, если модуль когда-нибудь обзаведётся
     # своим хендлером: `import handlers.reg_i18n` первым НЕ импортирует handlers.registration
     # на уровне модуля (см. докстринг handlers/reg_i18n.py), поэтому тест тривиально зелёный.
-    "reg_i18n",
+    "handlers.reg_i18n",
     # Phase 27 (27-06, LANG-05/09): экран «🌐 Английские тексты».
-    "admin_i18n",
+    "handlers.admin_i18n",
     # Квик 260910-ro7 (DELU-01..08): скрытая команда «/delete_user» (admin_purge).
-    "admin_purge",
+    "handlers.admin_purge",
 ]
 
 # Отпечаток: имя колбэка каждого хендлера каждого observer'а всех четырёх роутеров,
@@ -98,13 +98,13 @@ def canonical_fingerprint() -> list[str]:
 
 @pytest.mark.parametrize("seam", SEAMS)
 def test_seam_imported_first_keeps_canonical_handler_order(seam, canonical_fingerprint):
-    rc, out, err = _run(f"import handlers.{seam}")
+    rc, out, err = _run(f"import {seam}")
     assert rc == 0, (
-        f"`import handlers.{seam}` ПЕРВЫМ в процессе падает "
+        f"`import {seam}` ПЕРВЫМ в процессе падает "
         f"(цикл шов <-> владелец роутера):\n{err[-3000:]}"
     )
     actual = out.strip().splitlines()
     assert actual == canonical_fingerprint, (
-        f"`import handlers.{seam}` ПЕРВЫМ меняет порядок регистрации хендлеров "
+        f"`import {seam}` ПЕРВЫМ меняет порядок регистрации хендлеров "
         f"(first-match) относительно порядка main.py"
     )

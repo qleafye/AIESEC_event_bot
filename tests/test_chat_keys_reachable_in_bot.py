@@ -64,29 +64,29 @@ WRITERS = {
 
 # Свой экран пишет ключ через переменную (`key = ...; set_setting_by_admin(..., key, ...)`).
 OWN_SCREENS = {
-    "checkin_qr_broadcast_enabled": "admin_checkin.py",
-    "checkin_qr_broadcast_time": "admin_checkin.py",
-    "checkin_qr_morning_repeat_time": "admin_checkin.py",
-    "checkin_qr_morning_catchup_until": "admin_checkin.py",
-    "checkin_volunteer_guide_broadcast_enabled": "admin_forum_functions.py",
-    "checkin_volunteer_guide_broadcast_time": "admin_forum_functions.py",
-    "forum_day_menu_enabled": "admin_forum_functions.py",
-    "forum_day_menu_start_time": "admin_forum_functions.py",
-    "forum_day_report_enabled": "admin_forum_functions.py",
-    "forum_day_report_time": "admin_forum_functions.py",
-    "forum_noshow_poll_enabled": "admin_forum_functions.py",
-    "forum_noshow_poll_time": "admin_forum_functions.py",
-    "forum_welcome_enabled": "admin_forum_functions.py",
-    "regional_noshow_offer_enabled": "admin_forum_functions.py",
-    "regional_noshow_offer_time": "admin_forum_functions.py",
-    "regional_noshow_target_city": "admin_forum_functions.py",
-    "regional_noshow_move_status": "admin_forum_functions.py",
-    "forum_stats_card_enabled": "admin_forum_stats_card.py",
-    "lost_found_enabled": "admin_lost_found.py",
-    "city_tz_offset": "admin_forum_tz.py",
-    "miniapp_theme_pattern": "admin_miniapp_theme.py",
-    "onsite_reg_enabled": "admin_onsite_reg.py",
-    "volunteer_invite_enabled": "admin_volunteer_invite.py",
+    "checkin_qr_broadcast_enabled": "handlers/admin_checkin.py",
+    "checkin_qr_broadcast_time": "handlers/admin_checkin.py",
+    "checkin_qr_morning_repeat_time": "handlers/admin_checkin.py",
+    "checkin_qr_morning_catchup_until": "handlers/admin_checkin.py",
+    "checkin_volunteer_guide_broadcast_enabled": "handlers/admin_forum_functions.py",
+    "checkin_volunteer_guide_broadcast_time": "handlers/admin_forum_functions.py",
+    "forum_day_menu_enabled": "handlers/admin_forum_functions.py",
+    "forum_day_menu_start_time": "handlers/admin_forum_functions.py",
+    "forum_day_report_enabled": "handlers/admin_forum_functions.py",
+    "forum_day_report_time": "handlers/admin_forum_functions.py",
+    "forum_noshow_poll_enabled": "handlers/admin_forum_functions.py",
+    "forum_noshow_poll_time": "handlers/admin_forum_functions.py",
+    "forum_welcome_enabled": "handlers/admin_forum_functions.py",
+    "regional_noshow_offer_enabled": "handlers/admin_forum_functions.py",
+    "regional_noshow_offer_time": "handlers/admin_forum_functions.py",
+    "regional_noshow_target_city": "handlers/admin_forum_functions.py",
+    "regional_noshow_move_status": "handlers/admin_forum_functions.py",
+    "forum_stats_card_enabled": "handlers/admin_forum_stats_card.py",
+    "lost_found_enabled": "handlers/admin_lost_found.py",
+    "city_tz_offset": "handlers/admin_forum_tz.py",
+    "miniapp_theme_pattern": "handlers/admin_miniapp_theme.py",
+    "onsite_reg_enabled": "handlers/admin_onsite_reg.py",
+    "volunteer_invite_enabled": "handlers/admin_volunteer_invite.py",
 }
 
 # Читается в чате, но в экран бота не выводится — и почему.
@@ -263,7 +263,7 @@ def _computed_reachable(writes: set[str], edit_buttons: set[str]) -> set[str]:
 
 
 def _module_mentions(module: str) -> set[str]:
-    tree = _tree(ROOT / "handlers" / module)
+    tree = _tree(ROOT / module)
     return {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and n.value in SETTINGS_SCHEMA}
 
 
