@@ -44,6 +44,8 @@ import hashlib
 import hmac
 import logging
 import os
+import time
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -279,6 +281,38 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
 
 # ── POST /app/api/uploads ────────────────────────────────────────────────────────────────
 
+@dataclass
+class _UploadStat:
+    """Что попадёт в итоговую строку лога загрузки (`upload_part`). Поля заполняются по ходу
+    обработки; оборвалась она раньше — в лог уходит то, что успели узнать."""
+    started: float
+    target: str = "task"
+    content_type: str = "—"
+    ext: str = "—"
+    size: int | None = None
+    kind: str = "—"
+    read_ms: int | None = None
+    telegram_ms: int | None = None
+
+
+def _ms_since(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
+
+def _log_upload(stat: _UploadStat, status: int) -> None:
+    """Одна строка INFO на загрузку: размер и время по этапам. Приём тела (`read_ms`) — это
+    путь телефон → Cloudflare → туннель, `telegram_ms` — отправка через прокси в Telegram;
+    по ним видно, где теряется время (приёмка 10.10: фото к заданию грузилось очень долго)."""
+    def ms(value: int | None) -> str:
+        return "—" if value is None else str(value)
+
+    logger.info(
+        "uploads: target=%s content_type=%s ext=%s size=%s kind=%s status=%s read_ms=%s telegram_ms=%s total_ms=%s",
+        stat.target, stat.content_type, stat.ext, "—" if stat.size is None else stat.size, stat.kind, status,
+        ms(stat.read_ms), ms(stat.telegram_ms), _ms_since(stat.started),
+    )
+
+
 @router.post("/app/api/uploads")
 async def upload_part(request: Request, actor: UploadActor = Depends(upload_actor)) -> dict:
     """Часть сдачи (или обложка/ассет) уходит в чат загрузившего через Bot API.
@@ -291,7 +325,22 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     `FILE_REJECT_MARKERS`; прочие 400 — 502 и запись в лог) — HTTP 400 `file_rejected` с
     текстом реестра `miniapp_upload_file_rejected_text` (делегату есть что сделать);
     недоступность (сеть, 5xx, не-JSON) — прежний 502 `telegram_unavailable`. В лог — только
-    content_type, расширение и размер (без имени файла и содержимого)."""
+    content_type, расширение и размер (без имени файла и содержимого) — одной строкой в конце
+    обработки, вместе с длительностью приёма тела и отправки в Telegram (`_log_upload`)."""
+    stat = _UploadStat(started=time.monotonic(), target=_log_safe(request.query_params.get("target") or "task"))
+    status = 500
+    try:
+        result = await _upload_part(request, actor, stat)
+        status = 200
+        return result
+    except HTTPException as exc:
+        status = exc.status_code
+        raise
+    finally:
+        _log_upload(stat, status)
+
+
+async def _upload_part(request: Request, actor: UploadActor, stat: _UploadStat) -> dict:
     length = request.headers.get("content-length")
     if length and length.isdigit() and int(length) > MAX_UPLOAD_BYTES + MULTIPART_SLACK:
         raise _too_large()
@@ -301,19 +350,24 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     if upload is None or not hasattr(upload, "read"):
         raise HTTPException(400, {"reason": "no_file"})
     content = await _read_capped(upload)
+    stat.read_ms = _ms_since(stat.started)
     if not content:
         raise HTTPException(400, {"reason": "no_file"})
 
     filename = (upload.filename or "file")[:255]
     content_type = upload.content_type or "application/octet-stream"
+    stat.content_type = _log_safe(content_type)
+    stat.ext = _log_safe(os.path.splitext(filename)[1].lower() or "—")
+    stat.size = len(content)
 
     target = request.query_params.get("target")
-    logger.info(
-        "uploads: target=%s content_type=%s ext=%s size=%s",
-        _log_safe(target or "task"), _log_safe(content_type), os.path.splitext(filename)[1].lower() or "—", len(content),
-    )
     if target == "resume":
-        return await _upload_resume(request, actor, content, filename, content_type)
+        stat.kind = "document"
+        tg_started = time.monotonic()
+        try:
+            return await _upload_resume(request, actor, content, filename, content_type)
+        finally:
+            stat.telegram_ms = _ms_since(tg_started)
 
     kind = _classify_upload(upload.content_type, len(content), target)
     # Quick 260904-8o3 Task 2 (E3): `is_staff_upload` из `deps.upload_actor` отвечает на
@@ -331,6 +385,7 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     caption = (await get_setting_typed(caption_key) or "")[:CAPTION_MAX]
 
     cfg = request.app.state.cfg
+    tg_started = time.monotonic()
     try:
         result = None
         if kind == "photo":
@@ -366,6 +421,9 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
                 _log_safe(target or "task"), exc.description or "—",
             )
         raise HTTPException(502, {"reason": "telegram_unavailable", "detail": exc.reason})
+    finally:
+        stat.telegram_ms = _ms_since(tg_started)
+        stat.kind = kind
 
     file_id = _extract_file_id(kind, result)
     if not file_id:
