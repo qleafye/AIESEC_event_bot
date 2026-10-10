@@ -17,7 +17,7 @@
 «Привёл / прошли отбор» — `amb_tiers_db.referral_counts_bulk` одним запросом на страницу.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
-импортом `handlers/admin_amb_section.py`.
+импортом `handlers/amb/admin_amb_section.py`.
 """
 from __future__ import annotations
 
@@ -190,7 +190,7 @@ async def render_list(admin_id: int, flt: str = "candidates",
         nav.append(InlineKeyboardButton(text="Дальше ▶️", callback_data=f"ambc:{flt}:{offset + PAGE}"))
     if nav:
         kb_rows.append(nav)
-    from handlers.admin_amb_bulk import bulk_buttons  # шов массовых действий, хвост этого файла
+    from handlers.amb.admin_amb_bulk import bulk_buttons  # шов массовых действий, хвост этого файла
     kb_rows += await bulk_buttons(scope)
     kb_rows.append([InlineKeyboardButton(text="📥 Выгрузить в таблицу (CSV)", callback_data="ambc_csv")])
     kb_rows.append([back_button("admin_amb_candidates")])
@@ -536,6 +536,6 @@ async def show_form_card(callback: types.CallbackQuery):
 
 # Массовые действия (admin_amb_bulk: ambc_decl*, ambc_add*, ambc_arch_csv) — хвост admin.router
 # после хендлеров этого файла.
-from handlers import admin_amb_bulk  # noqa: E402,F401
+from handlers.amb import admin_amb_bulk  # noqa: E402,F401
 # «🧹 Сбросить статусы» (ambrst*) — хвост admin.router после хендлеров этого файла.
-from handlers import admin_amb_reset  # noqa: E402,F401
+from handlers.amb import admin_amb_reset  # noqa: E402,F401

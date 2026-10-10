@@ -7,7 +7,7 @@
 повторное нажатие никого не задвоит. Баллы догона идут только в общий зачёт, ни в одну волну.
 
 Шов: своего `Router()` нет, декорирует общий `handlers.admin.router`; подключается хвостовым
-импортом `handlers/admin_amb_points.py`. Право — `moderate_game`, как у соседних кнопок экрана.
+импортом `handlers/amb/admin_amb_points.py`. Право — `moderate_game`, как у соседних кнопок экрана.
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ async def _global_only(callback: types.CallbackQuery) -> bool:
     """Начисление идёт по амбассадорам всех городов сразу — только админ в режиме «Все города»
     (тот же гейт, что у «🧹 Сбросить статусы»). Иначе городской модератор с правом геймификации
     начислил бы баллы чужим городам."""
-    from handlers.admin_amb_reset import _is_global
+    from handlers.amb.admin_amb_reset import _is_global
 
     if await _is_global(callback.from_user.id):
         return True
@@ -158,7 +158,7 @@ async def amb_backfill_go(callback: types.CallbackQuery):
         )
     else:
         text = "Готово. Новых начислений нет: за всех приглашённых баллы уже начислены."
-    from handlers.admin_amb_points import render_points_screen
+    from handlers.amb.admin_amb_points import render_points_screen
     screen, kb = await render_points_screen()
     await callback.message.answer(text)
     await callback.message.answer(screen, parse_mode="HTML", reply_markup=kb)

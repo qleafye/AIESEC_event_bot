@@ -113,7 +113,7 @@ def test_purge_user_removes_mark(tmp_path):
 # ── экран: кнопка «Вернуть ступень» ──────────────────────────────────────────────────────
 
 def test_ladder_shows_unrevoke_button_and_list_returns_tier(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     from tests.test_amb_tiers_admin_su5 import ADMIN_ID, FakeCallback, _new_state
     _ready(tmp_path)
     config.ADMIN_IDS = [ADMIN_ID]
@@ -144,7 +144,7 @@ def test_ladder_shows_unrevoke_button_and_list_returns_tier(tmp_path):
 
 
 def test_revoke_confirmation_says_tier_will_not_return(tmp_path):
-    from handlers import admin_amb_tier_ladder as h
+    from handlers.amb import admin_amb_tier_ladder as h
     from tests.test_amb_tiers_admin_su5 import ADMIN_ID, FakeCallback, _new_state
     from handlers.states import AmbTierRevoke
     _ready(tmp_path)

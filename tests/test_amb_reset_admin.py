@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 from database import amb_status_db as sdb
-from handlers import admin_amb_reset as h
-from handlers.admin_amb_bulk import bulk_buttons
+from handlers.amb import admin_amb_reset as h
+from handlers.amb.admin_amb_bulk import bulk_buttons
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from services import amb_status_reset as svc
 from database import db
