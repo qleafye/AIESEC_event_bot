@@ -391,7 +391,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from handlers import admin as admin_mod
-from handlers import admin_cities  # Phase 13 (13-05): cities screen/CRUD/season moved here
+from handlers.cities import admin_cities  # Phase 13 (13-05): cities screen/CRUD/season moved here
 from handlers.admin_caps import required_capability
 
 ADMIN_ID = 941101

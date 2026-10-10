@@ -19,7 +19,7 @@ from config import config
 from database import db
 import domain.cities as cities
 from handlers import admin as admin_mod
-from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
+from handlers.cities import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 from handlers import admin_roles
 from handlers.admin_caps import required_capability
 

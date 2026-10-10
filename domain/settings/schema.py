@@ -8606,7 +8606,7 @@ SETTINGS_SCHEMA = {
     },
 
     # Phase 33 (delegate-card admin actions): «🏙 Перевести в город» — сообщение делегату после
-    # перевода (handlers/admin_city_move.py, тумблер «🔔 Сообщить делегату» на экране
+    # перевода (handlers/cities/admin_city_move.py, тумблер «🔔 Сообщить делегату» на экране
     # подтверждения, дефолт «да»). group "reg" — личное сообщение делегату, тот же довод, что у
     # forum_welcome_text выше (корпус машинного перевода подхватывает сам, EN — ручной перевод в
     # services/i18n_form_manual.py::FORM_DEFAULT_EN, тот же приём). НЕ per_city — текст не

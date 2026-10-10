@@ -30,7 +30,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_sheets  # module-size split: rebuild moved out of admin_sheets.py
-from handlers import admin_cities  # Phase 13 (13-05): cities/season screens moved here
+from handlers.cities import admin_cities  # Phase 13 (13-05): cities/season screens moved here
 import services.sheets as sheets
 from tests._dbtpl import fast_init_db
 
