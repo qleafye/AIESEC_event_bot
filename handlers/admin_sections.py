@@ -483,10 +483,11 @@ async def settings_return_screen(
     from handlers.admin_core import admin_keyboard_for
     from handlers.admin_setup_wizard import pop_return, step_screen
 
-    # Правку открыли из «🚀 Первая настройка» — вернуть в тот же шаг мастера.
-    wizard_step = pop_return(admin_id)
+    # Правку поля открыли из «🚀 Первая настройка» — вернуть в тот же шаг мастера (только
+    # сохранение этого поля; чужие сохранения и тумблеры идут своим путём).
+    wizard_step = pop_return(admin_id, setting_key)
     if wizard_step:
-        screen = await step_screen(wizard_step)
+        screen = await step_screen(wizard_step, admin_id)
         if screen is not None:
             return screen
 

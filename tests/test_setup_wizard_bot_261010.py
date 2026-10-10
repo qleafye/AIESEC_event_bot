@@ -169,3 +169,42 @@ def test_every_wizard_step_renders(tmp_path):
             continue  # шаг не виден при этом типе/модулях — как в приложении
         text, kb = screen
         assert step.title in text and kb.inline_keyboard
+
+
+# ── Ревью 10.10 ───────────────────────────────────────────────────────────────────────────
+
+def test_other_saves_are_not_hijacked_into_wizard(tmp_path, monkeypatch):
+    _ready(tmp_path, "setup_wizard_hijack.db")
+
+    async def _fake_edit(callback, state):
+        return None
+
+    monkeypatch.setattr(admin_settings, "settings_edit_start", _fake_edit)
+    _run(wiz.setup_wizard_field(_CB("setupw_f:event_info:event_name"), _state()))
+    # Другое сохранение и тумблер в это время идут своим путём, а не в мастер.
+    text, _ = _run(admin_sections.settings_return_screen(ADMIN, setting_key="approve_text"))
+    assert "Информация о событии" not in text
+    text, _ = _run(admin_sections.settings_return_screen(ADMIN, callback_data="settings_toggle_reg"))
+    assert "Информация о событии" not in text
+    # Сохранение своего поля (в том числе городского значения) — назад в шаг мастера.
+    text, _ = _run(admin_sections.settings_return_screen(ADMIN, setting_key="event_name__city__msk"))
+    assert "Информация о событии" in text
+
+
+def test_city_header_value_counts_as_filled(tmp_path, monkeypatch):
+    import cities
+
+    _ready(tmp_path, "setup_wizard_city.db")
+    _run(db.set_setting("event_city_enabled", "on"))
+    code = cities.city_codes()[0]
+
+    async def _header(_admin):
+        return code
+
+    monkeypatch.setattr(cities, "admin_selected_city", _header)
+    key = cities.per_city_key("event_date", code)
+    assert key is not None
+    _run(db.set_setting(key, "30 октября"))
+    _, kb = _run(wiz.step_screen("event_info", ADMIN))
+    labels = [btn.text for row in kb.inline_keyboard for btn in row]
+    assert any(label.startswith("✅") and "Дата" in label for label in labels), labels

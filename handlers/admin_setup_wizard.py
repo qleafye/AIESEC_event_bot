@@ -40,19 +40,37 @@ _MODULE_FLAGS = tuple(sorted({s.requires for s in STEPS if s.requires}))
 # процесса: после рестарта менеджер просто вернётся на экран группы, как без мастера. Срок —
 # чтобы брошенная правка не утащила в мастер через час совсем другую правку.
 _RETURN_TTL_S = 30 * 60
-_return_to: dict[int, tuple[str, float]] = {}
+_return_to: dict[int, tuple[str, str, float]] = {}
 
 
-def set_return(admin_id: int, step_key: str) -> None:
-    _return_to[admin_id] = (step_key, time.monotonic())
+def set_return(admin_id: int, step_key: str, field_key: str) -> None:
+    _return_to[admin_id] = (step_key, field_key, time.monotonic())
 
 
-def pop_return(admin_id: int) -> str | None:
-    entry = _return_to.pop(admin_id, None)
+def _matches(field_key: str, setting_key: str | None) -> bool:
+    """Сохранили именно поле мастера: тот же ключ, его городское значение
+    (`{key}__city__{code}`) или файл фото/документа поля (`{key}_photo_file_id`)."""
+    if not setting_key:
+        return False
+    base = setting_key.split("__city__", 1)[0]
+    return base in (field_key, f"{field_key}_photo_file_id", f"{field_key}_doc_file_id")
+
+
+def pop_return(admin_id: int, setting_key: str | None = None) -> str | None:
+    """Шаг мастера, если сохранение — правка поля, открытого из мастера (ревью 10.10: раньше
+    возврат перехватывал ЛЮБОЕ сохранение и тумблер в течение 30 минут). Чужой возврат
+    отметку не трогает — она снимается своим сохранением, сроком или входом в мастер."""
+    entry = _return_to.get(admin_id)
     if entry is None:
         return None
-    step_key, at = entry
-    return step_key if time.monotonic() - at <= _RETURN_TTL_S else None
+    step_key, field_key, at = entry
+    if time.monotonic() - at > _RETURN_TTL_S:
+        _return_to.pop(admin_id, None)
+        return None
+    if not _matches(field_key, setting_key):
+        return None
+    _return_to.pop(admin_id, None)
+    return step_key
 
 
 def _is_super(user_id: int) -> bool:
@@ -81,11 +99,20 @@ def _field_label(key: str) -> str:
     return SETTINGS_SCHEMA.get(key, {}).get("label") or key
 
 
-async def _filled(step: WizardStep, key: str, photos: set[str]) -> bool:
+async def _filled(step: WizardStep, key: str, photos: set[str], city: str | None = None) -> bool:
     """То же правило «задано», что у приложения: своё значение (или явный выбор), а для
-    `accept_default` — и значение по умолчанию, если оно не пустое."""
+    `accept_default` — и значение по умолчанию, если оно не пустое. При городе в шапке
+    городская настройка считается заданной и своим значением города (его пишет редактор),
+    и общим — город его наследует."""
     if key in photos:
         return bool(await get_setting(f"{key}_photo_file_id"))
+    if city and SETTINGS_SCHEMA.get(key, {}).get("per_city"):
+        from cities import per_city_key
+
+        composed = per_city_key(key, city)
+        raw_city = await get_setting(composed) if composed else None
+        if raw_city is not None and str(raw_city) != "":
+            return True
     raw = await get_setting(key)
     if raw is not None and str(raw) != "":
         return True
@@ -102,20 +129,33 @@ async def _steps() -> list[WizardStep]:
     return visible_steps(event_type, flags)
 
 
-async def _status(steps: list[WizardStep]) -> dict[str, tuple[bool, dict[str, bool]]]:
+async def _header_city(admin_id: int | None) -> str | None:
+    """Город шапки админки (как у редактора бота), `None` — все города или модуль выключен."""
+    if admin_id is None:
+        return None
+    from cities import ALL_CITIES, admin_selected_city, cities_module_on
+
+    if not await cities_module_on():
+        return None
+    city = await admin_selected_city(admin_id)
+    return None if city in (None, ALL_CITIES) else city
+
+
+async def _status(steps: list[WizardStep], admin_id: int | None = None) -> dict[str, tuple[bool, dict[str, bool]]]:
     photos = _photo_prefixes()
+    city = await _header_city(admin_id)
     out = {}
     for step in steps:
-        filled = {key: await _filled(step, key, photos) for key in step.fields}
+        filled = {key: await _filled(step, key, photos, city) for key in step.fields}
         out[step.key] = (step_done(step, filled), filled)
     return out
 
 
-async def overview_screen() -> tuple[str, InlineKeyboardMarkup]:
+async def overview_screen(admin_id: int | None = None) -> tuple[str, InlineKeyboardMarkup]:
     from handlers.admin_sections import back_button  # ленивый шов
 
     steps = await _steps()
-    status = await _status(steps)
+    status = await _status(steps, admin_id)
     counted = [s for s in steps if s.kind == "fields"]
     done = sum(1 for s in counted if status[s.key][0])
     text = (
@@ -132,14 +172,14 @@ async def overview_screen() -> tuple[str, InlineKeyboardMarkup]:
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def step_screen(step_key: str) -> tuple[str, InlineKeyboardMarkup] | None:
+async def step_screen(step_key: str, admin_id: int | None = None) -> tuple[str, InlineKeyboardMarkup] | None:
     steps = await _steps()
     keys = [s.key for s in steps]
     if step_key not in keys:
         return None
     index = keys.index(step_key)
     step = steps[index]
-    done, filled = (await _status([step]))[step.key]
+    done, filled = (await _status([step], admin_id))[step.key]
 
     lines = [
         TEXTS["step_of_text"].format(n=index + 1, m=len(steps)),
@@ -199,7 +239,7 @@ async def setup_wizard_overview(callback: types.CallbackQuery):
         await callback.answer(ONLY_SUPERADMIN, show_alert=True)
         return
     _return_to.pop(callback.from_user.id, None)
-    text, kb = await overview_screen()
+    text, kb = await overview_screen(callback.from_user.id)
     await _show(callback, text, kb)
     await callback.answer()
 
@@ -209,10 +249,10 @@ async def setup_wizard_step(callback: types.CallbackQuery):
     if not _is_super(callback.from_user.id):
         await callback.answer(ONLY_SUPERADMIN, show_alert=True)
         return
-    screen = await step_screen(callback.data.split(":", 1)[1])
+    screen = await step_screen(callback.data.split(":", 1)[1], callback.from_user.id)
     if screen is None:
         # Шаг исчез (сменили тип события или выключили модуль) — показываем список заново.
-        screen = await overview_screen()
+        screen = await overview_screen(callback.from_user.id)
     await _show(callback, *screen)
     await callback.answer()
 
@@ -227,7 +267,7 @@ async def setup_wizard_field(callback: types.CallbackQuery, state: FSMContext):
     if target is None:
         await callback.answer(APP_HINT, show_alert=True)
         return
-    set_return(callback.from_user.id, step_key)
+    set_return(callback.from_user.id, step_key, key)
     from handlers import admin_settings  # ленивый шов
 
     edit = callback.model_copy(update={"data": target})
