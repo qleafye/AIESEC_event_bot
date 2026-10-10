@@ -62,42 +62,50 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
 
 # Кнопку меню чата (иконка приложения у поля ввода) Telegram держит до новой установки: общую —
 # для всех, и свою — у каждого, кто выбрал язык (`handlers/reg_lang.py`), своя главнее общей.
-# После правки подписи или включения/выключения приложения переставляются обе, в фоне: на тысячу
-# делегатов это минута, сохранение настройки ждать её не должно.
+# После правки подписи или включения/выключения приложения переставляются обе, в фоне: на пару
+# тысяч делегатов это пара минут, сохранение настройки ждать их не должно.
+#
+# Один проход на процесс: новое сохранение отменяет идущий проход и начинает заново. Проход
+# читает настройки в момент установки кнопки, поэтому побеждает последнее сохранение, а не тот
+# из двух параллельных проходов, что закончил позже.
 MENU_BUTTON_KEYS = frozenset({"miniapp_open_button", "miniapp_enabled"})
-_menu_resync_tasks: set = set()
+_menu_resync_task = None
 
-_AFTER_SAVE_NOTES = {
-    "miniapp_open_button": (
-        "\n\n📱 Кнопка приложения у поля ввода обновится у всех делегатов в ближайшие минуты — "
-        "у каждого на его языке. Если у кого-то осталась старая подпись, сохраните текст ещё раз."
-    ),
-}
+_RESYNC_RUNNING_NOTE = (
+    "\n\n📱 Кнопка приложения у поля ввода обновится у всех делегатов в ближайшие минуты — "
+    "у каждого на его языке."
+)
+_RESYNC_NOT_STARTED_NOTE = (
+    "\n\n⚠️ Кнопку приложения у поля ввода сейчас переставить не удалось — у делегатов пока "
+    "старая. Сохраните текст ещё раз через пару минут."
+)
 
 
 def after_save_note(key: str) -> str:
-    """Строка менеджеру под «сохранено», если правка действует не мгновенно и не везде."""
-    from cities import split_per_city_key
-
-    split = split_per_city_key(key)
-    return _AFTER_SAVE_NOTES.get(split[0] if split else key, "")
+    """Строка менеджеру под «сохранено» для правки, которая доходит до делегатов не сразу:
+    идёт ли перестановка кнопки меню чата или её не удалось начать."""
+    if key not in MENU_BUTTON_KEYS:
+        return ""
+    task = _menu_resync_task
+    return _RESYNC_RUNNING_NOTE if task is not None and not task.done() else _RESYNC_NOT_STARTED_NOTE
 
 
 def _start_menu_button_resync() -> None:
     import asyncio
 
+    global _menu_resync_task
     from services.scheduler import get_bot
 
     try:
         bot = get_bot()
-    except RuntimeError:  # процесс без бота (тест, скрипт) — кнопку поставит старт бота
+    except RuntimeError:  # процесс без бота (тест, скрипт) — переставлять нечем
         logger.info("settings_audit: бота в процессе нет, кнопку меню чата не переставляю")
         return
     from handlers.admin_miniapp import sync_all_chat_menu_buttons
 
-    task = asyncio.get_running_loop().create_task(sync_all_chat_menu_buttons(bot))
-    _menu_resync_tasks.add(task)
-    task.add_done_callback(_menu_resync_tasks.discard)
+    if _menu_resync_task is not None and not _menu_resync_task.done():
+        _menu_resync_task.cancel()  # устаревший проход — новое сохранение начнёт заново
+    _menu_resync_task = asyncio.get_running_loop().create_task(sync_all_chat_menu_buttons(bot))
 
 
 async def run_setting_hooks_batch(keys: list[str], *, reject_rules: bool = True) -> None:
