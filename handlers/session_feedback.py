@@ -327,11 +327,12 @@ async def prog_fbdelay_custom_start(callback: types.CallbackQuery, state: FSMCon
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
     key, _per_city_ctx = await _feedback_settings_key("session_feedback_delay_minutes", code)
+    back = {"return_cb": f"prog_fbset:{code}", "return_label": "← К отзывам о сессиях"}
     if key is None:
         await callback.answer("Неизвестный город", show_alert=True)
         return
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": key})
+    await state.set_data({"setting_key": key, **back})
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
     await callback.answer()
     await callback.message.answer(

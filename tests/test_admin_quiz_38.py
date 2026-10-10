@@ -331,3 +331,6 @@ def test_points_max_editable_from_texts_screen_for_own_city_only(tmp_path):
     assert run(aq.points_max(CITY)) == 8
     other = next(c for c in __import__("cities").city_codes() if c != CITY)
     assert run(aq.points_max(other)) == 5  # чужой город не задет
+    # назад — на ту же страницу текстов теста, где была кнопка
+    page = idx // lv._TEXT_PAGE
+    assert [b.callback_data for row in msg.answer_markups[-1].inline_keyboard for b in row] == [f"prog_qztx:{CITY}:{page}"]
