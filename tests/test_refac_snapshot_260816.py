@@ -1514,7 +1514,7 @@ admin|callback_query|amb_points_start|ambpt_coins
 admin|callback_query|amb_points_cancel|ambpt_coins_cancel
 admin|callback_query|amb_points_toggle|ambpt_toggle:*
 admin|callback_query|amb_backfill_preview|ambpt_fill
-admin|callback_query|amb_backfill_go|ambpt_fill_go
+admin|callback_query|amb_backfill_go|ambpt_fill_go*
 admin|callback_query|amb_reset_menu|ambrst
 admin|callback_query|amb_reset_preview|ambrst_p:*
 admin|callback_query|amb_reset_go|ambrst_go:*
@@ -2466,6 +2466,8 @@ def test_snapshot_total_handler_count_is_292():
     # 10.10 (ретро-применение автоотказа): +3 admin.callback_query сразу после arp_sync (1224 -> 1227).
     # 10.10 («Начислить за прошлых приглашённых»): +2 admin.callback_query после amb_points_toggle (1227 -> 1229).
     # 10.10 («Сбросить статусы» амбассадоров): +3 admin.callback_query после amb_backfill_go (1229 -> 1232).
+    # 10.10 (ревью разовых операций): кнопка «Начислить» несёт числа предпросмотра, фильтр
+    # amb_backfill_go стал startswith("ambpt_fill_go") — состав хендлеров прежний, меняется литерал.
     # 10.10 («Загрузить историю чата»): +4 admin.message и +4 admin.callback_query у экрана рейтинга чата (1232 -> 1240).
     assert len(GOLDEN_SNAPSHOT) == 1240
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
