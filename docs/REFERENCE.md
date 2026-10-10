@@ -145,7 +145,7 @@ Cloudflare Worker (reverse-proxy `api.telegram.org` на своём домене
 | `PROXY_RECHECK_SECONDS` | реестр `proxy_recheck_seconds`; `.env` = разовый seed | не секрет, но применяется только после перезапуска бота |
 | `PROXY_CONNECT_TIMEOUT` | реестр `proxy_connect_timeout`; `.env` = разовый seed | то же |
 | `ADMIN_IDS` | `.env` | bootstrap-суперадминов; дальнейшие роли выдаются из бота («👥 Роли и доступы») |
-| `UNIVERSITIES` | код `config.py` (аварийный фолбэк) | список ВУЗов уже настраивается ключом реестра `university_options`, поле в `.env` не выносится |
+| список ВУЗов | реестр `university_options` (не `.env`, `config.UNIVERSITIES` удалён) | пустой список = свободный ввод вуза, встроенного списка нет; в «Анкете 2.0» вуз ищется по общей базе вузов, и этот список скрыт |
 | `DB_PATH` | `.env` | путь к файлу БД, инфраструктура |
 | `LOG_LEVEL` | `.env` | уровень логов, инфраструктура |
 | `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_FILE` | `.env` | доступ к таблице |
