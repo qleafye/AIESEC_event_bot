@@ -342,7 +342,7 @@ def _build_snapshot_lines():
 # единственное изменение: пять вставленных строк подряд, всё остальное на прежних местах в
 # прежнем порядке.
 #
-# Drift note (quick 260902-vth, 397 -> 400): новый шов `handlers/admin_sheet_logs.py` (экран
+# Drift note (quick 260902-vth, 397 -> 400): новый шов `handlers/sheets/admin_sheet_logs.py` (экран
 # «🕓 Журналы в таблицу», раздел «📊 Данные») импортируется ПОСЛЕДНИМ в хвосте
 # handlers/admin_sections.py (после его собственного `show_admin_section`) — три хендлера
 # (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go) встали строго между
@@ -372,7 +372,7 @@ def _build_snapshot_lines():
 #
 # Drift note (module-size split, admin_settings.py, 414 handlers unchanged -- REORDER only):
 # `sync_sheet`/`rebuild_sheet_confirm`/`rebuild_sheet` (admin_settings.py, 2211 lines, over its
-# KNOWN_OVERAGES ceiling of 2174) moved to the new `handlers/admin_sheets.py` seam, imported
+# KNOWN_OVERAGES ceiling of 2174) moved to the new `handlers/sheets/admin_sheets.py` seam, imported
 # right after `admin_settings` in handlers/admin.py -- these three handlers now register right
 # after everything else that stayed in admin_settings.py (previously mid-file, right after
 # `cancel_edit_setting_callback` and before `settings_back_to_admin`). Re-captured by RUNNING
@@ -384,13 +384,13 @@ def _build_snapshot_lines():
 # callback-хендлеров тумблеров «Анкета 2.0» (`handlers/admin_reg_form.py`, шов, декорирующий
 # общий `admin.router`, импортируется последним в хвостовой цепочке `handlers/admin_sections.py`
 # -- сразу после `admin_quiet_hours`) регистрируются ПОСЛЕ `admin_quiet_hours` и ПЕРЕД
-# `admin_sync_sheet` (`handlers/admin_sheets.py`, импортируется в `handlers/admin.py` только
+# `admin_sync_sheet` (`handlers/sheets/admin_sheets.py`, импортируется в `handlers/admin.py` только
 # после того, как весь хвост `admin_settings.py`, включая `admin_sections`, отработал).
 # Re-captured by RUNNING `_build_snapshot_lines()` against HEAD after this plan's changes и
 # diffed против прежнего 487-строчного снимка (`difflib.SequenceMatcher`): ровно одна вставка
 # из 9 строк в позиции 169, ни одна существующая строка не сдвинулась и не изменилась.
 # Drift note (Quick 260919-mlu, Task 3, 524 -> 527 handlers -- PURE APPEND): три новых
-# callback-хендлера развилки «была своя вкладка, имя меняется» (`handlers/admin_sheet_tabs.py`,
+# callback-хендлера развилки «была своя вкладка, имя меняется» (`handlers/sheets/admin_sheet_tabs.py`,
 # шов, декорирующий общий `admin.router`, импортируется последним в хвостовой цепочке
 # `handlers/admin_sections.py` -- сразу после `admin_app_list`) регистрируются ПОСЛЕ
 # `apl_page` и ПЕРЕД `sync_sheet`. Re-captured by RUNNING `_build_snapshot_lines()` against
@@ -400,7 +400,7 @@ def _build_snapshot_lines():
 # Drift note (Quick 260919-mlu, Task 4, 527 -> 531 handlers -- PURE APPEND): четыре новых
 # callback-хендлера массовых кнопок «Добавить/Убрать префикс» (sheet_tabs_prefix_add/_del —
 # экран подтверждения, sheet_tabs_prefix_add_go/_del_go — исполнение), тот же шов
-# `handlers/admin_sheet_tabs.py`, встали ПОСЛЕ sheet_tab_newtab_go и ПЕРЕД sync_sheet (та
+# `handlers/sheets/admin_sheet_tabs.py`, встали ПОСЛЕ sheet_tab_newtab_go и ПЕРЕД sync_sheet (та
 # же точка регистрации, что у Task 3). Re-captured by RUNNING `_build_snapshot_lines()`
 # against HEAD и diffed против прежнего 527-строчного снимка (`difflib.SequenceMatcher`):
 # ровно одна вставка из 4 строк в позиции 201, ни одна существующая строка не сдвинулась и
@@ -2017,14 +2017,14 @@ def test_snapshot_total_handler_count_is_292():
     # Квик 260919-m9x: +1 handlers/admin_modcard.py callback_query modcard_sync («показать
     # всё, что спрашиваем»), встал сразу после modcard_toggle и перед modcard_limit —
     # порядок объявления в файле (523 -> 524).
-    # Квик 260919-mlu (Task 3): +3 handlers/admin_sheet_tabs.py callback_query
+    # Квик 260919-mlu (Task 3): +3 handlers/sheets/admin_sheet_tabs.py callback_query
     # (sheet_tab_rename_go/sheet_tab_reuse_go/sheet_tab_newtab_go — развилка «была своя
     # вкладка, имя меняется»), встали сразу после apl_page и перед sync_sheet: шов
     # импортируется из хвоста handlers/admin_sections.py, СРАЗУ ПОСЛЕ admin_app_list
     # (524 -> 527); чистая вставка, перепроверена прогоном `_build_snapshot_lines()` и
     # diff'ом (difflib.SequenceMatcher) с прежним 524-строчным снапшотом — ровно три новые
     # строки в позиции 198, ни одна другая не поменялась и не переставилась.
-    # Квик 260919-mlu (Task 4): +4 handlers/admin_sheet_tabs.py callback_query
+    # Квик 260919-mlu (Task 4): +4 handlers/sheets/admin_sheet_tabs.py callback_query
     # (sheet_tabs_prefix_add/_del/_add_go/_del_go — массовые кнопки «Добавить/Убрать
     # префикс»), встали сразу после sheet_tab_newtab_go и перед sync_sheet, тот же шов
     # (527 -> 531); чистая вставка, перепроверена прогоном `_build_snapshot_lines()` и
@@ -2312,7 +2312,7 @@ def test_snapshot_total_handler_count_is_292():
     # regreset_* выше). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: две чистых
     # вставки (3 строки + 2 строки), 0 удалений, 0 реордеров (849 -> 854).
     # Phase 33 (delegate-card admin actions, «Сверить с БД», 26.09): шесть
-    # callback_query-хендлеров нового шва handlers/admin_sheet_reconcile.py
+    # callback_query-хендлеров нового шва handlers/sheets/admin_sheet_reconcile.py
     # (sheet_reconcile_open/sheet_reconcile_csv/sheet_reconcile_append_confirm/
     # sheet_reconcile_append_go/sheet_reconcile_status_confirm/sheet_reconcile_status_go)
     # встали сразу после resumerep_cancel и ПЕРЕД prog_fbday_open — та же точка регистрации,
@@ -2321,7 +2321,7 @@ def test_snapshot_total_handler_count_is_292():
     # одна чистая вставка (6 строк), 0 удалений, 0 реордеров (854 -> 860).
     # Координатор 25.09 (учёт доставки решения): «📨 Переотправить решения» — два новых
     # callback_query-хендлера (sheet_reconcile_resend_confirm/sheet_reconcile_resend_go) в
-    # handlers/admin_sheet_reconcile.py, встали сразу после sheet_reconcile_status_go и ПЕРЕД
+    # handlers/sheets/admin_sheet_reconcile.py, встали сразу после sheet_reconcile_status_go и ПЕРЕД
     # prog_fbday_open (тот же файл, физическое место — хвост функций модуля, точка регистрации
     # не сдвинулась). Пересчитано RUNNING `_build_snapshot_lines()`, difflib: одна чистая
     # вставка (2 строки), 0 удалений, 0 реордеров (860 -> 862).
@@ -2462,7 +2462,7 @@ def test_snapshot_total_handler_count_is_292():
     # (settings_search_query/settings_search_not_text) после prog_qzimp_not_file и +2 admin.
     # callback_query (settings_search_start/settings_search_cancel) после decresend_cancel;
     # чистые вставки, сверено SequenceMatcher поверх аватара (1211 -> 1215).
-    # 09.10 («🔗 Какая таблица», handlers/admin_sheet_target.py, хвост admin.py после
+    # 09.10 («🔗 Какая таблица», handlers/sheets/admin_sheet_target.py, хвост admin.py после
     # admin_settings_search): +3 admin.message (state:SheetTarget:* — отмена дважды/ссылка) после
     # settings_search_not_text и +5 admin.callback_query после settings_search_cancel; чистые
     # вставки, сверено SequenceMatcher (1215 -> 1223).
@@ -2508,7 +2508,7 @@ def test_snapshot_total_handler_count_is_292():
     # admin_i18n_list_page/admin_i18n_row/admin_i18n_edit_new_start/admin_i18n_edit_start/
     # admin_i18n_retranslate_confirm/admin_i18n_retranslate_go, сразу после afaq_edit_answer_start
     # и перед show_applications — шов импортируется из хвоста handlers/admin.py сразу после
-    # admin_faq) (444 -> 454). Phase 27-04 (LANG-01): +2 handlers/reg_lang.py (message menu_lang_open, хвост message-блока registration.router; callback_query lang_pick_choose, сразу после consent_renew_accept и перед reg_resume_continue) (442 -> 444); Phase 27-02 (LANG-01): +2 admin_settings.py toggle_delegate_lang_enabled/toggle_delegate_lang_ask_on_start (callback_query, сразу после toggle_quiet_hours и перед toggle_reg_edit_remoderation) (440 -> 442); quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389); Phase 21-09 Task 3: +3 handlers/reg_resume.py (registration.router tail: reg_resume_continue/reg_resume_restart/reg_resume_restart_yes, callback_query) (389 -> 392); quick 260902-tzh: +1 admin_moderation.py appr_full, +4 handlers/admin_modcard.py (modcard_open/modcard_toggle/modcard_limit/modcard_noop) (392 -> 397); quick 260902-vth: +3 handlers/admin_sheet_logs.py (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go), встали сразу после show_admin_section (шов импортируется из хвоста admin_sections.py) и перед show_admin_cities (397 -> 400); quick 260904-2cj: +5 handlers/admin_questions.py (message: aq_answer_cancel/aq_answer_step; callback_query: admin_questions/aq_page/aq_answer_start), шов встал сразу после admin_reg_config и перед admin_moderation (400 -> 405); quick 260904-3vm: +1 registration.router reg_handoff_to_bot (callback_query, хвост, после reg_resume_restart_yes) +1 user_actions.router reg_handoff_idle_fallback (message, хвост, после open_miniapp_button) (405 -> 407); quick 260904-dq1: +1 admin_settings.py toggle_quiet_hours (callback_query, сразу после toggle_nudge_enabled) +1 admin_broadcasts.py broadcast_schedule_quiet_choice (callback_query, сразу после broadcast_schedule_start) (407 -> 409); Phase 25: +3 admin_reg_config.py (reg_q_reset_city / reg_q_reset_city_go / reg_resume_mode_toggle) (409 -> 412); Phase 25 (CITYQ-05): +2 admin_reg_config.py (reg_prompt_rst / reg_prompt_rst_go) (412 -> 414); +3 admin_reg_percity.py (reg_help_edit/reg_help_rst/reg_help_rst_go) (414 -> 417); quick 260906-8uq (FAQ-01..06): +4 user_actions.router (message show_faq; callback_query faq_page/faq_open_answer/faq_ask, хвост роутера, перед ask_organizer_start/после reg_handoff_idle_fallback) + handlers/admin_faq.py (message afaq_text_cancel/afaq_text_step; callback_query admin_faq/afaq_page/afaq_view/afaq_move_up/afaq_move_down/afaq_toggle_enabled/afaq_toggle_city/afaq_delete_confirm/afaq_delete_go/afaq_new_start/afaq_edit_question_start/afaq_edit_answer_start), шов встал сразу после admin_questions (417 -> 435); quick 260906-8uq задача 4 (FAQ-04, «❓ В FAQ» из журнала): +5 handlers/admin_faq.py callback_query (afaq_from_question/afaq_draft_edit_question/afaq_draft_edit_answer/afaq_save_draft/afaq_cancel_draft), встали сразу после afaq_delete_go и перед afaq_new_start (тот же порядок, что и в исходном файле — новый блок кода вставлен между этими двумя хендлерами), чистая вставка (435 -> 440)
+    # admin_faq) (444 -> 454). Phase 27-04 (LANG-01): +2 handlers/reg_lang.py (message menu_lang_open, хвост message-блока registration.router; callback_query lang_pick_choose, сразу после consent_renew_accept и перед reg_resume_continue) (442 -> 444); Phase 27-02 (LANG-01): +2 admin_settings.py toggle_delegate_lang_enabled/toggle_delegate_lang_ask_on_start (callback_query, сразу после toggle_quiet_hours и перед toggle_reg_edit_remoderation) (440 -> 442); quick 260819: +toggle_preselect_enabled, +coinsman_amount_stale, +toggle_pending_reminder/+toggle_nudge_enabled; quick 260822: +5 settings_list_*, +toggle_game_submit_notify, +toggle_consent_recollect, +consent_renew_accept; опросы 260822: +20 (342 -> 362 после слияния); Phase 15-02: +2 open_dashboard_settings/toggle_dashboard_block (362 -> 364); Phase 19-08: +12 admin_miniapp.py (message: miniapp_accent_step/miniapp_logo_step/miniapp_logo_step_invalid; callback_query: open_miniapp_settings/toggle_miniapp_enabled/toggle_miniapp_staff_only/toggle_miniapp_section/miniapp_edit_accent_start/miniapp_edit_logo_start/miniapp_remove_logo/miniapp_cancel_edit), +1 user_actions.router open_miniapp_button (364 -> 376); Phase 19.1-07: -7 admin_miniapp.py (accent/logo edit flow replaced) +17 admin_miniapp_theme.py (presets + D-04 handles) = net +10 (376 -> 386); Phase 20-01: +1 admin_sections.py show_admin_section (386 -> 387); Phase 21-07 Task 1: +1 admin_moderation.py appr_history (387 -> 388); Phase 21-07 Task 2: +1 admin_settings.py toggle_reg_edit_remoderation (388 -> 389); Phase 21-09 Task 3: +3 handlers/reg_resume.py (registration.router tail: reg_resume_continue/reg_resume_restart/reg_resume_restart_yes, callback_query) (389 -> 392); quick 260902-tzh: +1 admin_moderation.py appr_full, +4 handlers/admin_modcard.py (modcard_open/modcard_toggle/modcard_limit/modcard_noop) (392 -> 397); quick 260902-vth: +3 handlers/sheets/admin_sheet_logs.py (sheet_logs_open/sheet_logs_autosync_toggle/sheet_logs_sync_go), встали сразу после show_admin_section (шов импортируется из хвоста admin_sections.py) и перед show_admin_cities (397 -> 400); quick 260904-2cj: +5 handlers/admin_questions.py (message: aq_answer_cancel/aq_answer_step; callback_query: admin_questions/aq_page/aq_answer_start), шов встал сразу после admin_reg_config и перед admin_moderation (400 -> 405); quick 260904-3vm: +1 registration.router reg_handoff_to_bot (callback_query, хвост, после reg_resume_restart_yes) +1 user_actions.router reg_handoff_idle_fallback (message, хвост, после open_miniapp_button) (405 -> 407); quick 260904-dq1: +1 admin_settings.py toggle_quiet_hours (callback_query, сразу после toggle_nudge_enabled) +1 admin_broadcasts.py broadcast_schedule_quiet_choice (callback_query, сразу после broadcast_schedule_start) (407 -> 409); Phase 25: +3 admin_reg_config.py (reg_q_reset_city / reg_q_reset_city_go / reg_resume_mode_toggle) (409 -> 412); Phase 25 (CITYQ-05): +2 admin_reg_config.py (reg_prompt_rst / reg_prompt_rst_go) (412 -> 414); +3 admin_reg_percity.py (reg_help_edit/reg_help_rst/reg_help_rst_go) (414 -> 417); quick 260906-8uq (FAQ-01..06): +4 user_actions.router (message show_faq; callback_query faq_page/faq_open_answer/faq_ask, хвост роутера, перед ask_organizer_start/после reg_handoff_idle_fallback) + handlers/admin_faq.py (message afaq_text_cancel/afaq_text_step; callback_query admin_faq/afaq_page/afaq_view/afaq_move_up/afaq_move_down/afaq_toggle_enabled/afaq_toggle_city/afaq_delete_confirm/afaq_delete_go/afaq_new_start/afaq_edit_question_start/afaq_edit_answer_start), шов встал сразу после admin_questions (417 -> 435); quick 260906-8uq задача 4 (FAQ-04, «❓ В FAQ» из журнала): +5 handlers/admin_faq.py callback_query (afaq_from_question/afaq_draft_edit_question/afaq_draft_edit_answer/afaq_save_draft/afaq_cancel_draft), встали сразу после afaq_delete_go и перед afaq_new_start (тот же порядок, что и в исходном файле — новый блок кода вставлен между этими двумя хендлерами), чистая вставка (435 -> 440)
 
 
 # ── Task 2(a): Dispatcher feed_update smoke — cross-router first-match routing ─────────────

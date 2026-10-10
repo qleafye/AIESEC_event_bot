@@ -62,7 +62,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("🔄 Синхронизация таблицы", "admin_sync_sheet"),
     ("♻️ Пересобрать таблицу", "admin_rebuild_sheet"),
     # Phase 33 (delegate-card admin actions): «🔍 Сверить с БД» — тот же класс операции, что
-    # соседние две строки выше (handlers/admin_sheet_reconcile.py).
+    # соседние две строки выше (handlers/sheets/admin_sheet_reconcile.py).
     ("🔍 Сверить таблицу с базой", "admin_sheet_reconcile"),
     ("🧹 Убрать дубли из таблицы", "admin_dedupe_sheet"),
     ("⚙️ Настройки форума", "admin_settings"),

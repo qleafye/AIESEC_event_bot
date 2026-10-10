@@ -1,7 +1,7 @@
 """Координатор 25.09 — учёт доставки решения по заявке: разбор `users.decision_delivery_*`
 (колонки завёл `database.db`, пишет `services.application_effects`) на категории для «🔍 Сверить
 с БД» и «📨 Переотправить решения» (оба — `services/sheet_reconcile.py`/
-`handlers/admin_sheet_reconcile.py`, Phase 33).
+`handlers/sheets/admin_sheet_reconcile.py`, Phase 33).
 
 Память auto-approve-incident-260906: 38 заявок были одобрены молча без письма делегату, и
 узнать об этом раньше можно было только по логам сервера — этот модуль превращает разрыв в

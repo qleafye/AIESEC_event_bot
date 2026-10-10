@@ -722,7 +722,7 @@ async def show_admin_section(callback: types.CallbackQuery):
 # Quick 260902-vth: шов «🕓 Журналы в таблицу» — регистрируется ПОСЛЕДНИМ (после всех хендлеров
 # этого модуля), чтобы его строка в GOLDEN_SNAPSHOT (tests/test_refac_snapshot_260816.py)
 # встала строго в хвосте, а не разъехалась порядком с уже существующими хендлерами раздела.
-from handlers import admin_sheet_logs  # noqa: E402,F401
+from handlers.sheets import admin_sheet_logs  # noqa: E402,F401
 
 # Quick 260911-805 (W4-03, D-03): шов «🌙 Тихие часы» — импорт СРАЗУ ПОСЛЕ admin_sheet_logs
 # (тот же хвостовой приём), а не в handlers/admin.py: тот модуль на своём документированном
@@ -752,7 +752,7 @@ from handlers import admin_app_list  # noqa: E402,F401
 
 # Квик 260919-mlu (Task 3): шов «развилка при смене имени вкладки» — импорт СРАЗУ ПОСЛЕ
 # admin_app_list, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
-from handlers import admin_sheet_tabs  # noqa: E402,F401
+from handlers.sheets import admin_sheet_tabs  # noqa: E402,F401
 
 # Phase 31 (31-08, D-09/D-15): шов «🚫 Правила автоотказа» — импорт СРАЗУ ПОСЛЕ admin_sheet_tabs,
 # тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
