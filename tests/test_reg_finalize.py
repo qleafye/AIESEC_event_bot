@@ -1,4 +1,4 @@
-"""Phase 21 Plan 08 (FORM-SYNC-02/04): контракт общего финала — `services.reg_finalize.
+"""Phase 21 Plan 08 (FORM-SYNC-02/04): контракт общего финала — `services.registration.reg_finalize.
 finalize_data`/`post_finalize` — единого для бота (`handlers/registration.py::
 finalize_registration`) и джобы очереди Mini App (`services/infra/miniapp_outbox.py`, kind
 `reg_finalized`/`reg_edited`).
@@ -6,7 +6,7 @@ finalize_registration`) и джобы очереди Mini App (`services/infra/m
 pytest-asyncio недоступен — async через asyncio.run(), фикстура временной БД — тот же приём,
 что `tests/test_reg_drafts.py::_ready(tmp_path)`. Внешние эффекты (Sheets/Nextcloud/Telegram)
 мокаются monkeypatch'ем на модулях, где они реально импортированы и вызываются
-(`services.reg_finalize.post_finalize` делает ЛОКАЛЬНЫЕ импорты внутри функции — они
+(`services.registration.reg_finalize.post_finalize` делает ЛОКАЛЬНЫЕ импорты внутри функции — они
 резолвятся заново при каждом вызове, поэтому монкипатч исходного модуля срабатывает).
 """
 import asyncio
@@ -17,7 +17,7 @@ from database import db
 from handlers.access import admin_caps
 from handlers import registration as reg_mod
 import domain.regform.engine as reg_engine
-from services import reg_finalize as rf
+from services.registration import reg_finalize as rf
 from services.infra import miniapp_outbox
 from services.sheets import sheets as sheets_service
 from miniapp import outbox as mo

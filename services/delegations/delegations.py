@@ -43,7 +43,7 @@ from database.db import (
 )
 from services.delegations.delegations_course import _cutoff_dt, evaluate_ta, parse_course
 from services.ext_forms.ext_forms_match import username_from_value
-from services.reg_stuck_reset import _is_registration_state
+from services.registration.reg_stuck_reset import _is_registration_state
 from services.applications.reject_journal import AUTO_DECIDED_BY
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed

@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
-from services.consent import (
+from services.registration.consent import (
     purpose_reminder_text, PURPOSE_REMINDER_BUTTON, PURPOSE_REMINDER_CALLBACK,
 )
 from handlers.admin import router

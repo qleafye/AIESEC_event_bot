@@ -12,8 +12,8 @@ import aiosqlite
 
 from config import config
 from database import db as bot_db
-from services import reg_handoff
-from services.reg_handoff import SURFACE_BOT, SURFACE_APP, draft_holder
+from services.registration import reg_handoff
+from services.registration.reg_handoff import SURFACE_BOT, SURFACE_APP, draft_holder
 import domain.regform.engine as reg_engine
 
 USER_ID = 910100200

@@ -127,13 +127,13 @@ def test_finalize_registration_dispatch_is_the_only_branch():
     the finalize path. No direct append_to_*( calls may remain.
 
     Phase 21 (21-08): the append itself moved out of finalize_registration into the shared
-    services.reg_finalize.post_finalize (bot-direct call AND the Mini App outbox job now
+    services.registration.reg_finalize.post_finalize (bot-direct call AND the Mini App outbox job now
     share this one Sheets path) -- the guard now looks there instead.
 
     D-41 (регистрация на месте): запись строки листа вынесена из post_finalize в
-    services.reg_finalize.write_sheet_row без изменения поведения (её же зовёт одобрение у
+    services.registration.reg_finalize.write_sheet_row без изменения поведения (её же зовёт одобрение у
     стойки) — сторож смотрит туда, post_finalize обязан звать её."""
-    from services import reg_finalize as reg_finalize_mod
+    from services.registration import reg_finalize as reg_finalize_mod
 
     reg_src = inspect.getsource(reg.finalize_registration)
     assert "_sheet_dispatch" not in reg_src

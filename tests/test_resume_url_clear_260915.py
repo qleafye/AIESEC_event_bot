@@ -1,7 +1,7 @@
 """Квик 260915-4mv — очистка резюме в Mini App обязана чистить не только `reg_drafts`
 (квик 260912-l53), но и `users.resume_url` + ячейку «Резюме (ссылка)» в Google Sheets:
 `draft_patch` (`miniapp/routers/form.py`) при `clear: ["resume"]` зовёт
-`services.reg_finalize._apply_resume_url(telegram_id, full, None)` тем же путём, что запись
+`services.registration.reg_finalize._apply_resume_url(telegram_id, full, None)` тем же путём, что запись
 ссылки при загрузке (`handle_resume_upload`/`retry_pending_resume_uploads`).
 
 Харнесс — `tests/test_miniapp_resume_clear_260912.py` (та же временная БД, `_standard_seed`,
@@ -18,7 +18,7 @@ import logging
 
 from database import db as bot_db
 from handlers.reg.reg_schema import active_sheet_headers
-from services import reg_finalize as rf
+from services.registration import reg_finalize as rf
 from services.sheets import sheets as sheets_service
 
 from tests.test_miniapp_form import _fill

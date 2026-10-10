@@ -462,7 +462,7 @@ def _write_snapshot(path: Path, stats: dict, fetched_at: str) -> None:
 # найдены по сокращению?)». Сокращение ищется ТОЧНЫМ совпадением (casefold) целой строки
 # alias/canonical, не подстрокой — подстрока даёт ложные срабатывания («МГУ» — подстрока
 # внутри «АмГУ», сокращения Амурского гос. университета) и не отражает, как реально ищет
-# делегат (`services.lookup.normalize_alias`/`search_lookup` работают со строкой целиком,
+# делегат (`services.registration.lookup.normalize_alias`/`search_lookup` работают со строкой целиком,
 # не с произвольной подстрокой внутри чужого алиаса).
 KNOWN_UNIVERSITY_ABBREVIATIONS = [
     "МГУ", "СПбГУ", "ВШЭ", "МФТИ", "МГТУ", "ИТМО", "ЛЭТИ", "ТюмГУ", "НГУ", "УрФУ",
@@ -486,7 +486,7 @@ def check_known_universities(items: list[dict], abbreviations: list[str]) -> lis
 
 
 def find_alias_collisions(items: list[dict]) -> list[tuple[str, list[str]]]:
-    """Один нормализованный псевдоним (`services.lookup.normalize_alias`) у нескольких разных
+    """Один нормализованный псевдоним (`services.registration.lookup.normalize_alias`) у нескольких разных
     каноник — при посеве в `lookup_entries` (`UNIQUE INDEX (kind, alias_norm)`) выживет
     только первая по алфавиту вставка, остальные молча проигнорирует `INSERT OR IGNORE`
     (30-08 задача B, найдено при выборочной проверке: «МГУ» — легальное сокращение и у
@@ -494,7 +494,7 @@ def find_alias_collisions(items: list[dict]) -> list[tuple[str, list[str]]]:
     фильтрации Викиданных это не устраняет — данные реальные, коллизия языковая, не баг
     скрипта; диагностика для README/SUMMARY, решается вручную через экран менеджера
     «Справочники» (мёрдж-очередь), если конкретная коллизия окажется проблемой на практике."""
-    from services.lookup import normalize_alias
+    from services.registration.lookup import normalize_alias
 
     seen: dict[str, list[str]] = {}
     for item in items:

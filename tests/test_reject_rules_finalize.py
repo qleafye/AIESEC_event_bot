@@ -1,9 +1,9 @@
 """Phase 31 (31-06, D-01..D-32): интеграционные тесты — правила автоотказа врезаны в общий
-финал анкеты (`services.reg_finalize.finalize_data`/`post_finalize`), общий для чата и Mini
+финал анкеты (`services.registration.reg_finalize.finalize_data`/`post_finalize`), общий для чата и Mini
 App. Модель — `tests/test_reg_finalize.py`: async через `asyncio.run()` (pytest-asyncio
 недоступен в этом окружении), временная БД `_ready(tmp_path)`, внешние эффекты (Sheets/
 Nextcloud/Telegram) — monkeypatch на модулях, где они РЕАЛЬНО импортируются и вызываются
-(`services.reg_finalize` делает локальные импорты внутри функций — они резолвятся заново при
+(`services.registration.reg_finalize` делает локальные импорты внутри функций — они резолвятся заново при
 каждом вызове, поэтому монкипатч исходного модуля срабатывает, тот же приём, что в
 `test_reg_finalize.py`).
 """
@@ -13,7 +13,7 @@ import json
 from config import config
 from database import db
 import domain.regform.engine as reg_engine
-from services import reg_finalize as rf
+from services.registration import reg_finalize as rf
 import services.applications.reject_rules as reject_rules_mod
 from handlers import registration as reg_mod
 from services.sheets import sheets as sheets_service
@@ -53,7 +53,7 @@ _NARROW_UPDATE_ONLY = (
 async def _seed_user(uid, status="pending", **overrides):
     """`add_user`'s big INSERT only accepts a fixed column list — колонки фазы 31 (и `lang`)
     в него не входят вовсе; для них — узкий `update_user_answers` ПОСЛЕ `add_user`, тот же
-    приём, что использует сам `services.reg_finalize`."""
+    приём, что использует сам `services.registration.reg_finalize`."""
     row = {
         "telegram_id": uid,
         "full_name": "Иван Иванов",
@@ -825,7 +825,7 @@ def test_no_batch_sweep_functions_exist():
     структурная проверка отсутствия таких функций (то же, что grep-акцептанс плана)."""
     import re
 
-    for path in ("services/applications/reject_rules.py", "services/applications/reject_journal.py", "services/reg_finalize.py"):
+    for path in ("services/applications/reject_rules.py", "services/applications/reject_journal.py", "services/registration/reg_finalize.py"):
         with open(path, encoding="utf-8") as f:
             src = f.read()
         assert not re.search(r"def .*(apply_rules_to_queue|apply_to_pending|sweep)", src), path

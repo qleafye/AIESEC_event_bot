@@ -356,7 +356,7 @@ async def _seed_event_city() -> str | None:
     получает валидный `event_city` (модуль включён — `handlers/registration.py`'s city fork
     не пропускает дальше без выбора), либо `event_city` вовсе не участвует в резолве настроек
     (модуль выключен — `cities.get_setting_typed_for_city` тогда читает общее значение
-    независимо от `event_city`, см. `services/reg_finalize.py::finalize_data`). Сеялка раньше
+    независимо от `event_city`, см. `services/registration/reg_finalize.py::finalize_data`). Сеялка раньше
     всегда оставляла `event_city=NULL` при включённых городах — недостижимое для реальной
     анкеты состояние (стенд 16.09: тестер получил общий `approve_text` вместо городского).
 
@@ -373,7 +373,7 @@ def _home_city_name(forum_label: str) -> str:
     """Подпись города ФОРУМА -> название города для `users.city` (где делегат ЖИВЁТ).
 
     Приёмка 09.10: подпись форума несёт дату («Санкт-Петербург, 3 октября»), а `users.city`
-    питает подсказки вопроса «Выбери свой город» (`services.lookup.top_chips`) — засеянная
+    питает подсказки вопроса «Выбери свой город» (`services.registration.lookup.top_chips`) — засеянная
     подпись с датой вылезала у тестеров первой кнопкой. Дата отделена запятой."""
     return forum_label.split(",", 1)[0].strip() or forum_label
 

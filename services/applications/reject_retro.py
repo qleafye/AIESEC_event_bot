@@ -2,7 +2,7 @@
 
 Одна реализация на кнопку «Применить к уже поданным» (handlers/applications/admin_reject_retro.py) и на
 `tools/retro_auto_reject.py`. Решение по каждому делегату берёт тот же движок, что на подаче
-анкеты (`services.reg_finalize._auto_reject_patch`):
+анкеты (`services.registration.reg_finalize._auto_reject_patch`):
 
 - «на рассмотрении» -> автоотказ целиком (колонки, статус `rejected`, журнал, письмо с текстом
   правила через `apply_decision_effects` — тихие часы соблюдаются, решение
@@ -31,7 +31,7 @@ EXAMPLES_LIMIT = 5
 async def collect(since: str) -> list[tuple[dict, dict]]:
     """Кого затронут правила: пары (строка делегата, патч движка). Только чтение."""
     from database.db import get_all_users_dicts, get_setting
-    from services import reg_finalize
+    from services.registration import reg_finalize
 
     season = await get_setting("event_season")
     out = []

@@ -72,7 +72,7 @@ def _decision_suffix(status: str, decided_by, manager_labels: dict[int, str]) ->
        ДО проверки falsy ниже — сентинел сам по себе truthy (отрицательное число), без отдельной
        ветки решение правила провалилось бы в фолбэк «менеджер #<сентинел>».
     2. Falsy `decided_by` (NULL) — живой строки в `application_decisions` нет: отменённое
-       решение или автоодобрение без журнала (`services/reg_finalize.py::post_finalize`) —
+       решение или автоодобрение без журнала (`services/registration/reg_finalize.py::post_finalize`) —
        «автоматически» без глагола, решение принял не человек.
     3. Иначе — глагол + подпись менеджера из `resolve_decision_managers` (уже содержит фолбэк
        `менеджер #<id>`, HTML экранируем здесь — имя менеджера может быть произвольным текстом

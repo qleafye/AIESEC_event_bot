@@ -656,8 +656,8 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
     # reg_mode param, still used for the full/None branch) is untouched by Phase 7 and keeps
     # the original assertion.
     # Phase 21 (21-08): this read-site moved from finalize_registration into
-    # services.reg_finalize.finalize_data (shared with the Mini App outbox job).
-    from services import reg_finalize as reg_finalize_mod
+    # services.registration.reg_finalize.finalize_data (shared with the Mini App outbox job).
+    from services.registration import reg_finalize as reg_finalize_mod
     process_src = inspect.getsource(reg_steps_mod.process_full_name)
     # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
     # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
@@ -708,8 +708,8 @@ def test_full_approval_gate_equiv(tmp_path):
 
     # BLOCKER-1: finalize_data must feed reg_engine.decide_status via
     # get_setting_typed("full_approval"), not `get_setting("full_approval") or "manual"`.
-    # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
-    from services import reg_finalize as reg_finalize_mod
+    # Phase 21 (21-08): moved from finalize_registration into services.registration.reg_finalize.finalize_data.
+    from services.registration import reg_finalize as reg_finalize_mod
     # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
     # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
     # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
@@ -751,8 +751,8 @@ def test_short_approval_and_party_approval_equiv(tmp_path):
         new_status = reg_mod._decide_status("full", "manual", "auto", "party_overnight", typed)
         assert old_status == new_status, f"party_approval branch changed for raw={raw!r}"
 
-    # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
-    from services import reg_finalize as reg_finalize_mod
+    # Phase 21 (21-08): moved from finalize_registration into services.registration.reg_finalize.finalize_data.
+    from services.registration import reg_finalize as reg_finalize_mod
     # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
     # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
     # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
@@ -781,9 +781,9 @@ def test_pending_notify_mode_gate_equiv(tmp_path):
         assert old_is_instant == new_is_instant, f"pending_notify_mode mismatch raw={raw!r}"
 
     # Phase 21 (21-08): the admin-notify gate moved from finalize_registration into the
-    # shared services.reg_finalize.post_finalize (bot-direct call AND the Mini App outbox
+    # shared services.registration.reg_finalize.post_finalize (bot-direct call AND the Mini App outbox
     # job share this one notify path now).
-    from services import reg_finalize as reg_finalize_mod
+    from services.registration import reg_finalize as reg_finalize_mod
     finalize_src = inspect.getsource(reg_finalize_mod.post_finalize)
     assert 'get_setting_typed("pending_notify_mode")' in finalize_src, (
         "post_finalize does not resolve pending_notify_mode via get_setting_typed"
@@ -837,8 +837,8 @@ def test_raw_read_sites_preserved(tmp_path):
     # Task 2) deleted the registration_mode read from process_full_name outright (the short/full
     # fork moved to _resolve_track at flow start), so asserting its presence would contradict
     # the currently-correct source.
-    # Phase 21 (21-08): moved from finalize_registration into services.reg_finalize.finalize_data.
-    from services import reg_finalize as reg_finalize_mod
+    # Phase 21 (21-08): moved from finalize_registration into services.registration.reg_finalize.finalize_data.
+    from services.registration import reg_finalize as reg_finalize_mod
     process_src = inspect.getsource(reg_steps_mod.process_full_name)
     # Perf 260917: finalize_data стал тонкой обёрткой (settings_snapshot() + вызов
     # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот

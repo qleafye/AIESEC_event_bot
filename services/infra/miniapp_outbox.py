@@ -26,13 +26,13 @@ Telegram или пересобирать таблицу самому — еди�
   `request_resync()`. Ручные монеты из приложения делегату НЕ приходили вовсе: ветка умела
   только ребилд вкладок, тогда как путь из чата (мастер «🪙 Монеты», `/coins`) уведомлял. Текст
   один на оба пути, уведомление идёт через тихие часы.
-- `reg_finalized` / `reg_edited` -> `services.reg_finalize.post_finalize(bot, telegram_id, mode,
+- `reg_finalized` / `reg_edited` -> `services.registration.reg_finalize.post_finalize(bot, telegram_id, mode,
   ...)` (Phase 21, 21-08) — тот же хвост (Sheets/уведомления менеджерам/приветствие при
   auto-approve), что и прямой вызов из чата (`handlers/registration.py::finalize_registration`).
   Payload несёт только `telegram_id` (T-21-08) — для `reg_edited` недостающие
-  `changed_columns`/`remoderated`/`resubmitted` дочитывает `services.reg_finalize.
+  `changed_columns`/`remoderated`/`resubmitted` дочитывает `services.registration.reg_finalize.
   derive_edit_facts` из уже записанной `reg_answer_history`/`users.status`.
-- `reg_resume_upload` -> `services.reg_finalize.handle_resume_upload(bot, ...)` — резюме,
+- `reg_resume_upload` -> `services.registration.reg_finalize.handle_resume_upload(bot, ...)` — резюме,
   загруженное в Mini App: Nextcloud + ячейка «Резюме (ссылка)» + копия делегату в чат (D-05).
 - `reg_fsm_reset` (quick 260904-3vm, эстафета) -> сбрасывает FSM бота (`dp.storage`) для
   `telegram_id` из payload: `storage.set_state(key, None)` + `storage.set_data(key, {})`, где
@@ -88,7 +88,7 @@ from services.applications.application_effects import apply_decision_effects, ma
 from services.game.coins_notify import notify_manual_coins
 from services.game_digest import notify_submission
 from services.game.game_sync import request_resync
-from services.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
+from services.registration.reg_finalize import post_finalize, derive_edit_facts, handle_resume_upload
 from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 

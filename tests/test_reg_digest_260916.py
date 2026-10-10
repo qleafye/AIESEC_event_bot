@@ -582,7 +582,7 @@ def test_post_finalize_goes_through_reg_digest_only():
     services.reg_digest (иначе настройка режима молча перестала бы действовать на одном из
     двух путей подачи: чат и Mini App)."""
     import inspect
-    from services import reg_finalize
+    from services.registration import reg_finalize
     src = inspect.getsource(reg_finalize.post_finalize)
     assert "notify_application(" in src
     assert "await notify_by_capability(" not in src

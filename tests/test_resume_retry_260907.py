@@ -16,7 +16,7 @@ from datetime import datetime, timedelta
 from config import config
 from database import db
 from domain.settings.schema import SETTINGS_SCHEMA
-from services import nextcloud
+from services.registration import nextcloud
 from tests._dbtpl import fast_init_db
 
 
@@ -152,7 +152,7 @@ def test_retry_returns_zero_and_touches_nothing_when_not_configured(tmp_path, mo
     monkeypatch.setattr(config, "NEXTCLOUD_PUBLIC_URL", "")
     monkeypatch.setattr(config, "NEXTCLOUD_FOLDER_SHARE_TOKEN", "")
 
-    from services import reg_finalize
+    from services.registration import reg_finalize
 
     async def _boom(*a, **kw):
         raise AssertionError("get_resume_upload_backlog must not be called when unconfigured")
@@ -173,8 +173,8 @@ def test_retry_uploads_file_resume_and_updates_url(tmp_path, monkeypatch):
                  registration_date=_ts(30), resume_file_id="FILE101", resume_url=None,
                  event_city=None, participant_type=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
     from services.sheets import sheets as sheets_mod
 
     upload_calls = []
@@ -206,8 +206,8 @@ def test_retry_uploads_text_resume_with_txt_extension(tmp_path, monkeypatch):
     _insert_user(telegram_id=102, full_name="Текстовый", registration_date=_ts(30),
                  resume_text="мой текст резюме", resume_url=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
     from services.sheets import sheets as sheets_mod
 
     upload_calls = []
@@ -233,8 +233,8 @@ def test_retry_upload_returning_none_leaves_url_empty_and_no_exception(tmp_path,
     _insert_user(telegram_id=103, full_name="Неудача", registration_date=_ts(30),
                  resume_file_id="FILE103", resume_url=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
 
     async def _fake_upload_resume(bot, file_id, filename):
         return None
@@ -253,8 +253,8 @@ def test_retry_sheet_update_failure_does_not_roll_back_db_url(tmp_path, monkeypa
     _insert_user(telegram_id=104, full_name="Лист падает", registration_date=_ts(30),
                  resume_file_id="FILE104", resume_url=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
     from services.sheets import sheets as sheets_mod
 
     async def _fake_upload_resume(bot, file_id, filename):
@@ -278,8 +278,8 @@ def test_retry_dead_file_id_warns_and_is_skipped_until_restart(tmp_path, monkeyp
     _insert_user(telegram_id=105, full_name="Мёртвый файл", registration_date=_ts(30),
                  resume_file_id="FILE105", resume_url=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
     reg_finalize._resume_retry_dead.discard(105)  # изоляция от прочих тестов модуля
 
     upload_calls = []
@@ -312,8 +312,8 @@ def test_retry_oversized_file_is_marked_dead_and_not_uploaded(tmp_path, monkeypa
     _insert_user(telegram_id=108, full_name="Большой файл", registration_date=_ts(30),
                  resume_file_id="FILE108", resume_url=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
     reg_finalize._resume_retry_dead.discard(108)
 
     upload_calls = []
@@ -344,8 +344,8 @@ def test_retry_one_bad_row_does_not_block_the_next(tmp_path, monkeypatch):
     _insert_user(telegram_id=107, full_name="Успех", registration_date=_ts(30),
                  resume_file_id="FILE107", resume_url=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
     from services.sheets import sheets as sheets_mod
 
     calls = []

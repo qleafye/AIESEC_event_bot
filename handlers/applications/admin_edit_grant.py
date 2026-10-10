@@ -2,7 +2,7 @@
 кнопка на карточке `/find` для одобренного делегата (`handlers/admin.py::cmd_find_user`).
 Сам примитив исключения — `services/applications/delegate_overrides.py` (`kind="edit"`), общий с задачей 2.
 
-Видна только для `status == "approved"` — `services/reg_edit_policy.py::edit_gate` (Р-1 в её
+Видна только для `status == "approved"` — `services/registration/reg_edit_policy.py::edit_gate` (Р-1 в её
 докстринге) НИКОГДА не гейтит `rejected` (правка отклонённой анкеты технически неотличима от
 первичной подачи) и не гейтит `pending` при положении `until_decision` (гейт срабатывает,
 только когда `status == "approved"`) — исключение для любого другого статуса было бы

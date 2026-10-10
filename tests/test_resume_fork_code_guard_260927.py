@@ -213,8 +213,8 @@ def test_retry_skips_fork_code_and_marks_dead_but_uploads_real_text(tmp_path, mo
     _insert_user(telegram_id=202, full_name="Текст", registration_date=_ts(30),
                  resume_text="мой настоящий опыт", resume_url=None)
 
-    from services import reg_finalize
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize
+    from services.registration import nextcloud as nextcloud_mod
     from services.sheets import sheets as sheets_mod
 
     uploaded = []
@@ -249,7 +249,7 @@ def _post_finalize_env(tmp_path, monkeypatch):
     _patch_sheet_calls(monkeypatch)
     _patch_notify(monkeypatch)
     monkeypatch.setattr(config, "ADMIN_IDS", [])
-    from services import nextcloud as nextcloud_mod
+    from services.registration import nextcloud as nextcloud_mod
     uploaded = []
 
     async def _fake_upload_text_resume(text, filename):
@@ -263,7 +263,7 @@ def _post_finalize_env(tmp_path, monkeypatch):
 @pytest.mark.parametrize("text,expected_upload", [("link", False), (" Mini ", False), ("Мой опыт в проектах", True)])
 def test_post_finalize_skips_fork_code_text_resume(tmp_path, monkeypatch, text, expected_upload):
     uploaded = _post_finalize_env(tmp_path, monkeypatch)
-    from services import reg_finalize as rf
+    from services.registration import reg_finalize as rf
     from tests.test_reg_finalize import FakeBot, UID, _seed_user
 
     async def go():

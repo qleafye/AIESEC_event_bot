@@ -41,7 +41,7 @@ from domain.regform.engine import (
     STEP_TO_COLUMN, _LOOKUP_ENTITY_NAMES as _ENTITY_NAMES, lookup_other_allowed,
     lookup_render_flags, prompt, validate_answer,
 )
-from services.lookup import enqueue_merge, search_lookup, top_chips
+from services.registration.lookup import enqueue_merge, search_lookup, top_chips
 from domain.settings.schema import get_setting_typed
 
 _LOOKUP_LIMIT = 5
@@ -78,7 +78,7 @@ async def ask_step(step_key: str, message: types.Message, state: FSMContext,
     (`<list_key>_chips_enabled`/`_search_enabled`, план 30-07) — результат сохраняется в FSM
     data (`_lookup_chips_enabled`/`_lookup_search_enabled`), чтобы `receive_lookup_text` не
     считал их заново на каждое сообщение делегата. Если чипы включены — топ-8 частых значений
-    показываются СРАЗУ инлайн-кнопками (тот же список, что видит Mini App, `services.lookup.
+    показываются СРАЗУ инлайн-кнопками (тот же список, что видит Mini App, `services.registration.lookup.
     top_chips`) — делегат может тапнуть, не печатая ни буквы; `None` (вызов без `v2_flags`,
     сегодня такого нет) — оба атрибута читаются как выключенные (безопасный дефолт: сегодняшнее
     поведение без чипов)."""

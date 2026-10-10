@@ -952,7 +952,7 @@ async def post_finalize(
     `reg_finalized`/`reg_edited` (`services/infra/miniapp_outbox.py`) — один и тот же журнал вызовов
     Sheets/уведомлений для обеих поверхностей (T-21-02, Task 3 acceptance)."""
     from handlers.registration import _normalize_channel_ref, approve_user, is_subscribed
-    from services.nextcloud import upload_resume, upload_text_resume
+    from services.registration.nextcloud import upload_resume, upload_text_resume
 
     resume_url = None
     if resume_file_id:
@@ -1176,7 +1176,7 @@ async def handle_resume_upload(bot, telegram_id: int, file_id: str, filename: st
     запись `resume_url` узким UPDATE, обновление ячейки «Резюме (ссылка)» той же
     `update_row_by_id` (через `_apply_resume_url`), копия файла делегату в чат (подпись —
     `miniapp_upload_caption_resume`, тот же приём, что и у копии сдачи геймы, план 19-05)."""
-    from services.nextcloud import upload_resume
+    from services.registration.nextcloud import upload_resume
 
     full = await get_user(telegram_id) or {}
     try:
@@ -1218,7 +1218,7 @@ async def retry_pending_resume_uploads(bot, limit: int = 20) -> int:
 
     Гейт ДО любого обращения к БД и боту — на стендах без настроенного Nextcloud (например
     тестовый стенд) тик джобы не стоит ни одного запроса."""
-    from services.nextcloud import _resume_max_bytes, is_configured, upload_resume, upload_text_resume
+    from services.registration.nextcloud import _resume_max_bytes, is_configured, upload_resume, upload_text_resume
 
     if not is_configured():
         return 0

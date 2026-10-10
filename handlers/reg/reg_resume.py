@@ -20,8 +20,8 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import domain.regform.engine as reg_engine
 from database.db import get_user, get_reg_draft, delete_reg_draft, set_reg_draft_surface, upsert_reg_draft
 from domain.settings.schema import get_setting_typed
-from services.reg_handoff import SURFACE_BOT
-from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
+from services.registration.reg_handoff import SURFACE_BOT
+from services.registration import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb, get_main_menu_kb
 from handlers.registration import (

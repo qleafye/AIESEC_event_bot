@@ -18,7 +18,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_setting, record_user_consent
 from domain.settings.schema import get_setting_typed
-from services.consent import recollect_gate_on, outstanding_consents, tapped_button_text
+from services.registration.consent import recollect_gate_on, outstanding_consents, tapped_button_text
 from handlers.registration import router, _consent_entries, _prompt
 # Phase 27 (27-05, LANG-02/LANG-09): say()/tr_for() переводят UI-обвязку экрана пересогласия
 # (интро/подтверждение/алерт). Сам текст согласия (caption) переводится ТОЛЬКО ярусом A с

@@ -11,7 +11,7 @@ pytest-asyncio недоступен в этом окружении — async ч�
 - черновик не прочитался -> человеческое слово вместо числа, никогда не голые фигурные скобки;
 - `mark_nudged` (D-14, ровно один раз) и тихие часы (пропуск без пометки) не тронуты.
 
-Задача 2 (`handlers/registration.py::_resume_file_stem` mode / `services/reg_finalize.py`):
+Задача 2 (`handlers/registration.py::_resume_file_stem` mode / `services/registration/reg_finalize.py`):
 - реестровый тумблер `resume_filename_short_mode` включает режим "id" (только ID + дата) в
   `post_finalize`; сама `_resume_file_stem` остаётся чистой sync-функцией (Pitfall 4).
 """
@@ -234,8 +234,8 @@ def test_nudge_respects_quiet_hours(tmp_path, monkeypatch):
 
 def test_finalize_passes_mode_from_registry(tmp_path, monkeypatch):
     _ready(tmp_path, "resume_mode_finalize.db")
-    from services import reg_finalize as rf
-    from services import nextcloud as nextcloud_mod
+    from services.registration import reg_finalize as rf
+    from services.registration import nextcloud as nextcloud_mod
 
     UID = 940950
 

@@ -33,7 +33,7 @@ def _ready(tmp_path, name="reject_rules_badges.db"):
 
 
 # add_user's fixed INSERT column list doesn't include the Phase 31 columns — узкий UPDATE
-# после add_user, тот же приём, что services/reg_finalize.py и tests/test_reject_rules_finalize.py.
+# после add_user, тот же приём, что services/registration/reg_finalize.py и tests/test_reject_rules_finalize.py.
 _NARROW_UPDATE_ONLY = ("flagged_rule_ids", "auto_reject_rule_ids")
 
 
