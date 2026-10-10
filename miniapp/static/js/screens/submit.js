@@ -13,6 +13,7 @@
 import { emptyState, errorState, errorText, guardedRender, isCoreHandledError, screenText } from "../ui.js";
 import { icon } from "../icons.js";
 import { confetti, haptic } from "../motion.js";
+import { shrinkPhoto } from "../photo_shrink.js";
 
 const KIND_ICON = { photo: "image", document: "file-text", text: "pen-line", link: "link" };
 // Та же граница, что у сервера (routers/submissions.py::PHOTO_CONTENT_TYPES): HEIC/WebP и
@@ -152,24 +153,30 @@ async function draw(root, params, ctx) {
     class: "hidden",
   });
 
-  async function uploadOne(file) {
+  // Фото с камеры ужимается на телефоне (photo_shrink.js) ДО проверки размера и отправки:
+  // 1–5 МБ оригинала превращаются в 200–400 КБ JPEG. Строка части появляется сразу
+  // («загружается…»), сжатие идёт уже под ней; подпись — имя исходного файла.
+  async function uploadOne(original) {
     if (parts.length >= limits.max_parts) {
       say(`Больше ${limits.max_parts} частей в одну сдачу не влезет — нажмите «Готово».`);
       return;
     }
-    if (file.size > limits.max_bytes) {
-      // Проверка размера ДО отправки: текст из реестра, состояние — через errorState (D-18).
-      showUploadError(limits.too_large_text);
-      return;
-    }
     say("");
     clearUploadError();
-    const isPhoto = PHOTO_TYPES.has((file.type || "").toLowerCase()) && file.size <= limits.photo_max_bytes;
-    const part = { kind: isPhoto ? "photo" : "document", content: null, status: "uploading", label: file.name };
+    const isPhoto = PHOTO_TYPES.has((original.type || "").toLowerCase());
+    const part = { kind: isPhoto ? "photo" : "document", content: null, status: "uploading", label: original.name };
     parts.push(part);
     pending += 1;
     redraw();
     try {
+      const file = await shrinkPhoto(original);
+      if (file.size > limits.max_bytes) {
+        // Проверка размера ДО отправки: текст из реестра, состояние — через errorState (D-18).
+        const idx = parts.indexOf(part);
+        if (idx >= 0) parts.splice(idx, 1);
+        showUploadError(limits.too_large_text);
+        return;
+      }
       const form = new FormData();
       form.append("file", file, file.name);
       const res = await api("/uploads", { method: "POST", form });
@@ -184,7 +191,7 @@ async function draw(root, params, ctx) {
       if (err && err.status === 413) showUploadError(limits.too_large_text);
       else if (err && err.status === 400 && err.reason === "file_rejected") {
         showUploadError(errorText(err, limits.file_rejected_text));
-      } else showUploadError((limits.upload_failed_text || "{name}").replace("{name}", file.name));
+      } else showUploadError((limits.upload_failed_text || "{name}").replace("{name}", original.name));
     } finally {
       pending -= 1;
       redraw();

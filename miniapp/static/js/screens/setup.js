@@ -15,6 +15,7 @@
 
 import { errorState, flatRow, labelText } from "../ui.js";
 import { haptic } from "../motion.js";
+import { MAX_SIDE_ASSET, shrinkPhoto } from "../photo_shrink.js";
 import {
   field, setFieldState, settingSpec, confirmBox,
   errorText, isAuthError as isAuthErrorBase,
@@ -146,17 +147,20 @@ export async function render(root, params, ctx) {
   }
   const IMAGE_EXT_RE = /\.(jpe?g|png|webp)$/i;
 
-  async function handleFileUpload(item, el, file) {
-    if (item.type === "photo" && !(file.type || "").startsWith("image/") && !IMAGE_EXT_RE.test(file.name || "")) {
+  async function handleFileUpload(item, el, original) {
+    if (item.type === "photo" && !(original.type || "").startsWith("image/") && !IMAGE_EXT_RE.test(original.name || "")) {
       setFieldState(el, "error", { text: texts.error_toast_text || "" });
       return;
     }
+    // Фото-ключ ужимается на телефоне (photo_shrink.js, потолок 2560 — столько Telegram и
+    // так хранит у фото), файл-ключ уходит как есть. Лимит — у того, что реально уйдёт.
+    setFieldState(el, "uploading", { text: "" });
+    const file = item.type === "photo" ? await shrinkPhoto(original, { maxSide: MAX_SIDE_ASSET }) : original;
     const limits = await getUploadLimits();
     if (limits.max_bytes && file.size > limits.max_bytes) {
       setFieldState(el, "error", { text: texts.error_toast_text || "" });
       return;
     }
-    setFieldState(el, "uploading", { text: "" });
     try {
       const form = new FormData();
       form.append("file", file, file.name);
