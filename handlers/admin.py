@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from config import config
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # REG-02/REG-03: registry + typed accessor
-from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
+from services.infra.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from database.db import (
     get_stats,
     get_all_users_ids,
@@ -103,7 +103,7 @@ from services.scheduler import (
 )
 from services.allowlist import refresh_allowlist, allowlist_size
 from services import source_links
-from services.background import spawn as _spawn
+from services.infra.background import spawn as _spawn
 from services import decision_delivery
 from services.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport, clear_admin_flow_state

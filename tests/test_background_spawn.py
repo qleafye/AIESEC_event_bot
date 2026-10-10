@@ -1,4 +1,4 @@
-"""Regression: services.background.spawn must hold a strong ref so a fire-and-forget
+"""Regression: services.infra.background.spawn must hold a strong ref so a fire-and-forget
 coroutine is not garbage-collected mid-run (audit systemic finding — WR-02 / MD-01 /
 HI-01 / M-01 / MEDIUM-02). Also guards that the ref is released after completion so the
 set does not leak."""
@@ -6,7 +6,7 @@ set does not leak."""
 import asyncio
 import gc
 
-from services.background import spawn, _background_tasks
+from services.infra.background import spawn, _background_tasks
 
 
 def test_spawn_survives_dropped_ref_and_gc():

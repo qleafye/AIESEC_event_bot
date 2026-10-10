@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     BOT_TOKEN: SecretStr
     PROXY_URL: SecretStr | None = None
     # Backup proxy link (independent egress -- different tunnel/server/channel). If set,
-    # the bot rotates to it on TelegramNetworkError and stays sticky (services/proxy_session.py).
+    # the bot rotates to it on TelegramNetworkError and stays sticky (services/infra/proxy_session.py).
     PROXY_URL_BACKUP: SecretStr | None = None
     # Seconds to stay on the backup before retrying the primary proxy link.
     # DEPRECATED as a day-to-day setting (Phase 14, CFG-01): read ONCE at startup to seed

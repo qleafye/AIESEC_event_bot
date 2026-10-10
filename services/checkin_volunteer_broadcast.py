@@ -43,7 +43,7 @@ from database.db import (
 from services import scheduler as _sched
 from services.daily_digest import parse_time
 from services.reject_rules import forum_date_for
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

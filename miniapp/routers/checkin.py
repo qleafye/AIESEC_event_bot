@@ -672,7 +672,7 @@ async def checkin_points(
         else:
             cities_payload = [{"code": c["code"], "label": await city_label(c["code"])} for c in enabled]
 
-    from services.timeutil import msk_now  # лениво: тесты замораживают «сейчас» в модуле
+    from services.infra.timeutil import msk_now  # лениво: тесты замораживают «сейчас» в модуле
 
     points = [{
         "point": ENTRY_POINT, "label": ENTRY_POINT_LABEL, "live": None,
@@ -840,7 +840,7 @@ async def onsite_pending(
     stand = await _stand_city(request, p, city)
     if not await onsite_enabled(stand):
         return {"items": [], "enabled": False}
-    from services.timeutil import msk_now  # лениво: тесты замораживают «сейчас» в модуле
+    from services.infra.timeutil import msk_now  # лениво: тесты замораживают «сейчас» в модуле
 
     rows = await list_onsite_pending(
         city_scope=city_scope(stand) if stand else None, day=msk_now().strftime("%Y-%m-%d"),

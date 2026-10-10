@@ -19,7 +19,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import get_balance
-from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
+from services.infra.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from handlers.admin import router
 from handlers.states import CoinsTransfer
 from services import coins_transfer, ext_forms_google as gsheet

@@ -20,7 +20,7 @@ sqlite3 read-only). Прецедент — `shared/tg_media.py`/`shared/web_them
 - Сессии — `program_sessions` города + число отметок `session:{id}` и заполненность зала
   (`program_halls.capacity`), если вместимость задана.
 Все счётчики людей — COUNT(DISTINCT telegram_id): у входа строка на каждый день форума.
-Время в таблице отметок московское (конвенция `services.timeutil.msk_now`).
+Время в таблице отметок московское (конвенция `services.infra.timeutil.msk_now`).
 """
 from __future__ import annotations
 

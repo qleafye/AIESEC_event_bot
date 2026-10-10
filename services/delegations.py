@@ -45,7 +45,7 @@ from services.delegations_course import _cutoff_dt, evaluate_ta, parse_course
 from services.ext_forms_match import username_from_value
 from services.reg_stuck_reset import _is_registration_state
 from services.reject_journal import AUTO_DECIDED_BY
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,7 @@ _FIELD_SETTING_KEYS = {
 }
 
 # Бот и хранилище FSM — задаются один раз при старте (`main.py` -> `init(bot, dp.storage)`),
-# тот же приём, что `services.miniapp_outbox.init_fsm_storage`. Внутри джоб, если `init` не
+# тот же приём, что `services.infra.miniapp_outbox.init_fsm_storage`. Внутри джоб, если `init` не
 # звали, бот берётся из `services.scheduler.get_bot()`.
 _bot = None
 _storage = None
@@ -304,7 +304,7 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
     from services.application_effects import _record_delivery_fail_soft
     from services.i18n import context as i18n_context
     from services.i18n import tr
-    from services.telegram_send import send_with_retry
+    from services.infra.telegram_send import send_with_retry
 
     key = "delegation_welcome_existing_text" if existing else "delegation_welcome_text"
     template = await get_setting_typed(key) or ""

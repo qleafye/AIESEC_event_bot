@@ -20,7 +20,7 @@ services/, хендлеры — тонкий шов» (та же форма, ч�
 удалены из потока целиком; колонка `sos_reports.category` осталась в БД NULL-able ради
 обратной совместимости (старые строки), но новый код её никогда не пишет и не читает.
 
-Метки времени — московские (`services.timeutil.msk_now()`, конвенция квика 260912-mcj для
+Метки времени — московские (`services.infra.timeutil.msk_now()`, конвенция квика 260912-mcj для
 НОВОГО кода — SOS заведён 24.09, после этой конвенции, поэтому в
 `database.db._MSK_MIGRATION_COLUMNS`-исключение из UTC-семьи `delegate_questions` не
 наследует).
@@ -40,7 +40,7 @@ from datetime import date, datetime, timedelta
 from domain.cities import cities_module_on, get_setting_typed_for_city, per_city_key
 from database.db import advance_sos_claimed_remind, get_sos_report, set_sos_escalated
 from services.questions import format_stamp
-from services.timeutil import city_offset_hours, msk_now, shift_hours
+from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 

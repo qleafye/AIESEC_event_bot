@@ -79,7 +79,7 @@ async def _run_at_for_session(session: dict) -> datetime | None:
     delay = await _delay_minutes_for_city(session.get("city"))
     # Время сессии — местное время города, а планировщик живёт по Москве: переводим момент
     # отправки в МСК (Тюмень МСК+2: конец 11:00 местного = 09:00 МСК).
-    from services.timeutil import city_offset_hours
+    from services.infra.timeutil import city_offset_hours
     offset = await city_offset_hours(session.get("city"))
     return end_dt + timedelta(minutes=delay) - timedelta(hours=offset)
 
@@ -245,7 +245,7 @@ async def record_rating(telegram_id: int, session_id: int, rating: int) -> bool:
         return False
     if not await is_marked_for_session(telegram_id, session_id):
         return False
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     return await set_session_feedback_rating(telegram_id, session_id, rating, stamp)
@@ -254,7 +254,7 @@ async def record_rating(telegram_id: int, session_id: int, rating: int) -> bool:
 async def record_comment(telegram_id: int, session_id: int, comment: str) -> bool:
     if not await is_marked_for_session(telegram_id, session_id):
         return False
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     return await set_session_feedback_comment(telegram_id, session_id, comment.strip(), stamp)

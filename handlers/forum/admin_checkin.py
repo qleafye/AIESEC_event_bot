@@ -86,7 +86,7 @@ from services.checkin_not_arrived import (
 )
 from services.program import checkin_session_points, scanned_outside_session_window
 from services.reject_rules import forum_date_for
-from services.timeutil import city_offset_hours, msk_now, shift_hours
+from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 from services import checkin_arrival
 from services import checkin_csv_import as _csv_import
 

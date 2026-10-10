@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 import aiosqlite
 
 from database import db as _db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

@@ -187,7 +187,7 @@ async def defer_until(now: datetime, user_id: int) -> datetime | None:
     start, end = window
     # Окно тишины — по часам города делегата («🕐 Часовой пояс»; без настройки МСК, как раньше):
     # `now` приходит московским и возвращается московский момент, сдвиг — только внутри.
-    from services.timeutil import city_offset_hours, shift_hours
+    from services.infra.timeutil import city_offset_hours, shift_hours
     offset = await city_offset_hours(city_code)
     local_now = shift_hours(now, offset)
     if not is_quiet(local_now, start, end):
@@ -307,7 +307,7 @@ async def queued_count() -> int:
 
 async def flush_due(now: datetime) -> int:
     """Цель джобы: забирает строки с `due_at <= now`, закрытый диспетчер по `kind` (форма
-    `services/miniapp_outbox.py::_handle_row`) — неизвестный `kind` не исполняется никогда,
+    `services/infra/miniapp_outbox.py::_handle_row`) — неизвестный `kind` не исполняется никогда,
     строка помечается ошибкой. Логи несут только `id`/`kind`/`user_id`, никогда payload
     целиком (T-dq1-04/T-19-57). Возвращает число разобранных строк."""
     from database.db import list_due_delayed_notifications, mark_delayed_notification_sent

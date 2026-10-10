@@ -35,7 +35,7 @@ from datetime import datetime
 
 import domain.regform.engine as reg_engine
 from domain.regform.labels import REG_LABELS
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 # Вопрос анкеты (step_key) -> человеческая подпись, ТОЛЬКО через reg_engine.label_for —
 # движок сам знает про девять шагов, где setting_key расходится с step_key (план 21-13).

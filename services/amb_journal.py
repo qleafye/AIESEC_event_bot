@@ -120,7 +120,7 @@ async def on_invitees_approved(invitee_ids, *, changed_by: int | None = None,
 
 def _stamp(delta_hours: int = 0) -> str:
     from datetime import timedelta
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     return (msk_now() - timedelta(hours=delta_hours)).strftime("%Y-%m-%d %H:%M:%S")
 
 

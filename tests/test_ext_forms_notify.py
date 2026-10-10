@@ -7,7 +7,7 @@ from config import config
 from database import ext_forms_db as ef
 from services import ext_forms_notify as N
 from services import scheduler as sched
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 _FMT = "%Y-%m-%d %H:%M:%S"

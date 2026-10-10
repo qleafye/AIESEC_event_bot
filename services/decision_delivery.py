@@ -111,7 +111,7 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
     `reason` для отказа — `services.applications.last_rejection_reason` (единая точка правды
     причины ПОСЛЕДНЕГО отказа, та же, что читает делегатский экран статуса/карточка менеджера).
     429 — уже обработан ВНУТРИ `apply_decision_effects` (один ретрай,
-    `services.telegram_send.send_with_retry`); здесь — только пауза между итерациями (антифлуд,
+    `services.infra.telegram_send.send_with_retry`); здесь — только пауза между итерациями (антифлуд,
     тот же порядок, что `sheet_reconcile.py`).
 
     Двойной тап — тот же in-memory замок, что `sheet_reconcile.py::_claim/_release`, отдельным

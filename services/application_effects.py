@@ -29,7 +29,7 @@ from domain.regform.labels import STATUS_LABELS
 from services.applications import reject_message_text
 from services.decision_delivery import ERROR_BLOCKED, ERROR_CHAT_NOT_FOUND, ERROR_DEACTIVATED
 from services.sheets import bulk_update_status_in_sheet, update_status_in_sheet
-from services.telegram_send import send_with_retry
+from services.infra.telegram_send import send_with_retry
 
 logger = logging.getLogger(__name__)
 

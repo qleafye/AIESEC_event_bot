@@ -60,7 +60,7 @@ from database.db import (
     upsert_chat_username,
 )
 from services import chat_cleanup, chat_tracking
-from services.timeutil import aware_to_msk
+from services.infra.timeutil import aware_to_msk
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

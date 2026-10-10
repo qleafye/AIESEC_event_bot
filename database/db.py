@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import aiosqlite
 import domain.regform.options as reg_options
 from config import config
-from services.timeutil import msk_now, process_clock_is_utc
+from services.infra.timeutil import msk_now, process_clock_is_utc
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +249,7 @@ async def _ensure_hot_path_indexes(db: aiosqlite.Connection) -> list[str]:
 
 
 # Квик 260912-mcj: семья «сейчас» бота (все точки записи в этом файле переведены на
-# `services.timeutil.msk_now()` — см. коммит, добавивший этот модуль-уровневый импорт).
+# `services.infra.timeutil.msk_now()` — см. коммит, добавивший этот модуль-уровневый импорт).
 # strftime-колонки ("%Y-%m-%d %H:%M:%S") — одним UPDATE через SQLite `datetime(col, '+3 hours')`.
 # НЕ входят: `datetime.utcnow()`-семья (staff.added_at, delegate_questions.*,
 # reg_answer_history.changed_at, translations.updated_at), уже-московские поля ввода менеджера
@@ -331,7 +331,7 @@ async def _migrate_local_timestamps_to_msk(db: aiosqlite.Connection) -> None:
     Логика:
     1. `PRAGMA user_version` уже >= `_MSK_MIGRATION_USER_VERSION` -> выходим немедленно (цена
        повторного старта — один `PRAGMA` без сети/диска сверх открытого файла).
-    2. `process_clock_is_utc()` (`services.timeutil`) лжёт "нет" -> часы процесса не UTC,
+    2. `process_clock_is_utc()` (`services.infra.timeutil`) лжёт "нет" -> часы процесса не UTC,
        значит все старые строки уже писались локальным (московским) временем этой же машины
        (ноутбук разработчика, хост с локальным TZ) — сдвигать НЕЧЕГО. Экзотика «часы = UTC+1»
        намеренно тоже попадает в эту ветку: сдвигать вслепую по одному лишь «не UTC» опаснее,
@@ -2351,7 +2351,7 @@ async def init_db():
         )
 
         # Форум-ночь п.8 (идея №19, SOS): «🆘 SOS» — карточка в чат оргов + захват/решение/
-        # эскалация. Метки времени — московские (`services.timeutil.msk_now()`, конвенция
+        # эскалация. Метки времени — московские (`services.infra.timeutil.msk_now()`, конвенция
         # квика 260912-mcj для нового кода, delegate_questions/reg_answer_history остаются
         # UTC-исключением по docstring `_MSK_MIGRATION_COLUMNS` выше и SOS в него не входит).
         # `city` — СНИМОК города делегата на момент отправки (тот же приём, что
@@ -2747,7 +2747,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
 
     Две независимые ветки:
     1. `key == "delegate_lang_enabled"` — переключение модуля. Значение `"on"` запускает
-       фоновый `bulk_seed()` всего корпуса анкеты (`services.background.spawn`, НЕ голый
+       фоновый `bulk_seed()` всего корпуса анкеты (`services.infra.background.spawn`, НЕ голый
        `create_task` — слабые ссылки убивают фоновую работу, T-27-03-01). Значение `"off"`
        (или что угодно иное) — ничего не делает. Сам ключ НЕ является делегатским текстом
        (группа `toggles`, не в `DELEGATE_GROUPS`) и во вторую ветку не идёт.
@@ -2762,7 +2762,7 @@ async def _maybe_enqueue_translation(key: str, value) -> None:
     try:
         if key == "delegate_lang_enabled":
             if value == "on":
-                from services import background
+                from services.infra import background
                 from services.i18n_worker import bulk_seed
 
                 background.spawn(bulk_seed())
@@ -7782,7 +7782,7 @@ async def list_sos_reports_page(*, status: str | None = None, city_scope=None,
                                  today: str | None = None, limit: int = 6,
                                  offset: int = 0) -> list[dict]:
     """Страница экрана менеджера «🆘 SOS» (пункт 5 плана). `today` — «ГГГГ-ММ-ДД» (московская
-    дата, `services.timeutil.msk_now()`) — применяется ТОЛЬКО к фильтру "resolved" (пункт 5:
+    дата, `services.infra.timeutil.msk_now()`) — применяется ТОЛЬКО к фильтру "resolved" (пункт 5:
     «решённые ЗА СЕГОДНЯ»), открытые/взятые видны независимо от даты (они ждут действия сейчас,
     а не журнала). Неизвестный `status` -> без фильтра статуса вовсе (чип «Все»)."""
     where = []

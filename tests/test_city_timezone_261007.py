@@ -9,7 +9,7 @@ from datetime import datetime
 from config import config
 from database import db
 import domain.cities as cities
-from services import timeutil
+from services.infra import timeutil
 from tests._dbtpl import fast_init_db
 
 

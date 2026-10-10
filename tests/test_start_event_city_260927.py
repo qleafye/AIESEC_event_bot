@@ -27,7 +27,7 @@ from handlers import registration as reg
 from handlers.reg import reg_flow
 from handlers.reg import reg_resume
 from services import reg_finalize as rf
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 from tests.test_miniapp_form import bot_api  # noqa: F401 — фикстура для сторожей Mini App ниже
 from tests.test_reg_resume_draft import (

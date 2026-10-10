@@ -15,7 +15,7 @@ import aiosqlite
 import domain.cities as cities_mod
 from config import config as bot_config
 from database import db as bot_db
-from services import timeutil as timeutil_mod
+from services.infra import timeutil as timeutil_mod
 from services.checkin import ENTRY_POINT, build_payload
 
 from tests.test_miniapp_routes import (
@@ -650,7 +650,7 @@ def test_scan_outbox_failure_still_returns_success(tmp_path, monkeypatch):
 def test_stats_today_only_cities_with_forum_today(tmp_path):
     """Волонтёр без города в день форума СПб: «Сегодня» — только СПб, Москва с форумом через
     месяц не стоит в «сегодня» с нулём и не подмешивается в «Итого»."""
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     client = client_with(tmp_path)
     _run(bot_db.set_setting("event_city_enabled", "on"))
     _run(bot_db.set_setting("forum_date__city__spb", msk_now().strftime("%d.%m.%Y")))

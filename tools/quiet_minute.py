@@ -17,11 +17,11 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-# Квик 260912-mcj: `reg_drafts.updated_at` пишется московским `services.timeutil.msk_now()`
+# Квик 260912-mcj: `reg_drafts.updated_at` пишется московским `services.infra.timeutil.msk_now()`
 # процесса бота (до этого квика — `datetime.now()` часов контейнера, UTC на проде/стенде),
 # формат 'YYYY-MM-DD HH:MM:SS'. Скрипт запускается на хосте (stdlib, без импортов проекта),
 # поэтому свой литерал пояса — тот же приём, что у `dashboard/timeutil.py`/
-# `services/timeutil.py`/`miniapp/timeutil.py`, но эти сторожа «один литерал» покрывают
+# `services/infra/timeutil.py`/`miniapp/timeutil.py`, но эти сторожа «один литерал» покрывают
 # только `services/`+`handlers/` и `miniapp/`, не `tools/`. Сравниваем в Python, а не в SQL,
 # чтобы не зависеть от TZ хоста.
 _FMT = "%Y-%m-%d %H:%M:%S"

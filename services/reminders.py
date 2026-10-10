@@ -40,7 +40,7 @@ from database.db import (
     auto_reject_names, auto_reject_summary, get_city_counts, get_pending_count, get_setting,
     get_staff_city,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)

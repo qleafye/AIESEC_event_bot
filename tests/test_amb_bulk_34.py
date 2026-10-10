@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 
 from database import db
-from services import background
+from services.infra import background
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests.test_amb_candidates_34 import (
     ADMIN_ID,

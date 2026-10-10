@@ -22,7 +22,7 @@ from handlers.admin import router
 from domain.settings.validation import validate_setting_value
 from handlers.states import ChatCleanupEdit
 from services import chat_cleanup, chat_tracking
-from services.background import spawn
+from services.infra.background import spawn
 from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 
 logger = logging.getLogger(__name__)

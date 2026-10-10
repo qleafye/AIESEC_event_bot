@@ -43,7 +43,7 @@ from aiogram.types import (
 
 from config import config
 from domain.settings.schema import get_setting_typed
-from services.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
+from services.infra.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from database.db import (
     GAME_CATEGORIES,
     GAME_PROOF_TYPES,

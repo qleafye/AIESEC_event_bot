@@ -14,7 +14,7 @@ from dashboard import chat_rating
 from dashboard import db as dash_db
 from dashboard import queries
 from database import db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 CHAT = -1009286001

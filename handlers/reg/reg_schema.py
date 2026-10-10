@@ -622,7 +622,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     Координатор 25.09 (учёт доставки решения): возврат — `None` при успешной отправке ТЕКСТА
     решения (или его постановке в очередь тихих часов — контракт `quiet_hours.send_or_queue_text`
     здесь не считается провалом), иначе — итоговое исключение (после одного 429-ретрая,
-    `services.telegram_send.send_with_retry` — тот же приём, что у отказа в
+    `services.infra.telegram_send.send_with_retry` — тот же приём, что у отказа в
     `services/application_effects.py::apply_decision_effects`). Бонус (медиа) — best-effort:
     его сбой НЕ портит статус доставки решения (само письмо уже ушло), только логируется.
     Остаётся fail-soft: ни одна ветка не поднимает исключение наружу, вызывающий читает только
@@ -665,7 +665,7 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
             else:
                 await bot.send_message(telegram_id, complete_text, **kwargs)
 
-        from services.telegram_send import send_with_retry
+        from services.infra.telegram_send import send_with_retry
         send_err = await send_with_retry(_send_decision_text)
         if send_err is not None:
             logger.error(f"Failed to send completion/bonus to {telegram_id}: {send_err}")

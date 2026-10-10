@@ -15,7 +15,7 @@ would have been a regression THEN.
 
 Квик 260912-mcj перевернул эту часть вывода: вся семья «сейчас» бота (включая
 `reg_started.started_at`, которую сравнивает `_nudge_cutoff`) теперь пишется московским
-`services.timeutil.msk_now()`, а не часами контейнера, и все старые строки сдвинуты
+`services.infra.timeutil.msk_now()`, а не часами контейнера, и все старые строки сдвинуты
 одноразовой миграцией. Прежний вывод не «сломался» — он был верен, пока колонка хранила
 часы контейнера; теперь, когда колонка хранит Москву, симметрия ОБЯЗАНА быть восстановлена:
 `test_nudge_cutoff_stays_on_container_clock` заменён на `test_nudge_cutoff_uses_moscow_clock`
@@ -111,7 +111,7 @@ def test_moscow_tz_resolves_and_tzdata_declared():
 
 
 def test_moscow_literal_declared_exactly_once():
-    """The quoted "Europe/Moscow" literal must live in exactly one place (services/timeutil.py)
+    """The quoted "Europe/Moscow" literal must live in exactly one place (services/infra/timeutil.py)
     so the scheduler pin and the admin-input validations physically cannot read a different
     timezone — that divergence was the root cause of TZFIX-260816.
 
@@ -132,7 +132,7 @@ def test_moscow_literal_declared_exactly_once():
     assert total == 1, (
         f"пояс задаётся в одном месте, MOSCOW_TZ — нашли {total} вхождений в {hits}"
     )
-    assert hits[0][0].replace("\\", "/") == "services/timeutil.py"
+    assert hits[0][0].replace("\\", "/") == "services/infra/timeutil.py"
 
 
 def test_moscow_literal_under_miniapp_declared_exactly_once():

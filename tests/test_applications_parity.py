@@ -420,7 +420,7 @@ def test_render_application_card_prints_prev_reject_between_resubmit_and_consent
 #
 # Веб-путь здесь собран из тех же звеньев, что реально образуют production pipeline
 # (miniapp/routers/applications.py::_decide -> record_decision -> miniapp/outbox.py::
-# flush_application_decisions -> services/miniapp_outbox.py::drain -> apply_decision_effects/
+# flush_application_decisions -> services/infra/miniapp_outbox.py::drain -> apply_decision_effects/
 # mass_approve_effects) — не второй, укороченный путь. `effects_due_at` в прошлом (вместо
 # ожидания UNDO_WINDOW_SECONDS) — та же техника, что `_expire` в tests/test_miniapp_applications.py.
 
@@ -466,7 +466,7 @@ def test_bot_and_web_reach_same_state(tmp_path, monkeypatch):
     _run(applications.record_decision(1902, "approved", None, 999, _due_now()))
 
     import miniapp.outbox as web_outbox
-    import services.miniapp_outbox as bot_outbox
+    import services.infra.miniapp_outbox as bot_outbox
     _run(web_outbox.flush_application_decisions(datetime.now()))
     _run(bot_outbox.drain(bot))
 
@@ -515,7 +515,7 @@ def test_bot_and_web_reject_reach_same_state_with_identical_text(tmp_path, monke
     _run(applications.record_decision(1912, "rejected", reason, 999, _due_now()))
 
     import miniapp.outbox as web_outbox
-    import services.miniapp_outbox as bot_outbox
+    import services.infra.miniapp_outbox as bot_outbox
     _run(web_outbox.flush_application_decisions(datetime.now()))
     _run(bot_outbox.drain(bot))
 

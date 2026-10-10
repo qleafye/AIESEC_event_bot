@@ -45,13 +45,13 @@ from keyboards.builders import (
 )
 from services.sheets import append_to_sheet, append_to_named_sheet
 from services.nextcloud import upload_resume, upload_text_resume
-from services.background import spawn as _spawn
+from services.infra.background import spawn as _spawn
 # Phase 21 (21-08, FORM-SYNC-02/04, Pattern 4): common data+effects finale shared with the
-# Mini App outbox job (services/miniapp_outbox.py) — finalize_registration below is now a
+# Mini App outbox job (services/infra/miniapp_outbox.py) — finalize_registration below is now a
 # thin wrapper around these two.
 from services.reg_finalize import finalize_data, post_finalize, resolve_delegate_text
 from services import reg_edit_policy  # Квик 260911-w2m: гейт правки уже поданной анкеты
-from services.timeutil import msk_now  # Квик 260912-mcj: семья «сейчас» бота — московское время
+from services.infra.timeutil import msk_now  # Квик 260912-mcj: семья «сейчас» бота — московское время
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки без своей клавиатуры в builders.py —
 # domain/regform/options.py, та же точка правды, что читает reg_engine.step_spec() для Mini App.
 from domain.regform.options import (
@@ -2586,7 +2586,7 @@ async def finalize_registration(message: types.Message, state: FSMContext, bot: 
     `services.reg_finalize.finalize_data`, эффекты (Nextcloud/Sheets/уведомления
     менеджерам/приветствие при auto-approve) — `services.reg_finalize.post_finalize` — тот же
     путь, который зовёт джоба очереди для отправок из Mini App
-    (`services/miniapp_outbox.py::_handle_row`, kind `reg_finalized`/`reg_edited`).
+    (`services/infra/miniapp_outbox.py::_handle_row`, kind `reg_finalized`/`reg_edited`).
 
     Здесь остаётся то, что не может жить в общем (веб-совместимом) модуле: живой `message`
     (текст-подтверждение делегату уходит в ТОТ ЖЕ чат, откуда пришёл тап «Всё верно» —

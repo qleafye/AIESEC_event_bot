@@ -22,7 +22,7 @@ pytest-asyncio в этом окружении нет — каждый async-хе
 config.DB_PATH указывает на файл в tmp_path; та же конвенция, что в
 tests/test_city_admin_phase72.py и tests/test_city_export_stats_phase72.py.
 """
-from services.ru_plural import ru_plural
+from services.infra.ru_plural import ru_plural
 import asyncio
 import inspect
 from pathlib import Path

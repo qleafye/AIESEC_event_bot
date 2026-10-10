@@ -74,31 +74,31 @@ def teardown_function(_):
 
 def test_is_fresh_csv_scan_true_within_hour_today(monkeypatch):
     now = datetime(2026, 10, 30, 10, 0, 0)
-    monkeypatch.setattr("services.timeutil.msk_now", lambda: now)
+    monkeypatch.setattr("services.infra.timeutil.msk_now", lambda: now)
     assert fw._is_fresh_csv_scan("2026-10-30 09:15:00", False) is True
 
 
 def test_is_fresh_csv_scan_false_older_than_hour(monkeypatch):
     now = datetime(2026, 10, 30, 10, 0, 0)
-    monkeypatch.setattr("services.timeutil.msk_now", lambda: now)
+    monkeypatch.setattr("services.infra.timeutil.msk_now", lambda: now)
     assert fw._is_fresh_csv_scan("2026-10-30 08:59:00", False) is False
 
 
 def test_is_fresh_csv_scan_false_different_day(monkeypatch):
     now = datetime(2026, 10, 30, 10, 0, 0)
-    monkeypatch.setattr("services.timeutil.msk_now", lambda: now)
+    monkeypatch.setattr("services.infra.timeutil.msk_now", lambda: now)
     assert fw._is_fresh_csv_scan("2026-10-29 09:50:00", False) is False
 
 
 def test_is_fresh_csv_scan_false_when_approx(monkeypatch):
     now = datetime(2026, 10, 30, 10, 0, 0)
-    monkeypatch.setattr("services.timeutil.msk_now", lambda: now)
+    monkeypatch.setattr("services.infra.timeutil.msk_now", lambda: now)
     assert fw._is_fresh_csv_scan("2026-10-30 09:59:00", True) is False
 
 
 def test_is_fresh_csv_scan_false_empty_or_garbage(monkeypatch):
     now = datetime(2026, 10, 30, 10, 0, 0)
-    monkeypatch.setattr("services.timeutil.msk_now", lambda: now)
+    monkeypatch.setattr("services.infra.timeutil.msk_now", lambda: now)
     assert fw._is_fresh_csv_scan(None, False) is False
     assert fw._is_fresh_csv_scan("не время", False) is False
 
@@ -111,7 +111,7 @@ def test_should_send_live_sources_always_true():
 
 def test_should_send_csv_delegates_to_freshness(monkeypatch):
     now = datetime(2026, 10, 30, 10, 0, 0)
-    monkeypatch.setattr("services.timeutil.msk_now", lambda: now)
+    monkeypatch.setattr("services.infra.timeutil.msk_now", lambda: now)
     assert fw._should_send("csv", "2026-10-30 09:59:00", False) is True
     assert fw._should_send("csv", "2026-10-29 09:59:00", False) is False
 
@@ -215,7 +215,7 @@ def test_second_day_of_forum_does_not_resend(tmp_path):
     # Второй день -- имитируем сменой даты в самой отметке (UNIQUE по дню, "новый" вход).
     from datetime import timedelta
 
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     tomorrow = (msk_now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     _run(record_arrival(user, ENTRY_POINT, source="miniapp", scanned_at=tomorrow, bot=bot))
@@ -255,7 +255,7 @@ def test_csv_source_fresh_scan_sends(tmp_path, monkeypatch):
     _run(db.set_setting("forum_welcome_enabled", "on"))
     fw.register()
     _run(_add_delegate(UID))
-    from services import timeutil
+    from services.infra import timeutil
 
     # «Сейчас» — полдень: прогон около полуночи по МСК уводил скан «10 минут назад» во
     # вчерашний день, и первым входом форума он уже не считался.
@@ -290,7 +290,7 @@ def test_csv_source_approx_time_does_not_send(tmp_path):
     _run(db.set_setting("forum_welcome_enabled", "on"))
     fw.register()
     _run(_add_delegate(UID))
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     bot = FakeBot()

@@ -22,8 +22,8 @@ from datetime import datetime, timedelta
 
 from domain.cities import city_label_or_none, normalize_city
 from services import checkin_forum_day
-from services import timeutil
-from services.timeutil import city_offset_hours
+from services.infra import timeutil
+from services.infra.timeutil import city_offset_hours
 from services.checkin import ENTRY_POINT, parse_qr_payload, record_arrival, resolve_scanned_user
 from services.program import scanned_outside_session_window
 

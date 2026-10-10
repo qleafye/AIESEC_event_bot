@@ -318,7 +318,7 @@ def test_send_poll_resends_on_new_season(tmp_path, monkeypatch):
 
 def test_send_poll_ignores_mute(tmp_path, monkeypatch):
     """Решение владельца 26.09: опрос приходит всем неявившимся, «🔕» его не глушит."""
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     _ready(tmp_path)
     _run(_add_delegate(1))
     today = msk_now().strftime("%Y-%m-%d")

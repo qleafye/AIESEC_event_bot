@@ -136,5 +136,5 @@ def test_iso_with_zone_is_converted_to_moscow():
 
 def test_msk_from_timestamp_ignores_process_tz():
     from datetime import datetime
-    from services.timeutil import msk_from_timestamp
+    from services.infra.timeutil import msk_from_timestamp
     assert msk_from_timestamp(_EPOCH_0925_MSK) == datetime(2026, 10, 3, 9, 25, 0)

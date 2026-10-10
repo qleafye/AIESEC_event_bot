@@ -28,10 +28,10 @@ from database.db import (
     list_cities_rows, count_cities, insert_city,
 )
 from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed
-# Квик 260923-p37 (D-02): импорт МОДУЛЬНЫМ именем (не `from services.timeutil import msk_now as
+# Квик 260923-p37 (D-02): импорт МОДУЛЬНЫМ именем (не `from services.infra.timeutil import msk_now as
 # _msk_now`) — тест закрытия города монки-патчит именно `cities.msk_now`, чтобы заморозить
 # «сейчас» без правки системных часов.
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

@@ -21,7 +21,7 @@ from database import db
 from handlers.forum import session_feedback as sf_handlers
 from handlers.access.admin_caps import role_caps_key
 from handlers.states import EditSetting
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 900924101

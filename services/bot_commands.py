@@ -147,7 +147,7 @@ def schedule_sync(bot) -> asyncio.Task:
     """Синк через `DEBOUNCE_SECONDS`; правки внутри окна склеиваются в один."""
     global _pending
     if _pending is None or _pending.done():
-        from services.background import spawn
+        from services.infra.background import spawn
 
         _pending = spawn(_delayed_sync(bot))
     return _pending

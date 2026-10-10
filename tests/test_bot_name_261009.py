@@ -11,7 +11,8 @@ from aiogram.methods import SetMyName
 from config import config
 from database import db
 import services.scheduler as sched
-from services import bot_profile, miniapp_outbox
+from services import bot_profile
+from services.infra import miniapp_outbox
 import domain.settings.ops as settings_ops
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA

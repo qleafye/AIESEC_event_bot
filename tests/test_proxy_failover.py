@@ -1,4 +1,4 @@
-"""Regression tests for services.proxy_session (failover proxy chain for the Telegram
+"""Regression tests for services.infra.proxy_session (failover proxy chain for the Telegram
 bot session). No real network — AiohttpSession.make_request is monkeypatched with a fake
 transport that reads the session's *current* chain index to decide success/failure.
 
@@ -14,8 +14,8 @@ from aiohttp import ClientTimeout
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.exceptions import TelegramNetworkError
 
-import services.proxy_session as proxy_session
-from services.proxy_session import (
+import services.infra.proxy_session as proxy_session
+from services.infra.proxy_session import (
     FailoverAiohttpSession,
     build_proxy_chain,
     mask_proxy_url,
@@ -369,7 +369,7 @@ def test_rotation_alert_and_log_mask_credentials(monkeypatch, caplog):
     monkeypatch.setattr(AiohttpSession, "make_request", _fake_transport({0}, calls))
     fake_bot = _FakeBot()
     proxy_session.set_alert_bot(fake_bot)
-    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    caplog.set_level(logging.WARNING, logger="services.infra.proxy_session")
     try:
         async def go():
             session = FailoverAiohttpSession([secret_primary, BACKUP])
@@ -581,7 +581,7 @@ def test_warning_line_names_the_underlying_network_error(monkeypatch, caplog):
         return f"result-{idx}"
 
     monkeypatch.setattr(AiohttpSession, "make_request", fake)
-    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    caplog.set_level(logging.WARNING, logger="services.infra.proxy_session")
 
     async def go():
         session = FailoverAiohttpSession([PRIMARY, BACKUP])
@@ -642,7 +642,7 @@ def test_failover_cause_scrubs_credentials_from_log_and_alert(monkeypatch, caplo
     monkeypatch.setattr(AiohttpSession, "make_request", fake)
     fake_bot = _FakeBot()
     proxy_session.set_alert_bot(fake_bot)
-    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    caplog.set_level(logging.WARNING, logger="services.infra.proxy_session")
     try:
         async def go():
             session = FailoverAiohttpSession([PRIMARY, BACKUP])
@@ -666,7 +666,7 @@ def test_rotate_from_with_no_error_argument_logs_unknown_cause(caplog):
     involved) -- this is the "no error object available" path, e.g. a caller other than
     make_request's except branch. Distinct from the stale-observed-index dedup test below,
     which exercises the early-return no-op branch instead."""
-    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    caplog.set_level(logging.WARNING, logger="services.infra.proxy_session")
 
     async def go():
         session = FailoverAiohttpSession([PRIMARY, BACKUP])
@@ -965,7 +965,7 @@ def test_single_primary_blip_with_dead_backup_returns_without_dwell_wait(monkeyp
         return f"result-{self._index}"
 
     monkeypatch.setattr(AiohttpSession, "make_request", fake)
-    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    caplog.set_level(logging.WARNING, logger="services.infra.proxy_session")
 
     async def go():
         session = FailoverAiohttpSession([PRIMARY, BACKUP], dwell_seconds=30, time_source=clock)
@@ -1115,7 +1115,7 @@ def test_channel_with_a_success_since_applied_is_dwell_protected(monkeypatch, ca
         return "result-1"
 
     monkeypatch.setattr(AiohttpSession, "make_request", fake)
-    caplog.set_level(logging.WARNING, logger="services.proxy_session")
+    caplog.set_level(logging.WARNING, logger="services.infra.proxy_session")
 
     async def go():
         nonlocal backup_should_fail

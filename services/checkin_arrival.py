@@ -79,7 +79,7 @@ async def floor_report(city_sc, session_city: str | None, now) -> dict:
                 rows[name] = await cur.fetchall()
     # «Идут сейчас»: время сессий — местное время их города, поэтому флаг (последняя колонка)
     # пересчитываем по часам КАЖДОГО города строки, а не по московским из SQL.
-    from services.timeutil import city_offset_hours, shift_hours
+    from services.infra.timeutil import city_offset_hours, shift_hours
     hm_by_city: dict = {}
     fixed = []
     for row in rows["sessions"]:
@@ -97,7 +97,7 @@ async def floor_report(city_sc, session_city: str | None, now) -> dict:
 async def counter_day() -> str | None:
     """День, за который показывать счётчик «Пришли»: сегодня (МСК), если сегодня уже был хоть
     один вход (идёт день форума), иначе `None` — «за форум»."""
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     today = msk_now().strftime("%Y-%m-%d")
     async with _connect() as db:
