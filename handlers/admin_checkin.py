@@ -878,6 +878,7 @@ async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     enabled = await get_setting_typed_for_city("checkin_qr_broadcast_enabled", code)
     ev_time = await get_setting_typed_for_city("checkin_qr_broadcast_time", code) or "18:00"
     morn_time = await get_setting_typed_for_city("checkin_qr_morning_repeat_time", code) or "08:00"
+    catchup_until = await get_setting_typed_for_city("checkin_qr_morning_catchup_until", code) or "12:00"
     label = await city_label(code) if code else None
     on = enabled != "off"
 
@@ -885,6 +886,7 @@ async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
     lines.append(f"Рассылка: {'✅ Вкл' if on else '❌ Выкл'}")
     lines.append(f"Вечером (накануне форума): {ev_time}")
     lines.append(f"Утром (в день форума, неподтвердившим): {morn_time}")
+    lines.append(f"Если бот не работал утром — догнать повтор до: {catchup_until}")
     # D-35 (24.09): QR — служебное сообщение, тихие часы на него не действуют (см.
     # services/checkin_broadcast.py) — предупреждение про тихие часы на этом экране больше не
     # нужно, время не может «увести» отправку в другое время.
@@ -912,6 +914,10 @@ async def _qr_cfg_text_kb(code: str | None) -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(
             text=f"🌅 Утром: {morn_time}",
             callback_data=f"checkinqr_time:morning:{_encode_city(code)}",
+        )],
+        [InlineKeyboardButton(
+            text=f"⏳ Догонять повтор до: {catchup_until}",
+            callback_data=f"checkinqr_time:catchup:{_encode_city(code)}",
         )],
         [InlineKeyboardButton(text="◀️ Назад", callback_data="admin_checkin")],
     ])
@@ -968,12 +974,18 @@ async def checkinqr_time_start(callback: types.CallbackQuery, state: FSMContext)
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    key = "checkin_qr_broadcast_time" if which == "evening" else "checkin_qr_morning_repeat_time"
+    key, example = {
+        "evening": ("checkin_qr_broadcast_time", "18:00"),
+        "catchup": ("checkin_qr_morning_catchup_until", "12:00"),
+    }.get(which, ("checkin_qr_morning_repeat_time", "08:00"))
     await state.update_data(checkinqr_time_key=key, checkinqr_time_city=code)
     await state.set_state(CheckinQrTimeEdit.waiting_value)
-    example = "18:00" if which == "evening" else "08:00"
+    lead = (
+        "До скольки догонять утренний повтор, если бот не работал в его время" if which == "catchup"
+        else "Во сколько"
+    )
     await callback.message.answer(
-        f"Во сколько (по времени города: «🕐 Часовой пояс», без него — московское)? Формат <code>ЧЧ:ММ</code>, например "
+        f"{lead} (по времени города: «🕐 Часовой пояс», без него — московское)? Формат <code>ЧЧ:ММ</code>, например "
         f"<code>{example}</code>.",
         parse_mode="HTML",
         reply_markup=get_cancel_kb(),
@@ -1006,6 +1018,15 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
     if error:
         await message.answer(error, parse_mode="HTML", reply_markup=ReplyKeyboardRemove())
         return
+    if key == "checkin_qr_morning_catchup_until":
+        morning = await get_setting_typed_for_city("checkin_qr_morning_repeat_time", code) or "08:00"
+        if value <= morning:
+            await message.answer(
+                f"Это не позже утреннего повтора ({morning}) — догона не будет вовсе. Пришлите время "
+                f"позже {morning}, например <code>12:00</code>.",
+                parse_mode="HTML", reply_markup=ReplyKeyboardRemove(),
+            )
+            return
 
     if code and await cities_module_on():
         composed = per_city_key(key, code)
