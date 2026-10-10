@@ -1173,7 +1173,7 @@ async def coinsman_confirm(callback: types.CallbackQuery, state: FSMContext):
     notify_suffix = "" if notified else " (делегат не получил уведомление)"
 
     name = await _coinsman_display_name(user_id)
-    sign_word = "начислено" if delta >= 0 else "списано"
+    sign_word = "Начислено" if delta >= 0 else "Списано"
     await callback.answer("Готово")
     await callback.message.answer(
         f"🪙 {sign_word} {abs(delta)} {points_word(abs(delta))} для {name}.\n"
@@ -1226,7 +1226,7 @@ async def _coins_journal_screen(offset: int = 0) -> tuple[str, InlineKeyboardMar
             changed_by = row.get("changed_by")
             changer = await _coinsman_display_name(changed_by) if changed_by is not None else "—"
             lines.append(f"{when} · {recipient} · {sign}🪙 · {reason}")
-            lines.append(f"изменил: {changer}")
+            lines.append(f"Изменил: {changer}")
     text = "\n".join(lines)
 
     buttons: list[list[InlineKeyboardButton]] = []

@@ -494,6 +494,25 @@ def test_coinsman_confirm_triggers_game_resync(tmp_path, monkeypatch):
     assert resync_calls == [1]
 
 
+def test_manual_coins_replies_and_journal_start_lines_with_capital_letter(tmp_path):
+    """Приёмка 10.10: «🪙 начислено …», «списано», «изменил:» стояли в начале строки с маленькой."""
+    _db_ready(tmp_path)
+    _seed_delegate()
+    state = _new_state()
+    asyncio.run(state.update_data(cm_user_id=DELEGATE_ID, cm_sign="plus", cm_delta=5, cm_reason="за помощь"))
+    asyncio.run(state.set_state(CoinsManual.reason))
+    callback = FakeCallback("coinsman_confirm", user_id=ADMIN_ID)
+    asyncio.run(admin_gamification.coinsman_confirm(callback, state))
+    assert callback.message.answers_sent[-1].startswith("🪙 Начислено 5 баллов для ")
+
+    msg = FakeMessage(text="/coins @delegate1 -2 за опоздание")
+    asyncio.run(admin_mod.cmd_coins(msg, msg.bot))
+    assert msg.answers_sent[-1].startswith("🪙 Списано 2 балла для ")
+
+    text, _ = asyncio.run(admin_gamification._coins_journal_screen(offset=0))
+    assert "\nИзменил: " in text and "изменил:" not in text
+
+
 def test_coinsman_confirm_with_no_state_data_alerts_and_writes_nothing(tmp_path):
     """A stale/expired confirm screen (state already cleared) must not record anything."""
     _db_ready(tmp_path)
