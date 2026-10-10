@@ -1,10 +1,10 @@
 """Квик 260923 (AUTOREJ-REPORT, D-I): экран «📊 Отчётность автоотказа» — вкладка таблицы,
 потолок пачки уведомлений, кнопка «обновить вкладку сейчас». Новый маленький экран (не вкладка
-в `handlers/admin_reject_rules.py`, файл уже под потолком размера) — вход с экрана «🚫 Правила
+в `handlers/applications/admin_reject_rules.py`, файл уже под потолком размера) — вход с экрана «🚫 Правила
 автоотказа».
 
-Форма шва — та же, что у соседей раздела (`handlers/admin_reject_rules.py`,
-`handlers/admin_reject_journal.py`): своего `Router()` нет, хендлеры декорируют ОБЩИЙ
+Форма шва — та же, что у соседей раздела (`handlers/applications/admin_reject_rules.py`,
+`handlers/applications/admin_reject_journal.py`): своего `Router()` нет, хендлеры декорируют ОБЩИЙ
 `handlers.admin.router`, каждый декоратор — в одну строку (инвариант cap-теста).
 `handlers.admin` — на уровне модуля; `handlers.admin_sections` (`back_button`) — лениво внутри
 функций, тот же приём, что у каждого соседнего шва.
@@ -13,7 +13,7 @@
 журнала автоотказов (`admin_reject_journal`, `"moderate_reg"` — работа модератора), здесь нет
 разрыва прав между экраном-входом и этим экраном, поэтому повторная ручная проверка в каждом
 хендлере не нужна (`CapabilityMiddleware` уже достаточно — тот же расклад, что у
-`handlers/admin_reject_rules.py`).
+`handlers/applications/admin_reject_rules.py`).
 
 Правка обоих ключей (`auto_reject_sheet_tab`, `reg_submit_digest_max_minutes`) идёт через ОБЩИЙ
 редактор `settings_edit:{key}` (handlers/admin_settings.py) — второй редактор здесь не

@@ -2032,7 +2032,7 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     key = callback.data.split(":", 1)[1]
     admin_id = callback.from_user.id
     if key == "reject_rules_enabled":  # общий рубильник автоотказа — только без привязки к городу
-        from handlers.admin_reject_rules import MASTER_DENIED_TEXT
+        from handlers.applications.admin_reject_rules import MASTER_DENIED_TEXT
         from services.reject_rules import can_edit_city
         if not await can_edit_city(admin_id, None):
             return await callback.answer(MASTER_DENIED_TEXT, show_alert=True)
@@ -2515,7 +2515,7 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
     if await gscope.deny(message, key):  # привязанный к городу не пишет общее — и со старой клавиатуры
         return await state.clear()
     if key == "reject_rules_enabled":  # то же правило, что в settings_edit_start
-        from handlers.admin_reject_rules import MASTER_DENIED_TEXT
+        from handlers.applications.admin_reject_rules import MASTER_DENIED_TEXT
         from services.reject_rules import can_edit_city
         if not await can_edit_city(message.from_user.id, None):
             await state.clear()

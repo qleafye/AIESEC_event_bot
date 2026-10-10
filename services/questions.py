@@ -172,7 +172,7 @@ def format_stamp(raw: str | None, *, stored_utc: bool = True, offset_hours: int 
     Долг «`reg_answer_history.changed_at` пишется локальным временем» закрыт квиком
     260906-52m: `record_answer_history` переведена на `datetime.utcnow()`, все три точки
     показа (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
-    `handlers/admin_moderation.py::appr_history`) переключены на сдвиг в МСК. Долг «семья
+    `handlers/applications/admin_moderation.py::appr_history`) переключены на сдвиг в МСК. Долг «семья
     `edited_at`/`approved_at`/`registration_date` пишется локальным временем контейнера и
     отстаёт от Москвы на 3 часа» закрыт квиком 260912-mcj — эта семья теперь сама пишется
     московским `msk_now()`, показ (`format_edited_date`) больше не сдвигает её."""

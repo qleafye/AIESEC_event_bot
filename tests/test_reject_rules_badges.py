@@ -344,11 +344,11 @@ def test_queue_page_flagged_only_signature_present():
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════
-# Задача 2: карточка бота (handlers/admin_moderation.py) + список заявок (admin_app_list.py)
+# Задача 2: карточка бота (handlers/applications/admin_moderation.py) + список заявок (admin_app_list.py)
 # ═══════════════════════════════════════════════════════════════════════════════════════
 
 def test_render_application_card_prints_rule_lines_before_edited_line():
-    from handlers.admin_moderation import _render_application_card
+    from handlers.applications.admin_moderation import _render_application_card
 
     out = _render_application_card(
         {"full_name": "Иван"}, 1, 1,
@@ -359,7 +359,7 @@ def test_render_application_card_prints_rule_lines_before_edited_line():
 
 
 def test_render_application_card_cleared_line_replaces_resubmit_line():
-    from handlers.admin_moderation import _render_application_card
+    from handlers.applications.admin_moderation import _render_application_card
 
     out = _render_application_card(
         {"full_name": "Иван"}, 1, 1,
@@ -372,7 +372,7 @@ def test_render_application_card_cleared_line_replaces_resubmit_line():
 
 def test_render_application_card_without_new_params_is_byte_compatible():
     """Baseline: старый вызов без rule_lines/cleared_line печатает resubmit_line как раньше."""
-    from handlers.admin_moderation import _render_application_card
+    from handlers.applications.admin_moderation import _render_application_card
 
     out = _render_application_card({"full_name": "Иван"}, 1, 1, resubmit_line="🔁 Повторная подача")
     assert "🔁 Повторная подача" in out
@@ -381,7 +381,7 @@ def test_render_application_card_without_new_params_is_byte_compatible():
 def test_show_current_card_prints_escaped_rule_badge_end_to_end(tmp_path):
     """Карточка бота печатает бейдж пометки с экранированным именем правила — вызывающий
     (_show_current_card) прогоняет строку через html.escape перед рендером."""
-    from handlers import admin_moderation
+    from handlers.applications import admin_moderation
     from tests.test_city_admin_phase72 import FakeMessage, _new_state
 
     async def go():
@@ -398,7 +398,7 @@ def test_show_current_card_prints_escaped_rule_badge_end_to_end(tmp_path):
 
 
 def test_show_current_card_prints_cleared_badge_not_resubmit_end_to_end(tmp_path):
-    from handlers import admin_moderation
+    from handlers.applications import admin_moderation
     from tests.test_city_admin_phase72 import FakeMessage, _new_state
 
     async def go():
@@ -424,27 +424,27 @@ def test_show_current_card_prints_cleared_badge_not_resubmit_end_to_end(tmp_path
 
 
 def test_decision_suffix_auto_decided_by_shows_auto_rule_label():
-    from handlers.admin_app_list import _decision_suffix
+    from handlers.applications.admin_app_list import _decision_suffix
     from services.reject_journal import AUTO_DECIDED_BY
 
     assert _decision_suffix("rejected", AUTO_DECIDED_BY, {}) == " · 🤖 Автоправило"
 
 
 def test_decision_suffix_pending_status_empty_even_for_auto_sentinel():
-    from handlers.admin_app_list import _decision_suffix
+    from handlers.applications.admin_app_list import _decision_suffix
     from services.reject_journal import AUTO_DECIDED_BY
 
     assert _decision_suffix("pending", AUTO_DECIDED_BY, {}) == ""
 
 
 def test_decision_suffix_none_still_automatically():
-    from handlers.admin_app_list import _decision_suffix
+    from handlers.applications.admin_app_list import _decision_suffix
 
     assert _decision_suffix("rejected", None, {}) == " · автоматически"
 
 
 def test_decision_suffix_real_manager_uses_label_unchanged():
-    from handlers.admin_app_list import _decision_suffix
+    from handlers.applications.admin_app_list import _decision_suffix
 
     out = _decision_suffix("rejected", 12345, {12345: "Мария"})
     assert out == " · отклонил(а) Мария"
@@ -453,7 +453,7 @@ def test_decision_suffix_real_manager_uses_label_unchanged():
 def test_decision_suffix_manager_label_lookup_fallback_unchanged():
     """Плановый литеральный вызов (12345 vs словарь со строковым ключом) — фолбэк
     «менеджер #<id>» не изменился этой волной."""
-    from handlers.admin_app_list import _decision_suffix
+    from handlers.applications.admin_app_list import _decision_suffix
 
     out = _decision_suffix("rejected", 12345, {"12345": "Мария"})
     assert out == " · отклонил(а) менеджер #12345"
@@ -463,7 +463,7 @@ def test_admin_app_list_no_new_hardcoded_minus_one_literal():
     """Сентинел импортирован из services.reject_journal, не записан вторым литералом -1."""
     import inspect
 
-    from handlers import admin_app_list
+    from handlers.applications import admin_app_list
 
     src = inspect.getsource(admin_app_list._decision_suffix)
     assert "-1" not in src
