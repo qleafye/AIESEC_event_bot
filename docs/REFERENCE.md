@@ -231,92 +231,52 @@ Cloudflare Worker (reverse-proxy `api.telegram.org` на своём домене
 
 ## Структура проекта
 
+Снаружи — слои, внутри — домены. Ярусы `shared ⊂ domain ⊂ services ⊂ handlers`: нижний ярус
+не импортирует верхний. Правила сторожит `tests/test_layout_guard.py`.
+
 ```
 AIESEC_event_bot/
-├── main.py                    # Точка входа: роутеры, планировщик, фоновые циклы, логи
-├── config.py                  # pydantic-settings поверх .env
-├── domain/settings/schema.py         # SETTINGS_SCHEMA, реестр настроек bot_settings
-├── domain/settings/ops.py            # Правила настроек, общие для бота и Mini App, без aiogram
-├── domain/settings/validation.py     # Валидация значения настройки до записи в bot_settings
-├── domain/settings/synonyms.py       # Синонимы для поиска по настройкам в Mini App
-├── domain/cities.py                  # Реестр городов мероприятия (event_city)
-├── domain/regform/engine.py               # Ядро анкеты без aiogram, общее для бота и Mini App
-├── domain/regform/labels.py               # Подписи анкеты, корневой модуль без aiogram
-├── domain/regform/options.py              # Списки вариантов ответа анкеты
-├── domain/game/labels.py              # RU-подписи геймификации, корневой модуль без aiogram
-├── domain/regform/moderation_card.py          # Карточка заявки для модератора: что показывать, как обрезать
-├── shared/web_theme.py                # Пресеты оформления Mini App и дашборда
+├── main.py                 # Точка входа: роутеры, планировщик, фоновые циклы, логи
+├── config.py               # pydantic-settings поверх .env; других модулей в корне нет
 │
-├── handlers/                   # Модули ~800 строк, общий Router на группу (admin_*, reg_*)
-│   ├── admin.py                # Агрегатор админки: импортирует admin_* «швы» в один router
-│   ├── admin_core.py           # /admin, меню по правам, справка по настройкам
-│   ├── admin_sections.py       # SECTIONS: 8 разделов /admin по пути делегата
-│   ├── admin_settings.py       # Экраны настроек из SETTINGS_SCHEMA, вкладки таблицы, выгрузки
-│   ├── admin_settings_lists.py # Списочные настройки: правка по одному пункту
-│   ├── admin_moderation.py     # Заявки и чеки (appr_*/rcpt_*)
-│   ├── admin_modcard.py        # Экран «Поля карточки заявки»
-│   ├── admin_broadcasts.py     # Рассылки, фильтры, отложенные
-│   ├── admin_reg_config.py     # Тумблеры и тексты вопросов анкеты
-│   ├── admin_consent.py        # Версия согласия, напоминание о целях обработки
-│   ├── admin_cities.py         # Города, сброс/импорт сезона, дедупликация таблицы
-│   ├── admin_roles.py          # «Роли и доступы»; admin_caps.py, CapabilityMiddleware
-│   ├── admin_questions.py      # Журнал вопросов делегатов, ответ прямо из экрана
-│   ├── admin_polls.py          # Опросы: список, карточка с итогами
-│   ├── admin_poll_wizard.py    # Мастер создания опроса
-│   ├── admin_dashboard.py      # Экран «Дашборд», тумблеры блоков
-│   ├── admin_sheet_logs.py     # Экран «Журналы в таблицу»
-│   ├── admin_miniapp.py        # Экран «Оформление» Mini App: тумблеры и разделы
-│   ├── admin_miniapp_theme.py  # Пресеты оформления и ручки кастома
-│   ├── admin_gamification.py   # Задания, проверка сдач, монеты вручную, журнал, таблица геймы
-│   ├── admin_game_tasks.py     # Карточка правки задания, пресеты дедлайна, «Как видит делегат»
-│   ├── game_task_wizard.py     # Чистые рендеры визарда задания; game_review_render.py, карточки
-│   ├── game_submit_counter.py  # Сообщение-счётчик сдачи
-│   ├── registration.py         # /start, треки, согласия, предотбор, сводка
-│   ├── reg_schema.py           # REG_FLOW, SHEET_COLUMNS, реэкспорт reg_labels/reg_options
-│   ├── reg_steps.py            # process_*-хендлеры шагов
-│   ├── reg_flow.py             # Форки, отмена, подтверждение и возврат к шагу
-│   ├── reg_consent.py          # Пересогласие уже зарегистрированного делегата
-│   ├── reg_handoff.py          # Возврат владения черновиком боту после Mini App («эстафета»)
-│   ├── reg_resume.py           # Экран «Продолжить с шага N / Заново»
-│   ├── payment.py              # Выбор тарифа, реквизиты, загрузка чека
-│   ├── user_actions.py         # Меню делегата, вопросы, задания, монеты
-│   ├── polls.py                # Делегатская сторона опросов: poll_answer, итоги
-│   └── states.py               # FSM-состояния
+├── shared/                 # Только стандартная библиотека; образ дашборда копирует папку целиком
+│                           # web_theme, tg_media, arrival_stats, secret_redact, chat_score,
+│                           # amb_tier_keys, favicon
+├── domain/                 # Логика без aiogram: её импортируют бот и Mini App
+│   ├── settings/           # SETTINGS_SCHEMA (schema), правила (ops), валидация, поиск, синонимы
+│   ├── regform/            # Ядро анкеты (engine), пресеты, варианты, подписи, карточка заявки
+│   ├── game/labels.py      # Подписи геймификации и карточка задания
+│   ├── i18n/ui_en.py       # Английские подписи интерфейса
+│   ├── cities.py           # Реестр городов мероприятия
+│   └── payment.py          # Разбор тарифов оплаты
 │
-├── keyboards/builders.py       # Клавиатуры, динамическое меню
-├── database/db.py              # SQLite через aiosqlite, миграции, запросы
+├── handlers/               # aiogram. Четыре владельца роутеров наверху, швы — по доменам
+│   ├── admin.py            # Роутер админки; швы импортируются из его тела, порядок = first-match
+│   ├── registration.py     # Роутер анкеты: /start, треки, согласия, сводка
+│   ├── user_actions.py     # Меню делегата, вопросы, задания, монеты
+│   ├── payment.py          # Тариф, реквизиты, чек
+│   ├── states.py           # FSM-состояния
+│   └── access/ amb/ applications/ chat/ cities/ comms/ delegations/ ext_forms/
+│       forum/ game/ i18n/ reg/ regform/ settings/ sheets/
 │
-├── services/
-│   ├── sheets.py                # Google Sheets: заголовки, запись, пересборка, дедуп
-│   ├── sheet_logs.py            # Журнал операций записи в таблицу
-│   ├── game_sheets.py           # План вкладок геймы (общие + по городам)
-│   ├── game_sync.py             # Debounce-автосинк вкладок геймы
-│   ├── game_digest.py           # Дайджест сдач менеджерам вместо сообщения на каждую
-│   ├── proxy_session.py         # Failover прокси / Bot API хоста
-│   ├── scheduler.py             # APScheduler: отложенные рассылки, напоминания об оплате
-│   ├── reminders.py             # Периодическая сводка админам по заявкам
-│   ├── allowlist.py             # Кэш списка отобранных (предотбор)
-│   ├── nextcloud.py             # Загрузка резюме по WebDAV
-│   ├── background.py            # fire-and-forget со strong-ref (защита от GC)
-│   ├── consent.py               # Проверка принятых согласий
-│   ├── questions.py             # Статус вопросов делегатов (без ответа/в работе/отвечен)
-│   ├── quiet_hours.py           # Тихие часы для рассылок и напоминаний
-│   ├── reg_finalize.py          # Финализация анкеты: запись в БД, резюме, вкладка таблицы
-│   ├── reg_handoff.py           # Эстафета черновика анкеты между ботом и Mini App
-│   ├── applications.py          # Решение по заявке (approve/reject), общее для бота и Mini App
-│   ├── application_effects.py   # Побочные эффекты решения: уведомление, строка в таблице
-│   ├── miniapp_outbox.py        # Очередь эффектов Mini App, разбирает бот
-│   ├── polls.py                 # Отправка опроса, сбор ответов
-│   ├── heartbeat.py             # Heartbeat-файл для Docker HEALTHCHECK
-│   └── timeutil.py              # Общие хелперы работы с датой/временем
+├── services/               # Бизнес-логика бота, подпакеты по тем же доменам
+│   ├── access/ amb/ applications/ bot/ chat/ cities/ comms/ delegations/ ext_forms/
+│   │   forum/ game/ i18n/ infra/ registration/ settings/ sheets/
+│   ├── scheduler.py        # APScheduler. Он и другие модули с целями сохранённых джоб
+│   │                       # (daily_digest, checkin_broadcast, sos, …) лежат здесь намеренно:
+│   │                       # jobs.sqlite хранит цель строкой «модуль:функция»
+│   │                       # (список — tests/test_scheduler_job_entry_paths.py)
+│   └── heartbeat.py        # Heartbeat-файл для Docker HEALTHCHECK (`python -m services.heartbeat`)
 │
-├── dashboard/                  # FastAPI: read-only статистика, см. README, «Дашборд статистики»
-├── miniapp/                    # FastAPI: Mini App делегата и менеджера, см. README, «Mini App»
-├── docs/                       # ADMIN_GUIDE, ADMIN_CHEATSHEET, BOT_GUIDE, DEPLOY-DOMAIN и другие
-├── scripts/                    # Разовые утилиты (бэкфилл резюме, диагностика колонок)
-├── tests/                      # pytest, около 3700 тестов; conftest.py фиксирует порядок импорта хендлеров
-├── resources/                  # Опциональные fallback-фото
-└── data/                       # Рантайм: forum.db, jobs.sqlite, broadcast_target.txt
+├── keyboards/builders.py   # Клавиатуры, динамическое меню
+├── database/               # db.py (SQLite через aiosqlite, миграции) + <домен>_db.py
+├── dashboard/              # FastAPI: read-only статистика, см. README, «Дашборд статистики»
+├── miniapp/                # FastAPI: Mini App делегата и менеджера, см. README, «Mini App»
+├── docs/                   # ADMIN_GUIDE, ADMIN_CHEATSHEET, BOT_GUIDE, DEPLOY-DOMAIN и другие
+├── scripts/, tools/        # Разовые утилиты и эксплуатационные скрипты
+├── tests/                  # pytest; корень репозитория — tests/_paths.REPO_ROOT
+├── resources/              # Опциональные fallback-фото
+└── data/                   # Рантайм: forum.db, jobs.sqlite, broadcast_target.txt
 ```
 
 ## База данных
