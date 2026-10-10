@@ -664,7 +664,7 @@ def test_deliver_poll_outside_quiet_hours_unchanged(tmp_path):
 
 
 def test_poll_wizard_confirm_screen_warns_about_quiet_hours(tmp_path):
-    from handlers import admin_poll_wizard as wiz
+    from handlers.comms import admin_poll_wizard as wiz
 
     _ready(tmp_path, "qh_poll_wizard.db")
 

@@ -1,5 +1,5 @@
 """Quick 260904-2cj (QJRN-01..04): журнал вопросов делегатов в Mini App — та же поверхность,
-что «❓ Вопросы делегатов» в чате бота (`handlers/admin_questions.py`, импортировать нельзя —
+что «❓ Вопросы делегатов» в чате бота (`handlers/comms/admin_questions.py`, импортировать нельзя —
 aiogram), правило статуса и постраничная выборка — ОБЩИЕ (`services/questions.py`,
 `database.db.list_questions_page`/`count_questions_by_status`), второй копии правила здесь нет.
 
@@ -141,7 +141,7 @@ async def _item(row: dict, module_on: bool, city_labels: dict[str, str]) -> dict
         "answer_text": row.get("answer_text"),
         "can_answer": status != "answered",
         # Quick 260906-8uq (FAQ-06): кнопка «В FAQ» — только под ОТВЕЧЕННЫМ вопросом,
-        # симметрично боту (handlers/admin_questions.py::render_questions_screen).
+        # симметрично боту (handlers/comms/admin_questions.py::render_questions_screen).
         "can_add_to_faq": status == "answered",
     }
 

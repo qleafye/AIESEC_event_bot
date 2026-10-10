@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 from config import config
 from database import db
-from handlers import admin_broadcasts
+from handlers.comms import admin_broadcasts
 from services import broadcast_run as br
 from tests._dbtpl import fast_init_db
 

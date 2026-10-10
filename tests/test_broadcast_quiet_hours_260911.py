@@ -10,7 +10,7 @@
 
 Стиль и фейки — `tests/test_broadcast_confirm_stop_260910.py` (FakeBot/FakeState/FakeMessage,
 `asyncio.run`, `config.DB_PATH` в tmp_path). Значения тихих часов — через `db.set_setting`,
-«сейчас» — монкипатчем `_now_moscow_naive` в модуле `handlers.admin_broadcasts` (та же манера,
+«сейчас» — монкипатчем `_now_moscow_naive` в модуле `handlers.comms.admin_broadcasts` (та же манера,
 что `tests/test_quiet_hours_260904.py::test_broadcast_schedule_*`).
 """
 import asyncio
@@ -19,7 +19,7 @@ from types import SimpleNamespace
 
 from config import config
 from database import db
-from handlers import admin_broadcasts
+from handlers.comms import admin_broadcasts
 from handlers.states import Broadcast
 from tests._dbtpl import fast_init_db
 

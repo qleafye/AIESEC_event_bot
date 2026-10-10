@@ -1,5 +1,5 @@
 """Фильтр рассылки по статусу заявки показывает слова, а не pending/approved/rejected."""
-from handlers import admin_broadcasts as ab
+from handlers.comms import admin_broadcasts as ab
 
 
 def test_value_picker_shows_human_status_labels():

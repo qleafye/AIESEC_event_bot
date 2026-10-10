@@ -505,7 +505,7 @@ async def pending_broadcast_count(city: str | None) -> int:
 # присылать сегодня» тоже НЕ фильтрует получателей — `send_broadcast`/`send_morning_repeat`
 # ниже НИКОГДА не проверяют ни `services.quiet_hours`, ни список заглушивших «🔕» из `database.db`,
 # в отличие от обычных рассылок (`services/scheduler.py::send_scheduled_broadcast`,
-# `handlers/admin_broadcasts.py::bc_go`) — это НЕ упущение, а осознанное отличие служебного
+# `handlers/comms/admin_broadcasts.py::bc_go`) — это НЕ упущение, а осознанное отличие служебного
 # сообщения от рассылки.
 
 def _confirm_kb(lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:

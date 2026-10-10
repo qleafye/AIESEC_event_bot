@@ -7,7 +7,7 @@
 тот же харнес FakeCallback/FakeMessage/FakeState).
 
 Правило двойной регистрации поля (прецедент Фазы 5, D-19): поле фильтра обязано быть в ОБОИХ
-местах — `db._FILTER_COLUMNS` и `handlers.admin_broadcasts._PICKER_FIELDS`. Если поле есть
+местах — `db._FILTER_COLUMNS` и `handlers.comms.admin_broadcasts._PICKER_FIELDS`. Если поле есть
 только в одном из двух, оно либо не доходит до SQL (виден на экране, молча не фильтрует),
 либо не появляется на экране вовсе.
 
@@ -25,7 +25,7 @@ from tests._dbtpl import fast_init_db
 # ── двойная регистрация + SQL-сторож (границы с 31-02, не дублируется, только проверка связки) ──
 
 def test_auto_reject_double_registration():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert "auto_reject" in admin_broadcasts._PICKER_FIELDS
     assert "auto_reject" in db._FILTER_COLUMNS
 
@@ -35,7 +35,7 @@ def test_auto_reject_is_virtual_field():
 
 
 def test_filter_field_label_auto_reject():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     assert admin_broadcasts._FILTER_FIELD_LABELS["auto_reject"] == "Автоотказ по правилу"
 
 
@@ -164,13 +164,13 @@ def _btn_texts(kb):
 
 
 def test_filter_menu_kb_default_has_no_auto_reject_button():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     kb = admin_broadcasts._filter_menu_kb([])
     assert "filter_f_auto_reject" not in _cb_datas(kb)
 
 
 def test_filter_menu_kb_show_auto_reject_adds_exactly_one_button():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     kb_before = admin_broadcasts._filter_menu_kb([])
     kb = admin_broadcasts._filter_menu_kb([], show_auto_reject=True)
     assert len(kb.inline_keyboard) == len(kb_before.inline_keyboard) + 1
@@ -180,7 +180,7 @@ def test_filter_menu_kb_show_auto_reject_adds_exactly_one_button():
 def test_render_filter_menu_mixed_auto_reject_shows_button(tmp_path):
     _seed_auto_reject_users(tmp_path, "render_mixed_auto_reject.db", [(1, "[1]"), (2, None)])
     config.ADMIN_IDS = [ADMIN_ID]
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_auto_reject" in _cb_datas(msg.markup)
@@ -192,7 +192,7 @@ def test_render_filter_menu_no_auto_rejects_hides_button(tmp_path):
     config.DB_PATH = str(tmp_path / "render_no_auto_reject.db")
     config.ADMIN_IDS = [ADMIN_ID]
     fast_init_db()
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     msg = FakeMessage()
     asyncio.run(admin_broadcasts._render_filter_menu(msg, [], edit=True))
     assert "filter_f_auto_reject" not in _cb_datas(msg.markup)
@@ -205,7 +205,7 @@ def test_filter_pick_field_auto_reject_no_data_alerts_and_does_not_open_picker(t
     config.DB_PATH = str(tmp_path / "pick_no_auto_reject.db")
     config.ADMIN_IDS = [ADMIN_ID]
     fast_init_db()
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_auto_reject")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
@@ -220,7 +220,7 @@ def test_filter_pick_field_auto_reject_no_data_alerts_and_does_not_open_picker(t
 def test_filter_pick_field_auto_reject_mixed_base_shows_two_human_buttons(tmp_path):
     _seed_auto_reject_users(tmp_path, "pick_mixed_auto_reject.db", [(1, "[1]"), (2, None)])
     config.ADMIN_IDS = [ADMIN_ID]
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_auto_reject")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
@@ -235,7 +235,7 @@ def test_filter_pick_field_auto_reject_mixed_base_shows_two_human_buttons(tmp_pa
 def test_filter_pick_value_auto_reject_yes_carries_human_label(tmp_path):
     _seed_auto_reject_users(tmp_path, "pick_value_auto_reject_yes.db", [(1, "[1]"), (2, None)])
     config.ADMIN_IDS = [ADMIN_ID]
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_auto_reject")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
@@ -249,7 +249,7 @@ def test_filter_pick_value_auto_reject_yes_carries_human_label(tmp_path):
 
 
 def test_filter_summary_auto_reject_human_readable():
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     summary = admin_broadcasts._filter_summary(
         [{"field": "auto_reject", "value": db.AUTO_REJECT_YES, "label": "Отклонён правилом"}]
     )
@@ -260,7 +260,7 @@ def test_count_and_list_filtered_via_picked_auto_reject_spec(tmp_path):
     """Счётчик меняется: спека, собранная пикером, отдаёт ровно автоотклонённых."""
     _seed_auto_reject_users(tmp_path, "counter_auto_reject.db", [(1, "[1]"), (2, None), (3, None)])
     config.ADMIN_IDS = [ADMIN_ID]
-    from handlers import admin_broadcasts
+    from handlers.comms import admin_broadcasts
     cb = FakeCallback("filter_f_auto_reject")
     state = FakeState()
     asyncio.run(admin_broadcasts.filter_pick_field(cb, state))
