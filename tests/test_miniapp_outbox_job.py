@@ -69,7 +69,8 @@ def test_submission_created_calls_notify_submission_with_expected_args(tmp_path,
     assert len(calls) == 1
     called_bot, kwargs = calls[0]
     assert called_bot is bot
-    assert kwargs == payload
+    expected = {k: v for k, v in payload.items() if k != "task_text"}
+    assert kwargs == expected | {"task_title": "Пост со скрином"}  # старая строка без названия
     row = _run(_fetchall("SELECT processed_at FROM miniapp_outbox WHERE id = ?", (row_id,)))[0]
     assert row["processed_at"]
 
