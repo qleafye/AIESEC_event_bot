@@ -399,8 +399,11 @@ def test_render_snapshot_reg(tmp_path):
         "reg_case_optin_description_text",
         # Phase 28 (28-03, SU-02): лимит мультивыбора — числа + тексты, сразу после
         # reg_case_optin_description_text (handlers/admin_settings.py::_REG_FIELD_ORDER).
-        "reg_multi_max_goal", "reg_multi_max_stack",
-        "reg_multi_limit_hint_text", "reg_multi_limit_counter_text", "reg_multi_limit_error_text",
+        # 10.10: лимит блоков портфолио и две подсказки «минимум» / «от — до» — читались в
+        # чате, правились только в приложении.
+        "reg_multi_max_goal", "reg_multi_max_stack", "reg_repeatable_max_mini_portfolio",
+        "reg_multi_limit_hint_text", "reg_multi_min_hint_text", "reg_multi_min_max_hint_text",
+        "reg_multi_limit_counter_text", "reg_multi_limit_error_text",
         "goal_options", "formats_options", "university_options",
         # Phase 17.1 (17.1-03, schema-completeness): экран выбора города при /start —
         # в хвосте группы.
