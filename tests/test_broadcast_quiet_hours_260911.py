@@ -36,6 +36,13 @@ def _patch_audience(monkeypatch, ids):
     async def fake_all():
         return list(ids)
     monkeypatch.setattr(admin_broadcasts, "get_all_users_ids", fake_all)
+    # «Всем» = строки users; поддельные id считаем одобренными, остальных (штат) — без анкеты.
+    from handlers import admin_broadcast_status
+
+    async def all_approved(got):
+        return {"approved": [i for i in got if i in ids], "pending": [], "rejected": [],
+                "not_submitted": [i for i in got if i not in ids]}
+    monkeypatch.setattr(admin_broadcast_status, "split_ids_by_app_status", all_approved)
 
 
 class FakeSentMessage:
@@ -138,7 +145,7 @@ def test_toggle_off_confirm_screen_is_byte_for_byte_today(tmp_path, monkeypatch)
 
         assert len(bot.sent_messages) == 1
         prompt = bot.sent_messages[0]
-        assert prompt.text == "Отправить это 3 пользователям?"
+        assert prompt.text == "Получатели: Одобрены 3\n\nОтправить это 3 пользователям?"
         # Форум-ночь п.7: экран несёт третью строку — тумблер «❗ Отметить как важное».
         assert _btn_texts(prompt.markup) == [
             "✅ Отправить 3 пользователям", "❗ Отметить как важное", "❌ Отмена",
@@ -167,7 +174,7 @@ def test_toggle_on_but_outside_window_is_byte_for_byte_today(tmp_path, monkeypat
         await admin_broadcasts.process_broadcast(msg, state, bot)
 
         prompt = bot.sent_messages[0]
-        assert prompt.text == "Отправить это 3 пользователям?"
+        assert prompt.text == "Получатели: Одобрены 3\n\nОтправить это 3 пользователям?"
         assert _btn_texts(prompt.markup) == [
             "✅ Отправить 3 пользователям", "❗ Отметить как важное", "❌ Отмена",
         ]
@@ -241,7 +248,7 @@ def test_window_edge_exactly_end_time_no_warning(tmp_path, monkeypatch):
         msg = FakeMessage(chat_id=ADMIN_ID, text="Всем привет")
         await admin_broadcasts.process_broadcast(msg, state, bot)
         prompt = bot.sent_messages[0]
-        assert prompt.text == "Отправить это 1 пользователям?"
+        assert prompt.text == "Получатели: Одобрены 1\n\nОтправить это 1 пользователям?"
         assert _btn_texts(prompt.markup) == [
             "✅ Отправить 1 пользователям", "❗ Отметить как важное", "❌ Отмена",
         ]
@@ -263,7 +270,7 @@ def test_start_equals_end_no_window_no_warning(tmp_path, monkeypatch):
         msg = FakeMessage(chat_id=ADMIN_ID, text="Всем привет")
         await admin_broadcasts.process_broadcast(msg, state, bot)
         prompt = bot.sent_messages[0]
-        assert prompt.text == "Отправить это 1 пользователям?"
+        assert prompt.text == "Получатели: Одобрены 1\n\nОтправить это 1 пользователям?"
 
     asyncio.run(go())
 

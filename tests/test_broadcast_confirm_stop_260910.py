@@ -36,6 +36,13 @@ def _patch_audience(monkeypatch, ids):
     async def fake_all():
         return list(ids)
     monkeypatch.setattr(admin_broadcasts, "get_all_users_ids", fake_all)
+    # «Всем» = строки users; поддельные id считаем одобренными, остальных (штат) — без анкеты.
+    from handlers import admin_broadcast_status
+
+    async def all_approved(got):
+        return {"approved": [i for i in got if i in ids], "pending": [], "rejected": [],
+                "not_submitted": [i for i in got if i not in ids]}
+    monkeypatch.setattr(admin_broadcast_status, "split_ids_by_app_status", all_approved)
 
 
 def _fast_sleep(monkeypatch):
@@ -442,7 +449,7 @@ def test_confirm_prompt_no_warning_when_k_is_zero(tmp_path, monkeypatch):
         await admin_broadcasts.process_broadcast(msg, state, bot)
 
         prompt = bot.sent_messages[0]
-        assert prompt.text == "Отправить это 5 пользователям?"
+        assert prompt.text == "Получатели: Одобрены 5\n\nОтправить это 5 пользователям?"
         assert "⚠️" not in prompt.text
 
     asyncio.run(go())
