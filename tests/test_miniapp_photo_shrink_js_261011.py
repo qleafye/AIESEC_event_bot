@@ -243,3 +243,19 @@ def test_task_cover_is_shrunk_before_size_check_and_upload_and_previewed_locally
     assert "localPhotoUrl(photoFileId) || fileUrl(photoFileId)" in text
     # убранная/заменённая обложка освобождает свой object URL
     assert text.count("forgetLocalPhoto(draft.photo_file_id)") == 2
+
+
+def test_submission_photo_is_shrunk_before_size_check_and_upload():
+    text = _js_without_comments(SCREENS_DIR / "submit.js")
+    assert 'from "../photo_shrink.js"' in text
+    body = _between(text, "async function uploadOne(", 'fileInput.addEventListener("change"')
+    assert body.index("await shrinkPhoto(original)") < body.index("file.size > limits.max_bytes") < body.index('api("/uploads", {')
+    assert 'form.append("file", file, file.name)' in body
+
+
+@pytest.mark.parametrize("name", ["settings.js", "setup.js"])
+def test_settings_photo_asset_is_shrunk_with_asset_cap(name):
+    text = _js_without_comments(SCREENS_DIR / name)
+    body = _between(text, "async function handleFileUpload(", 'api("/uploads?target=settings_asset"')
+    assert 'item.type === "photo" ? await shrinkPhoto(original, { maxSide: MAX_SIDE_ASSET }) : original' in body
+    assert body.index("shrinkPhoto(") < body.index("file.size > limits.max_bytes")
