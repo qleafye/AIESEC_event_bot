@@ -594,6 +594,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "wave_start_message_text": ["старт волны текст", "сообщение о начале волны"],
     "wave_start_button_text": ["кнопка старта волны", "открыть задания волны"],
     "wave_deadline_reminder_text": ["напоминание о дедлайне волны", "завтра дедлайн волны"],
+    "checkin_qr_morning_catchup_until": ["до скольки догонять qr", "поздний повтор qr"],
     "question_stuck_minutes": ["залип вопрос", "через сколько вопрос залипает"],
     "wave_deadline_reminder_hours": ["за сколько напомнить о дедлайне", "срок напоминания о задании"],
     "wave_results_announce_text": ["итоги волны всем", "объявление результатов волны"],
