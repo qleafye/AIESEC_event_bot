@@ -53,9 +53,9 @@ import python_socks
 
 from config import config
 from shared.secret_redact import redact_secrets
-from services.background import spawn
-from services.ru_plural import ru_plural
-from services.timeutil import msk_now
+from services.infra.background import spawn
+from services.infra.ru_plural import ru_plural
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def set_alert_bot(bot) -> None:
     _alert_bot = bot
 
 
-_plural_ru = ru_plural  # общая функция склонения (services/ru_plural.py)
+_plural_ru = ru_plural  # общая функция склонения (services/infra/ru_plural.py)
 
 
 async def _alert_admins_proxy_storm(
@@ -86,7 +86,7 @@ async def _alert_admins_proxy_storm(
     episode_end,
     cause: str = "unknown",
 ) -> None:
-    """Fired via services.background.spawn ONLY after a flap episode stabilises (see
+    """Fired via services.infra.background.spawn ONLY after a flap episode stabilises (see
     FailoverAiohttpSession._flap_alert_loop / _stabilize_on_success) -- NEVER straight out
     of a rotation. Incidents 2026-09-08/2026-09-15: firing through the session that had
     JUST failed meant all 156 alert attempts across both storms logged "ERROR ... failed"
@@ -94,7 +94,7 @@ async def _alert_admins_proxy_storm(
     session used to send this is proven to carry traffic again. Wrapped so this can NEVER
     raise into the caller.
 
-    `episode_start`/`episode_end` are naive Moscow datetimes (services.timeutil.msk_now) --
+    `episode_start`/`episode_end` are naive Moscow datetimes (services.infra.timeutil.msk_now) --
     wall-clock, independent of the monotonic time_source used for the dwell/quiet-period
     math, since a manager reads "с 21:03 по 21:04", not a duration since epoch.
     """

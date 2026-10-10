@@ -18,13 +18,13 @@ from services.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
 from services.allowlist import warm_allowlist_if_gating_on
 from services.sheets import ensure_sheet_header
-from services.background import spawn as _spawn, cancel_all as cancel_background_tasks
-import services.miniapp_outbox as miniapp_outbox
+from services.infra.background import spawn as _spawn, cancel_all as cancel_background_tasks
+import services.infra.miniapp_outbox as miniapp_outbox
 import services.delegations as delegations
 from services.heartbeat import PollingHeartbeatMiddleware, heartbeat_loop, clear_heartbeat
 import services.sheets as sheets_service
-import services.proxy_session as proxy_session
-from services.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
+import services.infra.proxy_session as proxy_session
+from services.infra.proxy_session import FailoverAiohttpSession, build_proxy_chain, mask_proxy_url
 from handlers.registration import active_sheet_headers, set_sheet_schema, party_sheet_headers, PARTY_SHEET_TAB_DEFAULT, short_sheet_headers, SHORT_SHEET_TAB_DEFAULT, city_row_tab
 from domain.cities import CITIES, is_city_enabled, is_default_city, seed_cities_if_empty, reload_cities
 from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
@@ -84,7 +84,7 @@ def _configure_logging():
 
 
 # WR-02 / audit systemic fix: strong-ref fire-and-forget helper now lives in
-# services.background.spawn (imported above as _spawn) so handlers can share it without a
+# services.infra.background.spawn (imported above as _spawn) so handlers can share it without a
 # circular import. Keeps GC from dropping suspended background tasks mid-run.
 
 
@@ -216,7 +216,7 @@ async def seed_proxy_settings_from_env() -> None:
     """Phase 14 (CFG-01): PROXY_RECHECK_SECONDS/PROXY_CONNECT_TIMEOUT (.env) move to the
     registry (group «🔧 Система») so a manager can change them without a redeploy — but
     FailoverAiohttpSession still reads both values only once, at process start (see
-    services/proxy_session.py), so a registry edit needs a restart to take effect (honestly
+    services/infra/proxy_session.py), so a registry edit needs a restart to take effect (honestly
     stated in both settings' prompts). Same one-time, non-destructive seed idiom as
     seed_main_sheet_tab_from_env: only writes when bot_settings has no row yet AND the .env
     value differs from the registry default — never overwrites a manager's own edit, and a
@@ -440,7 +440,7 @@ async def main():
         if connect_timeout is None:
             connect_timeout = SETTINGS_SCHEMA["proxy_connect_timeout"]["default"]
         # Квик 260919 (аудит прода, «прокси-шторм»): storm-guard между переключениями --
-        # same registry-with-restart-only story as the pair above (services/proxy_session.py
+        # same registry-with-restart-only story as the pair above (services/infra/proxy_session.py
         # module docstring has the incident writeup).
         dwell_seconds = await get_setting_typed("proxy_switch_dwell_seconds")
         if dwell_seconds is None:

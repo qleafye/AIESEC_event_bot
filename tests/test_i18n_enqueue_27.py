@@ -148,7 +148,7 @@ def test_enabling_module_spawns_bulk_seed(tmp_path, monkeypatch):
 
     async def go():
         await db.set_setting("delegate_lang_enabled", "on")
-        await asyncio.sleep(0)  # дать фоновой задаче (services.background.spawn) отработать
+        await asyncio.sleep(0)  # дать фоновой задаче (services.infra.background.spawn) отработать
 
     asyncio.run(go())
     assert calls == ["en"]

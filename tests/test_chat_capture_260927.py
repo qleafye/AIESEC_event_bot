@@ -384,7 +384,7 @@ async def _noop():
 
 def test_prune_job_uses_retention_even_with_tracking_off(tmp_path):
     _ready(tmp_path)  # учёт выключен: срок хранения — про приватность, а не про учёт
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     from datetime import timedelta as _td
     old = (msk_now() - _td(days=200)).strftime("%Y-%m-%d %H:%M:%S")
     fresh = (msk_now() - _td(days=10)).strftime("%Y-%m-%d %H:%M:%S")

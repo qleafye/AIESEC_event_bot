@@ -352,7 +352,7 @@ def test_send_offers_idempotent_same_season(tmp_path, monkeypatch):
 
 
 def test_send_offers_respects_mute(tmp_path, monkeypatch):
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     _ready(tmp_path)
     _run(_add_delegate(1, city="spb"))
     today = msk_now().strftime("%Y-%m-%d")

@@ -20,7 +20,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from handlers.admin import router
 from services import reject_retro
 from services.reject_rules import can_edit_city
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

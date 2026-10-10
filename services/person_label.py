@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from database.db import get_reg_started_by_id, get_user
-from services.timeutil import utc_naive_to_msk
+from services.infra.timeutil import utc_naive_to_msk
 
 
 async def person_label(telegram_id: int) -> str:
@@ -37,6 +37,6 @@ def msk_stamp_from_utc_iso(raw: str | None) -> str:
     except ValueError:
         return str(raw)
     if dt.tzinfo is not None:
-        from services.timeutil import aware_to_msk
+        from services.infra.timeutil import aware_to_msk
         return aware_to_msk(dt).strftime("%d.%m.%Y %H:%M МСК")
     return utc_naive_to_msk(dt).strftime("%d.%m.%Y %H:%M МСК")

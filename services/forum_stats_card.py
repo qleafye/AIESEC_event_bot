@@ -97,9 +97,9 @@ from database.db import (
 )
 from services import scheduler as _sched
 from services.checkin import ENTRY_POINT, checkin_denial
-from services.ru_plural import ru_plural
+from services.infra.ru_plural import ru_plural
 from services.text_fill import event_kind
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ _MONTH_EN = (
 
 # ── Подписи (RU/EN код-литералы, см. докстринг модуля) ──────────────────────────────────────
 
-_ru_plural = ru_plural  # общая функция склонения (services/ru_plural.py)
+_ru_plural = ru_plural  # общая функция склонения (services/infra/ru_plural.py)
 
 
 def _hero_caption(key: str, n: int, lang: str, event_type: str | None = None) -> str:

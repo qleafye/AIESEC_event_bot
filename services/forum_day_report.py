@@ -34,7 +34,7 @@ import logging
 from datetime import date, datetime, time, timedelta
 
 from domain.cities import get_setting_typed_for_city
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -280,7 +280,7 @@ async def build_report_text(city: str | None, day: str) -> str:
     if peak is not None:
         hh, n = peak
         # Метки в базе — МСК; час пика показываем по часам города (Тюмень МСК+2: 08 -> 10).
-        from services.timeutil import city_offset_hours
+        from services.infra.timeutil import city_offset_hours
         offset = await city_offset_hours(city)
         if offset and str(hh).isdigit():
             hh = f"{(int(hh) + offset) % 24:02d}"

@@ -32,7 +32,7 @@ import logging
 from datetime import datetime, timedelta
 
 from domain.cities import get_setting_typed_for_city
-from services.timeutil import city_offset_hours
+from services.infra.timeutil import city_offset_hours
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def _is_fresh_csv_scan(scanned_at: str | None, approx: bool) -> bool:
     у остальных парсеров дат чек-ина (`services.checkin._parse_cell_datetime` и соседи)."""
     if approx or not scanned_at:
         return False
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     try:
         scanned = datetime.strptime(scanned_at[:19], "%Y-%m-%d %H:%M:%S")
@@ -90,7 +90,7 @@ async def _on_first_entry(bot, user_id: int, city: str | None, day: str, **kwarg
         # отличает настоящий первый приход (True) от повторного зова на второй день
         # двухдневного форума (False) — иначе делегат Москвы получил бы приветствие дважды.
         # Отсутствие kwarg — обратная совместимость со старым событием из outbox
-        # (`services/miniapp_outbox.py`, событие могло попасть в очередь ДО того, как
+        # (`services/infra/miniapp_outbox.py`, событие могло попасть в очередь ДО того, как
         # `services.checkin` начал класть `first_of_forum` в событие) — трактуем как True,
         # чтобы не потерять приветствие для уже поставленных в очередь событий.
         if not kwargs.get("first_of_forum", True):

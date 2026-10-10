@@ -168,7 +168,7 @@ def test_is_stuck_still_compares_utc_to_utc_after_format_stamp_change():
 
 
 def test_utc_naive_to_msk_matches_format_stamp_shift():
-    from services.timeutil import utc_naive_to_msk
+    from services.infra.timeutil import utc_naive_to_msk
 
     assert utc_naive_to_msk(datetime(2026, 9, 4, 22, 10)) == datetime(2026, 9, 5, 1, 10)
 

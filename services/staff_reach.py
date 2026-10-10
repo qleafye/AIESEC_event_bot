@@ -24,7 +24,7 @@ from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from config import config
 from database import db as _db
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

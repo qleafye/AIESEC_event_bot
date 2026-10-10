@@ -34,7 +34,7 @@ from database.db import (
     record_answer_history,
     revoke_delegate_override,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

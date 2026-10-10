@@ -27,7 +27,7 @@ from handlers.forum import admin_sos, sos as sos_handlers
 from handlers.chat import group_chat
 from handlers.states import SosChatBind, SosReport
 from services import sos as sos_service
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 from tests._lang_on import enable_delegate_lang
 

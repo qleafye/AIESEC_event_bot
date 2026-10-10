@@ -33,7 +33,7 @@ def _run(coro):
 
 def _drain():
     """`_refresh_sheet_header` зовёт `ensure_sheet_header`/`ensure_named_sheet_header` через
-    `services.background.spawn` (fire-and-forget) — без gather тест проверил бы вызовы до
+    `services.infra.background.spawn` (fire-and-forget) — без gather тест проверил бы вызовы до
     того, как задача успела выполниться (тот же приём, что `tests/test_percity_sheets_25.py`)."""
     async def _g():
         pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]

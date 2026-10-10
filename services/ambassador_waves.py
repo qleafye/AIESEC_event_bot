@@ -43,7 +43,7 @@ from database.db import (
     wave_at,
     waves_overlapping,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from domain.settings.schema import get_setting_typed
 
 
@@ -115,7 +115,7 @@ async def wave_visibility_ids(user: dict | None, *, city_scope=None) -> tuple[se
 
 async def current_wave_for(event_city: str | None, *, now: datetime | None = None) -> dict | None:
     """Волна, идущая прямо сейчас для этого города (`db.wave_at`). `now` — только для тестов;
-    по умолчанию московское «сейчас» (`services.timeutil.msk_now`)."""
+    по умолчанию московское «сейчас» (`services.infra.timeutil.msk_now`)."""
     ts = (now or msk_now()).strftime("%Y-%m-%d %H:%M:%S")
     return await wave_at(ts, event_city)
 

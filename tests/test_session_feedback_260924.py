@@ -22,7 +22,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import services.scheduler as sched
 import services.session_feedback as sf
 import handlers.forum.session_feedback as sf_handlers
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 DELEGATE_ID = 903010

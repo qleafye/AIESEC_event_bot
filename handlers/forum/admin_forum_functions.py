@@ -120,7 +120,7 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="🎟 Настройки рассылки QR", callback_data=f"checkinqr_cfg:{_encode_city(code)}",
         )])
 
-    from services.timeutil import city_offset_hours, offset_label  # «🕐 Часовой пояс» города
+    from services.infra.timeutil import city_offset_hours, offset_label  # «🕐 Часовой пояс» города
     lines.append(f"🕐 Часовой пояс: {offset_label(await city_offset_hours(code))}")
     if visible(f"forumtz_cfg:{_encode_city(code)}"):
         buttons.append([InlineKeyboardButton(text="🕐 Часовой пояс", callback_data=f"forumtz_cfg:{_encode_city(code)}")])
@@ -768,7 +768,7 @@ async def forumdayreport_now_go(callback: types.CallbackQuery):
     if not await _city_allowed(callback.from_user.id, code):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
     today = msk_now().strftime("%Y-%m-%d")
     await callback.answer("Считаю отчёт…")
     try:
@@ -789,7 +789,7 @@ async def forumdayreport_csv_go(callback: types.CallbackQuery):
         await callback.answer(_CITY_FORBIDDEN_ALERT, show_alert=True)
         return
     from aiogram.types import BufferedInputFile
-    from services.timeutil import msk_now
+    from services.infra.timeutil import msk_now
 
     today = msk_now().strftime("%Y-%m-%d")
     await callback.answer()

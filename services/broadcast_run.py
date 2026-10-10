@@ -22,7 +22,7 @@ from database.db import (
     record_broadcast_deliveries,
     set_broadcast_status,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@
   уведомление менеджерам по capability, приветственный скрипт при auto-approve. Зовут её ОБА
   вызывающих с одинаковым журналом Sheets/уведомлений: бот — сразу после `finalize_data`
   (`handlers/registration.py::finalize_registration`), джоба очереди — по kind
-  `reg_finalized`/`reg_edited` (`services/miniapp_outbox.py::_handle_row`), когда Mini App
+  `reg_finalized`/`reg_edited` (`services/infra/miniapp_outbox.py::_handle_row`), когда Mini App
   поставит эти события (планы 21-09..21-11).
 
 Текст-подтверждение делегату В ЧАТЕ (`reg_complete_text` и его правочные аналоги) отправляет
@@ -69,7 +69,7 @@ from database.db import (
     settings_snapshot,
 )
 from domain.settings.schema import get_setting_typed
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 
@@ -949,7 +949,7 @@ async def post_finalize(
     """Хвост финала: Nextcloud (резюме) -> Sheets (append для `new`, `update_row_by_id` для
     `edit`) -> уведомление менеджерам по capability -> приветственный скрипт при auto-approve.
     Зовётся и ботом напрямую (сразу после `finalize_data`), и джобой очереди по kind
-    `reg_finalized`/`reg_edited` (`services/miniapp_outbox.py`) — один и тот же журнал вызовов
+    `reg_finalized`/`reg_edited` (`services/infra/miniapp_outbox.py`) — один и тот же журнал вызовов
     Sheets/уведомлений для обеих поверхностей (T-21-02, Task 3 acceptance)."""
     from handlers.registration import _normalize_channel_ref, approve_user, is_subscribed
     from services.nextcloud import upload_resume, upload_text_resume

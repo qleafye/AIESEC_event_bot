@@ -1,6 +1,6 @@
 import pytest
 
-from services.ru_plural import ru_plural
+from services.infra.ru_plural import ru_plural
 from handlers.applications.admin_moderation import _applications_word
 
 

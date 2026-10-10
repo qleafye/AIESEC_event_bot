@@ -24,7 +24,7 @@ from domain.cities import cities_module_on, city_label, city_labels_map, city_sc
 from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_scope
 from services.checkin_arrival import arrival_report
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

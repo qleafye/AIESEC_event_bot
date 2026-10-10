@@ -1,7 +1,7 @@
 """Включить делегатский английский в тестовой БД — без фонового `bulk_seed()`.
 
 `database.db.set_setting("delegate_lang_enabled", "on")` через `_maybe_enqueue_translation`
-запускает `services.background.spawn(bulk_seed())` — сотни записей в `translation_queue`,
+запускает `services.infra.background.spawn(bulk_seed())` — сотни записей в `translation_queue`,
 каждая своим соединением и коммитом. Тестам «делегат на английском» очередь перевода не нужна,
 а фоновая задача им вредит двумя способами:
 

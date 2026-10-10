@@ -258,7 +258,7 @@ async def _seed_draft(tid, *, kind="new", step="phone", event_city="msk", minute
     if minutes_ago:
         from datetime import timedelta
 
-        from services.timeutil import msk_now
+        from services.infra.timeutil import msk_now
 
         stamp = (msk_now() - timedelta(minutes=minutes_ago)).strftime("%Y-%m-%d %H:%M:%S")
         async with db._connect() as conn:

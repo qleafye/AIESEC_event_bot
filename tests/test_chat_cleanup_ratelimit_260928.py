@@ -15,7 +15,7 @@ from datetime import timedelta
 from config import config
 from database import db
 from services import chat_cleanup
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from tests._dbtpl import fast_init_db
 
 CHAT = -1009280101

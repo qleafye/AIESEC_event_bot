@@ -6,7 +6,7 @@
 aiogram-free (тот же инвариант, что `services/reject_rules.py`/`services/checkin.py`) —
 импортирует только `database.db`/`cities`/стандартную библиотеку (тот же набор, что уже тянет
 `services/reject_rules.py` — прецедент, что этот класс модулей вправе импортировать `cities`,
-не только `database.db`); `services.timeutil.msk_now` подтягивается лениво внутри функции (не
+не только `database.db`); `services.infra.timeutil.msk_now` подтягивается лениво внутри функции (не
 на уровне модуля), чтобы не завести цикл с модулями, которые сами читают время форума на
 импорте.
 
@@ -85,7 +85,7 @@ def format_time_range(start_time: str, end_time: str) -> str:
 
 
 def _today() -> date:
-    from services.timeutil import msk_now  # ленивый импорт — см. докстринг модуля
+    from services.infra.timeutil import msk_now  # ленивый импорт — см. докстринг модуля
     return msk_now().date()
 
 
@@ -269,7 +269,7 @@ async def checkin_session_points(city: str, at: datetime | None = None) -> list[
     модуль отметок не знает вовсе, только программу). Пустой список — на сегодня в городе нет
     ни одной сессии (или программы вообще нет) — вызывающий тогда предлагает только «Вход»."""
     if at is None:
-        from services.timeutil import city_now  # ленивый импорт — см. докстринг модуля
+        from services.infra.timeutil import city_now  # ленивый импорт — см. докстринг модуля
         at = await city_now(city)  # время сессий — местное время города
     day = at.strftime("%Y-%m-%d")
     hhmm = at.strftime("%H:%M")
@@ -504,7 +504,7 @@ async def build_delegate_program(city: str | None, at: datetime | None = None) -
     `keyboards.builders.get_main_menu_kb`/`handlers.forum.admin_program._resolve_city_for_screen`) —
     у сессий программы «нет города» не бывает, только конкретный код."""
     if at is None:
-        from services.timeutil import city_now  # ленивый импорт — см. докстринг модуля
+        from services.infra.timeutil import city_now  # ленивый импорт — см. докстринг модуля
         at = await city_now(city or default_city_code())  # время сессий — местное время города
 
     resolved_city = city or default_city_code()

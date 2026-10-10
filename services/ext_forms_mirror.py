@@ -23,7 +23,7 @@ from database import ext_forms_db as ef
 from shared.secret_redact import redact_secrets
 from services import delegations_mirror  # режим «как выгрузка Яндекса» (вкладка делегаций)
 from services.sheet_arrival_sync import backoff_seconds
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
 

@@ -37,7 +37,7 @@ from database.db import (
     users_status_city,
     CHAT_PRESENT_STATUSES,
 )
-from services.timeutil import msk_now
+from services.infra.timeutil import msk_now
 from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 

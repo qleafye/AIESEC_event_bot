@@ -205,7 +205,7 @@ def test_enqueue_unknown_kind_still_raises():
         _run(miniapp_outbox_module.enqueue("not_a_real_kind", {}))
 
 
-# ── services/miniapp_outbox.py::_handle_row("reg_fsm_reset", ...) ──────────────────────────
+# ── services/infra/miniapp_outbox.py::_handle_row("reg_fsm_reset", ...) ──────────────────────────
 
 class _FakeBot:
     id = 42
@@ -220,7 +220,7 @@ class _FakeBot:
 def test_reg_fsm_reset_takeover_clears_fsm_and_notifies(monkeypatch):
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.storage.base import StorageKey
-    from services import miniapp_outbox as svc_outbox
+    from services.infra import miniapp_outbox as svc_outbox
 
     storage = MemoryStorage()
     svc_outbox.init_fsm_storage(storage)
@@ -250,7 +250,7 @@ def test_reg_fsm_reset_takeover_clears_fsm_and_notifies(monkeypatch):
 def test_reg_fsm_reset_submitted_clears_fsm_without_notifying():
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.fsm.storage.base import StorageKey
-    from services import miniapp_outbox as svc_outbox
+    from services.infra import miniapp_outbox as svc_outbox
 
     storage = MemoryStorage()
     svc_outbox.init_fsm_storage(storage)
@@ -270,7 +270,7 @@ def test_reg_fsm_reset_submitted_clears_fsm_without_notifying():
 
 
 def test_reg_fsm_reset_without_init_fsm_storage_is_fail_soft():
-    from services import miniapp_outbox as svc_outbox
+    from services.infra import miniapp_outbox as svc_outbox
 
     svc_outbox.init_fsm_storage(None)
     bot = _FakeBot()
