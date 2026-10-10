@@ -1,7 +1,7 @@
 import pytest
 
 from services.ru_plural import ru_plural
-from handlers.admin_moderation import _applications_word
+from handlers.applications.admin_moderation import _applications_word
 
 
 @pytest.mark.parametrize("n,word", [

@@ -14,7 +14,7 @@ import asyncio
 import domain.regform.engine as reg_engine
 import domain.regform.labels as reg_labels
 import domain.regform.moderation_card as mc
-from handlers import admin_moderation as am
+from handlers.applications import admin_moderation as am
 
 
 def _run(coro):
@@ -291,7 +291,7 @@ from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting
 from domain.settings.synonyms import SETTINGS_SYNONYMS
 from handlers import admin_sections as sec
 from handlers import admin_settings
-from handlers import admin_modcard
+from handlers.applications import admin_modcard
 from handlers.admin_caps import ADMIN_CAPS
 from tests._dbtpl import fast_init_db
 
@@ -385,10 +385,10 @@ def test_toggle_writes_sentinel_when_nothing_selected(tmp_path):
 
 
 def test_full_card_handler_checks_city_scope():
-    source_path = REPO_ROOT / "handlers" / "admin_moderation.py"
+    source_path = REPO_ROOT / "handlers" / "applications" / "admin_moderation.py"
     text = source_path.read_text(encoding="utf-8")
     start = text.index("async def appr_full(")
-    end = text.index("# Quick 260902-tzh: handlers/admin_modcard.py", start)
+    end = text.index("# Quick 260902-tzh: handlers/applications/admin_modcard.py", start)
     body = text[start:end]
     assert "_card_out_of_scope" in body
 

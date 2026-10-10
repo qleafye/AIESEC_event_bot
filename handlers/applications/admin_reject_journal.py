@@ -3,7 +3,7 @@
 кнопка «↩️ Вернуть на модерацию» (D-06: «исключения — только через возврат из журнала»);
 выгрузка журнала файлом для отчёта партнёрам (D-29); плюс вход в журнал с экрана правил.
 
-Форма шва — та же, что `handlers/admin_app_list.py`/`handlers/admin_faq.py`: своего `Router()`
+Форма шва — та же, что `handlers/applications/admin_app_list.py`/`handlers/admin_faq.py`: своего `Router()`
 нет, хендлеры декорируют ОБЩИЙ `handlers.admin.router`; каждый декоратор — в одну строку
 (инвариант cap-теста). `handlers.admin`/`handlers.admin_core`/`handlers.admin_caps` — на уровне
 модуля (безопасно, цикла не создают — `handlers/admin_caps.py` явно не импортирует `handlers.
@@ -62,7 +62,7 @@ def _parse_page_data(data: str) -> tuple[bool, int]:
     """`arj_p:{include_returned}:{offset}` -> (include_returned, offset). Плановая нотация
     интерфейса (`arj_p:{offset}`) несла бы только оффсет и теряла бы фильтр «показывать
     возвращённые» при каждом перелистывании страницы — тот же класс бага, что решает `offset`
-    в `apl:{status}:{offset}` (`handlers/admin_app_list.py`): состояние экрана целиком живёт в
+    в `apl:{status}:{offset}` (`handlers/applications/admin_app_list.py`): состояние экрана целиком живёт в
     `callback_data`, FSM для одного флага не заводится. Не влияет на acceptance-однострочник
     плана (`arj_p:0` без второго `:` резолвит capability тем же префиксным совпадением
     `"arj_*"` — сама схема callback'а этот тест не парсит)."""

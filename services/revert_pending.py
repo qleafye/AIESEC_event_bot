@@ -1,6 +1,6 @@
 """Phase 33 (delegate-card admin actions): «↩️ Вернуть в ожидание» — одобренную/отклонённую
 заявку менеджер возвращает в статус ожидания модерации. Кнопка на карточке `/find`
-(`handlers/admin_revert_pending.py`), сам перевод статуса — здесь.
+(`handlers/applications/admin_revert_pending.py`), сам перевод статуса — здесь.
 
 Штатный путь возврата — `database.db.revert_user_to_pending` (тот же примитив, что
 `services/reject_journal.py::return_to_moderation` использует для возврата из журнала
@@ -30,7 +30,7 @@ QR чек-ина «перестаёт пускать» БЕЗ отдельног
 
 Журнал: `record_answer_history(..., source=f"admin:{admin_id}")` — тот же маркер «кто и когда»,
 что у `services/city_move.py` (координатор 25.09). Колонка снимка — `"status"`: экран «🕓
-История» (`handlers/admin_moderation.py::appr_history`) пропускает записи с этой колонкой
+История» (`handlers/applications/admin_moderation.py::appr_history`) пропускает записи с этой колонкой
 намеренно (статус уже показан отдельной строкой карточки) — сама запись при этом остаётся в
 `reg_answer_history`/листе «История правок» (оба читают `.get(source, source)`, незнакомый
 префикс `admin:<id>` печатается как есть, экран не ломает).

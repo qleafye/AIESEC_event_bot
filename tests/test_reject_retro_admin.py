@@ -9,7 +9,7 @@ import sqlite3
 
 from config import config
 from database import db
-from handlers import admin_reject_retro as h
+from handlers.applications import admin_reject_retro as h
 from handlers.admin_caps import ADMIN_CAPS, required_capability
 from services import reg_finalize, reject_retro
 from tests._dbtpl import fast_init_db
@@ -157,7 +157,7 @@ def test_bad_period_is_explained(tmp_path, monkeypatch):
 
 def test_button_on_rules_screen_and_caps(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
-    from handlers.admin_reject_rules import render_rules_screen
+    from handlers.applications.admin_reject_rules import render_rules_screen
 
     _, kb = _run(render_rules_screen(ADMIN_ID))
     assert ("🕘 Применить к уже поданным", "rjretro") in [

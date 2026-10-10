@@ -19,7 +19,7 @@ from pathlib import Path
 from config import config
 from database import db
 from handlers import admin as admin_mod
-from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from tests._dbtpl import fast_init_db
 
 

@@ -4,7 +4,7 @@
 До задачи 2 модуль `services.applications` не существует — импорт на уровне модуля падает
 `ModuleNotFoundError`, это Wave 0 RED-снимок плана (как `tests/test_settings_ops.py` фазы 22).
 
-Эталоны (тексты, порядок вызовов) сняты ДОСЛОВНО из `handlers/admin_moderation.py` (HEAD
+Эталоны (тексты, порядок вызовов) сняты ДОСЛОВНО из `handlers/applications/admin_moderation.py` (HEAD
 до переноса): `appr_approve` (330-349), `appr_reject_reason` (382-405), `_welcome_flipped`/
 `appr_all_yes` (457-532), `_render_application_card` (120-192, подписи треков строки 137-142).
 
@@ -401,7 +401,7 @@ def test_prev_reject_line_escapes_reason_only_when_flagged(tmp_path):
 
 
 def test_render_application_card_prints_prev_reject_between_resubmit_and_consent():
-    import handlers.admin_moderation as admin_moderation
+    import handlers.applications.admin_moderation as admin_moderation
     user = {"telegram_id": 1, "full_name": "Иван"}
     text = admin_moderation._render_application_card(
         user, 1, 1,
@@ -580,7 +580,7 @@ def test_appr_reject_reason_records_journal_without_reason_in_log():
     `effects_already_sent` в теле функции ЕСТЬ, а `reason={reason!r}` (утечка ПД в лог) НЕТ.
     Проверяет исходники, а не только примитивы (тест выше), чтобы правка не откатилась тихо
     следующим рефакторингом."""
-    import handlers.admin_moderation as admin_moderation
+    import handlers.applications.admin_moderation as admin_moderation
     source = inspect.getsource(admin_moderation.appr_reject_reason)
     assert "record_decision" in source
     assert "effects_already_sent" in source
@@ -666,7 +666,7 @@ def test_no_second_source_of_truth():
     `bulk_update_status_in_sheet` — `services/application_effects.py`. Ни веб-роутер, ни
     бот-хендлер не держат собственной копии хвоста решения."""
     forbidden = ("approve_user(", "update_status_in_sheet(", "bulk_update_status_in_sheet(")
-    for rel_path in ("miniapp/routers/applications.py", "handlers/admin_moderation.py"):
+    for rel_path in ("miniapp/routers/applications.py", "handlers/applications/admin_moderation.py"):
         text = (ROOT / rel_path).read_text(encoding="utf-8")
         clean = "\n".join(ln for ln in text.splitlines() if not ln.strip().startswith("#"))
         for name in forbidden:
@@ -675,10 +675,10 @@ def test_no_second_source_of_truth():
 
 def test_card_fields_same_registry_key_drives_both_surfaces(tmp_path):
     """D-01: один ключ реестра (`modcard_fields`) задаёт набор вопросов И карточке бота
-    (`handlers/admin_moderation.py::_show_current_card`/`appr_full`), И карточке веба
+    (`handlers/applications/admin_moderation.py::_show_current_card`/`appr_full`), И карточке веба
     (`services/applications.py::card_payload`) — обе стороны читают его через ОДНУ функцию
     `moderation_card.enabled_steps`, второго набора вопросов не существует."""
-    for rel_path in ("handlers/admin_moderation.py",):
+    for rel_path in ("handlers/applications/admin_moderation.py",):
         text = (ROOT / rel_path).read_text(encoding="utf-8")
         assert 'moderation_card.enabled_steps(await get_setting_typed("modcard_fields"))' in text
 

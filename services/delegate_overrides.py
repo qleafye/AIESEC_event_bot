@@ -1,7 +1,7 @@
 """Phase 33 (delegate-card admin actions, задачи 2/3): персональные ОДНОРАЗОВЫЕ исключения
 из двух глобальных положений — `reg_resubmit_after_reject` («🔁 Разрешить повторную подачу»,
-`handlers/admin_resubmit_grant.py`) и `reg_edit_policy` («✏️ Открыть правку после решения»,
-`handlers/admin_edit_grant.py`). Общий примитив (та же роль, что `services/city_move.py` для
+`handlers/applications/admin_resubmit_grant.py`) и `reg_edit_policy` («✏️ Открыть правку после решения»,
+`handlers/applications/admin_edit_grant.py`). Общий примитив (та же роль, что `services/city_move.py` для
 обеих карточных операций города) — своя таблица `admin_delegate_overrides`
 (`database/db.py::grant_delegate_override`/`get_active_delegate_override`/
 `revoke_delegate_override`/`consume_delegate_override`).
@@ -20,7 +20,7 @@
 глобальной политикой или личным исключением, гасить несуществующее активное исключение
 безвредно, `consume_delegate_override` тогда просто no-op).
 
-aiogram-free по импортам — вызывается и ботом (`handlers/admin_resubmit_grant.py`/
+aiogram-free по импортам — вызывается и ботом (`handlers/applications/admin_resubmit_grant.py`/
 `admin_edit_grant.py`, `services/reg_finalize.py`), и, если понадобится, веб-процессом
 Mini App (тот же гейт `reg_edit_policy` уже общий для обеих поверхностей)."""
 from __future__ import annotations

@@ -29,7 +29,7 @@ from config import config
 from database import db
 from handlers import admin as admin_mod
 from handlers import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
-from handlers import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
+from handlers.applications import admin_moderation  # Phase 13 (13-06): moderation moved out of admin.py
 from handlers import admin_roles  # Phase 13 (13-04): render_roles_text/build_roles_keyboard moved here
 from handlers import states as states_mod
 from tests._dbtpl import fast_init_db

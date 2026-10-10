@@ -1432,7 +1432,7 @@ async def init_db():
         await _ensure_column(db, "reg_submit_digest_queue", "auto_rejected", "INTEGER NOT NULL DEFAULT 0")
         # Ревью 25.09: причина постановки в очередь, помимо «обычная новая заявка» (NULL) и
         # «автоотказ» (auto_rejected=1 выше) — сейчас единственное непустое значение "revert"
-        # («↩️ Вернуть в ожидание», handlers/admin_revert_pending.py) — не даёт пачке
+        # («↩️ Вернуть в ожидание», handlers/applications/admin_revert_pending.py) — не даёт пачке
         # уведомлений menеджерам выглядеть НОВОЙ заявкой (services/reg_digest.py::
         # send_reg_digest группирует по этому полю тем же приёмом, что и auto_rejected).
         await _ensure_column(db, "reg_submit_digest_queue", "reason", "TEXT")
@@ -4022,7 +4022,7 @@ async def record_answer_history(
     `"%Y-%m-%d %H:%M:%S"` НЕ менялся — его разбирают и `services/questions.py::_parse_stamp`,
     и `services/applications.py::format_edited_date`. Показ переводит метку в МСК на всех трёх
     экранах (`services/sheet_logs.py`, `services/applications.py::_history_entry`,
-    `handlers/admin_moderation.py::appr_history`). Соседняя `mark_user_edited` (`edited_at`)
+    `handlers/applications/admin_moderation.py::appr_history`). Соседняя `mark_user_edited` (`edited_at`)
     квиком 260912-mcj переведена на московский `msk_now()` (раньше писала локальное время
     контейнера) — это по-прежнему РАЗНЫЕ семьи: `changed_at` остаётся UTC и переводится на
     показе, `edited_at` теперь пишется уже московским и переводить его больше не нужно."""
@@ -7920,7 +7920,7 @@ _APPLICATION_DATE_SQL = {
 # ещё нет — константа `NULL`, а не подзапрос (запрос по несуществующему decision-у на pending
 # строке просто вернул бы NULL каждый раз, но так честнее и дешевле читать). Отсутствие живой
 # строки (отменённое решение / автоодобрение без записи в журнал, см. `services/reg_finalize.py
-# ::post_finalize`) тоже даёт NULL — экран (`handlers/admin_app_list.py`) читает это как
+# ::post_finalize`) тоже даёт NULL — экран (`handlers/applications/admin_app_list.py`) читает это как
 # «автоматически», а не как ошибку.
 _APPLICATION_DECIDER_SQL = {
     "approved": (
@@ -7940,7 +7940,7 @@ _APPLICATION_DECIDER_SQL = {
 async def list_applications_page(*, status: str = "approved", city_scope=None,
                                    limit: int = 15, offset: int = 0,
                                    season: str | None = None) -> list[dict]:
-    """Страница списка заявок для экрана «📇 Список заявок» (handlers/admin_app_list.py).
+    """Страница списка заявок для экрана «📇 Список заявок» (handlers/applications/admin_app_list.py).
     Неизвестный `status` трактуется как "approved". Городской фильтр — по `u.event_city`
     (город ДЕЛЕГАТА, та же колонка, что у очереди заявок). `SELECT *` не используется — экрану
     нужны шесть полей, а `users` — широкая таблица (десятки колонок анкеты), таскать её в память

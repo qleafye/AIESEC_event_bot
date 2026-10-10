@@ -175,7 +175,7 @@ def test_card_shows_failure_reason(tmp_path):
 # ── подтверждение ────────────────────────────────────────────────────────────────────────────
 
 def test_start_shows_confirm_with_text_start(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
 
@@ -195,7 +195,7 @@ def test_start_shows_confirm_with_text_start(tmp_path):
 
 
 def test_start_rejected_preview_has_reject_text_and_reason(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
 
@@ -211,7 +211,7 @@ def test_start_rejected_preview_has_reject_text_and_reason(tmp_path):
 
 
 def test_start_refuses_pending(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
 
@@ -226,7 +226,7 @@ def test_start_refuses_pending(tmp_path):
 
 
 def test_start_denied_for_other_city_manager(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
 
@@ -249,7 +249,7 @@ def test_start_denied_for_other_city_manager(tmp_path):
 
 
 def test_cancel_sends_nothing(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
     cb = _Cb(f"decresend_cancel:{DELEGATE_ID}", ADMIN_ID)
@@ -260,7 +260,7 @@ def test_cancel_sends_nothing(tmp_path):
 # ── отправка ─────────────────────────────────────────────────────────────────────────────────
 
 def test_go_delivered_records_status_and_sends_decision_text(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
 
@@ -279,7 +279,7 @@ def test_go_delivered_records_status_and_sends_decision_text(tmp_path):
 
 
 def test_go_rejected_sends_reject_text_with_reason(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
 
@@ -296,7 +296,7 @@ def test_go_rejected_sends_reject_text_with_reason(tmp_path):
 
 
 def test_go_blocked_reports_reason_and_keeps_failed_status(tmp_path):
-    from handlers import admin_resend_decision as h
+    from handlers.applications import admin_resend_decision as h
 
     _db_ready(tmp_path)
 

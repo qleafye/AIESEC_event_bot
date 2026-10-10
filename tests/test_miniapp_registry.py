@@ -164,7 +164,7 @@ MINIAPP_KEYS = [
     # Квик 260904-7e7 (D18): шторка отказа — модальный лист, своя кнопка отмены.
     "miniapp_applications_reject_cancel",
     # Phase 30 (30-05, задача 1, решение владельца №5): placeholder поля причины — «это увидит
-    # делегат», тот же ключ читает и аналог в чате бота (handlers/admin_moderation.py).
+    # делегат», тот же ключ читает и аналог в чате бота (handlers/applications/admin_moderation.py).
     "miniapp_applications_reject_hint_text",
     # Phase 23-05 Task 2 (APP-TINDER-03, D-25): подписи карточки заявки, которых не хватало
     # плану 23-04 (API отдавал только то, что зависит от карточки, не статичные подписи кнопок).

@@ -370,7 +370,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 if "is_ambassador_candidate" in changed_columns and answers.get("is_ambassador_candidate"):
                     await _amb_form_yes(telegram_id)
                 # Phase 33 (задача 3): любая РЕАЛЬНО применённая правка гасит личное исключение
-                # «✏️ Открыть правку после решения» (handlers/admin_edit_grant.py), безусловно
+                # «✏️ Открыть правку после решения» (handlers/applications/admin_edit_grant.py), безусловно
                 # — не только когда именно оно разрешило эту правку (обычная правка pending-
                 # делегата без исключения гасит несуществующее активное = безвредный no-op).
                 try:
@@ -393,7 +393,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     await set_user_status(telegram_id, status)
                     # Phase 33 (задача 2): если этот конкретный резабмит прошёл благодаря
                     # персональному исключению («🔁 Разрешить повторную подачу»,
-                    # handlers/admin_resubmit_grant.py), оно одноразовое — гасим ИМЕННО здесь,
+                    # handlers/applications/admin_resubmit_grant.py), оно одноразовое — гасим ИМЕННО здесь,
                     # в точке фактического использования (не в самом гейте — resubmit_gate
                     # только смотрит, см. его докстринг). У делегата без исключения (общая
                     # политика и так разрешала) — безвредный no-op.
@@ -551,7 +551,7 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 # `_from_confirm` — это ТЕКУЩИЕ ответы этой же анкеты, а не прошлый сезон.
                 # Без этой проверки делегат, просто поправивший поле на сводке, получал
                 # «🔁 Повторный: был(а) на прошлом событии» в карточке модерации
-                # (handlers/admin_moderation.py, services/applications.py) — настоящий
+                # (handlers/applications/admin_moderation.py, services/applications.py) — настоящий
                 # возвращенец (rereg_start / ?start=edit / admin_rereg) маркера не несёт,
                 # для него ветка не меняется.
                 if prior and not prior.get("_from_confirm"):

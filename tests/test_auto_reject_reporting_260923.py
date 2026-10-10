@@ -8,7 +8,7 @@
   имя зовёт sync_named_worksheet с шапкой/строками.
 - services.reject_journal.return_to_moderation — после успешного возврата обновляет статус в
   листе на «Новая» и пересобирает вкладку; сбой листа не откатывает возврат.
-- handlers.admin_reject_reports — экран показывает текущие значения словами, кнопки ведут на
+- handlers.applications.admin_reject_reports — экран показывает текущие значения словами, кнопки ведут на
   settings_edit:<ключ>, «🔄 Обновить вкладку сейчас» — только когда имя задано.
 
 pytest-asyncio недоступна — async через asyncio.run() (форма tests/test_reject_rules_journal.py);
@@ -230,7 +230,7 @@ def test_return_to_moderation_sheet_failure_does_not_revert_db_change(tmp_path, 
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# handlers.admin_reject_reports — экран «📊 Отчётность автоотказа»
+# handlers.applications.admin_reject_reports — экран «📊 Отчётность автоотказа»
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 class _FakeUser:
@@ -269,7 +269,7 @@ def _texts(kb):
 
 def test_render_reports_screen_shows_not_tracked_and_no_cap_by_default(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_reject_reports import render_reports_screen
+    from handlers.applications.admin_reject_reports import render_reports_screen
 
     text, kb = _run(render_reports_screen(ADMIN_ID))
 
@@ -284,7 +284,7 @@ def test_render_reports_screen_shows_tab_name_and_cap_minutes_and_sync_button(tm
     _ready(tmp_path)
     _run(db.set_setting("auto_reject_sheet_tab", "🤖 Автоотказы"))
     _run(db.set_setting("reg_submit_digest_max_minutes", "30"))
-    from handlers.admin_reject_reports import render_reports_screen
+    from handlers.applications.admin_reject_reports import render_reports_screen
 
     text, kb = _run(render_reports_screen(ADMIN_ID))
 
@@ -295,7 +295,7 @@ def test_render_reports_screen_shows_tab_name_and_cap_minutes_and_sync_button(tm
 
 def test_arp_sync_alerts_when_tab_not_set(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_reject_reports import arp_sync
+    from handlers.applications.admin_reject_reports import arp_sync
     cb = _FakeCallback("arp_sync")
 
     _run(arp_sync(cb))
@@ -312,7 +312,7 @@ def test_arp_sync_reports_success_count(tmp_path, monkeypatch):
         return 3
     monkeypatch.setattr(sched, "sync_auto_reject_sheet_job", fake_job)
 
-    from handlers.admin_reject_reports import arp_sync
+    from handlers.applications.admin_reject_reports import arp_sync
     cb = _FakeCallback("arp_sync")
     _run(arp_sync(cb))
 
@@ -328,7 +328,7 @@ def test_arp_sync_reports_failure(tmp_path, monkeypatch):
         return -1
     monkeypatch.setattr(sched, "sync_auto_reject_sheet_job", fake_job)
 
-    from handlers.admin_reject_reports import arp_sync
+    from handlers.applications.admin_reject_reports import arp_sync
     cb = _FakeCallback("arp_sync")
     _run(arp_sync(cb))
 
@@ -338,7 +338,7 @@ def test_arp_sync_reports_failure(tmp_path, monkeypatch):
 
 def test_reports_button_present_on_rules_screen(tmp_path):
     _ready(tmp_path)
-    from handlers.admin_reject_rules import render_rules_screen
+    from handlers.applications.admin_reject_rules import render_rules_screen
 
     _text, kb = _run(render_rules_screen(ADMIN_ID))
     assert "admin_reject_reports" in _cbs(kb)

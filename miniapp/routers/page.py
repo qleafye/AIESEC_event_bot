@@ -93,7 +93,7 @@ APPLICATIONS_TEXT_KEYS = {
     "reject_own_reason": "miniapp_applications_reject_own_reason",
     "reject_cancel": "miniapp_applications_reject_cancel",
     # Phase 30 (30-05, задача 1, решение владельца №5): placeholder поля причины — «это увидит
-    # делегат», та же подсказка звучит в чате бота (handlers/admin_moderation.py).
+    # делегат», та же подсказка звучит в чате бота (handlers/applications/admin_moderation.py).
     "reject_hint": "miniapp_applications_reject_hint_text",
 }
 

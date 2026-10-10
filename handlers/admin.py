@@ -513,7 +513,7 @@ async def cmd_find_user(message: types.Message):
             )])
         # Phase 33: «↩️ Вернуть в ожидание» — видна только для решённой заявки (одобрена/
         # отклонена), для ожидающей возвращать не с чего (services/revert_pending.py
-        # REVERTIBLE_STATUSES). Подтверждение и сама операция — handlers/admin_revert_pending.py.
+        # REVERTIBLE_STATUSES). Подтверждение и сама операция — handlers/applications/admin_revert_pending.py.
         if user.get("status") in ("approved", "rejected"):
             rows.append([InlineKeyboardButton(
                 text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
@@ -935,8 +935,8 @@ from handlers.i18n import admin_i18n  # noqa: E402
 # before the guide+roles seam in original top-to-bottom order. Also re-wires
 # `show_applications`/`show_receipts` so the `_AUTO_OPEN_SECTIONS` dict binds real function
 # objects at module-load time.
-from handlers import admin_moderation  # noqa: E402
-from handlers.admin_moderation import show_applications, show_receipts  # noqa: E402
+from handlers.applications import admin_moderation  # noqa: E402
+from handlers.applications.admin_moderation import show_applications, show_receipts  # noqa: E402
 
 
 
@@ -1116,35 +1116,35 @@ from handlers import admin_volunteer_invite  # noqa: E402
 from handlers import admin_lost_found  # noqa: E402
 
 # Phase 33 (delegate-card admin actions): shared-router seam import for «↩️ Вернуть в ожидание»
-# (handlers/admin_revert_pending.py) — registers revertp_start/revertp_toggle/revertp_apply/
+# (handlers/applications/admin_revert_pending.py) — registers revertp_start/revertp_toggle/revertp_apply/
 # revertp_cancel in the very tail of admin.router (golden snapshot: a clean append, right
 # after admin_lost_found). Not a forum toggle — no hub row, same posture as admin_city_move.
-from handlers import admin_revert_pending  # noqa: E402
+from handlers.applications import admin_revert_pending  # noqa: E402
 
 # Phase 33 (задача 2): shared-router seam import for «🔁 Разрешить повторную подачу»
-# (handlers/admin_resubmit_grant.py) — registers resubg_start/resubg_toggle/resubg_apply/
+# (handlers/applications/admin_resubmit_grant.py) — registers resubg_start/resubg_toggle/resubg_apply/
 # resubg_cancel/resubg_revoke in the very tail of admin.router (golden snapshot: a clean
 # append, right after admin_revert_pending). Not a forum toggle — no hub row.
-from handlers import admin_resubmit_grant  # noqa: E402
+from handlers.applications import admin_resubmit_grant  # noqa: E402
 
 # Phase 33 (задача 3): shared-router seam import for «✏️ Открыть правку после решения»
-# (handlers/admin_edit_grant.py) — registers editg_start/editg_toggle/editg_apply/
+# (handlers/applications/admin_edit_grant.py) — registers editg_start/editg_toggle/editg_apply/
 # editg_cancel/editg_revoke in the very tail of admin.router (golden snapshot: a clean
 # append, right after admin_resubmit_grant). Not a forum toggle — no hub row.
-from handlers import admin_edit_grant  # noqa: E402
+from handlers.applications import admin_edit_grant  # noqa: E402
 
 # Phase 33 (delegate-card admin actions, задача 1): shared-router seam import for «🧹 Сбросить
-# зависшую анкету» (handlers/admin_reg_reset.py) — registers regreset_start/regreset_toggle/
+# зависшую анкету» (handlers/applications/admin_reg_reset.py) — registers regreset_start/regreset_toggle/
 # regreset_apply/regreset_cancel in the very tail of admin.router (golden snapshot: a clean
 # append, right after admin_edit_grant). Not a forum toggle — no hub row.
-from handlers import admin_reg_reset  # noqa: E402
+from handlers.applications import admin_reg_reset  # noqa: E402
 
 # Phase 33 (delegate-card admin actions, задача 3): shared-router seam import for «📎 Заменить
-# резюме» (handlers/admin_resume_replace.py) — registers resumerep_start/resumerep_cancel/
+# резюме» (handlers/applications/admin_resume_replace.py) — registers resumerep_start/resumerep_cancel/
 # resumerep_cancel_text/resumerep_receive_file/resumerep_receive_other in the very tail of
 # admin.router (golden snapshot: a clean append, right after admin_reg_reset). Not a forum
 # toggle — no hub row.
-from handlers import admin_resume_replace  # noqa: E402
+from handlers.applications import admin_resume_replace  # noqa: E402
 
 # Phase 33 (delegate-card admin actions): shared-router seam import for «🔍 Сверить с БД»
 # (handlers/sheets/admin_sheet_reconcile.py) — registers admin_sheet_reconcile/sheetrec_csv/
@@ -1182,8 +1182,8 @@ from handlers import admin_onsite_reg  # noqa: E402,F401
 # чистое добавление в хвост admin.router.
 from handlers import admin_forum_hub_nav  # noqa: E402,F401
 # Роль «📣 Маркетинг (метки)»: экран «🔗 Ссылки с метками» и мастер новой ссылки
-# (handlers/admin_source_links.py) — golden snapshot: чистое добавление в хвост admin.router.
-from handlers import admin_source_links  # noqa: E402,F401
+# (handlers/applications/admin_source_links.py) — golden snapshot: чистое добавление в хвост admin.router.
+from handlers.applications import admin_source_links  # noqa: E402,F401
 # Раздел «📝 Внешние формы» (подключение Яндекс/Google форм).
 from handlers.ext_forms import admin_ext_forms  # noqa: E402,F401
 # Экран «🏫 Делегации» в «📋 Заявки» (handlers/delegations/admin_delegations.py) — golden append в хвост.
@@ -1194,8 +1194,8 @@ from handlers import admin_forum_tz  # noqa: E402,F401
 from handlers.game import admin_coins_transfer  # noqa: E402,F401
 # Enum-настройки кнопками в общем редакторе (handlers/admin_settings_enum.py) — golden append в хвост.
 from handlers import admin_settings_enum  # noqa: E402,F401
-# «👥 Список участников» в «📊 Данные» (handlers/admin_participants.py) — golden append в хвост.
-from handlers import admin_participants  # noqa: E402,F401
+# «👥 Список участников» в «📊 Данные» (handlers/applications/admin_participants.py) — golden append в хвост.
+from handlers.applications import admin_participants  # noqa: E402,F401
 # Треки, компетенции и запись у сессии (handlers/admin_enroll.py) — golden append в хвост.
 from handlers import admin_enroll  # noqa: E402,F401
 # Список записей, выгрузка и настройки записи (handlers/admin_enroll_list.py) — golden append в хвост.
@@ -1206,9 +1206,9 @@ from handlers import admin_quiz  # noqa: E402,F401
 from handlers import admin_bot_avatar  # noqa: E402,F401
 
 # Переотправка решения одному делегату: shared-router seam import «📨 Отправить решение заново»
-# (handlers/admin_resend_decision.py) — decresend_start/decresend_go/decresend_cancel в самом
+# (handlers/applications/admin_resend_decision.py) — decresend_start/decresend_go/decresend_cancel в самом
 # хвосте admin.router (golden snapshot: чистая вставка после admin_chat_rating).
-from handlers import admin_resend_decision  # noqa: E402,F401
+from handlers.applications import admin_resend_decision  # noqa: E402,F401
 from handlers import admin_settings_search  # noqa: E402,F401  -- «🔎 Найти настройку», golden append в хвост
 from handlers.sheets import admin_sheet_target  # noqa: E402,F401 — «🔗 Какая таблица» в «📊 Данные», golden append
 from handlers import admin_setup_wizard  # noqa: E402,F401 — «🚀 Первая настройка» в «🔧 Управление», golden append

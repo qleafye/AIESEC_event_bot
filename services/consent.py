@@ -5,7 +5,7 @@
 аудит-таблицу `user_consents` при каждой подписи (database.db.record_user_consent); здесь —
 чтение этой истории для карточки заявки и для гейта пересогласия.
 
-Живёт в `services/`, а не в `handlers/`: карточку рендерит `handlers/admin_moderation.py`,
+Живёт в `services/`, а не в `handlers/`: карточку рендерит `handlers/applications/admin_moderation.py`,
 пересбор — `handlers/reg_consent.py`, и ни один из них не должен тянуть за собой другой
 (handlers.* друг на друга — только через швы владельца роутера).
 """

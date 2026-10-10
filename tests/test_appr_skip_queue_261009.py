@@ -14,7 +14,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import config
 from database import db
-from handlers import admin_moderation as mod
+from handlers.applications import admin_moderation as mod
 from tests._dbtpl import fast_init_db
 
 ADMIN = 920261091
