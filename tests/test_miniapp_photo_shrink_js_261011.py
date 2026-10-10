@@ -27,7 +27,9 @@ let OUT_SIZE = 300000;      // размер JPEG, который «выдаёт�
 let OUT_TYPE = "image/jpeg";
 const log = { opts: [], draws: [], fills: [], quality: [], closed: 0, cibCalls: 0, active: 0, maxActive: 0, revoked: [] };
 
+const HANG = new Set();   // имена, на которых декодер не отвечает никогда
 globalThis.createImageBitmap = async (file, opts) => {
+  if (HANG.has(file.name)) return new Promise(() => {});
   log.cibCalls += 1;
   log.opts.push(opts);
   log.active += 1;
@@ -140,6 +142,26 @@ DIMS["a.jpg"] = [4000, 3000]; DIMS["b.jpg"] = [4000, 3000]; DIMS["c.jpg"] = [400
   r.forgotten = m.localPhotoUrl("F5");
   r.nullSafe = [m.rememberLocalPhoto(null, shrunk), m.localPhotoUrl(null)];
 }
+// 13. декодер завис: по таймауту — оригинал, следующее фото очередь не держит
+{
+  HANG.add("hang.heic");
+  const f = file("hang.heic", 3000000, "image/heic");
+  const t0 = Date.now();
+  const out = await m.shrinkPhoto(f, { timeoutMs: 50 });
+  r.hangKeepsOriginal = out === f;
+  DIMS["after.jpg"] = [4000, 3000];
+  const next = await m.shrinkPhoto(file("after.jpg", 2000000, "image/jpeg"));
+  r.queueFreed = [next.name, next.type, Date.now() - t0 < 5000];
+}
+// 14. createImageBitmap бросил, а <img> не прислал ни onload, ни onerror
+{
+  globalThis.Image = class { set src(u) { /* тишина */ } };
+  const f = file("silent.heic", 3000000, "image/heic");
+  r.silentImgKeepsOriginal = (await m.shrinkPhoto(f, { timeoutMs: 50 })) === f;
+  delete globalThis.Image;
+  DIMS["after2.jpg"] = [4000, 3000];
+  r.queueFreed2 = (await m.shrinkPhoto(file("after2.jpg", 2000000, "image/jpeg"))).name;
+}
 console.log(JSON.stringify(r));
 """
 
@@ -203,6 +225,13 @@ def test_asset_cap_is_larger(result):
 def test_many_photos_are_decoded_one_at_a_time(result):
     assert result["serial"] == 1
     assert result["parallelNames"] == ["a.jpg", "b.jpg", "c.jpg"]
+
+
+def test_hung_decoder_times_out_to_original_and_frees_queue(result):
+    assert result["hangKeepsOriginal"] is True
+    assert result["queueFreed"] == ["after.jpg", "image/jpeg", True]
+    assert result["silentImgKeepsOriginal"] is True
+    assert result["queueFreed2"] == "after2.jpg"
 
 
 def test_local_preview_cache_reuses_and_revokes(result):
