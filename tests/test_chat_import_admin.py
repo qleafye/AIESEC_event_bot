@@ -68,6 +68,7 @@ class _Callback:
         self.from_user = _User()
         self.message = _Message()
         self.answers = []
+        self.bot = None
 
     async def answer(self, text=None, show_alert=False):
         self.answers.append((text, show_alert))
@@ -137,22 +138,23 @@ def test_go_writes_exactly_previewed_and_repeat_adds_nothing(db_path):  # noqa: 
     _setup(db_path)
     state = _state()
     _, msg = _to_confirm(state)
-    plan = _run(state.get_data())["plan"]
+    to_add = _run(state.get_data())["to_add"]
     go = _Callback("chimp:go")
+    go.bot = _Bot(_payload())
     _run(h.chat_import_go(go, state))
-    assert _count(db_path, "chat_messages") == plan["to_add"] > 0
-    assert f"Добавлено сообщений: {plan['to_add']}" in go.message.answers[0][0]
+    assert _count(db_path, "chat_messages") == to_add > 0
+    assert f"Добавлено сообщений: {to_add}" in go.message.answers[0][0]
     assert _run(state.get_state()) is None
 
     again = _Callback("chimp:go")  # двойное нажатие
     _run(h.chat_import_go(again, state))
     assert again.answers[0][1] is True
-    assert _count(db_path, "chat_messages") == plan["to_add"]
+    assert _count(db_path, "chat_messages") == to_add
 
     state2 = _state()
     _, msg2 = _to_confirm(state2)
     text, kb = msg2.answers[-1]
-    assert f"Уже есть в базе: {plan['to_add']}" in text
+    assert f"Уже есть в базе: {to_add}" in text
     assert "Добавлять нечего" in text and "chimp:go" not in _cbs(kb)
 
 
@@ -250,3 +252,64 @@ def test_apply_commits_in_batches_and_retry_finishes(db_path, monkeypatch):  # n
     conn.close()
     assert _count(db_path, "chat_messages") == plan["to_add"]
     assert added == plan["to_add"] - 2
+
+
+def test_not_utf8_file_gets_howto_and_keeps_waiting(db_path):  # noqa: F811
+    _setup(db_path)
+    state = _state()
+    _run(h.chat_import_open(_Callback("chimp:open"), state))
+    bad = _Message(document=_Doc())
+    _run(h.chat_import_file(bad, state, _Bot(b"\xff\xfebad")))
+    assert "не читается как текст" in bad.answers[0][0] and "Экспорт истории чата" in bad.answers[0][0]
+    assert _run(state.get_state()) == ChatExportImport.waiting_file.state
+
+
+def test_unexpected_error_is_explained_and_state_cleared(db_path, monkeypatch):  # noqa: F811
+    _setup(db_path)
+    state = _state()
+    _run(h.chat_import_open(_Callback("chimp:open"), state))
+
+    def boom(*a, **k):
+        raise RuntimeError("неожиданно")
+
+    monkeypatch.setattr(h, "_db_plan", boom)
+    msg = _Message(document=_Doc())
+    _run(h.chat_import_file(msg, state, _Bot(_payload())))
+    assert "Не получилось разобрать файл" in msg.answers[0][0]
+    assert _run(state.get_state()) is None
+
+
+def test_state_keeps_summary_not_rows(db_path):  # noqa: F811
+    _setup(db_path)
+    state = _state()
+    _to_confirm(state)
+    data = _run(state.get_data())
+    assert "plan" not in data and data["to_add"] > 0 and data["file_id"] == "F1"
+
+
+def test_failed_write_keeps_state_and_says_not_written(db_path, monkeypatch):  # noqa: F811
+    _setup(db_path)
+    state = _state()
+    _to_confirm(state)
+
+    def boom(plan):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(h, "_db_apply", boom)
+    go = _Callback("chimp:go")
+    go.bot = _Bot(_payload())
+    _run(h.chat_import_go(go, state))
+    assert "Ничего не записано" in go.message.answers[0][0]
+    assert _run(state.get_state()) == ChatExportImport.confirm.state
+    assert _count(db_path, "chat_messages") == 0
+
+
+def test_export_without_chat_id_is_flagged(db_path):  # noqa: F811
+    _setup(db_path)
+    data = _fixture_export()
+    data.pop("id")
+    state = _state()
+    _, msg = _to_confirm(state, _payload(data))
+    text, kb = msg.answers[-1]
+    assert "нет номера чата" in text and "Чат:" in text and "В файле:" in text
+    assert "⚠️" in [b.text for r in kb.inline_keyboard for b in r][0]
