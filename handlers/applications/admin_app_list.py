@@ -17,7 +17,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import count_applications, get_setting, list_applications_page, resolve_decision_managers
 from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_view
-from services.reject_journal import AUTO_DECIDED_BY
+from services.applications.reject_journal import AUTO_DECIDED_BY
 
 PAGE = 15
 
@@ -67,7 +67,7 @@ _DECISION_VERB = {
 def _decision_suffix(status: str, decided_by, manager_labels: dict[int, str]) -> str:
     """Пустая строка для pending. Три случая для approved/rejected:
 
-    1. `decided_by == AUTO_DECIDED_BY` (отрицательный сентинел, `services.reject_journal`) —
+    1. `decided_by == AUTO_DECIDED_BY` (отрицательный сентинел, `services.applications.reject_journal`) —
        решило правило автоотказа, не человек и не «решения нет» — «🤖 Автоправило». Ветка стоит
        ДО проверки falsy ниже — сентинел сам по себе truthy (отрицательное число), без отдельной
        ветки решение правила провалилось бы в фолбэк «менеджер #<сентинел>».

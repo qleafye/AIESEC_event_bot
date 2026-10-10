@@ -264,7 +264,7 @@ import json  # noqa: E402
 from datetime import datetime, timedelta  # noqa: E402
 
 from services.amb import amb_tiers  # noqa: E402
-from services import applications
+from services.applications import applications
 
 
 def _on(*, deadline="2099-01-01 00:00", quota=None):

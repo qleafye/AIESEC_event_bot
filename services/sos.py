@@ -97,7 +97,7 @@ async def sos_active_window(city: str | None) -> tuple[date, date] | None:
     """Окно дней форума города `[первый, последний]` (включительно) для
     `is_sos_active_for_city` и напоминаний взявшему SOS; `None` — дата форума не задана или
     не парсится."""
-    from services.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
+    from services.applications.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
     # что уже документирован в services/checkin_broadcast.py, reject_rules.py тяжелее этого
     # модуля не нужно тянуть на уровне импорта ради одной функции.
 

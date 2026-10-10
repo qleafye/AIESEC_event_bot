@@ -263,7 +263,7 @@ def test_reject_rules_do_not_touch_pending(tmp_path, monkeypatch):
         for uid in uids:
             await _seed_user(uid, status="pending", course="1")
 
-        from services.reject_rules import save_rule
+        from services.applications.reject_rules import save_rule
         rule_id, err = await save_rule(
             1, None, name=None, city=None, tracks=["full"],
             conditions=[[{"step": "course", "op": "in", "values": ["1", "2"]}]],

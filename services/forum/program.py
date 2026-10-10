@@ -3,9 +3,9 @@
 и дня, человекочитаемое предупреждение о занятости зала, слоты параллельных сессий и
 копирование программы одного дня между городами.
 
-aiogram-free (тот же инвариант, что `services/reject_rules.py`/`services/forum/checkin.py`) —
+aiogram-free (тот же инвариант, что `services/applications/reject_rules.py`/`services/forum/checkin.py`) —
 импортирует только `database.db`/`cities`/стандартную библиотеку (тот же набор, что уже тянет
-`services/reject_rules.py` — прецедент, что этот класс модулей вправе импортировать `cities`,
+`services/applications/reject_rules.py` — прецедент, что этот класс модулей вправе импортировать `cities`,
 не только `database.db`); `services.infra.timeutil.msk_now` подтягивается лениво внутри функции (не
 на уровне модуля), чтобы не завести цикл с модулями, которые сами читают время форума на
 импорте.
@@ -122,10 +122,10 @@ def day_label(day_iso: str) -> str:
 
 
 async def own_forum_date(city: str | None) -> datetime | None:
-    """Дата форума ТОЛЬКО этого города (`services.reject_rules.forum_date_for`, без отката на
+    """Дата форума ТОЛЬКО этого города (`services.applications.reject_rules.forum_date_for`, без отката на
     общую): общая дата под шапкой «🌍 Все города» не делает форум у города без своей даты —
     иначе экран программы подсказывал Москве дни чужого регионального форума."""
-    from services.reject_rules import forum_date_for
+    from services.applications.reject_rules import forum_date_for
 
     raw = await forum_date_for(city)
     try:

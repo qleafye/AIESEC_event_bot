@@ -66,7 +66,7 @@ def _add_delegate(tid, city, *, status="rejected"):
 
 
 def _log_auto_reject(tid, rule_id):
-    from services.reject_journal import record_auto_reject
+    from services.applications.reject_journal import record_auto_reject
     return asyncio.run(record_auto_reject(tid, [rule_id], ["текст"]))
 
 

@@ -15,8 +15,8 @@ plan 21-08 wires up next. This plan is read-only against that trail.
 
 Phase 23 (23-02, APP-TINDER-01): the queue/card core (`_edit_badges_for`/`_format_edited_date`/
 `_EDITED_SOURCE_LABELS`/track labels) and the bot-only tail (welcome + reject message + sheet
-sync, formerly `_welcome_flipped`) moved to `services/applications.py`/
-`services/application_effects.py` — aiogram-free ground floor the Mini App queue (`miniapp/`)
+sync, formerly `_welcome_flipped`) moved to `services/applications/applications.py`/
+`services/applications/application_effects.py` — aiogram-free ground floor the Mini App queue (`miniapp/`)
 can call without pulling the bot in. Module-level aliases under the old private names keep this
 file's handler bodies and order untouched (same technique as `domain/settings/ops.py`, Phase 22).
 """
@@ -37,7 +37,7 @@ from database.db import (
     update_payment_status,
     get_answer_history,
 )
-from services.applications import (
+from services.applications.applications import (
     TRACK_LABELS,
     claim_approve,
     claim_approve_all_with_credits,
@@ -53,7 +53,7 @@ from services.applications import (
     score_badge_text as _score_badge_text,
     IT_3PLUS_BADGE_TEXT as _IT_3PLUS_BADGE_TEXT,
 )
-from services.application_effects import apply_decision_effects, mass_approve_effects
+from services.applications.application_effects import apply_decision_effects, mass_approve_effects
 from services.infra.background import spawn as _spawn
 from services.consent import consent_card_line  # noqa: F401 — читает admin_modcard_render
 from handlers.states import Approval, ReceiptReview
@@ -72,9 +72,9 @@ logger = logging.getLogger(__name__)
 # `@router.*` decorator below MUST fit on ONE line.
 
 
-# Phase 23 (23-06, T-23-28): _COLUMN_TO_LABEL перенесён в services/applications.py как
+# Phase 23 (23-06, T-23-28): _COLUMN_TO_LABEL перенесён в services/applications/applications.py как
 # COLUMN_TO_LABEL — та же формула через reg_engine.label_for (STEP_TO_COLUMN обратным ключом),
-# но единственная точка правды: карточка веба (`services.applications.card_payload`) теперь
+# но единственная точка правды: карточка веба (`services.applications.applications.card_payload`) теперь
 # берёт подписи истории оттуда же, второй копии словаря больше нет.
 
 
@@ -130,7 +130,7 @@ def _render_application_card(user: dict, position: int | None, total: int | None
     # are HTML-escaped (T-05-03-03): the raw DB column value can never inject markup here.
     track = user.get("participant_type") or "full"
     if track != "full":
-        # Phase 23 (23-02): подписи треков — services.applications.TRACK_LABELS, тот же
+        # Phase 23 (23-02): подписи треков — services.applications.applications.TRACK_LABELS, тот же
         # словарь, что читает карточка Mini App (card_payload).
         track_label = TRACK_LABELS.get(track, f"🎉 Трек: {html_module.escape(str(track))}")
         lines.append(track_label)
@@ -399,14 +399,14 @@ async def appr_approve(callback: types.CallbackQuery, state: FSMContext):
     won = await claim_approve(tid) if tid is not None else False
     if won:
         # Хвост (приветствие ровно один раз D-10 + автосинк статуса в таблицу, Таня п.5) —
-        # services/application_effects.py, fire-and-forget fail-soft. Сама проверка тихих
+        # services/applications/application_effects.py, fire-and-forget fail-soft. Сама проверка тихих
         # часов живёт ВНУТРИ apply_decision_effects — здесь только приписка менеджеру.
         _spawn(apply_decision_effects(callback.bot, tid, "approved"))
         logger.info(f"admin={callback.from_user.id} action=approve user={tid}")
         # Quick 260904-liz: журнал бот-пути — РАДИ ИСТОРИИ (last_rejection_reason читает эту же
         # таблицу), не ради доставки — приветствие уже ушло синхронно строкой выше.
         # effects_already_sent=True — иначе flush_due_decisions отправил бы его повторно
-        # (см. докстринг services.applications.record_decision). fail-soft: не записали историю
+        # (см. докстринг services.applications.applications.record_decision). fail-soft: не записали историю
         # — менеджер и делегат уже получили своё, вторая попытка не нужна.
         from services.scheduler import _now_moscow_naive
         try:
@@ -470,7 +470,7 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
     ok = await claim_reject(tid) if tid is not None else False
     if ok:
         # Хвост (сообщение делегату + автосинк статуса в таблицу, Таня п.5) —
-        # services/application_effects.py, fire-and-forget fail-soft. Сама проверка тихих
+        # services/applications/application_effects.py, fire-and-forget fail-soft. Сама проверка тихих
         # часов живёт ВНУТРИ apply_decision_effects — здесь только приписка менеджеру.
         _spawn(apply_decision_effects(message.bot, tid, "rejected", reason))
         # T-liz-01 (ПД): причина отказа сюда больше НЕ попадает — это свободный текст делегата
@@ -479,7 +479,7 @@ async def appr_reject_reason(message: types.Message, state: FSMContext):
         logger.info(f"admin={message.from_user.id} action=reject user={tid}")
         # Quick 260904-liz: журнал бот-пути ПОСЛЕ _spawn (доставка делегату не зависит от
         # записи истории) — effects_already_sent=True, иначе flush_due_decisions отправил бы
-        # отказ делегату ВТОРОЙ раз (см. докстринг services.applications.record_decision).
+        # отказ делегату ВТОРОЙ раз (см. докстринг services.applications.applications.record_decision).
         # fail-soft: не записали историю — менеджер и делегат уже получили своё.
         from services.scheduler import _now_moscow_naive
         try:
@@ -603,7 +603,7 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     # have been deleted — if the edit threw first, the N just-approved users would be left
     # `approved` in DB with no welcome/menu/payment requisites (violates D-11 "welcome exactly
     # once"). Ordering the background sends first makes delivery independent of the edit.
-    # services/application_effects.py::mass_approve_effects — welcome drain + один batch-sync
+    # services/applications/application_effects.py::mass_approve_effects — welcome drain + один batch-sync
     # в лист (Таня п.5), fire-and-forget fail-soft.
     _spawn(mass_approve_effects(callback.bot, ids))
     # Приписка о тихих часах — по ПЕРВОМУ делегату списка, тем же текстом реестра, что и

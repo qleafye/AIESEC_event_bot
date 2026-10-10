@@ -114,10 +114,10 @@ async def apply(bot, since: str, pause: float = 0.1, ids: set[int] | None = None
     оборвалась только запись решения, — это осознанно лучше потерянного."""
     from database.db import get_live_auto_reject_log_entry, reject_user, update_user_answers
     from domain.regform.labels import STATUS_LABELS
-    from services.application_effects import apply_decision_effects
-    from services.applications import record_decision
+    from services.applications.application_effects import apply_decision_effects
+    from services.applications.applications import record_decision
     from services.i18n.i18n import context as i18n_context, tr as i18n_tr
-    from services.reject_journal import AUTO_DECIDED_BY, record_auto_reject
+    from services.applications.reject_journal import AUTO_DECIDED_BY, record_auto_reject
 
     pairs = await collect(since)
     if ids is not None:

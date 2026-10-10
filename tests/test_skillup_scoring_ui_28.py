@@ -14,7 +14,7 @@
 
 Задача 3: сортировка очереди заявок по баллу — тумблер `apps_queue_sort_by_score`, SQL-
 сортировка в `database.db.get_pending_users(order_by_score=...)`, читают вызывающие
-(`services.applications.queue_page` и бот-очередь `admin_moderation._show_current_card`).
+(`services.applications.applications.queue_page` и бот-очередь `admin_moderation._show_current_card`).
 
 pytest-asyncio в проекте не используется — асинхронщина через `asyncio.run()`, БД — временная
 (`config.DB_PATH = tmp_path / "..."` + `database.db.init_db()`), как в соседних тестах фазы.
@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 import handlers.regform.admin_reg_scoring as admin_reg_scoring
-import services.applications as applications
+import services.applications.applications as applications
 import domain.settings.ops as settings_ops
 from config import config
 from database import db as bot_db

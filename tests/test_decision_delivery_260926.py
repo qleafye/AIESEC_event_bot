@@ -2,10 +2,10 @@
 38 заявок одобрены молча без письма делегату — ровно то, что эта задача должна ловить).
 
 Покрывает: `database.db.record_decision_delivery`/миграцию колонок, запись успеха/каждой
-причины сбоя в `services.application_effects.apply_decision_effects`/`mass_approve_effects`,
+причины сбоя в `services.applications.application_effects.apply_decision_effects`/`mass_approve_effects`,
 до-миграционные записи = «неизвестно» (не «не доставлено»), последнее решение (возврат на
 модерацию сбрасывает учёт), классификацию причины (`_classify_decision_delivery_error`),
-раскладку `services.decision_delivery.summarize_deliveries` и «📨 Переотправить решения»
+раскладку `services.applications.decision_delivery.summarize_deliveries` и «📨 Переотправить решения»
 (`resend_undelivered_decisions` — пересчёт, пропуск заблокировавших/уже доставленных,
 RetryAfter, двойной тап, город админа), fail-soft самого учёта.
 
@@ -17,8 +17,8 @@ import asyncio
 
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
-import services.application_effects as application_effects
-import services.decision_delivery as decision_delivery
+import services.applications.application_effects as application_effects
+import services.applications.decision_delivery as decision_delivery
 from config import config
 from database import db
 from tests._dbtpl import fast_init_db
@@ -473,7 +473,7 @@ def test_resend_skips_blocked_and_sends_only_resendable(tmp_path, monkeypatch):
     async def fake_last_rejection_reason(tid):
         return "не подошёл трек"
 
-    import services.applications as applications_mod
+    import services.applications.applications as applications_mod
     monkeypatch.setattr(applications_mod, "last_rejection_reason", fake_last_rejection_reason)
     monkeypatch.setattr(application_effects, "update_status_in_sheet", _fake_update_status_in_sheet)
 

@@ -94,7 +94,7 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     (`user_row.get("event_city")`), не по городу вызывающего админа/делегата откуда-то ещё —
     единственный источник города здесь та же строка, что несёт остальные поля гейта.
 
-    Ревью 25.09 (Phase 33, задача 3): личное исключение (`services/delegate_overrides.py`,
+    Ревью 25.09 (Phase 33, задача 3): личное исключение (`services/applications/delegate_overrides.py`,
     `kind="edit"`) подменяет ТОЛЬКО решение `edit_allowed_for` (положение тумблера
     `reg_edit_policy`) — прочие условия гейта (submitted/season через
     `reg_engine.has_submitted_anketa`, Р-1 rejected вообще не гейтится) остаются в силе,
@@ -117,7 +117,7 @@ async def edit_gate(user_row: dict | None) -> tuple[bool, str | None]:
             telegram_id = (user_row or {}).get("telegram_id")
             if telegram_id is not None:
                 try:
-                    from services import delegate_overrides
+                    from services.applications import delegate_overrides
                     if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_EDIT):
                         return True, None
                 except Exception:
@@ -162,7 +162,7 @@ async def resubmit_gate(user_row: dict | None) -> tuple[bool, str | None]:
     Правка 260922-wrg: `reg_resubmit_after_reject`/`reg_resubmit_closed_text` — оба per_city,
     резолвятся по тому же `user_row.get("event_city")`, что и `edit_gate` выше.
 
-    Ревью 25.09 (Phase 33, задача 2): личное исключение (`services/delegate_overrides.py`,
+    Ревью 25.09 (Phase 33, задача 2): личное исключение (`services/applications/delegate_overrides.py`,
     `kind="resubmit"`) подменяет ТОЛЬКО решение `resubmit_allowed_for` (положение тумблера
     `reg_resubmit_after_reject`) — прочие условия гейта (сезон строки через
     `reg_engine.is_past_season_row`, статус не rejected — этот гейт вообще не про них) остаются
@@ -184,7 +184,7 @@ async def resubmit_gate(user_row: dict | None) -> tuple[bool, str | None]:
             telegram_id = (user_row or {}).get("telegram_id")
             if telegram_id is not None:
                 try:
-                    from services import delegate_overrides
+                    from services.applications import delegate_overrides
                     if await delegate_overrides.active_override(telegram_id, delegate_overrides.KIND_RESUBMIT):
                         return True, None
                 except Exception:

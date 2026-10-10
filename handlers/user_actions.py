@@ -139,7 +139,7 @@ async def _say_auto_reject_again(message: types.Message, user: dict) -> bool:
     правил. Вернуло False — вызывающий показывает общий текст."""
     from database.db import get_live_auto_reject_log_entry, get_reject_rule
     from handlers import registration
-    from services.applications import reject_message_text
+    from services.applications.applications import reject_message_text
 
     raw_ids = (user.get("auto_reject_rule_ids") or "").strip()
     if raw_ids in ("", "[]"):

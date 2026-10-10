@@ -211,7 +211,7 @@ async def apply_reg_preset(preset_key: str, admin_id: int | None = None) -> list
         changed_keys.append(key)
 
     try:
-        from services import reject_rules_notify as _rrn
+        from services.applications import reject_rules_notify as _rrn
         await _rrn.on_settings_written_batch(changed_keys)
     except Exception as exc:  # noqa: BLE001 — запись пресета важнее реакции на неё
         logger.error("domain.regform.presets.apply_reg_preset(%r): реакция на правки сорвалась: %s", preset_key, exc)

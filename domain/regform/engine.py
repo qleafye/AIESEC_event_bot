@@ -3283,7 +3283,7 @@ def age_on(birth_raw: str | None, target_raw: str | None) -> int | None:
 # aiogram. Форма правила/условия и контракт возврата зафиксированы в <interfaces> 31-01-PLAN.md
 # и одинаково потребляются чатом и Mini App через общий финал анкеты (services/reg_finalize.py).
 # Фильтрация правил по городу/треку сюда НЕ входит намеренно — её делает загрузчик
-# services/reject_rules.py::active_rules (план 31-04), ровно как scoring_rules() выше собирает
+# services/applications/reject_rules.py::active_rules (план 31-04), ровно как scoring_rules() выше собирает
 # готовый словарь для compute_score, а не читает реестр прямо из чистой функции.
 
 # Закрытый набор операторов условия по категории типа шага (D-01). Набор ЗАКРЫТ — условие с
@@ -3349,7 +3349,7 @@ def rule_pause_reason(rule: dict, enabled_steps, options_by_step: dict) -> str |
     опирается на выключенный вопрос анкеты (`step` отсутствует в `enabled_steps`) либо на
     исчезнувший вариант ответа (категория условия — select/multi, и хотя бы одно значение
     условия отсутствует среди живых вариантов шага). `enabled_steps`/`options_by_step` собирает
-    вызывающий (загрузчик `services/reject_rules.py`, план 31-04) — сама функция ничего не
+    вызывающий (загрузчик `services/applications/reject_rules.py`, план 31-04) — сама функция ничего не
     читает из БД и не зовёт асинхронный `reg_engine.options`. Шаг, которого нет в
     `options_by_step` вовсе, — значения этого шага НЕ проверяются (список просто не собрали, а
     не «вариантов не осталось»). Возврат — человеческая подпись ПЕРВОГО сломанного шага через
@@ -3442,7 +3442,7 @@ def evaluate_reject_rules(
     """Чистая формула автоотказа (D-07) — без БД, без aiogram, синхронная (тот же класс
     функции, что `compute_score`/`decide_status`). `rules` — уже ОТФИЛЬТРОВАННЫЙ список
     активных правил (enabled, не на паузе, подходящих по городу/треку — фильтрует загрузчик
-    `services/reject_rules.py::active_rules`, план 31-04; здесь фильтрация намеренно НЕ
+    `services/applications/reject_rules.py::active_rules`, план 31-04; здесь фильтрация намеренно НЕ
     повторяется, тот же приём, что `scoring_rules()` собирает готовый словарь для
     `compute_score`). `answers` — плоский словарь ответов анкеты (те же ключи, что кладёт
     `with_defaults`/`add_user`).

@@ -105,7 +105,7 @@ def _parse_hhmm(raw: str | None) -> tuple[int, int]:
 # чужой приватный хелпер) ────────────────────────────────────────────────────────────────────
 
 async def _last_forum_day(city: str | None) -> date | None:
-    from services.reject_rules import forum_date_for  # ленивый импорт — цикл-разрыв, тот же
+    from services.applications.reject_rules import forum_date_for  # ленивый импорт — цикл-разрыв, тот же
     # приём, что у соседних модулей.
 
     raw = await forum_date_for(city)
@@ -135,7 +135,7 @@ async def _dates_label_for(target_city: str) -> str:
     строку — фраза остаётся грамматически целой, без «висящего» пробела/слова. Формат без года
     (`%d.%m`) — единообразно для обеих границ диапазона. Подставляется ПОСЛЕ перевода текста
     (докстринг модуля, RULES.md)."""
-    from services.reject_rules import forum_date_for
+    from services.applications.reject_rules import forum_date_for
 
     raw = await forum_date_for(target_city)
     if not raw:

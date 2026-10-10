@@ -375,7 +375,7 @@ def code_literals() -> list[tuple[str, str]]:
 
     # Квик 260917-en: полный чат бота на английском — литералы `handlers/user_actions.py`
     # (главное меню: инфо/программа/спикеры/контакты/рефералка/FAQ/вопрос менеджеру/
-    # геймификация), `handlers/payment.py` (оплата) и `services/application_effects.py`
+    # геймификация), `handlers/payment.py` (оплата) и `services/applications/application_effects.py`
     # (отказ) — эти модули aiogram-зависимы, `i18n_sources.py` их не импортирует (докстринг
     # модуля), поэтому строки продублированы буквально, тем же приёмом, что и литералы
     # `registration`/`reg_flow`/`reg_resume`/`reg_consent` выше. `tests/test_i18n_sources_27.py`

@@ -1,6 +1,6 @@
 """Phase 33 (delegate-card admin actions, задача 2): «🔁 Разрешить повторную подачу» — кнопка
 на карточке `/find` для отклонённого делегата (`handlers/admin.py::cmd_find_user`). Сам
-примитив исключения — `services/delegate_overrides.py`, единая точка правды для обоих
+примитив исключения — `services/applications/delegate_overrides.py`, единая точка правды для обоих
 персональных гейтов фазы (эта задача — `kind="resubmit"`, соседняя задача 3 — `kind="edit"`).
 
 Не форумная функция (админ-действие модератора) — своей строки в хабе «🎪 Форум: функции» нет
@@ -26,7 +26,7 @@ from domain.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
 from handlers.forum.admin_checkin import _city_allowed
-from services import delegate_overrides
+from services.applications import delegate_overrides
 
 logger = logging.getLogger(__name__)
 

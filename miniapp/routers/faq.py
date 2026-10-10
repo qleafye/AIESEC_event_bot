@@ -25,7 +25,7 @@ Quick 260906-nxp: полноценный экран управления FAQ в 
 Город пункта в мутациях НИКОГДА не приходит из тела — только `Principal.city` (та же дихотомия,
 что у делегатского города выше, только для другой стороны): PATCH принимает лишь пару
 `"all"`/`"mine"`, код города фронт не знает и прислать не может (T-nxp-02). Скоуп менеджера
-(`services.applications.manager_scope`) проверяется на КАЖДОЙ мутации через `_load_in_scope`
+(`services.applications.applications.manager_scope`) проверяется на КАЖДОЙ мутации через `_load_in_scope`
 (T-nxp-03), не только на чтении — экран в вебвью живёт долго, привязка могла смениться."""
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ from database.db import (
     reorder_faq_items,
     update_faq_item,
 )
-from services import applications
+from services.applications import applications
 from services.i18n import i18n
 from services.forum.faq import apply_city_overrides, city_badge, normalize_question
 from domain.settings.schema import get_setting_typed

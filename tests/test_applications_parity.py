@@ -1,7 +1,7 @@
 """Phase 23 План 02 (APP-TINDER-01) — снимок поведения решений бота ДО переноса в
-`services/applications.py`/`services/application_effects.py`.
+`services/applications/applications.py`/`services/applications/application_effects.py`.
 
-До задачи 2 модуль `services.applications` не существует — импорт на уровне модуля падает
+До задачи 2 модуль `services.applications.applications` не существует — импорт на уровне модуля падает
 `ModuleNotFoundError`, это Wave 0 RED-снимок плана (как `tests/test_settings_ops.py` фазы 22).
 
 Эталоны (тексты, порядок вызовов) сняты ДОСЛОВНО из `handlers/applications/admin_moderation.py` (HEAD
@@ -22,8 +22,8 @@ from datetime import datetime, timedelta
 
 import domain.regform.moderation_card as moderation_card
 import domain.regform.engine as reg_engine
-import services.application_effects as application_effects
-import services.applications as applications
+import services.applications.application_effects as application_effects
+import services.applications.applications as applications
 from config import config
 from database import db
 from tests.test_miniapp_labels_drift import _loaded_aiogram
@@ -55,8 +55,8 @@ def _seed_user(tid, **fields):
 # ── Ядро без aiogram (T-23-06 / D-... форма domain/settings/ops.py) ────────────────────────────────
 
 def test_applications_module_does_not_load_aiogram():
-    loaded = _loaded_aiogram("import services.applications")
-    assert loaded == [], f"services.applications потянул aiogram: {loaded}"
+    loaded = _loaded_aiogram("import services.applications.applications")
+    assert loaded == [], f"services.applications.applications потянул aiogram: {loaded}"
 
 
 # ── Сторож дрейфа кодов трека (23-01, T-23-05: _track_clause литералы vs reg_engine) ────────
@@ -663,7 +663,7 @@ def test_mass_approve_parity(tmp_path, monkeypatch):
 
 def test_no_second_source_of_truth():
     """T-23-28: единственный вызывающий `approve_user`/`update_status_in_sheet`/
-    `bulk_update_status_in_sheet` — `services/application_effects.py`. Ни веб-роутер, ни
+    `bulk_update_status_in_sheet` — `services/applications/application_effects.py`. Ни веб-роутер, ни
     бот-хендлер не держат собственной копии хвоста решения."""
     forbidden = ("approve_user(", "update_status_in_sheet(", "bulk_update_status_in_sheet(")
     for rel_path in ("miniapp/routers/applications.py", "handlers/applications/admin_moderation.py"):
@@ -676,7 +676,7 @@ def test_no_second_source_of_truth():
 def test_card_fields_same_registry_key_drives_both_surfaces(tmp_path):
     """D-01: один ключ реестра (`modcard_fields`) задаёт набор вопросов И карточке бота
     (`handlers/applications/admin_moderation.py::_show_current_card`/`appr_full`), И карточке веба
-    (`services/applications.py::card_payload`) — обе стороны читают его через ОДНУ функцию
+    (`services/applications/applications.py::card_payload`) — обе стороны читают его через ОДНУ функцию
     `moderation_card.enabled_steps`, второго набора вопросов не существует."""
     for rel_path in ("handlers/applications/admin_moderation.py",):
         text = (ROOT / rel_path).read_text(encoding="utf-8")
@@ -698,7 +698,7 @@ def test_card_fields_same_registry_key_drives_both_surfaces(tmp_path):
 def test_file_scope_matches_service_scope(tmp_path):
     """T-23-05 (сторож дрейфа, оставленный планом 23-05): правило городского скоупа временно
     живёт в двух местах — `miniapp/routers/files.py::_city_matches` и
-    `services/applications.py::out_of_scope` (D-14). На таблице случаев (модуль выключен /
+    `services/applications/applications.py::out_of_scope` (D-14). На таблице случаев (модуль выключен /
     менеджер без привязки / города совпадают / расходятся) оба места обязаны давать
     согласованный ответ (`_city_matches == not out_of_scope`)."""
     from miniapp.deps import Principal

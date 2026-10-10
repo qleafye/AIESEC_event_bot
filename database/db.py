@@ -1159,7 +1159,7 @@ async def init_db():
         # момент отказа вовсе (в отличие от `approved_at`, D-10). Additive, без бэкафилла —
         # NULL значит «отклонён до этой колонки», экран статуса просто не подписывает причину
         # датой для таких старых решений. Стампится в `reject_user` (единственный атомарный шов
-        # и бота, и веба — `services.applications.claim_reject`), второй точки записи нет.
+        # и бота, и веба — `services.applications.applications.claim_reject`), второй точки записи нет.
         await _ensure_column(db, "users", "rejected_at", "TEXT")
 
         # Координатор 25.09 (учёт доставки решения, память auto-approve-incident-260906: 38
@@ -1173,7 +1173,7 @@ async def init_db():
         # NULL у всех четырёх — «неизвестно»: либо решение ещё не было (pending), либо оно
         # принято ДО этой миграции (признака тогда не было вовсе) — БЕЗ бэкафилла, честно не
         # путаем с «не доставлено» (`services/sheets/sheet_reconcile.py` отчёт разводит эти две
-        # категории). Пишет `services.application_effects.apply_decision_effects`/
+        # категории). Пишет `services.applications.application_effects.apply_decision_effects`/
         # `mass_approve_effects` — единственный choke-point всех путей решения (бот/веб/
         # автоотказ/квик-скрипт, см. их докстринг). Возврат на модерацию
         # (`revert_user_to_pending` ниже) сбрасывает все четыре в NULL — решения, к которому они
@@ -2572,7 +2572,7 @@ async def init_db():
         # Phase 33 (delegate-card admin actions, задачи 2/3): персональные одноразовые
         # исключения из глобальных положений `reg_resubmit_after_reject`/`reg_edit_policy` —
         # «🔁 Разрешить повторную подачу» и «✏️ Открыть правку после решения»
-        # (`services/delegate_overrides.py`). `kind` — 'resubmit' | 'edit'. Активная строка —
+        # (`services/applications/delegate_overrides.py`). `kind` — 'resubmit' | 'edit'. Активная строка —
         # `revoked_at IS NULL AND consumed_at IS NULL`; инвариант «не больше одной активной на
         # (telegram_id, kind)» держит вызывающий код (grant отказывает, если уже есть активная),
         # не UNIQUE-ограничение — так же, как остальные append-only журналы этого проекта
@@ -4020,8 +4020,8 @@ async def record_answer_history(
 
     Quick 260906-52m: `changed_at` хранится в UTC (`datetime.utcnow()`), формат строки
     `"%Y-%m-%d %H:%M:%S"` НЕ менялся — его разбирают и `services/questions.py::_parse_stamp`,
-    и `services/applications.py::format_edited_date`. Показ переводит метку в МСК на всех трёх
-    экранах (`services/sheets/sheet_logs.py`, `services/applications.py::_history_entry`,
+    и `services/applications/applications.py::format_edited_date`. Показ переводит метку в МСК на всех трёх
+    экранах (`services/sheets/sheet_logs.py`, `services/applications/applications.py::_history_entry`,
     `handlers/applications/admin_moderation.py::appr_history`). Соседняя `mark_user_edited` (`edited_at`)
     квиком 260912-mcj переведена на московский `msk_now()` (раньше писала локальное время
     контейнера) — это по-прежнему РАЗНЫЕ семьи: `changed_at` остаётся UTC и переводится на
@@ -4392,7 +4392,7 @@ async def approve_user_atomic(telegram_id: int) -> bool:
     (rowcount==1) — a concurrent second approve returns False (no double approval).
     approved_at (D-10, Phase 23.1-05) is stamped in the SAME UPDATE — this is the shared seam
     for both the bot's single-approve (appr_approve) and the web's single-approve
-    (services.applications.claim_approve), so a second timestamp write is never needed."""
+    (services.applications.applications.claim_approve), so a second timestamp write is never needed."""
     approved_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
@@ -4408,7 +4408,7 @@ async def reject_user(telegram_id: int) -> bool:
     """Atomically reject one pending user. True iff one row flipped.
     rejected_at (Phase 30, 30-05 задача 3) is stamped in the SAME UPDATE — the shared seam
     for both the bot's single-reject (appr_reject_reason) and the web's single-reject
-    (services.applications.claim_reject), same discipline as approve_user_atomic/approved_at."""
+    (services.applications.applications.claim_reject), same discipline as approve_user_atomic/approved_at."""
     rejected_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
@@ -4423,7 +4423,7 @@ async def reject_user(telegram_id: int) -> bool:
 async def record_decision_delivery(telegram_id: int, decision: str, status: str,
                                     error: str | None = None) -> None:
     """Пишет `users.decision_delivery_*` (координатор 25.09, учёт доставки решения) —
-    единственная точка записи, зовётся из `services.application_effects.apply_decision_effects`/
+    единственная точка записи, зовётся из `services.applications.application_effects.apply_decision_effects`/
     `mass_approve_effects` ПОСЛЕ попытки отправить письмо о решении. `status` —
     'delivered' | 'failed' | 'queued' (тихие часы — попытка ещё не случилась, но факт «решение
     ждёт» уже стоит отдельно от «неизвестно»/pre-migration NULL). `error` — уже готовая
@@ -4632,7 +4632,7 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
 
     approved_at (D-10, Phase 23.1-05) is stamped in the SAME UPDATE — this is the shared seam
     for BOTH mass-approve callers: the bot's appr_all_yes calls this function directly (not
-    through services.applications.claim_approve_all), so stamping only in the service wrapper
+    through services.applications.applications.claim_approve_all), so stamping only in the service wrapper
     would silently miss the chat path.
 
     D-41: walk-in (onsite_kind='walkin') сюда не попадает — решение по нему принимает стойка."""
@@ -4932,7 +4932,7 @@ async def grant_delegate_override(telegram_id: int, kind: str, granted_by: int, 
     (`idx_admin_delegate_overrides_unique_active`), не check-then-insert вызывающего кода, не
     даёт завести вторую активную строку того же вида одному делегату (двойной тап «Выдать»,
     гонка двух менеджеров). `INSERT OR IGNORE`: конфликт с уже активной строкой молча не
-    вставляет ничего — возвращает `None`, вызывающий (`services/delegate_overrides.py::
+    вставляет ничего — возвращает `None`, вызывающий (`services/applications/delegate_overrides.py::
     grant_override`) сам решает, что сказать менеджеру (обычно — дочитать активную строку и
     показать её)."""
     async with _connect() as db:
@@ -7986,7 +7986,7 @@ async def resolve_decision_managers(decided_by_ids: list[int]) -> dict[int, str]
     значения человеку не показываем).
 
     Phase 31 (31-02): `i > 0` (не просто `if i`) — сентинел автоотказа `AUTO_DECIDED_BY = -1`
-    (единственное объявление — план 31-05, `services/reject_journal.py`) не должен уезжать в
+    (единственное объявление — план 31-05, `services/applications/reject_journal.py`) не должен уезжать в
     этот запрос: у него нет строки в `users`, и подпись «менеджер #-1» была бы враньём."""
     ids = sorted({i for i in decided_by_ids if i and i > 0})
     if not ids:
@@ -11346,7 +11346,7 @@ async def daily_digest_stats(day: str, *, city_scope=None) -> dict:
             stats["apps_walkin_pending"] = (row[1] if row else 0) or 0
 
         per_manager: dict[int, list[int]] = {}
-        # Квик 260923: сентинел автоотказа (`services.reject_journal.AUTO_DECIDED_BY == -1`)
+        # Квик 260923: сентинел автоотказа (`services.applications.reject_journal.AUTO_DECIDED_BY == -1`)
         # не менеджер — `d.decided_by > 0` убирает автоотказ И из этой выборки (per_manager),
         # И из `stats["apps_rejected"]` (она считается из тех же строк ниже) разом: менеджер
         # больше не видит строку «менеджер #-1» и «отклонено» больше не путает решение
@@ -12336,7 +12336,7 @@ async def checkin_not_arrived_summary(*, city_scope=None, day: str | None = None
 # ── Форум-ночь п.4: расписание форума в боте (program_halls/program_sessions) ─────────────────
 # Бизнес-правила (разбор времени, предупреждение о занятости зала, слоты параллельных сессий,
 # копирование между городами) — в аiogram-free `services/forum/program.py`; здесь только сырой CRUD,
-# тем же приёмом, что `services/reject_rules.py` поверх `reject_rules`/`auto_reject_log`.
+# тем же приёмом, что `services/applications/reject_rules.py` поверх `reject_rules`/`auto_reject_log`.
 
 async def create_program_hall(city: str, name: str, capacity: int | None = None) -> int:
     """Новый зал города — `sort_order` авто (следующий после максимального уже существующего

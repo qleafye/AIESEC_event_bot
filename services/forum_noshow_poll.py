@@ -67,7 +67,7 @@ def job_id(city: str | None) -> str:
 
 
 async def _last_forum_day(city: str | None) -> date | None:
-    from services.reject_rules import forum_date_for  # ленивый импорт — цикл-разрыв, тот же
+    from services.applications.reject_rules import forum_date_for  # ленивый импорт — цикл-разрыв, тот же
     # приём, что services/forum_day_report.py/services/sos.py.
 
     raw = await forum_date_for(city)

@@ -18,7 +18,7 @@ from config import config
 from database import db
 from handlers.access.admin_caps import role_caps_key
 from services.forum.checkin import checkin_denial
-from services.revert_pending import preview_revert_pending, revert_to_pending
+from services.applications.revert_pending import preview_revert_pending, revert_to_pending
 from tests._dbtpl import fast_init_db
 
 SUPERADMIN_ID = 260925201
@@ -118,7 +118,7 @@ def _cbs(kb):
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part A: services/revert_pending.py — БД-слой Task 1
+# Part A: services/applications/revert_pending.py — БД-слой Task 1
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_revert_approved_reverts_status_and_records_history(tmp_path):
@@ -183,7 +183,7 @@ def test_revert_status_race_reports_error_without_crashing(tmp_path, monkeypatch
         async def _lost_race(telegram_id, from_status):
             return False
 
-        monkeypatch.setattr("services.revert_pending.revert_user_to_pending", _lost_race)
+        monkeypatch.setattr("services.applications.revert_pending.revert_user_to_pending", _lost_race)
         return await revert_to_pending(DELEGATE_ID, by_admin=SUPERADMIN_ID, notify=False)
 
     report = _run(scenario())
@@ -196,7 +196,7 @@ def test_revert_status_race_reports_error_without_crashing(tmp_path, monkeypatch
 def test_revert_cancels_payment_reminders_only_when_was_approved(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(
-        "services.revert_pending.cancel_payment_reminders", lambda uid: calls.append(uid),
+        "services.applications.revert_pending.cancel_payment_reminders", lambda uid: calls.append(uid),
     )
     _db_ready(tmp_path)
 
@@ -363,7 +363,7 @@ def test_revert_source_admin_prefix_does_not_break_history_screen(tmp_path):
     """Формат `source=f"admin:{admin_id}"` не сравнивается с `"admin"` нигде в проекте
     (grep-проверка была сделана при разработке) — экран «🕓 История» печатает незнакомый
     префикс как есть через `.get(source, source)`, не падает."""
-    from services.applications import EDITED_SOURCE_LABELS
+    from services.applications.applications import EDITED_SOURCE_LABELS
 
     _db_ready(tmp_path)
 
@@ -627,17 +627,17 @@ def test_card_button_visible_only_for_approved_and_rejected():
     """Кнопка «↩️ Вернуть в ожидание» видна только когда есть что возвращать (services/
     revert_pending.py::REVERTIBLE_STATUSES) — та же проверка, что определяет видимость на
     карточке /find (handlers/admin.py::cmd_find_user)."""
-    from services.revert_pending import REVERTIBLE_STATUSES
+    from services.applications.revert_pending import REVERTIBLE_STATUSES
 
     assert REVERTIBLE_STATUSES == ("approved", "rejected")
     assert "pending" not in REVERTIBLE_STATUSES
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
-# Part D: services/delegate_overrides.py — общий примитив персональных исключений (задачи 2/3)
+# Part D: services/applications/delegate_overrides.py — общий примитив персональных исключений (задачи 2/3)
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 
-from services import delegate_overrides  # noqa: E402
+from services.applications import delegate_overrides  # noqa: E402
 
 
 def test_grant_override_creates_active_row_and_records_history(tmp_path):

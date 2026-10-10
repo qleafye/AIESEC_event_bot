@@ -42,12 +42,12 @@ Telegram или пересобирать таблицу самому — еди�
   всё равно выходит из очереди обработанной, ретраить нечего чинить сбоем БД). При
   `reason="takeover"` дополнительно шлёт делегату `reg_handoff_to_app_text` — сбой отправки
   ловится отдельным try/except и не должен приводить к ретраю сброса FSM.
-- `application_decided` -> `services.application_effects.apply_decision_effects(bot,
+- `application_decided` -> `services.applications.application_effects.apply_decision_effects(bot,
   telegram_id, status, reason)` (Phase 23, план 23-04, D-06) — приветствие/отказ делегату
   по заявке отбора + лист, тот же хвост, что и прямой вызов из `handlers/applications/admin_moderation.py`.
   Событие ставится не сразу: `miniapp/outbox.py::flush_application_decisions` переносит его
   из журнала `application_decisions` только после истечения окна отмены.
-- `application_mass_approved` -> `services.application_effects.mass_approve_effects(bot,
+- `application_mass_approved` -> `services.applications.application_effects.mass_approve_effects(bot,
   ids)` (D-07) — welcome-рассылка + один batch-sync листа для «Принять всех N»; у массового
   одобрения нет отмены, это событие ставится сразу в `miniapp/routers/applications.py`.
 - `checkin_first_entry` -> `services.forum.checkin.fire_first_entry(bot, **payload)` (24.09) —
@@ -84,7 +84,7 @@ from database.db import (
     mark_miniapp_outbox_processed,
     get_user,
 )
-from services.application_effects import apply_decision_effects, mass_approve_effects
+from services.applications.application_effects import apply_decision_effects, mass_approve_effects
 from services.game.coins_notify import notify_manual_coins
 from services.game_digest import notify_submission
 from services.game.game_sync import request_resync

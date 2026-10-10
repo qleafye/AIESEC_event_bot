@@ -798,7 +798,7 @@ def test_long_report_is_chunked_under_telegram_limit():
 def test_render_report_lines_reports_decision_delivery_counts():
     """Координатор 25.09: раздел «Недоставленные решения» больше не честная отписка
     («по базе это не определить») — реальные числа из `decision_delivery`, посчитанные
-    `services.decision_delivery.summarize_deliveries`."""
+    `services.applications.decision_delivery.summarize_deliveries`."""
     report = {
         "ok": True, "error": None, "user_count": 3,
         "missing_tabs": [], "headerless_tabs": [], "duplicate_rows": [], "status_mismatch": [],

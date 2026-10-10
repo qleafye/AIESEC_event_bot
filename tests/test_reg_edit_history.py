@@ -385,20 +385,20 @@ def test_toggle_flips_on_and_back_off(tmp_path):
 # теста на сдвиг не имеют (stored_utc=False — сдвига нет по определению).
 
 def test_format_edited_date_stored_utc_true_shifts_plus_3h():
-    from services.applications import format_edited_date
+    from services.applications.applications import format_edited_date
     assert format_edited_date("2026-09-04 07:00:00", stored_utc=True) == "04.09 10:00"
 
 
 def test_format_edited_date_default_does_not_shift():
-    from services.applications import format_edited_date
+    from services.applications.applications import format_edited_date
     assert format_edited_date("2026-09-04 07:00:00") == "04.09 07:00"
 
 
 def test_format_edited_date_stored_utc_true_empty_is_fail_soft():
-    from services.applications import format_edited_date
+    from services.applications.applications import format_edited_date
     assert format_edited_date(None, stored_utc=True) == ""
 
 
 def test_format_edited_date_stored_utc_true_unparsed_is_fail_soft():
-    from services.applications import format_edited_date
+    from services.applications.applications import format_edited_date
     assert format_edited_date("не дата", stored_utc=True) == "не дата"

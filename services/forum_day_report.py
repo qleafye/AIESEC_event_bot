@@ -49,7 +49,7 @@ def job_id(city: str | None) -> str:
 # ── Окно дней форума — дубль расчёта forum_day_menu._forum_window_dates/sos.is_sos_active_for_city ──
 
 async def _window_dates(city: str | None) -> tuple[date, date] | None:
-    from services.reject_rules import forum_date_for  # ленивый импорт — цикл-разрыв, тот же
+    from services.applications.reject_rules import forum_date_for  # ленивый импорт — цикл-разрыв, тот же
     # приём, что services/sos.py/services/forum_day_menu.py.
 
     raw = await forum_date_for(city)

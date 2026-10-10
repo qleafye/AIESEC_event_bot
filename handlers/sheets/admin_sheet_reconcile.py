@@ -20,7 +20,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 
 from handlers.admin import router
 from handlers.settings.admin_core import _admin_city_view
-from services.decision_delivery import resend_undelivered_decisions
+from services.applications.decision_delivery import resend_undelivered_decisions
 from services.sheets.sheet_reconcile import (
     apply_append_missing,
     apply_fix_statuses,

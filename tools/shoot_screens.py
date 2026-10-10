@@ -306,7 +306,7 @@ def _shoot_status_bonus_screens(driver, db_path: Path) -> None:
                     "UPDATE users SET status = 'rejected', rejected_at = ? WHERE telegram_id = ?",
                     (now, DELEGATE_ID),
                 )
-                # last_rejection_reason() (services/applications.py) читает эту таблицу —
+                # last_rejection_reason() (services/applications/applications.py) читает эту таблицу —
                 # без строки причина пустая, карточка «Причина» просто не рисуется (не падает),
                 # но кадр менее полезен ревьюеру.
                 conn.execute(

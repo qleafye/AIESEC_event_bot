@@ -375,7 +375,7 @@ def test_export_auto_reject_log_rows_passes_values_through_csv_safe(tmp_path):
 
 def test_resolve_decision_managers_skips_auto_reject_sentinel(tmp_path):
     """`resolve_decision_managers([-1, 12345])` не содержит ключа `-1` — сентинел автоотказа
-    не должен уезжать в запрос имён менеджеров (план 31-05, services/reject_journal.py)."""
+    не должен уезжать в запрос имён менеджеров (план 31-05, services/applications/reject_journal.py)."""
     _ready(tmp_path)
     labels = _run(db.resolve_decision_managers([-1, 12345]))
     assert -1 not in labels

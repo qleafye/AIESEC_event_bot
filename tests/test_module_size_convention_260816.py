@@ -605,7 +605,7 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(handlers/delegations/admin_delegations.py); 1158 -> 1160, потолок 1169 держит. "
         "03.10 (приёмка хаба форума): +4 строки — seam import handlers/forum/admin_forum_hub_nav.py в хвосте; 1165 -> 1169. "
         "01.10 (приёмка форума): +2 строки — строки «Статус/Город/Сезон» карточки /find, сама вёрстка "
-        "вынесена в services/delegate_card.py; 1163 -> 1165. "
+        "вынесена в services/applications/delegate_card.py; 1163 -> 1165. "
         "28.09 (регистрация на месте, D-41): +5 строк — seam import handlers/forum/admin_onsite_reg.py в самом хвосте с комментарием-перечнем хендлеров, как у соседей; 1155 -> 1160 (вместе с постом рейтинга -> 1163). "
         "Квик 260927 (пост рейтинга в чат): +3 строки — seam import "
         "handlers/chat/admin_chat_rating_post.py сразу после admin_chat_cleanup; 1155 -> 1158. "

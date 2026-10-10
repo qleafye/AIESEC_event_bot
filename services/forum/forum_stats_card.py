@@ -61,7 +61,7 @@ not_missing` не трогать), фильтр нуля — только в `re
 шести фиксированных подписей этого модуля выше), даты — окно форума
 `services.sos.sos_active_window(city)` (`forum_date` + `sos_active_days`), месяц — родительный
 падеж (RU) / «Month D» (EN), обе таблицы месяцев — код-литералы этого модуля (тот же довод, что
-`services.applications._MONTH_NAMES_GENITIVE`: своя копия, не импорт).
+`services.applications.applications._MONTH_NAMES_GENITIVE`: своя копия, не импорт).
 
 «С нами с …» (сезон предыдущей регистрации) — сезонный код людям читаем ТОЛЬКО если это
 свободный текст `event_season`, который администратор сам вписал при открытии сезона
@@ -124,7 +124,7 @@ LOGO_SETTING_KEY = "miniapp_logo"
 _ORANGE_HEX = "#F48924"
 
 # Месяцы для «30–31 октября» / «October 30–31» — код-литералы этого модуля, своя копия таблицы
-# (тот же довод, что `services.applications._MONTH_NAMES_GENITIVE`: dashboard/miniapp/services
+# (тот же довод, что `services.applications.applications._MONTH_NAMES_GENITIVE`: dashboard/miniapp/services
 # исторически не делят модули друг с другом, здесь то же самое правило распространено на этот
 # модуль — подписи карточки уже код-литералы, см. докстринг).
 _MONTH_GENITIVE_RU = (
