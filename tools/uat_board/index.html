@@ -1499,10 +1499,10 @@ function stepHtml(st, showTag){
 function sectionHtml(sec){
   const meta = [`⏱ ${esc(sec.time)}`, sec.need ? `👥 ${esc(sec.need)}` : ""].filter(Boolean).map(t => `<span>${t}</span>`).join("")
     + (sec.opt ? '<span class="opt">если останется время</span>' : "");
-  const tags = sec.sessions.map(tagHtml).join("");
+  const tags = "";
   let body = "";
   if (sec.merged) {
-    body = sec.sources.map(src => `<ol class="steps"><li class="subh" data-src="${esc(src.src)}"><b>${esc(src.title)}</b> ${tagHtml(src.sess)}<span class="sm">⏱ ${esc(src.time)}${src.need ? " · 👥 " + esc(src.need) : ""}</span></li>${src.steps.map(st => stepHtml(st, false)).join("")}</ol>`).join("");
+    body = sec.sources.map(src => `<ol class="steps"><li class="subh" data-src="${esc(src.src)}"><b>${esc(src.title)}</b> <span class="sm">⏱ ${esc(src.time)}${src.need ? " · 👥 " + esc(src.need) : ""}</span></li>${src.steps.map(st => stepHtml(st, false)).join("")}</ol>`).join("");
   } else {
     body = `<ol class="steps">${sec.steps.map(st => stepHtml(st, false)).join("")}</ol>`;
   }
@@ -1536,10 +1536,9 @@ function preHtml(s){
 
 function renderBoard(){
   const f = Object.assign({ sess: "", tab: "", stat: "", cues: "" }, local._f || {});
+  f.sess = "";  // деление по сессиям убрано: только путало
   if (!TABS[f.tab]) f.tab = "";
   page = { nodes: {}, preNodes: {}, f, reSig: null, opened: false };
-  const sessChips = [`<button class="chip" type="button" data-f="sess" data-v="">Все сессии</button>`]
-    .concat(SESS_ORDER.map(k => `<button class="chip" type="button" data-f="sess" data-v="${k}">${esc(SESS_TAG[k])}</button>`)).join("");
   const tabBtns = Object.keys(TABS).map(k => `<button class="tab t-${k}" type="button" data-tab="${k}" aria-pressed="false"><span class="ti">${TABS[k].icon} ${esc(TABS[k].name)}</span><small class="pn">${esc(TABS[k].person)}</small><small id="tc-${k}"></small></button>`).join("");
   root.innerHTML = `
   <header class="top">
@@ -1613,8 +1612,6 @@ function renderBoard(){
         <button class="chip" type="button" data-f="stat" data-v="bad">❌ Не так</button>
         <span class="sep"></span>
         <button class="chip" type="button" data-f="cues" data-v="1" data-toggle="1">👥 Показывать, что делают другие</button>
-        <span class="sep"></span>
-        ${sessChips}
       </div>
     </div></details>
     <div class="sync" id="sync-s">Подключаюсь к общей доске…</div>
@@ -1854,12 +1851,10 @@ function applyFilter(){
 }
 
 /* ───────── маршрут ───────── */
-/* #s1 / #s2 / #s3 / #bl — включить фильтр сессии (так ссылки старой доски остаются рабочими);
-   #blk-… / #sec-… — прокрутить к разделу. */
+/* #blk-… / #sec-… — прокрутить к разделу. */
 function route(){
   if (!page) renderBoard();
   const h = location.hash.replace("#", "");
-  if (S[h]) { page.f.sess = h; local._f = page.f; save(); applyFilter(); paint(); autoOpen(); window.scrollTo(0, Math.max(0, $("bar").getBoundingClientRect().top + window.scrollY - 4)); return; }
   const el = h ? document.getElementById(h) : null;
   if (el) { if (el.tagName === "DETAILS") el.open = true; el.scrollIntoView(); }
   paint();
