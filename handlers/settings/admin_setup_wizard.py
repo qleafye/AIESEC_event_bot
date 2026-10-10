@@ -25,7 +25,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from config import config
 from database.db import get_setting
 from handlers.admin import router
-from miniapp.setup_wizard import STEPS, TEXTS, WizardStep, step_done, visible_steps
+from miniapp.setup_wizard import STEPS, TEXTS, WizardStep, step_done, step_numbers, visible_steps
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
 
 ONLY_SUPERADMIN = "Первую настройку проходит суперадмин."
@@ -118,6 +118,10 @@ async def _filled(step: WizardStep, key: str, photos: set[str], city: str | None
     и общим — город его наследует."""
     if key in photos:
         return bool(await get_setting(f"{key}_photo_file_id"))
+    if step.toggles:  # кнопки меню: «задано» = включена, а не «значение непустое» (off — тоже значение)
+        from domain.cities import get_setting_typed_for_city
+
+        return (await get_setting_typed_for_city(key, city)) == "on"
     if city and SETTINGS_SCHEMA.get(key, {}).get("per_city"):
         from domain.cities import per_city_key
 
@@ -193,12 +197,10 @@ async def step_screen(step_key: str, admin_id: int | None = None) -> tuple[str, 
     step = steps[index]
     done, filled = (await _status([step], admin_id))[step.key]
 
-    lines = [
-        TEXTS["step_of_text"].format(n=index + 1, m=len(steps)),
-        f"<b>{html.escape(step.title)}</b>",
-        "",
-        html.escape(step.hint),
-    ]
+    # Номер — по шагам с полями, как «N из M готово» на обзоре; у ℹ️-подсказки номера нет.
+    number = step_numbers(steps).get(step.key)
+    lines = [TEXTS["step_of_text"].format(n=number[0], m=number[1]) if number else "ℹ️ Подсказка"]
+    lines += [f"<b>{html.escape(step.title)}</b>", "", html.escape(step.hint)]
     rows: list[list[InlineKeyboardButton]] = []
     editors = _editors()
     app_only = False
@@ -207,7 +209,10 @@ async def step_screen(step_key: str, admin_id: int | None = None) -> tuple[str, 
         screens_added: set[str] = set()
         for key in step.fields:
             label = _field_label(key)
-            state = TEXTS["value_set_text"] if filled.get(key) else TEXTS["value_default_text"]
+            if step.toggles:
+                state = TEXTS["value_on_text"] if filled.get(key) else TEXTS["value_off_text"]
+            else:
+                state = TEXTS["value_set_text"] if filled.get(key) else TEXTS["value_default_text"]
             if key in editors:
                 rows.append([InlineKeyboardButton(
                     text=f"{'✅' if filled.get(key) else '⬜'} {label}"[:60],

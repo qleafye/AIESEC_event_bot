@@ -56,7 +56,8 @@ from domain.settings.search import search_terms
 
 from miniapp.deps import Principal, require_cap, require_section
 from miniapp.setup_wizard import TEXTS as SETUP_TEXTS
-from miniapp.setup_wizard import step_done, visible_steps
+from miniapp.setup_wizard import STEPS as SETUP_STEPS
+from miniapp.setup_wizard import step_done, step_numbers, visible_steps
 
 logger = logging.getLogger(__name__)
 
@@ -531,10 +532,11 @@ async def settings_all(
         }
 
 
-# Квик 260915-4mu (мастер первой настройки): три тумблера модулей решают состав шагов —
-# то же самое, что видит менеджер на экране настроек (event_city_enabled/consent_enabled/
-# payment_enabled), мастер не заводит своих флагов.
-_SETUP_MODULE_FLAGS = ("event_city_enabled", "consent_enabled", "payment_enabled")
+# Квик 260915-4mu (мастер первой настройки): тумблеры модулей решают состав шагов — то же
+# самое, что видит менеджер на экране настроек, мастер не заводит своих флагов. Набор берётся
+# из самих шагов (`requires`), как у бота (`handlers/settings/admin_setup_wizard.py`), —
+# иначе новый `requires` молча прячет шаг только в одном из двух мастеров.
+_SETUP_MODULE_FLAGS = tuple(sorted({s.requires for s in SETUP_STEPS if s.requires}))
 
 
 @router.get("/app/api/admin/setup")
@@ -552,15 +554,20 @@ async def setup_status(
         steps_out = []
         done_count = 0
         total = 0
-        for step in visible_steps(event_type, flags):
+        steps = visible_steps(event_type, flags)
+        numbers = step_numbers(steps)
+        for step in steps:
             fields_out = [await _item_for(key, ctx) for key in step.fields]
-            filled = {
-                key: (
-                    step.accept_default or not item["is_default"]
-                    or (step.explicit_choice and await get_setting(key) is not None)
-                ) and item["display"] != ""
-                for key, item in zip(step.fields, fields_out)
-            }
+            if step.toggles:  # кнопки меню: «задано» = включена (значение «off» тоже непустое)
+                filled = {key: item["value"] == "on" for key, item in zip(step.fields, fields_out)}
+            else:
+                filled = {
+                    key: (
+                        step.accept_default or not item["is_default"]
+                        or (step.explicit_choice and await get_setting(key) is not None)
+                    ) and item["display"] != ""
+                    for key, item in zip(step.fields, fields_out)
+                }
             counts = step.kind == "fields"
             done = step_done(step, filled)
             if counts:
@@ -574,6 +581,9 @@ async def setup_status(
                 "kind": step.kind,
                 "counts": counts,
                 "done": done,
+                # «Шаг n из m» по шагам с полями — тот же знаменатель, что у total; у подсказок None.
+                "n": numbers.get(step.key, (None, None))[0],
+                "m": numbers.get(step.key, (None, None))[1],
                 "fields": fields_out,
                 "link": {"hash": step.link[0], "label": step.link[1]} if step.link else None,
             })
