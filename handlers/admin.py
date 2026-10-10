@@ -498,7 +498,7 @@ async def cmd_find_user(message: types.Message):
         # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
         # handlers/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
         # Phase 33 (delegate-card admin actions): рядом — «Перевести в город», сама операция и
-        # подтверждение живут в handlers/admin_city_move.py (citymv_*), здесь тоже только кнопка.
+        # подтверждение живут в handlers/cities/admin_city_move.py (citymv_*), здесь тоже только кнопка.
         rows = [
             [InlineKeyboardButton(
                 text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
@@ -892,7 +892,7 @@ from handlers.admin_settings import show_admin_settings  # noqa: E402
 from handlers import admin_sheets  # noqa: E402
 
 
-from handlers import admin_cities  # noqa: E402
+from handlers.cities import admin_cities  # noqa: E402
 
 
 from handlers import admin_broadcasts  # noqa: E402
@@ -1085,10 +1085,10 @@ from handlers import admin_forum_ready  # noqa: E402
 
 
 # Phase 33 (delegate-card admin actions): shared-router seam import for «🏙 Перевести в город»
-# (handlers/admin_city_move.py) — registers citymove_start/citymove_pick_city/citymove_apply/
+# (handlers/cities/admin_city_move.py) — registers citymove_start/citymove_pick_city/citymove_apply/
 # citymove_cancel in the very tail of admin.router (golden snapshot: a clean append, right
 # after admin_program_view). Not a forum toggle — no hub row, see that module's docstring.
-from handlers import admin_city_move  # noqa: E402
+from handlers.cities import admin_city_move  # noqa: E402
 
 # Бэклог чек-ина №12: shared-router seam import for «📍 Сейчас на площадке»
 # (handlers/admin_checkin_floor.py) — registers checkin_floor_open/checkin_floor_refresh in the

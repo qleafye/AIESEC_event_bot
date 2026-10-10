@@ -446,7 +446,7 @@ def test_section_keyboard_has_no_city_header_when_module_off(tmp_path):
 # Смена города это контекст ВСЕГО раздела, а менеджер после неё оказывался в корне.
 
 def _picker_of(callback_data: str):
-    from handlers import admin_cities as cities_mod
+    from handlers.cities import admin_cities as cities_mod
 
     cb = FakeCallback(callback_data)
     asyncio.run(cities_mod.admin_city_switch(cb))
@@ -454,7 +454,7 @@ def _picker_of(callback_data: str):
 
 
 def _pick(callback_data: str):
-    from handlers import admin_cities as cities_mod
+    from handlers.cities import admin_cities as cities_mod
 
     cb = FakeCallback(callback_data)
     asyncio.run(cities_mod.admin_city_pick(cb))
@@ -649,7 +649,7 @@ def test_season_wizards_cancel_through_the_registry_not_a_literal():
     выводит её из реестра — переезд «🔄 Новый сезон» в другой раздел уведёт и отмену."""
     from pathlib import Path
 
-    src = (REPO_ROOT / "handlers" / "admin_cities.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "handlers" / "cities" / "admin_cities.py").read_text(encoding="utf-8")
     assert "settings_group:event" not in src, "отмена визарда снова целится литералом в группу"
     for screen in ("admin_season_reset", "admin_season_import"):
         assert f'back_button("{screen}", text="← Отмена")' in src, screen
@@ -820,7 +820,7 @@ def test_sheet_operations_return_to_their_section_too():
     SECTIONS не объявлены — резолвер увёл бы их в корень)."""
     import inspect
 
-    from handlers import admin_cities as cities_mod
+    from handlers.cities import admin_cities as cities_mod
     from handlers import admin_gamification as game_mod
 
     cases = [
