@@ -492,7 +492,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "bc_important_toggle": "broadcast",
     "bc_rev:*": "broadcast",
     "bc_revgo:*": "broadcast",
-    "bc_revno": "broadcast",
+    "bc_revno*": "broadcast",
     "bc_stop:*": "broadcast",
     # Quick 260904-dq1: предупреждение о тихих часах на шаге планирования — та же capability,
     # что у соседних шагов рассылки.
