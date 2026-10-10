@@ -594,7 +594,7 @@ def test_render_snapshot_apps(tmp_path):
         "reg_reset_notify_text",
         # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): подпись к фото карточки-итога —
         # новый хвост группы (тумблер forum_stats_card_enabled и фон — не здесь, живут на
-        # своём экране handlers/admin_forum_stats_card.py).
+        # своём экране handlers/forum/admin_forum_stats_card.py).
         "forum_stats_card_caption_text",
         # 10.10 (бэклог «🛠» P1): подписи кнопок фоновых сообщений — новый хвост группы.
         *BACKGROUND_BUTTON_FIELD_ORDER,

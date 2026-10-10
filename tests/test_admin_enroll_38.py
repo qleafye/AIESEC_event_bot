@@ -6,7 +6,7 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from database import db, session_enroll_db as edb
-from handlers import admin_enroll, admin_program
+from handlers.forum import admin_enroll, admin_program
 from handlers.access.admin_caps import role_caps_key
 from handlers.states import ProgramCompetencyEdit, ProgramEnrollLimit, ProgramTrackEdit
 from tests._enroll38 import ADMIN_ID, CITY, add_user, ready, run, seed_msk_program

@@ -7,11 +7,11 @@
 
 Шов той же формы, что соседние: своего `Router()` нет, хендлеры декорируют ОБЩИЙ
 `admin.router`, модуль импортируется ХВОСТОМ `handlers/admin.py` (golden snapshot: чистая
-вставка). `_city_allowed` — импорт из `handlers/admin_checkin.py` (не владеем файлом, только
+вставка). `_city_allowed` — импорт из `handlers/forum/admin_checkin.py` (не владеем файлом, только
 вызываем).
 
 `fsm_storage` — хвостовой параметр хендлера `regreset_apply` (aiogram кладёт FSM-хранилище
-диспетчера в данные хендлера под этим именем, тот же приём, что `handlers/admin_sos.py::
+диспетчера в данные хендлера под этим именем, тот же приём, что `handlers/forum/admin_sos.py::
 sos_resolve`) — нужен `services/reg_stuck_reset.reset_stuck_registration`, чтобы дотянуться до
 `StorageKey` делегата и решить, чистить ли его текущее FSM-состояние."""
 import html as html_module
@@ -23,7 +23,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.cities import normalize_city
 from database.db import get_user
 from handlers.admin import router
-from handlers.admin_checkin import _city_allowed
+from handlers.forum.admin_checkin import _city_allowed
 from services.reg_stuck_reset import preview_stuck_reset, reset_stuck_registration
 
 logger = logging.getLogger(__name__)

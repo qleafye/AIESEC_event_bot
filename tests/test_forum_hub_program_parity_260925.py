@@ -12,7 +12,7 @@ import pytest
 from domain.cities import default_city_code
 from config import config
 from database import db
-from handlers import admin_forum_functions as aff
+from handlers.forum import admin_forum_functions as aff
 from keyboards.builders import get_main_menu_kb
 from tests._dbtpl import fast_init_db
 

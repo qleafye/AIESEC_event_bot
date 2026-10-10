@@ -1227,7 +1227,7 @@ async def info_place(callback: types.CallbackQuery):
 # D-29 (FORUM-CHECKIN.md, «Решения владельца 24.09»): одна кнопка программы вместо двух —
 # старый ключ/подпись menu_program/«📅 Программа форума» сохранены (уже настроены у
 # менеджеров, см. keyboards/builders.py::MENU_BUTTONS), новая интерактивная программа
-# (handlers/program.py, бывшая отдельная кнопка menu_schedule) стала ЗАПАСНЫМ видом: фото —
+# (handlers/forum/program.py, бывшая отдельная кнопка menu_schedule) стала ЗАПАСНЫМ видом: фото —
 # приоритет, если фото нет — текстовая программа сессий, если и её нет — пустая заглушка.
 # Видимость самой кнопки — `keyboards.builders.get_main_menu_kb` (фото ИЛИ сессии есть).
 # 📅 Программа форума
@@ -1255,10 +1255,10 @@ async def show_program(message: types.Message):
         except Exception as e:
             logger.warning(f"show_program: фото программы не отправилось: {e}")
 
-    # Ленивый импорт — handlers/program.py импортирует router ИЗ этого модуля (см. его
+    # Ленивый импорт — handlers/forum/program.py импортирует router ИЗ этого модуля (см. его
     # докстринг), обратный импорт на уровне модуля дал бы цикл. Он же — запасной путь, если
     # фото не ушло: сессии города показываем, если они есть.
-    from handlers.program import send_program_schedule_text
+    from handlers.forum.program import send_program_schedule_text
     if await send_program_schedule_text(message):
         return
 
@@ -1739,8 +1739,8 @@ async def show_my_checkin_qr(message: types.Message):
 # Форум-ночь п.4 (расписание форума в боте): экран «🗓 Программа» — импорт СРАЗУ ПОСЛЕ
 # show_my_checkin_qr и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у docstring
 # show_my_checkin_qr выше: фолбэк-хендлер ниже ловит ЛЮБОЙ текст без ограничений — кнопка меню
-# обязана зарегистрироваться раньше него). Сам хендлер/логика — в шве handlers/program.py.
-from handlers import program  # noqa: E402,F401
+# обязана зарегистрироваться раньше него). Сам хендлер/логика — в шве handlers/forum/program.py.
+from handlers.forum import program  # noqa: E402,F401
 
 
 # Форум-ночь п.7 (D-XX, «❗ Важное»): список важных рассылок за сегодня — та же форма записи,
@@ -1772,23 +1772,23 @@ async def show_important_today(message: types.Message):
 # Форум-ночь п.8 (идея №19, SOS): экран «🆘 SOS» — импорт СРАЗУ ПОСЛЕ show_important_today и
 # ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импорта program выше: фолбэк-хендлер
 # ниже ловит ЛЮБОЙ текст без активного FSM-состояния — кнопка меню обязана зарегистрироваться
-# раньше него). Сам хендлер/логика — в шве handlers/sos.py.
-from handlers import sos as sos_handlers  # noqa: E402,F401
+# раньше него). Сам хендлер/логика — в шве handlers/forum/sos.py.
+from handlers.forum import sos as sos_handlers  # noqa: E402,F401
 
 # Форум-ночь п.9 (идея №15, D-24): «⭐ Отзыв о сессии одним тапом» — импорт СРАЗУ ПОСЛЕ
 # sos_handlers и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импортов program/sos
 # выше). Этот же импорт регистрирует и менеджерскую часть шва (handlers.admin.router) — модуль
-# декорирует оба общих роутера, см. докстринг handlers/session_feedback.py.
-from handlers import session_feedback  # noqa: E402,F401
+# декорирует оба общих роутера, см. докстринг handlers/forum/session_feedback.py.
+from handlers.forum import session_feedback  # noqa: E402,F401
 
 # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — импорт СРАЗУ ПОСЛЕ
 # session_feedback и ПЕРЕД reg_handoff_idle_fallback (тот же довод, что у импортов program/sos/
-# session_feedback выше). Сам хендлер/логика — в шве handlers/forum_noshow_poll.py.
-from handlers import forum_noshow_poll  # noqa: E402,F401
+# session_feedback выше). Сам хендлер/логика — в шве handlers/forum/forum_noshow_poll.py.
+from handlers.forum import forum_noshow_poll  # noqa: E402,F401
 # Запись на сессии (кнопка меню, se:*) — до reg_handoff_idle_fallback, как соседние швы.
-from handlers import session_enroll  # noqa: E402,F401
+from handlers.forum import session_enroll  # noqa: E402,F401
 # Тест компетенций (кнопка меню, qz:*) — там же, до фолбэка.
-from handlers import quiz as quiz_handlers  # noqa: E402,F401
+from handlers.forum import quiz as quiz_handlers  # noqa: E402,F401
 from handlers import menu_edit_anketa  # noqa: E402,F401  -- «✏️ Изменить анкету», до фолбэка
 from handlers import menu_tap_escape  # noqa: E402,F401  -- кнопка меню посреди ответа делегата
 

@@ -6,7 +6,7 @@ D-31 (24.09, `.planning/FORUM-CHECKIN.md`, «SOS без категорий»): �
 целиком, в экстренной ситуации важна скорость, не классификация. Делегат сразу попадает в режим
 «дописываю SOS» (`SosReport.collecting`): ЛЮБОЕ его сообщение (текст, фото, геопозиция) уходит
 В ТРЕД карточки И дописывает саму карточку (первый текст/фото снимает пометку «подробности ещё
-не прислали»). Режим живёт до «Готово», «✅ Решено» у орга (`handlers/admin_sos.py::
+не прислали»). Режим живёт до «Готово», «✅ Решено» у орга (`handlers/forum/admin_sos.py::
 sos_resolve` -> `services.sos.close_delegate_collecting` сбрасывает FSM делегата по этой
 заявке), таймаута (`sos_collecting_timeout_minutes`) или следующего `/start`.
 
@@ -55,7 +55,7 @@ _LOCATION_BUTTON_TEXT = "📍 Отправить геопозицию"
 async def _resolve_city(telegram_id: int) -> str | None:
     """SOS привязывается к чату КОНКРЕТНОГО города — «нет города» не бывает (в отличие от
     вопроса делегата, у которого фан-аут глобальный), тот же приём, что
-    `handlers.program._resolve_delegate_city`."""
+    `handlers.forum.program._resolve_delegate_city`."""
     code = await _delegate_city(telegram_id)
     return code or default_city_code()
 
@@ -341,7 +341,7 @@ async def sos_collecting_step(message: types.Message, state: FSMContext):
 
 # ── Ответ делегата на «Ответ по SOS» — снова в тред карточки (пункт 3 плана) ────────────────
 #
-# Маркер — ТОЛЬКО "🆘" (без "🆔"): это личное сообщение делегату (handlers/admin_sos.py::
+# Маркер — ТОЛЬКО "🆘" (без "🆔"): это личное сообщение делегату (handlers/forum/admin_sos.py::
 # admin_reply_to_sos шлёт «🆘 Ответ по SOS #<id>:»), его telegram_id тут ни при чём — в отличие
 # от карточки В ЧАТЕ ОРГОВ (services/sos.py::render_card_text), где "🆔"+"🆘" вместе отличают
 # реплай орга от произвольного ответа в группе.

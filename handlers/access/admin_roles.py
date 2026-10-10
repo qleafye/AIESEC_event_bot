@@ -539,7 +539,7 @@ async def build_roles_keyboard(viewer_id: int | None = None) -> InlineKeyboardMa
 
     buttons.append([InlineKeyboardButton(text="➕ Добавить менеджера", callback_data="roles_add")])
     # Идея №5 бэклога чек-ина: вход в приглашение волонтёров ссылкой — тот же экран, что и
-    # строка хаба «🎪 Форум: функции» (handlers/admin_volunteer_invite.py), просто другая
+    # строка хаба «🎪 Форум: функции» (handlers/forum/admin_volunteer_invite.py), просто другая
     # точка входа. Строковый callback_data, не импорт модуля — тот же приём, что ADMIN_CAPS
     # ссылается на чужие callback'и без импорта их модулей. Капа у самого экрана —
     # `volinvite_entry: "moderate_reg"` — ШИРЕ, чем «settings» этого экрана целиком, поэтому

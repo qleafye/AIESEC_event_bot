@@ -160,7 +160,7 @@ def test_city_pick_rejects_unknown_key_and_foreign_city(tmp_path):
 
 def test_ready_screen_buttons_edit_the_traffic_light_city(tmp_path):
     """Светофор Тюмени при шапке «СПб» правит Тюмень — город в callback, не из шапки."""
-    from handlers import admin_forum_ready as afr
+    from handlers.forum import admin_forum_ready as afr
 
     _ready(tmp_path)
     row = _run(afr._row_forum_date("tyumen"))

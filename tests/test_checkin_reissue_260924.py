@@ -8,7 +8,7 @@
 - `services.checkin.resolve_scanned_user` -- единая точка «токен -> (делегат, код отказа)»:
   обычный активный токен ведёт себя как раньше (denial по `checkin_denial`), ЗАМЕНЁННЫЙ токен
   даёт `(None, "token_replaced")`, вообще незнакомый токен -- `(None, "no_user")`.
-- `handlers/admin.py::cmd_find_user` (кнопка на карточке) + `handlers/admin_checkin.py`
+- `handlers/admin.py::cmd_find_user` (кнопка на карточке) + `handlers/forum/admin_checkin.py`
   (подтверждение/само действие) -- та же фейковая обвязка, что `tests/test_admin_checkin_
   260924.py` (`_FakeMessage`/`_FakeCallback`, `asyncio.run`, без pytest-asyncio, БД — шаблонная
   копия `tests/_dbtpl.py::fast_init_db`)."""
@@ -20,7 +20,7 @@ from config import config
 from database import db
 from database.db import _connect
 from handlers import admin as admin_mod
-from handlers import admin_checkin
+from handlers.forum import admin_checkin
 from services.checkin import build_payload, current_event_tag, resolve_scanned_user
 from tests._dbtpl import fast_init_db
 
@@ -222,7 +222,7 @@ def test_find_user_card_has_reissue_button(tmp_path):
     assert f"checkin_reissue:{DELEGATE_ID}" in buttons
 
 
-# ── handlers/admin_checkin.py: подтверждение / выполнение / отмена ─────────────────────────
+# ── handlers/forum/admin_checkin.py: подтверждение / выполнение / отмена ─────────────────────────
 
 def test_reissue_confirm_shows_yes_no_keyboard(tmp_path):
     _db_ready(tmp_path)

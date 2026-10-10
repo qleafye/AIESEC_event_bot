@@ -1,5 +1,5 @@
 """Бэклог чек-ина №12: «📍 Сейчас на площадке» — общий SQL `arrival_stats.floor_queries`, экран
-бота (`handlers/admin_checkin_floor.py`) и блок дашборда в разделе «Приход»
+бота (`handlers/forum/admin_checkin_floor.py`) и блок дашборда в разделе «Приход»
 (`dashboard.queries.arrival_floor`) считают одно и то же за ДЕНЬ форума (МСК)."""
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import datetime
 import shared.arrival_stats as arrival_stats
 from config import config
 from database import db
-from handlers import admin_checkin, admin_checkin_floor
+from handlers.forum import admin_checkin, admin_checkin_floor
 from tests.test_arrival_stats_260924 import ADMIN_ID, SEASON, _Cb, _cbs, _ready, _run, _user
 
 DAY = "2026-10-03"

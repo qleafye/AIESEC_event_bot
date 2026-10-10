@@ -292,7 +292,7 @@ async def on_left_chat_member(message: types.Message, bot: Bot | None = None):
 # только если для него есть незакрытая заявка `sos_chat_bind_pending` (иначе — тишина, тот же
 # D-9-приём, что у `on_bot_membership_changed`: без явной заявки — ни ответа, ни намёка).
 # Отдельной перепроверки капы `settings` здесь нет — сама заявка уже АВТОРИЗАЦИЯ: она могла
-# появиться только через `handlers/admin_sos.py::asos_bind_start`, который сам сидит под
+# появиться только через `handlers/forum/admin_sos.py::asos_bind_start`, который сам сидит под
 # `ADMIN_CAPS["asos_bind"] = "settings"` (CapabilityMiddleware на `admin.router`); человек без
 # этого права не мог поставить заявку, на которую отвечает эта команда.
 @router.message(Command("sos_id"))
@@ -387,7 +387,7 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
     реплаем здесь нет ни у кого, даже у держателя «📋 Модерация заявок»: в чате SOS реплаем на
     карточку команда и переговаривается («кто ближе?», «звоню в скорую»), и такое сообщение не
     должно долететь человеку в беде, а заявка — молча достаться спросившему. Неявный захват
-    остался только у личной копии карточки (`handlers/admin_sos.py::admin_reply_to_sos`): там
+    остался только у личной копии карточки (`handlers/forum/admin_sos.py::admin_reply_to_sos`): там
     реплай адресован одному делегату. Без захвата — подсказка в чат, а не тишина: иначе орг
     уверен, что ответил."""
     import html
@@ -432,14 +432,14 @@ async def _answer_sos_card_reply(message: types.Message, bot: Bot, report: dict)
 # привязывает менеджер с правом «⚙️ Настройки»; в Тюмени и Москве это общий чат команды, где
 # дежурят волонтёры без ролей в боте, и выдавать каждому роль утром форума никто не будет.
 # Что карточка именно из чата этой заявки (а не пересланная в другую группу), проверяет сам
-# хендлер (`handlers/admin_sos.py::_card_origin_ok`) — с понятным алертом, не тишиной. Копии
+# хендлер (`handlers/forum/admin_sos.py::_card_origin_ok`) — с понятным алертом, не тишиной. Копии
 # карточки в личке (фоллбэк) идут мимо этого хендлера в admin.router под капой, как раньше.
 @router.callback_query(
     F.data.regexp(r"^sos_(claim|resolve|takeover|takeover_go|takeover_no):"),
     F.message.chat.type.in_({"group", "supergroup"}),
 )
 async def on_sos_card_button(callback: types.CallbackQuery, bot: Bot, fsm_storage=None):
-    from handlers import admin_sos  # ленивый: домен кнопок живёт там, модуль висит на admin.router
+    from handlers.forum import admin_sos  # ленивый: домен кнопок живёт там, модуль висит на admin.router
 
     data = callback.data
     if data.startswith("sos_claim:"):

@@ -1,7 +1,7 @@
 """Запись на сессии: предупреждение менеджеру, когда правка сессии затрагивает уже записанных.
 
 Своего `Router()` нет: `from handlers.admin import router`, импортирован хвостом
-`handlers/admin_enroll.py`. Две правки, которые молча ломали бы чужие записи:
+`handlers/forum/admin_enroll.py`. Две правки, которые молча ломали бы чужие записи:
 - время сессии (`confirm_time`) — записанные остаются записанными, но время для них меняется;
 - лимит мест ниже числа записанных (`confirm_limit`) — новых записей не будет, текущие остаются.
 Если записанных нет, вопроса нет — правка применяется сразу, как раньше.
@@ -15,7 +15,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database import session_enroll_db as edb
 from database.db import get_program_session, update_program_session
 from handlers.admin import router
-from handlers.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
+from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
 
 
 def _plural(n: int) -> str:
@@ -94,7 +94,7 @@ async def prog_tmok(callback: types.CallbackQuery, state: FSMContext):
         await callback.answer("Действие устарело — откройте карточку заново.", show_alert=True)
         return
     await update_program_session(session_id, start_time=start, end_time=end)
-    from handlers.admin_program import _edit_to_card
+    from handlers.forum.admin_program import _edit_to_card
     await _edit_to_card(callback, session_id)
     await callback.answer("Время обновлено.")
 
@@ -117,7 +117,7 @@ async def prog_lmok(callback: types.CallbackQuery):
     if await _session_for(callback, session_id) is None:
         return
     await update_program_session(session_id, enroll_limit=limit)
-    from handlers.admin_enroll import render_enroll_card
+    from handlers.forum.admin_enroll import render_enroll_card
     text, kb = await render_enroll_card(await get_program_session(session_id))
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Лимит сохранён.")

@@ -15,7 +15,7 @@ import asyncio
 
 from config import config
 from database import db
-from handlers import admin_forum_functions as aff
+from handlers.forum import admin_forum_functions as aff
 from handlers.access.admin_caps import role_caps_key
 from tests._dbtpl import fast_init_db
 

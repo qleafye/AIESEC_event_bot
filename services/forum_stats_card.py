@@ -281,7 +281,7 @@ async def eligible_recipients(city: str | None, *, only_arrived: bool) -> list[d
 
 async def audience_counts(city: str | None) -> dict:
     """«N пришли хотя бы раз / M всего одобрены» — для экрана выбора аудитории перед
-    рассылкой (handlers/admin_forum_stats_card.py)."""
+    рассылкой (handlers/forum/admin_forum_stats_card.py)."""
     all_approved = await eligible_recipients(city, only_arrived=False)
     arrived = await eligible_recipients(city, only_arrived=True)
     return {"all": len(all_approved), "arrived": len(arrived)}

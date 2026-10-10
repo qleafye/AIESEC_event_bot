@@ -1,7 +1,7 @@
 """Трек «региональные форумы → Москва» (25.09, forum-regions-msk): предложение переноса
 неявившегося одобренного делегата регионального форума на московский форум —
 `services/regional_noshow_move.py` + делегатская сторона `handlers/user_actions.py`
-(rnm_accept/rnm_confirm/rnm_decline) + экран `handlers/admin_forum_functions.py`.
+(rnm_accept/rnm_confirm/rnm_decline) + экран `handlers/forum/admin_forum_functions.py`.
 
 Стиль — `tests/test_forum_noshow_poll_260924.py` (реальный AsyncIOScheduler на временном
 jobstore, `asyncio.run`, шаблонная БД `tests/_dbtpl.fast_init_db`), мок `move_user_city` —
@@ -860,7 +860,7 @@ def _cbs(kb):
 
 
 def test_hub_shows_regional_noshow_move_row_and_button(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     text, kb = _run(aff._render_hub(ADMIN_ID, "msk"))
@@ -869,7 +869,7 @@ def test_hub_shows_regional_noshow_move_row_and_button(tmp_path):
 
 
 def test_cfg_screen_toggle_flips_global_setting(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     _run(aff.rgnm_toggle_go(FakeCallback("rgnm_toggle:_all", ADMIN_ID)))
@@ -880,7 +880,7 @@ def test_cfg_screen_toggle_flips_global_setting(tmp_path):
 
 def test_cfg_screen_toggle_reschedules_exactly_once(tmp_path, monkeypatch):
     """Перепланировку делает хук воронки записи; явный вызов хендлера рядом — второй проход."""
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     import services.regional_noshow_move as rnm
 
@@ -900,7 +900,7 @@ def test_cfg_screen_toggle_reschedules_exactly_once(tmp_path, monkeypatch):
 
 
 def test_cfg_screen_shows_summary_line(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     _run(db.regional_noshow_move_mark_sent(1, None, "", "2026-10-04 12:00:00"))
@@ -910,7 +910,7 @@ def test_cfg_screen_shows_summary_line(tmp_path):
 
 
 def test_cfg_screen_status_toggle_cycles(tmp_path):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     _ready(tmp_path)
     _run(aff.rgnm_status_toggle_go(FakeCallback("rgnm_status_toggle:_all", ADMIN_ID)))
@@ -920,7 +920,7 @@ def test_cfg_screen_status_toggle_cycles(tmp_path):
 
 
 def test_cfg_screen_target_pick_sets_city(tmp_path, monkeypatch):
-    from handlers import admin_forum_functions as aff
+    from handlers.forum import admin_forum_functions as aff
 
     saved = _cities_fixture(monkeypatch)
     try:

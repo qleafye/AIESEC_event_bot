@@ -691,40 +691,40 @@ TOGGLE_SECTION: dict[str, str] = {
     "checkin_volunteer_guide_broadcast_enabled": "apps",
     # Идея №1 бэклога чек-ина: режим «день форума» главного меню делегата (services/
     # forum_day_menu.py) — тот же раздел «📋 Заявки», что соседи выше (обе про форумный день),
-    # свой экран у бота — handlers/admin_forum_functions.py (forumdaymenu_cfg:*), не строка
+    # свой экран у бота — handlers/forum/admin_forum_functions.py (forumdaymenu_cfg:*), не строка
     # раздела admin_sections.SECTIONS (тот же приём, что у checkin_qr_broadcast_enabled).
     "forum_day_menu_enabled": "apps",
     # Идея №3 бэклога чек-ина: приветствие после первой отметки входа делегата (services/
     # forum_welcome.py) — тот же раздел «📋 Заявки», свой экран у бота —
-    # handlers/admin_forum_functions.py (forumwelcome_cfg:*), тот же приём, что у
+    # handlers/forum/admin_forum_functions.py (forumwelcome_cfg:*), тот же приём, что у
     # forum_day_menu_enabled выше.
     "forum_welcome_enabled": "apps",
     # Идея №16 бэклога чек-ина: отчёт дня форума вечером (services/forum_day_report.py) — тот
-    # же раздел «📋 Заявки», свой экран у бота — handlers/admin_forum_functions.py
+    # же раздел «📋 Заявки», свой экран у бота — handlers/forum/admin_forum_functions.py
     # (forumdayreport_cfg:*), тот же приём, что у forum_day_menu_enabled/forum_welcome_enabled
     # выше.
     "forum_day_report_enabled": "apps",
     # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» (services/
     # forum_noshow_poll.py) — тот же раздел «📋 Заявки», свой экран у бота —
-    # handlers/admin_forum_functions.py (forumnoshowpoll_cfg:*), тот же приём, что у соседей
+    # handlers/forum/admin_forum_functions.py (forumnoshowpoll_cfg:*), тот же приём, что у соседей
     # выше.
     "forum_noshow_poll_enabled": "apps",
     # Идея №5 бэклога чек-ина: приглашение волонтёров ссылкой — тот же раздел «📋 Заявки», свой
-    # экран у бота — handlers/admin_volunteer_invite.py (volinvite_cfg:*), тот же приём, что у
+    # экран у бота — handlers/forum/admin_volunteer_invite.py (volinvite_cfg:*), тот же приём, что у
     # соседей выше (forum_day_menu_enabled и т.д.).
     "volunteer_invite_enabled": "apps",
     # D-41: регистрация на месте — тот же раздел «📋 Заявки», свой экран у бота (хаб
     # «🎪 Форум: функции»), тот же приём, что у соседей выше.
     "onsite_reg_enabled": "apps",
     # Идея №20 бэклога чек-ина: бюро находок — тот же раздел «📋 Заявки», свой экран у бота —
-    # handlers/admin_lost_found.py (lostfound_cfg:*), тот же приём, что у соседей выше.
+    # handlers/forum/admin_lost_found.py (lostfound_cfg:*), тот же приём, что у соседей выше.
     "lost_found_enabled": "apps",
     # Трек «региональные форумы → Москва»: перенос неявившихся — тот же раздел «📋 Заявки»,
-    # свой экран у бота — handlers/admin_forum_functions.py (rgnm_cfg:*), тот же приём, что у
+    # свой экран у бота — handlers/forum/admin_forum_functions.py (rgnm_cfg:*), тот же приём, что у
     # соседей выше (forum_noshow_poll_enabled и т.д.).
     "regional_noshow_offer_enabled": "apps",
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): картинка-итог после форума — тот же
-    # раздел «📋 Заявки», свой экран у бота — handlers/admin_forum_stats_card.py
+    # раздел «📋 Заявки», свой экран у бота — handlers/forum/admin_forum_stats_card.py
     # (forumstats_cfg:*), тот же приём, что у соседей выше.
     "forum_stats_card_enabled": "apps",
 }

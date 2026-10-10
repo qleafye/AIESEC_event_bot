@@ -177,7 +177,7 @@ def test_cities_off_shared_photo_is_the_photo(tmp_path):
 # ── Загрузка — для города экрана ────────────────────────────────────────────────────────────
 
 def _upload(uid, data, file_id, caption=None):
-    from handlers import admin_program_view
+    from handlers.forum import admin_program_view
 
     state = _state(uid)
     cb = _Callback(data, user_id=uid)
@@ -255,7 +255,7 @@ def test_event_section_program_line_reflects_header_city_photo(tmp_path):
 
 
 def test_city_screens_show_photo_button(tmp_path):
-    from handlers import admin_forum_functions, admin_program
+    from handlers.forum import admin_forum_functions, admin_program
 
     _ready(tmp_path)
     _text, kb = _run(admin_program.render_city_program_screen(SUPERADMIN_ID, "spb"))
@@ -270,7 +270,7 @@ def test_city_screens_show_photo_button(tmp_path):
 def test_program_day_alerts_are_translated_for_english_delegate(tmp_path, monkeypatch):
     """Оба алерта идут через перевод делегатского чата (словарь — services/i18n_form_manual.py,
     корпус — services/i18n_sources.py «lit:program.*»); раньше уходили сырым русским."""
-    from handlers import program as program_handlers
+    from handlers.forum import program as program_handlers
     from handlers.i18n import reg_i18n
     from services import i18n
     from services.i18n_form_manual import _CODE_LITERALS_EN

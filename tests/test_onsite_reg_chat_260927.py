@@ -1,6 +1,6 @@
 """Регистрация на месте (FORUM-CHECKIN.md D-41), чатовая часть: короткая анкета по ссылке
 `?start=walkin_<город>` (handlers/onsite_reg.py + перехват в handlers/registration.py::
-cmd_start) и экран менеджера «📝 Регистрация на месте» (handlers/admin_onsite_reg.py, строка
+cmd_start) и экран менеджера «📝 Регистрация на месте» (handlers/forum/admin_onsite_reg.py, строка
 хаба «🎪 Форум: функции»).
 
 pytest-asyncio недоступна — async через `asyncio.run()` (конвенция проекта)."""
@@ -417,8 +417,8 @@ def test_walkin_logs_have_no_phone_or_name(tmp_path, caplog):
 
 from types import SimpleNamespace  # noqa: E402
 
-from handlers import admin_forum_functions as aff  # noqa: E402
-from handlers import admin_onsite_reg as aor  # noqa: E402
+from handlers.forum import admin_forum_functions as aff  # noqa: E402
+from handlers.forum import admin_onsite_reg as aor  # noqa: E402
 from handlers.access.admin_caps import required_capability  # noqa: E402
 from tests.test_roles_phase8 import dispatch_callback  # noqa: E402
 
@@ -534,7 +534,7 @@ def test_onsite_qr_without_bot_username_alerts(tmp_path):
 
 
 def test_onsite_screens_respect_manager_city_binding(tmp_path):
-    from handlers.admin_checkin import _CITY_FORBIDDEN_ALERT
+    from handlers.forum.admin_checkin import _CITY_FORBIDDEN_ALERT
     _ready(tmp_path)
     with _Cities():
         _run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))

@@ -11,7 +11,7 @@
 только сужает список до общих пунктов).
 
 `POST /app/api/faq` (задача 6) — менеджерская симметрия кнопки «❓ В FAQ» из журнала вопросов
-(`handlers/admin_faq.py::afaq_save_draft`), но МИНИМАЛЬНО: тело `{question, answer}`, город —
+(`handlers/forum/admin_faq.py::afaq_save_draft`), но МИНИМАЛЬНО: тело `{question, answer}`, город —
 `Principal.city` (привязка МЕНЕДЖЕРА, не делегата — другая сторона той же дихотомии, что и у
 `_delegate_city` выше), пусто -> общий пункт. Валидация и дедупликация переиспользуются менед-
 жерским блоком ниже (`_create_checked`) — второй копии нет.
@@ -375,7 +375,7 @@ async def admin_faq_move(
     p: Principal = Depends(require_cap("moderate_reg")),
     _: Principal = Depends(require_section("faq")),
 ) -> dict:
-    """Дословно `handlers/admin_faq.py::_afaq_move`, но от scope менеджера. Пункт уже с краю
+    """Дословно `handlers/forum/admin_faq.py::_afaq_move`, но от scope менеджера. Пункт уже с краю
     списка -> `moved=false` — это не ошибка. Перестановка пишет позиции только видимому в
     scope подмножеству — порядок пунктов другого города доопределяется вторичным ключом `id`
     (документированное ограничение `reorder_faq_items`, database/db.py)."""

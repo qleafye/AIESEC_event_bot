@@ -3,7 +3,7 @@
 
 Покрытие: `database.db.claim_volunteer_invite` (жива/истекла/отозвана/лимит/двойной переход/
 гонка на последний слот), тумблер `volunteer_invite_enabled` (выключен -> старые ссылки не
-срабатывают), чужой город менеджера (`handlers/admin_volunteer_invite.py::_city_allowed`),
+срабатывают), чужой город менеджера (`handlers/forum/admin_volunteer_invite.py::_city_allowed`),
 приём в `handlers/registration.py::cmd_start` (`vol_`-ветка deep-link, полностью отдельная от
 анкеты делегата), «не понижает существующую роль».
 
@@ -15,7 +15,7 @@ import asyncio
 import domain.cities as cities_mod
 from config import config
 from database import db
-from handlers import admin_volunteer_invite as avi  # noqa: F401 -- регистрирует volinvite_*/volinv_*
+from handlers.forum import admin_volunteer_invite as avi  # noqa: F401 -- регистрирует volinvite_*/volinv_*
 from handlers import registration as reg
 from handlers.access.admin_caps import resolve_capabilities
 from tests._dbtpl import fast_init_db
@@ -369,7 +369,7 @@ def test_cmd_start_does_not_bind_city_when_cities_module_off(tmp_path):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# handlers/admin_volunteer_invite.py: экраны — чужой город менеджера, тумблер, мастер создания
+# handlers/forum/admin_volunteer_invite.py: экраны — чужой город менеджера, тумблер, мастер создания
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def _two_cities():
@@ -503,7 +503,7 @@ def test_revoke_no_cancels_without_revoking(tmp_path):
 # ── Список ссылок: сама ссылка вместо кода, срок без «до бессрочно» ────────────────────────
 
 class _FakeBotWithUsername:
-    """Тот же контракт, что `handlers.admin_volunteer_invite._bot_username` ожидает от
+    """Тот же контракт, что `handlers.forum.admin_volunteer_invite._bot_username` ожидает от
     `bot.get_me()` — реальный aiogram Bot отдаёт объект с `.username`."""
     def __init__(self, username="YouLead_bot"):
         self.username = username

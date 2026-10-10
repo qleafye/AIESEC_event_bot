@@ -45,7 +45,7 @@ MENU_BUTTONS = [
     ("menu_invites", "👥 Мои приглашённые"),
     ("menu_info", "ℹ️ Информация о форуме"),
     # D-29 (владелец 24.09): одна кнопка вместо двух — было menu_program (статичное фото) +
-    # menu_schedule (интерактивная программа сессий, handlers/program.py). Ключ/подпись
+    # menu_schedule (интерактивная программа сессий, handlers/forum/program.py). Ключ/подпись
     # оставлены старые (уже настроены у менеджеров), интерактивная программа стала запасным
     # видом ВНУТРИ handlers/user_actions.py::show_program, когда фото не загружено. Гейт ниже
     # (program_on = фото ЕСТЬ или у города есть хоть одна сессия) — тот же приём, что раньше
@@ -252,7 +252,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     # одна сессия программы (запасной текстовый вид). `code` — `None`, когда модуль городов
     # выключен (см. выше), но у сессий/фото «нет города» не бывает — `has_program_content`
     # сама резолвит `default_city_code()` (тот же однocity-фоллбэк, что использует админский
-    # экран `handlers/admin_program.py._resolve_city_for_screen`). Одна проверка вместо двух
+    # экран `handlers/forum/admin_program.py._resolve_city_for_screen`). Одна проверка вместо двух
     # независимых — см. `services.program.has_program_content` docstring.
     program_photo_on = False
     try:
