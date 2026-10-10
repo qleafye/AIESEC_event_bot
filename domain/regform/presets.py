@@ -4,12 +4,12 @@ bulk-writer, общий для бота (`handlers/admin_reg_config._apply_event
 
 REG_PRESETS переехал сюда ДОСЛОВНО из `handlers/reg_schema.py` (Phase 13/5/7) — байт-в-байт,
 без единой правки значений четырёх существующих пресетов (forum/conf/party/short).
-`handlers/reg_schema.py` реэкспортирует то же имя (`from reg_presets import REG_PRESETS`),
+`handlers/reg_schema.py` реэкспортирует то же имя (`from domain.regform.presets import REG_PRESETS`),
 поэтому семь существующих мест импорта (`handlers/admin.py`, `admin_reg_config.py`,
 `registration.py` и соседи) продолжают работать без правок.
 
 Причина выноса — `domain/settings/ops.py` (импортируется веб-процессом Mini App, FastAPI) не имеет
-права тянуть `aiogram`/`handlers.*` (та же причина, что у `reg_engine.py`/`reg_labels.py`), а
+права тянуть `aiogram`/`handlers.*` (та же причина, что у `domain/regform/engine.py`/`domain/regform/labels.py`), а
 веб-путь применения пресета «СкиллАп» обязан звать ТОТ ЖЕ bulk-writer, что кнопка в боте
 (T-28-10-01/03: один детерминированный писатель настроек — не две копии правила).
 
@@ -31,7 +31,7 @@ Mini App не имеет права тянуть тот корневой мод�
 import logging
 
 from services.settings.audit import write_setting_logged
-from reg_engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
+from domain.regform.engine import REG_DEFAULTS, MODULE_SWITCH_TOGGLES
 
 logger = logging.getLogger(__name__)
 
@@ -214,5 +214,5 @@ async def apply_reg_preset(preset_key: str, admin_id: int | None = None) -> list
         from services import reject_rules_notify as _rrn
         await _rrn.on_settings_written_batch(changed_keys)
     except Exception as exc:  # noqa: BLE001 — запись пресета важнее реакции на неё
-        logger.error("reg_presets.apply_reg_preset(%r): реакция на правки сорвалась: %s", preset_key, exc)
+        logger.error("domain.regform.presets.apply_reg_preset(%r): реакция на правки сорвалась: %s", preset_key, exc)
     return changed_keys

@@ -37,7 +37,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from cities import (
     cities_module_on,
     city_label,
@@ -1233,7 +1233,7 @@ async def draft_ambassador(
 # Phase 30 (30-02, A2-03): шаг -> вид справочника `services.lookup` (закрытый словарь
 # "university"/"city"). Кроме этих двух шагов у `step_type_v2` в этой фазе типа `lookup`
 # нет (30-01-SUMMARY.md) — карта заведомо покрывает всё множество lookup-шагов сегодня, расти
-# ей вместе с `_STEP_TYPE_V2_OVERRIDES` в `reg_engine.py`, если появится третий.
+# ей вместе с `_STEP_TYPE_V2_OVERRIDES` в `domain/regform/engine.py`, если появится третий.
 _STEP_TO_LOOKUP_KIND = {"university": "university", "city": "city"}
 
 # Короче двух символов — «поиск» по одной букве не сигнал, а лишняя нагрузка на БД на каждое

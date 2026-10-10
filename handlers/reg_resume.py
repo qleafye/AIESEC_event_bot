@@ -17,7 +17,7 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from database.db import get_user, get_reg_draft, delete_reg_draft, set_reg_draft_surface, upsert_reg_draft
 from domain.settings.schema import get_setting_typed
 from services.reg_handoff import SURFACE_BOT

@@ -61,7 +61,7 @@ async def known_city(telegram_id: int) -> str | None:
         season = None
 
     try:
-        import reg_engine
+        import domain.regform.engine as reg_engine
         user = await get_user(telegram_id)
         if user and not reg_engine.is_past_season_row(user, season):
             code = _known_code(user.get("event_city"))

@@ -495,7 +495,7 @@ def test_file_setting_keys_are_exactly_photo_and_file_types():
 
 # ── quick 260906-6xe: PATCH «🧾 Поля карточки заявки» — подписи → байт-формат бота ──────────
 
-import moderation_card as mc
+import domain.regform.moderation_card as mc
 
 
 def test_batch_multi_labels_write_bot_byte_format_in_registry_order(tmp_path, no_tab):

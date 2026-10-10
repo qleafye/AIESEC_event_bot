@@ -1,5 +1,5 @@
 """Строка «Работа» в сводке анкеты — только если вопрос задавали."""
-from reg_engine import summary_fields
+from domain.regform.engine import summary_fields
 
 
 def _labels(answers):

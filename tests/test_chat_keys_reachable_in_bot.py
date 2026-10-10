@@ -42,7 +42,7 @@ NOT_CHAT = {"domain/settings/schema.py"}
 # Функции общего с приложением кода, которые собирают экран ТОЛЬКО для приложения: их тексты
 # в чат не уходят (чат-анкета строит вопросы сама, handlers/registration.py).
 APP_ONLY_FUNCTIONS = {
-    "reg_engine.py": {"step_spec", "_v2_texts_for"},  # спека шага формы приложения
+    "domain/regform/engine.py": {"step_spec", "_v2_texts_for"},  # спека шага формы приложения
 }
 
 # (имя функции, позиция ключа). Обёртки — те же чтения настройки: `ctx.t` (тест и запись на
@@ -109,7 +109,7 @@ EXCEPTIONS = {
     "checkin_training_undo_demo_text": "учебная плашка сканера приложения",
     "checkin_undo_button_text": "кнопка отмены отметки в сканере приложения",
     # Описание того, что включает пресет «🎓 Форум СкиллАп»: меняется вместе с составом
-    # пресета в коде (reg_presets.py), правка менеджером сделала бы описание неправдой.
+    # пресета в коде (domain/regform/presets.py), правка менеджером сделала бы описание неправдой.
     "skillup_preset_confirm_text": "описание пресета, привязано к коду пресета",
     # Начало имён вкладок бота в Google-таблице (settings_ops.bot_tab_prefix): в чате не
     # показывается, а смена переименовывает все вкладки бота разом — операция владельца бота.
@@ -117,7 +117,7 @@ EXCEPTIONS = {
 }
 
 def _form_v2_toggle_keys():
-    from reg_engine import FORM_V2_TOGGLE_KEYS
+    from domain.regform.engine import FORM_V2_TOGGLE_KEYS
     return [f"reg_form_{name}" for name in FORM_V2_TOGGLE_KEYS]
 
 

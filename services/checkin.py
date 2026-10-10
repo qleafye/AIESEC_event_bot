@@ -48,7 +48,7 @@ from database.db import (
     record_checkin,
     record_session_checkin,
 )
-from reg_engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
+from domain.regform.engine import is_past_season_row  # D-02: пропуск на форум не выдаём возвращенцу
 from services.timeutil import aware_to_msk, msk_from_timestamp
 from domain.settings.schema import get_setting_typed
 

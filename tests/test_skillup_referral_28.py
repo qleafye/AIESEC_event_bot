@@ -33,7 +33,7 @@ from aiogram.types import InlineKeyboardMarkup
 
 from config import config
 from database import db
-import reg_engine
+import domain.regform.engine as reg_engine
 from handlers import registration as reg
 from handlers import reg_ambassador
 

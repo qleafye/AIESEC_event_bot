@@ -19,7 +19,7 @@ import logging
 
 from config import config
 from database import db
-import reg_presets
+import domain.regform.presets as reg_presets
 import services.reject_rules_notify as rrn
 import services.settings.audit as settings_audit
 from tests._dbtpl import fast_init_db

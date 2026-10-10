@@ -17,7 +17,7 @@ import aiosqlite
 import httpx
 import pytest
 
-import reg_options
+import domain.regform.options as reg_options
 from database import db as bot_db
 
 from miniapp import telegram_api
@@ -710,7 +710,7 @@ def test_patch_city_choice_persists_and_hides_fork(client):
 
 
 def test_patch_city_choice_invalid_and_closed_match_bot_texts(client):
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     assert reg_engine.CITY_CHOICE_INVALID_TEXT == "Некорректный выбор."
     assert reg_engine.CITY_CLOSED_TEXT == "Регистрация на этот город закрыта."
@@ -735,7 +735,7 @@ def test_patch_city_choice_invalid_and_closed_match_bot_texts(client):
 def test_patch_empty_city_and_track_ask_to_choose(client):
     """Приёмка 10.10: «Дальше» без выбора города отвечал «Некорректный выбор.» — человеку
     непонятно, что делать. Пустой выбор — просьба выбрать, а не «некорректно»."""
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     _set("event_city_enabled", "on")
     resp = client.patch(
@@ -756,7 +756,7 @@ def test_patch_empty_city_and_track_ask_to_choose(client):
 
 
 def test_empty_choice_texts_have_english():
-    import reg_engine
+    import domain.regform.engine as reg_engine
     from services import i18n_form_manual
 
     for text in (reg_engine.CITY_CHOICE_EMPTY_TEXT, reg_engine.TRACK_CHOICE_EMPTY_TEXT):
@@ -778,7 +778,7 @@ def test_patch_city_when_already_set_409_deeplink_wins(client):
 
 
 def test_patch_track_choice_resolves_like_bot(client):
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     _set("party_enabled", "on")
     resp = client.patch(
@@ -852,7 +852,7 @@ def test_engine_aliases_are_same_objects():
     from pathlib import Path
 
     import handlers.registration as reg
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     assert reg._resolve_track is reg_engine.resolve_track
     assert reg._PARTY_TAG_MAP is reg_engine.PARTY_TAG_MAP
@@ -865,7 +865,7 @@ def test_engine_aliases_are_same_objects():
 
 
 def test_form_spec_hides_party_fork_when_track_known(db_path):
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     _set("party_enabled", "on")
     _set("party_fork_question", "on")
@@ -876,7 +876,7 @@ def test_form_spec_hides_party_fork_when_track_known(db_path):
 
 
 # ── D-27: возвращенец видит развилки города/трека так же, как бот, с предзаполнением ────────
-# (владелец, 02.09) — `is_registered=bool(prior)` больше не прячет развилку; см. reg_engine.py
+# (владелец, 02.09) — `is_registered=bool(prior)` больше не прячет развилку; см. domain/regform/engine.py
 # `form_spec` и `miniapp/routers/form.py::_load_context`/`_pre_items`.
 
 def test_pre_items_preselect_prior_value_for_returning_delegate(client):
@@ -941,7 +941,7 @@ def test_patch_city_choice_accepted_for_returning_delegate_not_already_set(clien
 
 
 # ── Метка кампании (quick 260906-4rg): веб не спрашивает «Источник» у делегата с меткой ──────
-# Бот пропускает шаг "source" когда `_source_from_tag` есть в answers (reg_engine.py:348).
+# Бот пропускает шаг "source" когда `_source_from_tag` есть в answers (domain/regform/engine.py:348).
 # Веб собирал answers только из draft["answers"]/users, маркер туда не попадал -- делегат с
 # меткой (`src_*`) видел вопрос, ответ на который у бота уже есть. Швом чинится
 # `miniapp/routers/form.py::_load_context`, один и тот же для GET (form_spec) и PATCH

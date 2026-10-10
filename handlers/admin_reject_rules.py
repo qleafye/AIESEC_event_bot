@@ -29,7 +29,7 @@ from handlers.admin import router
 from handlers.admin_core import _admin_city_view
 from handlers.states import RejectRuleEdit
 from keyboards.builders import get_cancel_kb
-from reg_engine import label_for
+from domain.regform.engine import label_for
 from services.reject_rules import (
     RULE_PRESETS,
     can_edit_city,

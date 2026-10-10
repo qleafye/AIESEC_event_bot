@@ -1,6 +1,6 @@
-"""Phase 21 (21-01, FORM-SYNC-01) — golden-снимок анкеты СНЯТ ДО переноса в reg_engine.py.
+"""Phase 21 (21-01, FORM-SYNC-01) — golden-снимок анкеты СНЯТ ДО переноса в domain/regform/engine.py.
 
-Зачем: `reg_engine.py`/`reg_options.py` переносят «какие шаги, какой текст вопроса, какие
+Зачем: `domain/regform/engine.py`/`domain/regform/options.py` переносят «какие шаги, какой текст вопроса, какие
 варианты ответа, что подставить возвращенцу» из aiogram-хендлеров `handlers/registration.py`
 в aiogram-free ядро, которое позже (план 21-10) обслужит и Mini App. Перенос обязан быть
 «byte-for-byte unchanged» — делегат не должен заметить ничего. «Не заметил ничего» проверяется
@@ -22,15 +22,15 @@ async идёт через `asyncio.run()` (правило проекта).
 """
 import asyncio
 
-import reg_options
+import domain.regform.options as reg_options
 from config import config
 from database.db import init_db
-from reg_engine import REG_FLOW
-from reg_labels import REG_LABELS
+from domain.regform.engine import REG_FLOW
+from domain.regform.labels import REG_LABELS
 
 # Task 3: SOURCE переключён на reg_engine — GOLDEN не тронут ни одним символом (см. докстринг
 # выше). До переноса (Task 1) здесь стояло `import handlers.registration as SOURCE`.
-import reg_engine as SOURCE  # noqa: E402
+import domain.regform.engine as SOURCE  # noqa: E402
 from tests._dbtpl import fast_init_db
 
 
@@ -137,7 +137,7 @@ OPTION_STEPS = [
 
 # Литералы, которые сегодня живут ТОЛЬКО внутри handlers/registration.py::_ask_step (не в
 # keyboards/builders.py) — списаны дословно оттуда (Task 1 read_first). Task 2 переносит их в
-# reg_options.py как именованные константы; до этого момента здесь единственное место, где их
+# domain/regform/options.py как именованные константы; до этого момента здесь единственное место, где их
 # можно прочитать программно без запуска полного FSM.
 _INLINE_LITERALS = {
     "alumni_status": ["Аламни", "Айсекер", "Ни то, ни другое"],
@@ -837,7 +837,7 @@ def test_form_spec_full_track_matches_golden_enabled_steps(tmp_path):
 #
 # Task 2 переключила саму ПРОВЕРКУ на `reg_engine.validate_answer`/`apply_answer` — единственный
 # судья ввода для чата бота и (план 21-10) Mini App (T-21-05): тела `process_*` больше не
-# содержат литералов ошибок (перенесены в reg_engine.py), поэтому grep по хендлерам после этого
+# содержат литералов ошибок (перенесены в domain/regform/engine.py), поэтому grep по хендлерам после этого
 # переноса ничего бы не нашёл. Сами таблицы (кроме новой строки `max_len`, помеченной отдельно —
 # Task 1 физически не могла её знать, это новое правило) не редактировались ни строкой.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
@@ -948,7 +948,7 @@ def test_validate_matches_golden():
         if kind in ("resume_ext", "resume_size"):
             # Файл резюме — не через validate_answer: другая форма входа (имя файла/размер,
             # не «сырой текст»); is_allowed_resume/resume_too_large — прямой перенос в
-            # reg_engine.py, сверяем напрямую (как и делала Task 1).
+            # domain/regform/engine.py, сверяем напрямую (как и делала Task 1).
             if kind == "resume_ext":
                 allowed = SOURCE.is_allowed_resume(raw)
                 assert allowed == (entry["error"] is None), entry
@@ -1016,7 +1016,7 @@ def test_apply_golden_side_effects_present_in_source():
 # (`decide_status`) для нескольких наборов ответов x режимов. Снято прогоном
 # `reg_engine.with_defaults`/`reg_engine.decide_status` (SOURCE) — тот же setdefault-блок и та
 # же `_decide_status`, что раньше жили в handlers/registration.py (перенос дословный, см.
-# докстринги функций в reg_engine.py); значения не сочинены — сверены прогоном перед тем, как
+# докстринги функций в domain/regform/engine.py); значения не сочинены — сверены прогоном перед тем, как
 # лечь в файл. Любое расхождение здесь — регресс переноса Task 3, а не повод править константу.
 # ══════════════════════════════════════════════════════════════════════════════════════════════
 

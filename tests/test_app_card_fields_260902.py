@@ -2,7 +2,7 @@
 (`reg_engine.STEP_TO_COLUMN`/`label_for`), набор вопросов и лимит длины ответа — реестром,
 переполнение карточки отдаётся по кнопке «📄 Полная анкета».
 
-RED (Task 1): сервис `moderation_card.py` ещё не существует — набор обязан упасть на
+RED (Task 1): сервис `domain/regform/moderation_card.py` ещё не существует — набор обязан упасть на
 ImportError. Тесты реестра/экрана «🧾 Поля карточки заявки» (Task 3) дописаны в этот же файл
 ниже отдельным блоком, после сервисных тестов.
 """
@@ -11,9 +11,9 @@ from tests._paths import REPO_ROOT
 
 import asyncio
 
-import reg_engine
-import reg_labels
-import moderation_card as mc
+import domain.regform.engine as reg_engine
+import domain.regform.labels as reg_labels
+import domain.regform.moderation_card as mc
 from handlers import admin_moderation as am
 
 
@@ -35,7 +35,7 @@ def test_card_steps_derived_from_engine_not_a_second_schema():
     assert list(mc.CARD_STEPS.keys()) == expected_keys
     # ФИО с 16.09 ИМЕЕТ подпись (reg_q_full_name — нужна мастеру приложения), но карточка
     # заявки печатает имя в заголовке, не строкой ответа — исключение явное, не по отсутствию
-    # подписи (см. комментарий у CARD_STEPS в moderation_card.py).
+    # подписи (см. комментарий у CARD_STEPS в domain/regform/moderation_card.py).
     assert "full_name" not in mc.CARD_STEPS
 
 
@@ -342,7 +342,7 @@ def test_registry_keys_live_in_apps_group():
     # ветка _parse_setting) не изменилось ни на йоту.
     modcard_entry = SETTINGS_SCHEMA["modcard_fields"]
     assert modcard_entry["type"] == "multi"
-    assert modcard_entry["options_ref"] == "moderation_card:CARD_STEPS"
+    assert modcard_entry["options_ref"] == "domain.regform.moderation_card:CARD_STEPS"
     assert modcard_entry["empty_value"] == mc.EMPTY_SENTINEL
     assert SETTINGS_SCHEMA["modcard_answer_limit"]["type"] == "int"
 

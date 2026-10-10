@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from database import db as bot_db
 from domain.settings.schema import SETTINGS_SCHEMA
 

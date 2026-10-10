@@ -310,7 +310,7 @@ def test_reg_questions_matrix_structure_and_track_semantics(tmp_path):
     полную форму при отсутствии `__party` (D-03/D-04 reg_engine.is_step_enabled_for_track),
     short без `__short` — жёсткий off (SHORT-04); флат-список `group["items"]` остаётся рядом
     (T-19-45, поиск)."""
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     client = _setup(tmp_path)
     body = _sections_body(client)

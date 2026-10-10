@@ -1265,9 +1265,9 @@ def _value_picker_kb(field: str, options: list[str], page: int,
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 # Human labels for payment_status values (shown in the filter summary / value picker).
-# Phase 19 (Mini App): словарь переехал в корневой `reg_labels.py` — профиль Mini App
+# Phase 19 (Mini App): словарь переехал в корневой `domain/regform/labels.py` — профиль Mini App
 # показывает тот же статус оплаты теми же словами.
-from reg_labels import PAYMENT_STATUS_LABELS as _PAYMENT_STATUS_LABELS, STATUS_LABELS as _APP_STATUS_LABELS  # noqa: E402
+from domain.regform.labels import PAYMENT_STATUS_LABELS as _PAYMENT_STATUS_LABELS, STATUS_LABELS as _APP_STATUS_LABELS  # noqa: E402
 
 # Поля фильтра, у которых в базе лежит служебный код, а менеджеру нужны слова (pending -> «Новая»).
 _FILTER_VALUE_LABELS = {"payment_status": _PAYMENT_STATUS_LABELS, "status": _APP_STATUS_LABELS}

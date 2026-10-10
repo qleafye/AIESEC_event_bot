@@ -220,7 +220,7 @@ def test_edu_conditional_gate_equiv(tmp_path):
     # Phase 21 (21-01, FORM-SYNC-01): _get_enabled_steps is now an alias for
     # reg_engine.enabled_steps, which resolves get_setting_typed via reg_engine's OWN module
     # globals -- patching handlers.registration's binding no longer intercepts the call.
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     calls = []
 
@@ -279,7 +279,7 @@ def test_party_enabled_gate_equiv(tmp_path):
     # Phase 21 (21-01, FORM-SYNC-01): _should_show_fork is now an alias for
     # reg_engine.should_show_fork (resolves get_setting_typed via reg_engine's own module
     # globals); _progress stays local to handlers/registration.py unmoved. Patch both.
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     calls = []
 
@@ -495,9 +495,9 @@ def test_is_module_enabled_gate_equiv(tmp_path):
     # Wiring (BLOCKER-2, RED before Task 2): the helper BODY must call get_setting_typed(key)
     # directly -- this covers all 4 call sites (consent_enabled/payment_enabled) at once.
     # Phase 21 (21-01, FORM-SYNC-01): _is_module_enabled moved from reg_schema.py to
-    # reg_engine.py (reg_schema re-exports it) -- it now resolves get_setting_typed via
+    # domain/regform/engine.py (reg_schema re-exports it) -- it now resolves get_setting_typed via
     # reg_engine's own module globals, so the patch target moves with it.
-    import reg_engine
+    import domain.regform.engine as reg_engine
 
     calls = []
 
@@ -849,5 +849,5 @@ def test_raw_read_sites_preserved(tmp_path):
     )
     assert 'get_setting_typed("party_approval")' in finalize_src, (
         "finalize_data should migrate the raw party_approval read (RAW-read rule: "
-        "reg_engine.decide_status's own `party_setting or \"manual\"` fallback matches the enum default)"
+        "domain.regform.engine.decide_status's own `party_setting or \"manual\"` fallback matches the enum default)"
     )

@@ -23,16 +23,16 @@ from aiogram import Bot
 from database.db import get_setting, set_setting, get_user
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
-# Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `reg_labels.py`;
+# Phase 19 (Mini App): подписи анкеты живут в корневом aiogram-free `domain/regform/labels.py`;
 # здесь — реэкспорт ТЕХ ЖЕ объектов (admin.py, admin_reg_config.py, admin_moderation.py
 # импортируют их отсюда как раньше).
-from reg_labels import DELEGATE_LABELS, REG_LABELS, STATUS_LABELS  # noqa: F401
+from domain.regform.labels import DELEGATE_LABELS, REG_LABELS, STATUS_LABELS  # noqa: F401
 # Phase 21 (21-01, FORM-SYNC-01): REG_FLOW и его непосредственные зависимости переехали в
-# корневой aiogram-free reg_engine.py (та же причина, что у REG_LABELS выше — веб-процесс
+# корневой aiogram-free domain/regform/engine.py (та же причина, что у REG_LABELS выше — веб-процесс
 # Mini App не должен импортировать handlers.* и тянуть за собой весь бот). Реэкспорт ТЕХ ЖЕ
 # объектов — handlers/registration.py, handlers/admin.py, admin_reg_config.py и тесты
 # продолжают импортировать их отсюда как раньше.
-from reg_engine import (  # noqa: F401
+from domain.regform.engine import (  # noqa: F401
     REG_FLOW, _is_party_track, SHORT_TRACK, _is_short_track,
     REG_DEFAULTS, _is_step_enabled, _is_module_enabled,
     STEP_TO_COLUMN, REG_STEP_TYPES, is_step_enabled_for_track,
@@ -52,7 +52,7 @@ from services import i18n as i18n_service
 logger = logging.getLogger(__name__)
 
 # --- Registration Flow Engine ---
-# REG_FLOW moved to reg_engine.py (Phase 21, 21-01, FORM-SYNC-01); imported above (re-export
+# REG_FLOW moved to domain/regform/engine.py (Phase 21, 21-01, FORM-SYNC-01); imported above (re-export
 # block, same reason/pattern as REG_LABELS).
 
 # step_key → its reg_q_* setting key, for resolving human labels in dropout analytics.
@@ -83,19 +83,19 @@ def delegate_step_label(step_key: str | None) -> str:
     return DELEGATE_LABELS.get(_STEP_TO_SETTING.get(step_key or "")) or dropout_step_label(step_key)
 
 
-# REG_DEFAULTS moved to reg_engine.py (Phase 21, 21-01) alongside REG_FLOW; imported above.
+# REG_DEFAULTS moved to domain/regform/engine.py (Phase 21, 21-01) alongside REG_FLOW; imported above.
 # The NAME is retained unchanged because handlers/admin.py still imports/iterates it
 # (admin.py:59 import, :501, :2097 _is_question_on, :2248, and the preset bulk-write loop at
 # :2336/:2412) — deleting the name would break those call sites for no benefit.
 
-# REG_LABELS — см. корневой reg_labels.py (Phase 19), импорт вверху модуля.
+# REG_LABELS — см. корневой domain/regform/labels.py (Phase 19), импорт вверху модуля.
 
 # --- Event-type presets (admin one-tap bulk toggle) ---
 # Phase 28 (28-10, SU-11): REG_PRESETS + the bulk-writer moved verbatim to the root
-# aiogram-free `reg_presets.py` — domain/settings/ops.py (Mini App web process) needs the same
+# aiogram-free `domain/regform/presets.py` — domain/settings/ops.py (Mini App web process) needs the same
 # writer without importing anything from `handlers.*`. Re-exported under the same name so
 # every existing import site here keeps working unchanged.
-from reg_presets import REG_PRESETS  # noqa: F401,E402
+from domain.regform.presets import REG_PRESETS  # noqa: F401,E402
 
 
 # WR-03: the D-08 overnight-only questions are excluded from _apply_party_preset's blanket
@@ -175,7 +175,7 @@ REG_CATEGORIES = [
 ]
 
 
-# _is_party_track/SHORT_TRACK/_is_short_track moved to reg_engine.py (Phase 21, 21-01);
+# _is_party_track/SHORT_TRACK/_is_short_track moved to domain/regform/engine.py (Phase 21, 21-01);
 # imported above (re-export block).
 
 
@@ -204,7 +204,7 @@ def _sheet_details(data: dict) -> str:
 # status код БД → человеческий ярлык в колонке «Статус» (Таня, п.5). «Новая» = ещё не
 # смотрели (pending), «Одобрена»/«Отклонена» — после решения менеджера. Совпадает со
 # списком значений выпадашки в services.sheets.STATUS_LABELS.
-# Сам словарь — в корневом reg_labels.py (Phase 19), импорт вверху модуля.
+# Сам словарь — в корневом domain/regform/labels.py (Phase 19), импорт вверху модуля.
 
 
 def _status_label(data: dict) -> str:
@@ -378,7 +378,7 @@ def _sheet_value_map(data: dict) -> dict:
     return {h: fn(data) for h, _g, fn in SHEET_COLUMNS}
 
 
-# _is_step_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
+# _is_step_enabled moved to domain/regform/engine.py (Phase 21, 21-01); imported above.
 
 
 # Приёмка 19.09 (review-260919, «Модерация» находки №2/№3): колонки трёх шагов мини-профиля —
@@ -557,7 +557,7 @@ DEFAULT_APPROVE_TEXT = SETTINGS_SCHEMA["approve_text"]["default"]
 DEFAULT_APPROVE_AUTO_TEXT = SETTINGS_SCHEMA["approve_text__auto"]["default"]
 
 
-# _is_module_enabled moved to reg_engine.py (Phase 21, 21-01); imported above.
+# _is_module_enabled moved to domain/regform/engine.py (Phase 21, 21-01); imported above.
 
 
 async def _approve_text_for(participant_type: str | None, city_code: str | None = None, *,

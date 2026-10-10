@@ -35,7 +35,7 @@ def _ready(tmp_path, name="test_amb_tiers_screens_su5.db"):
     fast_init_db()
     _run(db.set_setting("event_season", SEASON))
     # Экраны проверяются на значениях СкиллАп (общие дефолты реестра нейтральные).
-    import reg_presets
+    import domain.regform.presets as reg_presets
     for key in ("amb_next_step_o2o_text", "amb_next_step_networking_text"):
         _run(db.set_setting(key, reg_presets.SKILLUP_TIER_SETTINGS[key]))
 
@@ -319,7 +319,7 @@ from tests.test_miniapp_routes import (  # noqa: E402
 def client(tmp_path):
     db_path = _use_tmp_db(tmp_path, "amb_tiers_screens_miniapp.db")
     _standard_seed()
-    import reg_presets
+    import domain.regform.presets as reg_presets
     for key in ("amb_next_step_o2o_text", "amb_next_step_networking_text"):
         _set(key, reg_presets.SKILLUP_TIER_SETTINGS[key])
     return _client(_cfg(db_path))
@@ -452,7 +452,7 @@ def test_offer_body_default_unchanged_and_no_preset_writes_it():
     """Общий дефолт оффера прежний (иначе обещание разбора резюме утекло бы на YL/RT с
     включённой реф-ссылкой). Владелец 09.10: пресет «СкиллАп» тоже его не пишет — текст
     предложения менеджер задаёт сам."""
-    import reg_presets
+    import domain.regform.presets as reg_presets
     from services.i18n_miniapp_manual import MANUAL_EN
     from domain.settings.schema import SETTINGS_SCHEMA
 

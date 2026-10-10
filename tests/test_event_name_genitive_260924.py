@@ -12,7 +12,7 @@ import asyncio
 from config import config
 from database.db import set_setting
 from handlers import admin_settings
-from reg_engine import _default_prompt_text
+from domain.regform.engine import _default_prompt_text
 from domain.settings.schema import SETTINGS_SCHEMA
 from domain.settings.synonyms import SETTINGS_SYNONYMS
 from tests._dbtpl import fast_init_db

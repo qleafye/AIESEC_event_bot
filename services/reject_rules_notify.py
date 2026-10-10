@@ -41,7 +41,7 @@ import logging
 
 from cities import split_per_city_key
 from database.db import list_reject_rules
-from reg_engine import MULTI_CONFIG, SELECT_CONFIG
+from domain.regform.engine import MULTI_CONFIG, SELECT_CONFIG
 from services import scheduler as _sched
 from services.reject_rules import active_rules, rule_summary
 from domain.settings.schema import get_setting_typed
@@ -122,7 +122,7 @@ async def _build_pause_message(rules: list[dict]) -> str:
     """Одно сообщение на все правила, поставленные на паузу этим действием — человеческими
     словами, без единого кодового имени/ключа настройки/шага анкеты (CLAUDE.md «бот для людей»):
     имя/автоописание правила из `_rule_display_name`, подпись вопроса — уже человеческая строка
-    `rule["paused_reason"]` (чистый предикат паузы `reg_engine.py` отдаёт её через `label_for`,
+    `rule["paused_reason"]` (чистый предикат паузы `domain/regform/engine.py` отдаёт её через `label_for`,
     план 31-01/31-04 — второй копии этой логики здесь нет, см. докстринг модуля)."""
     lines = []
     for rule in rules:

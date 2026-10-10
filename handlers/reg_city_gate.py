@@ -77,7 +77,7 @@ async def form_city_or_ask(message, state, *, resume: bool = False,
     `_resume_after_city`, по которому `city_pick` продолжит ЭТОТ черновик, а не начнёт анкету
     заново. Атрибуция (реферер/метка/трек), пришедшая параметрами, кладётся в FSM до экрана —
     тот же приём, что `_persist_fork_attribution`."""
-    import reg_engine
+    import domain.regform.engine as reg_engine
     from cities import cities_module_on
     from services.known_city import known_city
 
@@ -146,7 +146,7 @@ async def summary_data(data: dict) -> dict:
     """Ответы для сводки + подпись города форума (`reg_engine.SUMMARY_EVENT_CITY_KEY`).
     Модуль городов выключен или город не выбран — подписи нет, строки в сводке тоже."""
     from cities import cities_module_on
-    from reg_engine import SUMMARY_EVENT_CITY_KEY
+    from domain.regform.engine import SUMMARY_EVENT_CITY_KEY
     code = data.get("event_city")
     if not code or not await cities_module_on():
         return data

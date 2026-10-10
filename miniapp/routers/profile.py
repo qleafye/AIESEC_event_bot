@@ -72,10 +72,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-import reg_engine
+import domain.regform.engine as reg_engine
 from cities import cities_module_on, city_label as resolve_city_label, normalize_city
 from database.db import get_user
-from reg_labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
+from domain.regform.labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services import i18n, reg_edit_policy
 from services.applications import format_edited_date
 from services.nextcloud import file_name_from_link

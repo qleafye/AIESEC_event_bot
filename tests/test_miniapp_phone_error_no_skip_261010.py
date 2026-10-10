@@ -7,7 +7,7 @@ from __future__ import annotations
 import pytest
 
 import i18n_ui_en
-import reg_engine
+import domain.regform.engine as reg_engine
 
 from tests.test_miniapp_form import client, db_path  # noqa: F401 — фикстуры подтягиваются по имени
 from tests.test_miniapp_routes import UNREGISTERED_ID, _hdr

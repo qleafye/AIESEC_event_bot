@@ -274,7 +274,7 @@ def _me(client, telegram_id):
 
 
 def test_me_form_status_contract(client):
-    from reg_labels import STATUS_LABELS
+    from domain.regform.labels import STATUS_LABELS
 
     body = _me(client, UNREGISTERED_ID)
     assert body["form_status"] == "none"

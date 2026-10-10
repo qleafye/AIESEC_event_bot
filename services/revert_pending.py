@@ -49,7 +49,7 @@ import html as html_module
 import logging
 
 from database.db import get_balance, get_user, record_answer_history, revert_user_to_pending
-from reg_labels import STATUS_LABELS
+from domain.regform.labels import STATUS_LABELS
 from services.scheduler import cancel_payment_reminders
 from services.sheets import update_status_in_sheet
 

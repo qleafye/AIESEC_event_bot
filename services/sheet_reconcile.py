@@ -39,8 +39,8 @@ from config import config
 from services import sheet_target as _sheet_target
 from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
 from domain.settings.schema import get_setting_typed
-from reg_engine import is_past_season_row
-from reg_labels import STATUS_LABELS
+from domain.regform.engine import is_past_season_row
+from domain.regform.labels import STATUS_LABELS
 from services.decision_delivery import summarize_deliveries
 import services.sheets as sheets_service
 
@@ -487,7 +487,7 @@ def chunk_report_lines(lines: list[str], limit: int = 4096) -> list[str]:
     разрывая строку пополам — граница чанка всегда между строками. Не изобретаем свой резчик:
     `moderation_card.split_for_telegram` уже делает это (и уже покрыт тестами) для «📄 Полная
     анкета» (handlers/admin_moderation.py::appr_full) — тот же класс задачи."""
-    from moderation_card import split_for_telegram
+    from domain.regform.moderation_card import split_for_telegram
 
     return split_for_telegram("\n".join(lines), limit=limit)
 

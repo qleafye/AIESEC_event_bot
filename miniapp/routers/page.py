@@ -31,7 +31,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from dashboard.db import read_conn
-from reg_labels import STATUS_LABELS
+from domain.regform.labels import STATUS_LABELS
 from domain.settings.schema import SETTINGS_SCHEMA
 
 from services import i18n

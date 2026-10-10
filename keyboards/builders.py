@@ -17,10 +17,10 @@ from keyboards.menu_dynamic import (  # noqa: F401
     CONFERENCE_MENU_LABELS, LEGACY_MENU_TEXTS, STATIC_MENU_TEXTS, caption_for,
 )
 # Phase 21 (21-01, FORM-SYNC-01): литеральные списки вариантов ответа живут в корневом
-# aiogram-free reg_options.py — общая точка правды для бота (эти клавиатуры) и будущего
+# aiogram-free domain/regform/options.py — общая точка правды для бота (эти клавиатуры) и будущего
 # Mini App (reg_engine.step_spec()). Сами клавиатуры (ReplyKeyboardBuilder, add_other/
 # add_skip, порядок kb.adjust(...)) остаются здесь без изменений.
-from reg_options import (
+from domain.regform.options import (
     DEFAULT_SOURCE_OPTIONS,
     EDUCATION_STATUS_OPTIONS,
     COURSE_OPTIONS,
@@ -316,7 +316,7 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
     # (reg_edit_policy.edit_gate, тот же гейт, что у `/start edit`) её сейчас разрешает.
     edit_on = False
     try:
-        import reg_engine
+        import domain.regform.engine as reg_engine
         _season = await get_setting_typed("event_season") or None
         # Тот же сезон, что сверяет ветка правки в cmd_start, иначе кнопка ведёт в пустое меню.
         if ((user.get("season") or None) == _season

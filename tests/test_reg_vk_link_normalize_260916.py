@@ -10,7 +10,7 @@
 """
 from __future__ import annotations
 
-import reg_engine
+import domain.regform.engine as reg_engine
 
 
 def test_vk_accepts_plain_domain_link():

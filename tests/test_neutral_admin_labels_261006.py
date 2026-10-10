@@ -1,6 +1,6 @@
 """Общие подписи админки не называют конкретное событие: бот один на Юлид, РилТолк, СкиллАп."""
 import domain.settings.schema as settings_schema
-from reg_presets import REG_PRESETS
+from domain.regform.presets import REG_PRESETS
 
 
 def test_forum_stats_card_labels_are_neutral():

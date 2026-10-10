@@ -969,7 +969,7 @@ def test_validate_resume_document_rejects_wrong_extension():
 
 
 def test_validate_resume_document_rejects_too_large():
-    from reg_engine import RESUME_MAX_BYTES
+    from domain.regform.engine import RESUME_MAX_BYTES
 
     assert validate_resume_document("resume.pdf", RESUME_MAX_BYTES + 1) is not None
 

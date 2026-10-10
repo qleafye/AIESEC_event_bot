@@ -3,7 +3,7 @@
 приложения вне анкеты) уже рукописные — здесь тот же ярус B (`manual=1`, `services/i18n.py::tr()`
 ищет по `src_hash` содержимого, не по ключу реестра), но для КОРПУСА САМОЙ АНКЕТЫ
 (`services/i18n_sources.py::DELEGATE_GROUPS` — `reg_prompts`/`reg`/`party`): подсказки вопросов,
-списки вариантов, подписи и ошибки движка (`reg_engine.py`), которые до этой правки переводились
+списки вариантов, подписи и ошибки движка (`domain/regform/engine.py`), которые до этой правки переводились
 только машиной (argos) и звучали плохо («Write your age number:»).
 
 Два словаря:
@@ -11,7 +11,7 @@
 - `FORM_DEFAULT_EN` — перевод ДЕФОЛТОВ корпуса: то, что вернёт `services/i18n_sources.py::corpus()`
   на чистой БД (без единой правки менеджера) — `PROMPT_DEFAULTS`/`STEP_HELP`/`STEP_HELP_EXAMPLES`/
   `_GENERIC_FALLBACK_LABEL`/`REG_LABELS`/`_SUMMARY_FIELD_LABELS`/`reg_options.*`/`SELECT_CONFIG`/
-  `MULTI_CONFIG`/`LEGACY_SPB_UNIVERSITIES` (`reg_engine.py`, `reg_labels.py`, `reg_options.py`), литералы
+  `MULTI_CONFIG`/`LEGACY_SPB_UNIVERSITIES` (`domain/regform/engine.py`, `domain/regform/labels.py`, `domain/regform/options.py`), литералы
   `registration.py`/`reg_flow.py`/`reg_resume.py`/`reg_consent.py`/`user_actions.py`/`payment.py`/
   `application_effects.py`/`reg_schema.py` (эти модули aiogram-зависимы и не импортируются
   `i18n_sources.py` — литералы продублированы там буквально, см. докстринг `code_literals()`), и
@@ -63,7 +63,7 @@ ORIGIN_DEFAULT = "form_manual_seed_default"
 ORIGIN_EVENT = "form_manual_seed_event_260917"
 
 
-# ── PROMPT_DEFAULTS (reg_engine.py) — тексты вопросов анкеты по умолчанию ───────────────────
+# ── PROMPT_DEFAULTS (domain/regform/engine.py) — тексты вопросов анкеты по умолчанию ───────────────────
 _PROMPT_DEFAULTS_EN = {
     "Напиши свои ФИО (Фамилия Имя Отчество):": "Enter your full name (last, first, middle name):",
     "Напиши свой возраст числом:": "Enter your age as a number:",
@@ -114,7 +114,7 @@ _PROMPT_DEFAULTS_EN = {
     "Кейс-чемпионат — это возможность решить бизнес-кейс от партнёров и получить обратную связь. Участвуешь?": "The case championship is a chance to solve a business case from our partners and get feedback. Want to join?",
 }
 
-# ── STEP_HELP / STEP_HELP_EXAMPLES (reg_engine.py) — подсказки формата и их примеры ─────────
+# ── STEP_HELP / STEP_HELP_EXAMPLES (domain/regform/engine.py) — подсказки формата и их примеры ─────────
 _STEP_HELP_EN = {
     "Фамилия и имя минимум, например «Иванова Мария».": "Last name and first name at minimum, e.g. «Smith Anna».",
     "Число от 10 до 120, например «19».": "A number from 10 to 120, e.g. «19».",
@@ -131,7 +131,7 @@ _STEP_HELP_EN = {
     "Резюме текстом: 2 года опыта в маркетинге.": "CV as text: 2 years of experience in marketing.",
 }
 
-# ── REG_LABELS (reg_labels.py) — подписи вопросов анкеты с эмодзи ───────────────────────────
+# ── REG_LABELS (domain/regform/labels.py) — подписи вопросов анкеты с эмодзи ───────────────────────────
 _REG_LABELS_EN = {
     "🪪 ФИО": "🪪 Full name",
     "🎂 Возраст": "🎂 Age",
@@ -188,7 +188,7 @@ _REG_LABELS_EN = {
     "🏆 Кейс-чемпионат": "🏆 Case championship",
 }
 
-# ── _SUMMARY_FIELD_LABELS (reg_engine.py) — подписи сводки анкеты (bare, без эмодзи) ────────
+# ── _SUMMARY_FIELD_LABELS (domain/regform/engine.py) — подписи сводки анкеты (bare, без эмодзи) ────────
 # + reg_engine.summary_fields() computed-строки (bool -> «Да»/None, факт вложения файла).
 _SUMMARY_LABELS_EN = {
     "ФИО": "Full name",
@@ -250,7 +250,7 @@ _SUMMARY_LABELS_EN = {
     "прикреплено файлом": "attached as a file",
 }
 
-# ── reg_options.py + SELECT_CONFIG/MULTI_CONFIG (reg_engine.py) — варианты ответа ───────────
+# ── domain/regform/options.py + SELECT_CONFIG/MULTI_CONFIG (domain/regform/engine.py) — варианты ответа ───────────
 _OPTIONS_EN = {
     # PARTY_TRACK_OPTIONS
     "Полная регистрация": "Full registration",
@@ -608,7 +608,7 @@ _CODE_LITERALS_EN = {
 # ── reg_engine._default_prompt_text/help_default — литералы движка, вычисляемые ДИНАМИЧЕСКИ
 # (не лежат ни в одном перечислимом словаре `code_literals()` уже читает — PROMPT_DEFAULTS/
 # STEP_HELP), поэтому `services/i18n_sources.py::corpus()` их не видит вообще, а `tr()` их всё
-# равно получает на вход при рендере анкеты. Найдено при ревизии `reg_engine.py` (Задача 1
+# равно получает на вход при рендере анкеты. Найдено при ревизии `domain/regform/engine.py` (Задача 1
 # инструкции — «литералы движка, которые выводятся через tr, но не входят в corpus()»). ─────
 _ENGINE_DYNAMIC_EN = {
     # Пустой выбор города/формата в приложении (`reg_engine.validate_city_choice`/
