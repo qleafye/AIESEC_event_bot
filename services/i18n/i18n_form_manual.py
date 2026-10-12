@@ -1318,6 +1318,7 @@ FORM_DEFAULT_EN: dict[str, str] = {
     "Ты пока не выбрал ни одной сессии.": "You haven't chosen any sessions yet.",
     "🗓 Моё расписание": "🗓 My schedule",
     "{day}, {time}. Выбери одну сессию:": "{day}, {time}. Pick one session:",
+    "• <b>{title}</b> — {speaker}\nТрек: {track} · {competencies}": "• <b>{title}</b> — {speaker}\nTrack: {track} · {competencies}",
     "Эта сессия больше недоступна — обнови список.": "This session is no longer available — please refresh the list.",
 }
 
