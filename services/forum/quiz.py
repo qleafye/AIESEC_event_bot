@@ -171,8 +171,9 @@ def _current_level(item: dict, levels: list[dict], quiz: dict) -> dict | None:
 
 
 async def result_lines(telegram_id: int, quiz: dict) -> list[dict] | None:
-    """[{competency, level_name, level_description}] по последней законченной попытке; None —
-    результата нет."""
+    """[{competency, percent, level_name, level_description}] по последней законченной попытке;
+    None — результата нет. percent = points*100//max; None, если у попытки нет points/max
+    (старая попытка) или max <= 0."""
     attempt = await quiz_db.get_last_finished_attempt(telegram_id, quiz["id"])
     if not attempt:
         return None
@@ -184,8 +185,12 @@ async def result_lines(telegram_id: int, quiz: dict) -> list[dict] | None:
         if not isinstance(item, dict):
             continue
         level = _current_level(item, level_list, quiz)
+        percent = None
+        if "points" in item and "max" in item and int(item["max"]) > 0:
+            percent = int(item["points"]) * 100 // int(item["max"])
         lines.append({
             "competency": comp["name"],
+            "percent": percent,
             "level_name": level["name"] if level else None,
             "level_description": (level.get("description") or "") if level else "",
         })

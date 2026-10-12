@@ -182,7 +182,7 @@ def test_result_after_last_answer(tmp_path):
         cb = await answer_all(oids, pick=1)
         text, kb = cb.message.last
         assert text.startswith("Твой результат по компетенциям:")
-        assert "Лидерство — Продвинутый" in text and "Уверенно" in text
+        assert "Лидерство: 100% · Продвинутый" in text and "Уверенно" in text
         assert "Сессия" not in text  # рекомендаций сессий нет
     run(go())
 
@@ -193,7 +193,7 @@ def test_no_level(tmp_path):
     async def go():
         _, oids = await seed_quiz(base_level=False)
         cb = await answer_all(oids, pick=0)
-        assert "Лидерство — пока без уровня" in cb.message.last[0]
+        assert "Лидерство: 0% · пока без уровня" in cb.message.last[0]
     run(go())
 
 
