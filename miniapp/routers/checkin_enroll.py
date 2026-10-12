@@ -65,6 +65,14 @@ async def checkin_enroll(
     p: Principal = Depends(require_cap(_CAP)),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
+    res = await _enroll(body, request, p)
+    # Только id и код исхода — ФИО и тексты в лог не идут (ПД).
+    logger.info("checkin enroll: staff=%s session=%s status=%s delegate=%s",
+                p.telegram_id, body.session_id, res.get("status"), body.telegram_id)
+    return res
+
+
+async def _enroll(body: EnrollBody, request: Request, p: Principal) -> dict:
     bound = await _bound_city(request, p)
     denial = await _point_city_denial(bound, f"session:{body.session_id}")
     if denial is not None:

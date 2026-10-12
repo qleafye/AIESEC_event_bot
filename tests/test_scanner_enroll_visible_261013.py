@@ -107,3 +107,51 @@ def test_live_point_chip_is_text_not_red_dot():
     chips = text[text.index("function renderPointChips"):text.index("async function loadPoints")]
     assert '"🔴 "' not in chips  # 🔴 упомянут в комментарии — проверяем литерал
     assert '" · идёт сейчас"' in chips
+
+
+# ── лог исхода без ПД ───────────────────────────────────────────────────────────────────────
+
+def _lines(caplog, prefix):
+    return [r.getMessage() for r in caplog.records if r.getMessage().startswith(prefix)]
+
+
+def _assert_no_pd(lines):
+    for line in lines:
+        assert f"Делегат {U}" not in line and f"user{U}" not in line
+
+
+def test_scan_outcome_logged_without_pd(tmp_path, monkeypatch, caplog):
+    client, ids = _setup(tmp_path, monkeypatch)
+    caplog.set_level(logging.INFO, logger="miniapp.routers.checkin")
+    body = _scan(client, f"session:{ids['B']}")
+    assert body["full_name"] == f"Делегат {U}"  # ФИО в ответе есть — в логе его быть не должно
+    lines = _lines(caplog, "checkin scan:")
+    assert lines == [
+        f"checkin scan: staff={GAME_MANAGER_ID} point=session:{ids['B']} status=new enroll=1 delegate={U}",
+    ]
+    _assert_no_pd(lines)
+
+
+def test_manual_outcome_logged(tmp_path, monkeypatch, caplog):
+    client, ids = _setup(tmp_path, monkeypatch)
+    caplog.set_level(logging.INFO, logger="miniapp.routers.checkin")
+    client.post(f"{BASE}/manual", json={"telegram_id": U, "point": f"session:{ids['B']}"},
+                headers=_hdr(GAME_MANAGER_ID))
+    lines = _lines(caplog, "checkin manual:")
+    assert lines == [
+        f"checkin manual: staff={GAME_MANAGER_ID} point=session:{ids['B']} status=new enroll=1 delegate={U}",
+    ]
+    _assert_no_pd(lines)
+
+
+def test_enroll_outcome_logged(tmp_path, monkeypatch, caplog):
+    client, ids = _setup(tmp_path, monkeypatch)
+    caplog.set_level(logging.INFO, logger="miniapp.routers.checkin_enroll")
+    r = client.post(f"{BASE}/enroll", json={"telegram_id": U, "session_id": ids["B"]},
+                    headers=_hdr(GAME_MANAGER_ID))
+    assert r.json()["status"] == "ok"
+    lines = _lines(caplog, "checkin enroll:")
+    assert lines == [
+        f"checkin enroll: staff={GAME_MANAGER_ID} session={ids['B']} status=ok delegate={U}",
+    ]
+    _assert_no_pd(lines)
