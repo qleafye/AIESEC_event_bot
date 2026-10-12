@@ -510,6 +510,18 @@ async def admin_selected_city(admin_id: int) -> str | None:
     return normalize_city(raw)
 
 
+# Ключ FSM-данных правки городской настройки, открытой с экрана, где город пришёл КНОПКОЙ
+# (экраны форума: при шапке «🌍 Все города» хаб сам спрашивает город). Город ключа там не обязан
+# совпадать с шапкой, поэтому сохранение (`settings_edit_value`) сверяет шапку не с городом
+# ключа, а с её снимком на входе: сменил шапку посреди правки — правка отменяется, как и раньше.
+HEADER_AT_EDIT_START = "header_at_edit_start"
+
+
+async def header_snapshot(admin_id: int) -> dict:
+    """`{HEADER_AT_EDIT_START: шапка сейчас}` — подмешать в `state.set_data` при входе в правку."""
+    return {HEADER_AT_EDIT_START: await admin_selected_city(admin_id)}
+
+
 async def set_admin_city(admin_id: int, code: str) -> bool:
     """Persist an admin's city choice in `bot_settings` (survives bot restarts — FSM does
     not). `code` must be a member of the closed set `city_codes()` (same guard shape as

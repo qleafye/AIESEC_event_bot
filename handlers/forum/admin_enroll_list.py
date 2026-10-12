@@ -12,7 +12,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
+from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, header_snapshot, per_city_key
 from database import session_enroll_db as edb
 from database.db import _csv_safe, get_program_session, update_program_session
 from handlers.admin import router
@@ -196,7 +196,8 @@ async def prog_enrdl(callback: types.CallbackQuery, state: FSMContext):
         return
     key = await _write_key("session_enroll_deadline", code)
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": key, "return_cb": f"prog_enrset:{code}", "return_label": "← К записи на сессии"})
+    await state.set_data({"setting_key": key, "return_cb": f"prog_enrset:{code}", "return_label": "← К записи на сессии",
+                          **await header_snapshot(callback.from_user.id)})  # город из кнопки, не из шапки
     prompt = SETTINGS_SCHEMA["session_enroll_deadline"]["prompt"]
     await callback.message.answer(
         html_module.escape(prompt), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[_CANCEL_ROW]),
@@ -254,7 +255,8 @@ async def prog_enrte(callback: types.CallbackQuery, state: FSMContext):
     lines += ["", "<i>«-» — вернуть стандартный текст.</i>"]
     await state.set_state(EditSetting.waiting_for_value)
     await state.set_data({"setting_key": await _write_key(base, code),
-                          "return_cb": f"prog_enrtx:{code}:{idx // _TEXT_PAGE}", "return_label": "← К текстам записи"})
+                          "return_cb": f"prog_enrtx:{code}:{idx // _TEXT_PAGE}", "return_label": "← К текстам записи",
+                          **await header_snapshot(callback.from_user.id)})  # город из кнопки, не из шапки
     await callback.message.edit_text(
         "\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[_CANCEL_ROW]),
     )
