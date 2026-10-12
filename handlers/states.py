@@ -571,6 +571,7 @@ class ProgramPhotoUpload(StatesGroup):
     # Фото программы ДЛЯ ОДНОГО ГОРОДА (или общее) — handlers/forum/admin_program_view.py; город и
     # экран возврата — в state.get_data().
     waiting = State()
+    day_waiting = State()  # картинка ДНЯ программы; город и день — в state.get_data()
 
 
 class SourceLinkCreate(StatesGroup):

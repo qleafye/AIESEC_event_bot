@@ -16,6 +16,7 @@
 `handlers.settings.admin_miniapp.cycle_miniapp_motion`. `back_to` в callback_data («program»/«hub») —
 это и есть карта «куда вернуть после нажатия», второй не заводим (D-01/D-15 инвариант)."""
 import html
+import re
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
@@ -25,9 +26,10 @@ from domain.cities import cities_module_on, city_label, per_city_key
 from handlers.admin import router
 from handlers.states import ProgramPhotoUpload
 from services.forum.program import (
-    PROGRAM_PHOTO_KEY, PROGRAM_VIEW_KEY, own_program_photo, resolve_program_content,
+    PROGRAM_PHOTO_KEY, PROGRAM_VIEW_KEY, day_label, own_program_photo, resolve_program_content,
     resolve_program_view,
 )
+from database import session_enroll_db as edb
 from database.db import get_setting
 from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 from domain.settings.schema import SETTINGS_SCHEMA
@@ -243,3 +245,177 @@ async def prog_photo_not_photo(message: types.Message, state: FSMContext):
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
         return
     await message.answer("Пришлите фото программы картинкой (не файлом) — или нажмите «❌ Отмена».")
+
+# ── Картинка ДНЯ программы (повестка для записи на сессии) ──────────────────────────────────
+#
+# Хранится таблицей `program_day_photos` (город, день) — `database/session_enroll_db.py`. Делегат
+# получает её в записи на сессии: при входе (если это первый день) и при переходе к сессиям дня.
+# Callback'и `prog_agd*` покрыты правом `prog_*`, состояние — `state:ProgramPhotoUpload:*`.
+
+_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_FORBIDDEN = "Этот город вам недоступен — откройте программу своего города."
+_NO_DAY = "Этого дня уже нет — откройте программу заново."
+
+
+async def day_photo_button(code: str, day: str) -> InlineKeyboardButton:
+    mark = " ✅" if await edb.get_day_photo(code, day) else ""
+    return InlineKeyboardButton(text=f"🖼 Картинка дня{mark}", callback_data=f"prog_agd:{code}:{day}")
+
+
+async def _day_args(callback: types.CallbackQuery) -> tuple[str, str] | None:
+    """(код города, день) из callback или None (alert уже показан)."""
+    from handlers.forum.admin_program import _city_allowed
+
+    _prefix, code, day = callback.data.split(":", 2)
+    if not _DAY_RE.match(day):
+        await callback.answer(_NO_DAY, show_alert=True)
+        return None
+    if not await _city_allowed(callback.from_user.id, code):
+        await callback.answer(_FORBIDDEN, show_alert=True)
+        return None
+    return code, day
+
+
+async def _day_photo_screen(code: str, day: str) -> tuple[str, InlineKeyboardMarkup]:
+    own = await edb.get_day_photo(code, day)
+    where = f" — {html.escape(await city_label(code))}" if await cities_module_on() else ""
+    text = (
+        f"🖼 <b>Картинка дня {day_label(day)}</b>{where}\n\n"
+        "Её получат делегаты в записи на сессии: при входе (если это первый день) и когда "
+        "перейдут к сессиям этого дня. Удобно положить сюда повестку дня с треками.\n\n"
+        f"Сейчас: {'✅ загружена' if own else 'ещё не загружена'}.\n\n"
+        "Если картинок дней нет, при входе в запись делегаты получают общее фото программы."
+    )
+    rows = [[InlineKeyboardButton(
+        text=f"📷 {'Заменить' if own else 'Загрузить'} картинку", callback_data=f"prog_agdup:{code}:{day}")]]
+    if own:
+        rows.append([
+            InlineKeyboardButton(text="👁 Показать", callback_data=f"prog_agdshow:{code}:{day}"),
+            InlineKeyboardButton(text="🗑 Убрать", callback_data=f"prog_agddel:{code}:{day}"),
+        ])
+    rows.append([InlineKeyboardButton(text="← К дню", callback_data=f"prog_agdx:{code}:{day}")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _day_screen(code: str, day: str):
+    from handlers.forum.admin_program import render_day_screen
+    return await render_day_screen(code, day)
+
+
+@router.callback_query(F.data.startswith("prog_agd:"))
+async def prog_agd_open(callback: types.CallbackQuery):
+    args = await _day_args(callback)
+    if args is None:
+        return
+    text, kb = await _day_photo_screen(*args)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_agdup:"))
+async def prog_agd_upload(callback: types.CallbackQuery, state: FSMContext):
+    args = await _day_args(callback)
+    if args is None:
+        return
+    code, day = args
+    await state.set_state(ProgramPhotoUpload.day_waiting)
+    await state.set_data({"code": code, "day": day})
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="❌ Отмена", callback_data=f"prog_agdx:{code}:{day}")]])
+    who = f"делегаты города «{html.escape(await city_label(code))}»" if await cities_module_on() else "делегаты"
+    await callback.message.edit_text(
+        f"📷 <b>Картинка дня {day_label(day)}</b>\n\nПришлите картинку повестки на этот день "
+        f"фото (можно с подписью) — её увидят {who} при записи на сессии.",
+        parse_mode="HTML", reply_markup=kb,
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_agdx:"))
+async def prog_agd_back(callback: types.CallbackQuery, state: FSMContext):
+    args = await _day_args(callback)
+    if args is None:
+        return
+    await state.clear()
+    text, kb = await _day_screen(*args)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_agdshow:"))
+async def prog_agd_show(callback: types.CallbackQuery):
+    args = await _day_args(callback)
+    if args is None:
+        return
+    own = await edb.get_day_photo(*args)
+    if not own:
+        await callback.answer("Картинки дня нет — загрузите её.", show_alert=True)
+        return
+    try:
+        await callback.message.answer_photo(own["file_id"], caption=own["caption"] or None, parse_mode="HTML")
+    except Exception:
+        await callback.answer("Не получилось показать картинку — загрузите её заново.", show_alert=True)
+        return
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_agddel:"))
+async def prog_agd_del_ask(callback: types.CallbackQuery):
+    args = await _day_args(callback)
+    if args is None:
+        return
+    code, day = args
+    text = (
+        f"🗑 Убрать картинку дня {day_label(day)}?\n\nКартинка и её подпись удалятся — делегаты "
+        "не получат её при переходе к сессиям этого дня."
+    )
+    if await edb.day_photo_days(code) == {day}:
+        text += ("\n\nКартинок дней не останется — при входе в запись снова будет общее фото "
+                 "программы, если оно загружено.")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑 Да, убрать", callback_data=f"prog_agddelgo:{code}:{day}")],
+        [InlineKeyboardButton(text="← Отмена", callback_data=f"prog_agd:{code}:{day}")],
+    ])
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_agddelgo:"))
+async def prog_agd_del_go(callback: types.CallbackQuery):
+    args = await _day_args(callback)
+    if args is None:
+        return
+    await edb.delete_day_photo(*args)
+    text, kb = await _day_photo_screen(*args)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    await callback.answer("Картинка дня убрана.")
+
+
+@router.message(ProgramPhotoUpload.day_waiting, F.photo)
+async def prog_agd_receive(message: types.Message, state: FSMContext):
+    from handlers.forum.admin_program import _city_allowed
+
+    data = await state.get_data()
+    code, day = data.get("code"), data.get("day")
+    if not code or not _DAY_RE.match(day or "") or not await _city_allowed(message.from_user.id, code):
+        await state.clear()
+        await message.answer("Этот город вам недоступен — откройте программу своего города заново.")
+        return
+    await edb.set_day_photo(code, day, message.photo[-1].file_id,
+                            message.html_text if message.caption else None)
+    await state.clear()
+    await message.answer(f"✅ Картинка дня {day_label(day)} сохранена.")
+    text, kb = await _day_photo_screen(code, day)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(ProgramPhotoUpload.day_waiting)
+async def prog_agd_not_photo(message: types.Message, state: FSMContext):
+    if (message.text or "").strip() in ("Отмена", "/cancel"):
+        data = await state.get_data()
+        await state.clear()
+        if data.get("code") and _DAY_RE.match(data.get("day") or ""):
+            text, kb = await _day_screen(data["code"], data["day"])
+            await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        return
+    await message.answer("Пришлите картинку фото (не файлом) — или нажмите «❌ Отмена».")

@@ -2,6 +2,7 @@
 from domain.cities import per_city_key
 from database import db
 from handlers.forum import forum_deeplinks, session_enroll as h
+from services.forum import program as prog
 from tests._enroll38 import CITY, add_user, ready, run
 from tests._enroll38_chat import FakeCallback, FakeMessage, buttons, make_state, setup_world
 
@@ -81,8 +82,8 @@ def test_agenda_photo_first_and_fail_soft(tmp_path, monkeypatch):
 
         async def none(city):
             return None
-        monkeypatch.setattr(h, "resolve_program_photo_source", src)
-        monkeypatch.setattr(h, "program_photo_caption", cap)
+        monkeypatch.setattr(prog, "resolve_program_photo_source", src)
+        monkeypatch.setattr(prog, "program_photo_caption", cap)
         m = FakeMessage(U, "x")
         assert await h.open_enroll(m, U)
         assert m.photos == [("FID", "Повестка &lt;b&gt;")]
@@ -91,7 +92,7 @@ def test_agenda_photo_first_and_fail_soft(tmp_path, monkeypatch):
         m.fail_photo = True
         assert await h.open_enroll(m, U)
         assert not m.photos and "Выбери трек" in m.answers[-1][0]
-        monkeypatch.setattr(h, "resolve_program_photo_source", none)
+        monkeypatch.setattr(prog, "resolve_program_photo_source", none)
         m = FakeMessage(U, "x")
         assert await h.open_enroll(m, U)
         assert not m.photos
