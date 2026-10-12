@@ -1285,6 +1285,7 @@ FORM_DEFAULT_EN: dict[str, str] = {
     "Мы обновили тест — начнём сначала.": "We've updated the quiz — let's start over.",
     "Твой результат по компетенциям:": "Your results by competency:",
     "{competency} — {level}": "{competency} — {level}",
+    "{competency}: {percent}% · {level}": "{competency}: {percent}% · {level}",
     "Продолжаем с вопроса {n} из {total}.": "Continuing from question {n} of {total}.",
     "🔁 Пройти заново": "🔁 Retake",
     "▶️ Начать тест": "▶️ Start the quiz",

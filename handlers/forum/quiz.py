@@ -14,11 +14,12 @@ Callback'и (числа, <= 64 байт): qz:go (начать/продолжит
 qz:res (мой результат), qz:re (пройти заново)."""
 import html
 import logging
+import re
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 
-from domain.cities import normalize_city
+from domain.cities import get_setting_typed_for_city, normalize_city
 from database import quiz_db
 from database.db import get_user
 from handlers.i18n import reg_i18n
@@ -65,6 +66,19 @@ async def _question_screen(target: types.Message, ctx: _Ctx, attempt: dict, *,
     return True
 
 
+_PERCENT_SLOT = re.compile(r"[:\s]*\{percent\}\s*%?")
+
+
+def _result_row(template: str, competency: str, level: str, percent: int | None) -> str:
+    """Строка результата по шаблону менеджера. Нет процента — подстановка уходит вместе с
+    двоеточием слева и «%» справа. Подстановка `.replace`, не `.format()`: в тексте бывают
+    посторонние фигурные скобки."""
+    if percent is None:
+        template = _PERCENT_SLOT.sub("", template)
+    return (template.replace("{competency}", competency).replace("{level}", level)
+            .replace("{percent}", str(percent) if percent is not None else ""))
+
+
 async def _result_screen(target: types.Message, ctx: _Ctx, quiz: dict, *, edit: bool) -> None:
     lines = await svc.result_lines(ctx.user["telegram_id"], quiz)
     if not lines:  # результата нет или нет оцениваемых компетенций — показываем заглушку
@@ -73,8 +87,10 @@ async def _result_screen(target: types.Message, ctx: _Ctx, quiz: dict, *, edit: 
     no_level = await ctx.t("quiz_no_level_label")
     parts = [await ctx.t("quiz_result_header")]
     for line in lines:
-        row = await ctx.t("quiz_result_line", competency=html.escape(line["competency"] or ""),
-                          level=html.escape(line["level_name"] or "") or no_level)
+        raw = await get_setting_typed_for_city("quiz_result_line", ctx.city)
+        row = _result_row(reg_i18n.tr_text(raw or "", ctx.lang, ctx.tr_map),
+                          html.escape(line["competency"] or ""),
+                          html.escape(line["level_name"] or "") or no_level, line.get("percent"))
         if line["level_description"]:
             row += "\n" + html.escape(line["level_description"])
         parts.append(row)
