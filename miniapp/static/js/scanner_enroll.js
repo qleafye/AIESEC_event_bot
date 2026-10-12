@@ -3,6 +3,12 @@
 // Сервер сам решает, показывать ли кнопку: в ответе скана есть `enroll` только когда запись
 // модуля включена и делегат стоит не на этой сессии.
 
+// Плашка покажет кнопку записи. Тот же признак решает, закрыть ли попап камеры при 🟢: кнопка
+// под полноэкранной камерой не видна (айпад, приёмка 13.10) — скан держится, как 🟡 «Уже был».
+export function offersEnroll(res, { training = false } = {}) {
+  return Boolean(res && res.enroll && res.telegram_id && !training);
+}
+
 export function enrollButton(res, { h, api, say, failureText, refreshCounters, timeoutMs }) {
   const btn = h("button", { class: "btn secondary", type: "button", text: res.enroll.label });
   btn.addEventListener("click", async () => {
