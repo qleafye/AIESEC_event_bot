@@ -3,6 +3,8 @@
 
 Доска — один HTML с данными в JS. Ключ отметки считается как `<сессия>.<раздел>.<шаг>`; по нему
 тестировщики уже ставят отметки на сервере, поэтому ни один прежний ключ исчезнуть не должен.
+Исключение — шаги, переписанные под новую раскладку: переносятся с прежним ключом (поле `ref`), а
+устаревшие из явно названных разделов убираются (_RETIRED).
 """
 from __future__ import annotations
 from tests._paths import REPO_ROOT
@@ -14,9 +16,13 @@ from pathlib import Path
 ROOT = REPO_ROOT
 BOARD = ROOT / "tools" / "uat_board" / "index.html"
 
-_SESSION = re.compile(r'^\{ key:"(s\d|bl)", n:')
+_SESSION = re.compile(r'^\{ key:"(s\d|bl|ms)", n:')
 _SECTION = re.compile(r'^\s*\{ key:"(\w+)", title:')
 _STEP = re.compile(r'^\s*\{id:"(\w+)"')
+_REF = re.compile(r'^\s*\{ref:"([\w.]+)"')
+# 12.10: старые шаги записи на сессии и теста переписаны под форум Москвы. Что осталось верным,
+# перенесено в блок «Форум Москвы» с прежним ключом (ref); остальное из этих разделов убрано.
+_RETIRED = ("bl.enroll0910.", "bl.enrscan0910.", "bl.quiz0910.")
 
 
 def _step_keys(html: str) -> set[str]:
@@ -40,6 +46,10 @@ def _step_keys(html: str) -> set[str]:
         m = _SECTION.match(line)
         if sess and m and not in_setup:
             sec = m.group(1)
+            continue
+        m = _REF.match(line)
+        if sess and m:
+            keys.add(m.group(1))
             continue
         m = _STEP.match(line)
         if sess and m:
@@ -82,7 +92,7 @@ def test_old_step_keys_all_survive():
     old = _step_keys(_head_board())
     new = _step_keys(_board())
     assert len(old) > 150  # парсер реально нашёл шаги
-    missing = sorted(old - new)
+    missing = sorted(k for k in old - new if not k.startswith(_RETIRED))
     assert not missing, f"пропали ключи отметок: {missing[:10]}"
 
 
@@ -98,7 +108,7 @@ def test_two_blocks_exist_and_every_section_is_placed_once():
     assert 'key:"debt"' in html and 'title:"Долг"' in html
     assert 'key:"new"' in html and 'title:"Новое"' in html
     block_js = html[html.index("const BLOCKS"):html.index("const SESS_TAG")]
-    refs = re.findall(r'"((?:s\d|bl)\.\w+)"', block_js)
+    refs = re.findall(r'"((?:s\d|bl|ms)\.\w+)"', block_js)
     assert len(refs) == len(set(refs)), "раздел сессии попал в блоки дважды"
     # Все разделы исходных сессий размещены в каком-то блоке.
     sections = set()
