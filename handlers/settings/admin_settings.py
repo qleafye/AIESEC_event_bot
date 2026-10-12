@@ -75,6 +75,7 @@ from domain.cities import (
     split_per_city_key,
     city_override_codes,
     get_setting_typed_for_city,
+    HEADER_AT_EDIT_START,
     PER_CITY_SEP,
 )
 from handlers.settings.admin_core import admin_keyboard_for, _admin_city_view
@@ -2624,7 +2625,14 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             await state.clear()
             await message.answer("Этот город правит суперадмин — правка отменена.")
             return
-        if code != await admin_selected_city(admin_id):
+        header_now = await admin_selected_city(admin_id)
+        if HEADER_AT_EDIT_START in data:
+            # Город пришёл кнопкой (экраны форума) — при шапке «🌍 Все города» он законно не равен
+            # шапке. Защищаемся от того же — смены шапки посреди правки, — но по снимку на входе.
+            moved = header_now != data[HEADER_AT_EDIT_START]
+        else:
+            moved = code != header_now
+        if moved:
             await state.clear()
             await message.answer("Город админки изменился — начните правку заново.")
             return
