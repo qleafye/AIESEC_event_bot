@@ -295,10 +295,11 @@ export async function render(root, params, ctx) {
       const isSel = pt.point === selectedPoint;
       const countText = pt.count == null ? ""
         : ` · ${pt.capacity ? `${pt.count} из ${pt.capacity}` : String(pt.count)}`;
-      const dot = pt.live ? "🔴 " : "";
+      // Текстом, не 🔴: красный кружок новички читали как ошибку (приёмка 13.10).
+      const liveText = pt.live ? " · идёт сейчас" : "";
       return h("button", {
         class: `chip-choice${isSel ? " chosen" : ""}`, type: "button",
-        text: `${dot}${pt.label}${countText}`,
+        text: `${pt.label}${countText}${liveText}`,
         onClick: () => { selectedPoint = pt.point; renderPointChips(); },
       });
     });
