@@ -6,9 +6,9 @@
 // false (попап не закрывается сам), а закрытие для не-🟢-исходов делает submitScan() явным
 // вызовом `tg.closeScanQrPopup()`, когда ответ уже пришёл (квик A3): 🟢 new/moved — попап
 // остаётся открытым, вибрация success, следующий скан продолжает отмечать без повторного тапа
-// «Сканировать» (D-08); 🟡 duplicate и 🔴 любой отказ/не найден/чужое мероприятие/другой город
-// форума/ошибка сети — попап закрывается, плашка с причиной получает кнопку «Сканировать
-// дальше» (повторно открывает попап). Запасной путь на этом же экране — поиск по фамилии
+// «Сканировать» (D-08); 🟡 duplicate, 🔴 любой отказ/не найден/чужое мероприятие/другой город
+// форума/ошибка сети и 🟢 с кнопкой записи на сессию — попап закрывается, плашка получает
+// кнопку «Сканировать дальше» (повторно открывает попап). Запасной путь на этом же экране — поиск по фамилии
 // (D-11/D-12: телефон делегата сел, а сеть есть), кнопка «Отметить» шлёт ту же отметку через
 // /checkin/manual (свой попап не открывает — закрывать нечего). Счётчик прихода вверху —
 // /checkin/stats (задача A2: построчно по городам, когда сервер отдаёт `cities`, иначе один
@@ -35,7 +35,7 @@ import { atUsername, flatRow, errorText, noticeBox } from "../ui.js";
 import { haptic } from "../motion.js";
 import { createNetHealth, timed } from "../net_health.js";
 import { createScanGate, HOLD } from "../scan_gate.js";
-import { enrollButton } from "../scanner_enroll.js";
+import { enrollButton, offersEnroll } from "../scanner_enroll.js";
 
 const ENTRY_POINT = "entry";
 const TRAINING_POINT = "training"; // «🧪 Тренировка» ничего не пишет — кнопок «на месте» там нет
@@ -356,7 +356,7 @@ export async function render(root, params, ctx) {
   }
 
   // closeButton=true — не-🟢 исход (duplicate/denied/not_found/foreign_event/другой город
-  // форума/сетевая ошибка): родной попап уже закрыт (submitScan вызвал tg.closeScanQrPopup()
+  // форума/сетевая ошибка) или 🟢 с кнопкой записи на сессию: родной попап уже закрыт (submitScan вызвал tg.closeScanQrPopup()
   // до этого показа), плашка получает крупную кнопку «Сканировать дальше», заново открывающую
   // попап.
   // Идея №32: «↩️ Отменить» — только у своей только что поставленной отметки (сервер отдаёт
@@ -451,7 +451,7 @@ export async function render(root, params, ctx) {
         ? onsiteApproveButton({ telegram_id: res.telegram_id, full_name: res.full_name }, { override: true }) : null,
       res.onsite_register && selectedPoint !== TRAINING_POINT ? onsiteRegisterButton() : null,
       res.day_override && res.telegram_id && selectedPoint !== TRAINING_POINT ? dayOverrideButton(res) : null,
-      res.enroll && res.telegram_id && selectedPoint !== TRAINING_POINT
+      offersEnroll(res, { training: selectedPoint === TRAINING_POINT })
         ? enrollButton(res, { h, api, say, failureText, refreshCounters, timeoutMs: SCAN_TIMEOUT_MS }) : null,
       closeButton ? nextBtn : null,
     ].filter(Boolean));
@@ -518,6 +518,8 @@ export async function render(root, params, ctx) {
 
   // Завершается по ответу на сам скан — следующий QR из очереди уходит сразу. Не-🟢 исход
   // возвращает HOLD: очередь ждёт явного «Сканировать дальше», плашку отказа не затирает.
+  // 🟢 с предложением записи на сессию держится так же: кнопку «Записать / Перезаписать на эту»
+  // под открытой камерой не видно, а следующий скан затёр бы плашку.
   async function submitScan(payloadText) {
     showChecking();
     try {
@@ -526,11 +528,12 @@ export async function render(root, params, ctx) {
         body: { payload: payloadText, point: selectedPoint, city: citySelect.value || undefined },
       }));
       loadNetTexts();
-      const isSuccess = SUCCESS_STATUSES.has(res.status);
-      if (!isSuccess) closeScanPopup(); // 🟡/🔴 — родной попап закрывается, плашка даёт «дальше»
-      showPlaque(res, { closeButton: !isSuccess });
+      const holds = !SUCCESS_STATUSES.has(res.status)
+        || offersEnroll(res, { training: selectedPoint === TRAINING_POINT });
+      if (holds) closeScanPopup(); // 🟡/🔴/кнопка записи — попап закрывается, плашка даёт «дальше»
+      showPlaque(res, { closeButton: holds });
       refreshCounters();
-      if (isSuccess) return undefined;
+      if (!holds) return undefined;
     } catch (err) {
       closeScanPopup(); // сетевая ошибка, таймаут, любая другая — тоже 🔴, попап закрывается
       const text = failureText(err, "Не получилось отметить — попробуйте ещё раз.");
