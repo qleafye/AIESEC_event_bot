@@ -902,11 +902,12 @@ SETTINGS_SCHEMA = {
     "quiz_result_line": {
         "type": "text", "group": "event", "label": "🧭 Тест: строка результата",
         "prompt": (
-            "Одна строка результата.\n\nПример: {competency} — {level}\n\nПодстановки: {competency} — название компетенции; {level} — уровень делегата. Скобки бот заменит сам."
+            "Одна строка результата.\n\nПример: {competency}: {percent}% · {level}\n\nПодстановки: {competency} — название компетенции; {percent} — процент баллов по компетенции; {level} — уровень делегата. Скобки бот заменит сам."
         ),
-        "default": "{competency} — {level}",
+        "default": "{competency}: {percent}% · {level}",
         "per_city": True,
-        "placeholders": {"competency": "название компетенции", "level": "уровень делегата"},
+        "placeholders": {"competency": "название компетенции", "level": "уровень делегата",
+                         "percent": "процент по компетенции"},
     },
     "quiz_no_level_label": {
         "type": "text", "group": "event", "label": "🧭 Тест: «без уровня»",

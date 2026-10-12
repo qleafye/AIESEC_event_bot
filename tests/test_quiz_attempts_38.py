@@ -129,7 +129,7 @@ def test_result_lines(tmp_path):
         assert await quiz.result_lines(7, quiz_row) is None
         await _finish(7, quiz_row, oids)
         lines = await quiz.result_lines(7, quiz_row)
-        assert lines == [{"competency": "Лидерство", "level_name": "Продвинутый",
+        assert lines == [{"competency": "Лидерство", "percent": 100, "level_name": "Продвинутый",
                           "level_description": "Уверенно"}]
         assert second  # компетенция без баллов в результат не попадает
 
