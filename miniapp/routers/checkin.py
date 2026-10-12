@@ -403,6 +403,16 @@ class ScanBody(BaseModel):
     city: str | None = None  # город, выбранный в сканере (для кнопок регистрации на месте)
 
 
+def _log_outcome(kind: str, p: Principal, point: str | None, res: dict) -> None:
+    """Исход отметки — одной строкой: без неё на разборе приёмки не понять, почему было 🔴.
+    Только id и коды: ФИО, username и тексты причин в лог не идут (ПД)."""
+    logger.info(
+        "checkin %s: staff=%s point=%s status=%s enroll=%d delegate=%s",
+        kind, p.telegram_id, point or ENTRY_POINT, res.get("status"),
+        1 if res.get("enroll") else 0, res.get("telegram_id"),
+    )
+
+
 async def _with_city_label(res: dict) -> dict:
     """Плашка сканера: `city` — код (логика), `city_label` — подпись для человека. Всегда,
     даже при выключенном модуле городов — иначе на плашке «msk» (CLAUDE.md)."""
@@ -416,7 +426,9 @@ async def checkin_scan(
     p: Principal = Depends(require_cap(_CAP)),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
-    return await _with_city_label(await _scan(body, request, p))
+    res = await _with_city_label(await _scan(body, request, p))
+    _log_outcome("scan", p, body.point, res)
+    return res
 
 
 async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
@@ -494,7 +506,9 @@ async def checkin_manual(
 ) -> dict:
     """D-11/D-12: делегат найден поиском (телефон сел/нет QR под рукой), не сканом — та же
     отметка, источник `manual` отличает её в журнале (будущее B1-31)."""
-    return await _with_city_label(await _manual(body, request, p))
+    res = await _with_city_label(await _manual(body, request, p))
+    _log_outcome("manual", p, body.point, res)
+    return res
 
 
 async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
