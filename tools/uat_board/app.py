@@ -6,7 +6,8 @@
 "who": "...", "at": "ЧЧ:ММ"}}, "agent": {"<вкладка>:<шаг>": {"c": "<коммит стенда>",
 "note": "...", "at": "ДД.ММ ЧЧ:ММ"}}}``. «agent» — отметки агента-тестировщика «проверил в браузере»: отдельный
 словарь, отметок людей не касается; старый файл без него читается как раньше. Доступ — по коду из ссылки (``?k=...``), код задаётся
-переменной ``UAT_CODE``; пустой код = доступ открыт.
+переменной ``UAT_CODE``; пустой код = доступ открыт. ``/files/<имя>`` — файлы для шагов из каталога
+``files/`` рядом с app.py (в git их нет), тоже по коду.
 
 Запуск: ``python app.py`` (порт 8005), в проде — контейнер ``uat-board`` на leafye,
 наружу через tunnel-relay → is-hosting → Cloudflare как ``uat.alekseev.info``.
@@ -19,7 +20,7 @@ import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 DATA = os.environ.get("UAT_DATA", "/data/state.json")
 CODE = os.environ.get("UAT_CODE", "")
@@ -48,6 +49,41 @@ BOT_NOTES = os.environ.get("BOT_NOTES", os.path.join(os.path.dirname(DECK_NOTES)
 # Приёмка региональных форумов 02.10 (/forum-uat): общие отметки десяти тестеров в своём файле,
 # доступ по тому же коду, что у доски приёмки (UAT_CODE). Ключ шага — его номер.
 FORUM_UAT_STATE = os.environ.get("FORUM_UAT_STATE", "/data/forum_uat_state.json")
+# Файлы для шагов доски (CSV теста, картинки повестки): лежат на сервере в каталоге files/ рядом
+# с app.py, в git их нет — репозиторий публичный. Отдаются только по коду доступа, как /api/state:
+# ссылка со страницы несёт ?k= из её адреса. Имя — только из этого каталога, без вложенных путей.
+FILES_DIR = os.environ.get("UAT_FILES", os.path.join(HERE, "files"))
+_FILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+# расширение -> (Content-Type, отдать вложением). Картинки — встроенно: на телефоне их сохраняют
+# в галерею долгим нажатием, чтобы отправить боту фото, а не файлом.
+_FILE_TYPES = {
+    ".csv": ("text/csv; charset=utf-8", True),
+    ".jpg": ("image/jpeg", False),
+    ".jpeg": ("image/jpeg", False),
+    ".png": ("image/png", False),
+    ".webp": ("image/webp", False),
+    ".pdf": ("application/pdf", True),
+}
+
+
+def _board_file(name: str) -> tuple[bytes, str, bool] | None:
+    """(содержимое, Content-Type, вложением ли) файла из FILES_DIR или None: имя не из белого
+    шаблона, расширение не из списка, файла нет или путь уводит из каталога."""
+    if not _FILE_NAME.fullmatch(name or "") or ".." in name:
+        return None
+    kind = _FILE_TYPES.get(os.path.splitext(name)[1].lower())
+    if kind is None:
+        return None
+    base = os.path.realpath(FILES_DIR)
+    path = os.path.realpath(os.path.join(base, name))
+    if os.path.dirname(path) != base or not os.path.isfile(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            body = f.read()
+    except OSError:
+        return None
+    return body, kind[0], kind[1]
 
 
 def _read(path: str) -> bytes:
@@ -397,8 +433,29 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with _lock:
                 self._json(200, _load())
+        elif parts.path.startswith("/files/"):
+            self._file(unquote(parts.path[len("/files/"):]), query)
         else:
             self._send(404, b"not found", "text/plain")
+
+    def _file(self, name: str, query: dict) -> None:
+        if not self._authed(query):
+            self._send(403, "Нет доступа: откройте файл по ссылке с доски приёмки — в ней код.".encode("utf-8"),
+                       "text/plain; charset=utf-8")
+            return
+        found = _board_file(name)
+        if found is None:
+            self._send(404, "Такого файла на доске нет.".encode("utf-8"), "text/plain; charset=utf-8")
+            return
+        body, ctype, attach = found
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        disposition = "attachment" if attach else "inline"
+        self.send_header("Content-Disposition", f"{disposition}; filename*=UTF-8''{quote(name)}")
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self) -> None:  # noqa: N802
         parts = urlsplit(self.path)
