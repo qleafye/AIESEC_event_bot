@@ -58,6 +58,16 @@ def test_step_files_are_the_known_ones():
     assert names == {"quiz-msk.csv", "agenda-30-10.jpg", "agenda-31-10.jpg"}
 
 
+def test_page_without_code_warns_and_hides_downloads():
+    """Без ?k= страница говорит, где взять ссылку, а файлы не скачиваются: download сохранял ответ 403
+    под именем CSV. Сам код в странице не лежит — репозиторий публичный."""
+    html = _board()
+    assert 'id="nokey"' in html and "https://uat.alekseev.info/?k=…" in html
+    assert "файл доступен по ссылке с кодом" in html
+    assert "body.no-key .fl-ok{display:none}" in html
+    assert re.search(r"\?k=[A-Za-z0-9]{3,}", html) is None
+
+
 @pytest.fixture()
 def board(tmp_path, monkeypatch):
     files = tmp_path / "files"

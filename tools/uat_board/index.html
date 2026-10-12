@@ -335,9 +335,23 @@ section.blk .blkl{margin-bottom:4px}
 .syncs{background:var(--accent-soft);color:var(--accent-ink);border-left:3px solid var(--accent)}
 li.step.cue .syncw,li.step.cue .syncs{display:none}
 .tab .pn{font-weight:700;color:inherit;opacity:.85}
+/* Нет кода доступа (или код неверный): плашка наверху, файлы шагов не скачиваются — иначе браузер
+   сохранял текст ошибки 403 под именем файла, и тестер слал боту «CSV» из одной строки. */
+.nokey{position:sticky;top:0;z-index:30;margin:0 auto;max-width:52rem;padding:12px 16px;background:var(--bad-soft);
+       border-bottom:3px solid var(--bad);color:var(--ink);font-size:14.5px}
+.nokey b{display:block;color:var(--bad);font-size:15.5px;margin-bottom:2px}
+.nokey p{margin:4px 0 0}
+.fl-no{display:none;color:var(--muted);background:var(--sunken);border-color:var(--line);cursor:default}
+body.no-key .fl-ok{display:none}
+body.no-key .fl-no{display:inline-flex}
 </style>
 </head>
 <body>
+<div class="nokey" id="nokey" role="alert" hidden>
+  <b id="nokey-t">Нет кода доступа: отметки не сохраняются</b>
+  <p>Откройте доску по ссылке с кодом: https://uat.alekseev.info/?k=… — спросите ссылку у организатора. Если уже открывали по ней, проверьте, что адрес начинается с https:// — у адресов с http:// и https:// браузер помнит код отдельно.</p>
+  <p>Пока кода нет, файлы для шагов не скачиваются.</p>
+</div>
 <div class="wrap" id="root"></div>
 
 <div class="report" id="report" hidden>
@@ -1650,8 +1664,20 @@ const quoteUi = s => {
 const fileLink = name => {
   const href = "/files/" + encodeURIComponent(name) + (CODE ? "?k=" + encodeURIComponent(CODE) : "");
   const img = /\.(jpe?g|png|webp)$/i.test(name);
-  return `<a class="fl" href="${esc(href)}" ${img ? 'target="_blank" rel="noopener"' : "download"}>📎 ${esc(name)}</a>`;
+  /* Без кода (body.no-key) вместо ссылки — подпись: download сохранил бы под именем файла ответ 403. */
+  const no = `<span class="fl fl-no">📎 ${esc(name)} — файл доступен по ссылке с кодом</span>`;
+  return `<a class="fl fl-ok" href="${esc(href)}" ${img ? 'target="_blank" rel="noopener"' : "download"}>📎 ${esc(name)}</a>${no}`;
 };
+/* Плашка «нет кода / код неверный». Сервер без кода (UAT_CODE пуст) отвечает на /api/state и так —
+   тогда pull() плашку снимает. */
+function noKey(why){
+  document.body.classList.toggle("no-key", !!why);
+  $("nokey").hidden = !why;
+  if (why) $("nokey-t").textContent = why === "wrong"
+    ? "Код в ссылке неверный: отметки не сохраняются"
+    : "Нет кода доступа: отметки не сохраняются";
+}
+if (!CODE) noKey("empty");
 const hhmm = () => new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
 let toastT;
 function toast(t){ const e = $("toast"); e.textContent = t; e.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => e.classList.remove("on"), 2400); }
@@ -1662,7 +1688,7 @@ async function api(path, body){
     headers: Object.assign({ "X-Code": CODE }, body ? { "Content-Type": "application/json" } : {}),
     body: body ? JSON.stringify(body) : undefined, cache: "no-store",
   });
-  if (r.status === 403) { setSync("Нет доступа: откройте доску по ссылке из чата, в ней код.", "bad"); throw new Error("no_access"); }
+  if (r.status === 403) { noKey(CODE ? "wrong" : "empty"); setSync("Нет доступа: откройте доску по ссылке из чата, в ней код.", "bad"); throw new Error("no_access"); }
   if (!r.ok) throw new Error("http " + r.status);
   return r.json();
 }
@@ -2072,6 +2098,7 @@ let firstPull = true;
 async function pull(){
   try {
     const st = await api("/api/state");
+    noKey("");
     if (st.v !== state.v) { state = st; paint(); }
     if (firstPull) { firstPull = false; if (!location.hash) autoOpen(); }
     setSync("Общая доска · обновлено " + hhmm(), "ok");
