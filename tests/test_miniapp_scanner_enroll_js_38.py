@@ -80,5 +80,6 @@ def test_enroll_button_failure_reenables(result):
 def test_scanner_wires_button():
     text = SCANNER_JS.read_text(encoding="utf-8")
     assert 'from "../scanner_enroll.js"' in text
-    assert "res.enroll && res.telegram_id && selectedPoint !== TRAINING_POINT" in text
+    # условие кнопки — общий offersEnroll (тот же признак закрывает попап камеры, квик 261013)
+    assert "offersEnroll(res, { training: selectedPoint === TRAINING_POINT })" in text
     assert "enrollButton(res," in text
