@@ -33,7 +33,8 @@ def test_slot_screen(tmp_path):
         cb = await press(f"se:t:{ids['career']}")
         text, kb = cb.message.last
         # A, B, C, D связаны пересечениями в один слот (group_parallel транзитивен)
-        assert text == "30.10, 10:00–12:30. Выбери одну сессию:"
+        assert text.split("\n")[0] == "30.10, 10:00–12:30. Выбери одну сессию:"
+        assert "• <b>Сессия A</b>" in text  # блоки сессий под заголовком
         b = buttons(kb)
         assert b[0] == ("⭐ Сессия A", f"se:p:{ids['career']}:0:{ids['A']}")
         assert b[1][0] == "⭐ Сессия C"
@@ -50,7 +51,7 @@ def test_pick_ok_moves_next_and_ends_in_schedule(tmp_path):
         await db.update_program_session(late, track_id=ids["career"])
         cb = await press(f"se:p:0:0:{ids['A']}")
         assert await chosen() == ["Сессия A"]
-        assert cb.message.last[0] == "30.10, 14:00–15:00. Выбери одну сессию:"
+        assert cb.message.last[0].split("\n")[0] == "30.10, 14:00–15:00. Выбери одну сессию:"
         cb = await press(f"se:p:0:1:{late}")
         assert "Моё расписание" in cb.message.last[0]
         assert await chosen() == ["Поздняя", "Сессия A"]

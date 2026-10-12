@@ -130,6 +130,33 @@ async def _tracks_screen(target: types.Message, ctx: _Ctx, *, edit: bool) -> Non
     await _show(target, await ctx.t("session_enroll_intro_text"), _kb(rows), edit=edit)
 
 
+_TEXT_LIMIT = 4000  # Telegram режет сообщение на 4096
+
+
+async def _with_session_blocks(ctx: _Ctx, head: str, ordered: list[dict]) -> str:
+    """Заголовок слота + по блоку на сессию (название, спикер, трек, компетенции) в порядке кнопок.
+    Один запрос компетенций на экран; пустой шаблон — только заголовок."""
+    raw = await get_setting_typed_for_city("session_enroll_session_line", ctx.city)
+    template = reg_i18n.tr_text(raw or "", ctx.lang, ctx.tr_map)
+    if not (template or "").strip():
+        return head
+    names = await edb.competency_names_for_sessions([s["id"] for s in ordered])
+    esc = lambda v: html.escape(v or "")  # noqa: E731
+    text = head
+    for s in ordered:
+        block = svc.compact_template(template, {
+            "title": esc(s.get("title")), "speaker": esc(s.get("speaker")),
+            "track": esc(s.get("track_name")),
+            "competencies": ", ".join(esc(n) for n in names.get(s["id"], [])),
+        })
+        if not block:
+            continue
+        if len(text) + 2 + len(block) > _TEXT_LIMIT:
+            break
+        text += "\n\n" + block
+    return text
+
+
 async def _slot_screen(target: types.Message, ctx: _Ctx, tid: int, gi: int, *, edit: bool = True) -> None:
     flat = await _flat_slots(ctx.city)
     if not 0 <= gi < len(flat):
@@ -161,6 +188,7 @@ async def _slot_screen(target: types.Message, ctx: _Ctx, tid: int, gi: int, *, e
     start = min(s["start_time"] for s in slot)
     end = max(s["end_time"] for s in slot)
     text = await ctx.t("session_enroll_slot_text", day=_day_label(day), time=_span(start, end))
+    text = await _with_session_blocks(ctx, text, ordered)
     await _show(target, text, _kb(rows), edit=edit)
 
 

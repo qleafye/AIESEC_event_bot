@@ -634,6 +634,16 @@ SETTINGS_SCHEMA = {
         "per_city": True,
         "placeholders": {"day": "день форума", "time": "время слота"},
     },
+    "session_enroll_session_line": {
+        "type": "text", "group": "event", "label": "📅 Запись на сессии: строка сессии в слоте",
+        "prompt": (
+            "Как бот описывает каждую сессию над кнопками выбора. Пустое поле (нет спикера, компетенций) бот уберёт вместе с разделителем.\n\nПример: • <b>{title}</b> — {speaker}\nТрек: {track} · {competencies}\n\nПодстановки: {title} — название сессии; {speaker} — спикер; {track} — трек; {competencies} — компетенции сессии через запятую. Скобки бот заменит сам."
+        ),
+        "default": "• <b>{title}</b> — {speaker}\nТрек: {track} · {competencies}",
+        "per_city": True,
+        "placeholders": {"title": "название сессии", "speaker": "спикер", "track": "трек",
+                         "competencies": "компетенции сессии"},
+    },
     "session_enroll_next_button": {
         "type": "text", "group": "event", "label": "📅 Запись на сессии: кнопка «Дальше»",
         "prompt": (

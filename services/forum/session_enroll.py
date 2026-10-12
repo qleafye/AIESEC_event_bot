@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -27,11 +28,39 @@ from services.infra.timeutil import city_now
 
 logger = logging.getLogger(__name__)
 
+_SEGMENT_SPLIT = re.compile(r"(\n| · | — )")
+_PLACEHOLDER = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
+
+
+def compact_template(template: str, values: dict[str, str]) -> str:
+    """Подставляет значения в шаблон менеджера; пустое поле уходит вместе со своим сегментом и
+    разделителем. Сегменты режутся по переводу строки, « · » и « — »: у сессии без спикера или
+    без компетенций не остаётся висящего «—» или «·». Если выпавший промежуток содержал перевод
+    строки, между оставшимися сегментами он и остаётся. Подстановки не из values не трогаются."""
+    parts = _SEGMENT_SPLIT.split(template or "")
+    out, gap, started = "", [], False
+    for i in range(0, len(parts), 2):
+        if i:
+            gap.append(parts[i - 1])
+        names = _PLACEHOLDER.findall(parts[i])
+        if any(n in values and not (values[n] or "").strip() for n in names):
+            continue
+        if started:
+            out += ("\n" if any("\n" in g for g in gap) else gap[0]) + parts[i]
+        else:
+            out, started = parts[i], True
+        gap = []
+    for name, value in values.items():
+        out = out.replace("{" + name + "}", value or "")
+    return "\n".join(line.rstrip() for line in out.split("\n")).strip()
+
+
 # Все текстовые ключи модуля записи (для экрана «✏️ Тексты» в админке), порядок как в реестре.
 ENROLL_TEXT_KEYS: tuple[str, ...] = (
     "session_enroll_intro_text",
     "session_enroll_mix_button",
     "session_enroll_slot_text",
+    "session_enroll_session_line",
     "session_enroll_next_button",
     "session_enroll_clear_button",
     "session_enroll_closed_label",
