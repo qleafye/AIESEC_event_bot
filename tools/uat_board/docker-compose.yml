@@ -12,6 +12,8 @@ services:
       - .env
     volumes:
       - ./data:/data
+      # файлы для шагов доски (CSV теста, картинки повестки) — только на сервере, не в git
+      - ./files:/app/files:ro
     logging:
       driver: json-file
       options:
