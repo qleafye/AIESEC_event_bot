@@ -6,7 +6,8 @@
 deep-link `/start sessions` (`handlers/forum/forum_deeplinks.py`) и callback `se:open` (кнопка из
 результата теста).
 
-Поток: картинка повестки -> трек (или «Смешать») -> по слотам дня выбор одной сессии ->
+Поток: картинка повестки (первого дня, иначе общее фото программы; картинка нового дня — один раз
+при переходе вперёд к его первому слоту) -> трек (или «Смешать») -> по слотам дня выбор одной сессии ->
 «Моё расписание» -> подтверждение. Все правила (допуск, город, дедлайн, закрытие, лимит,
 пересечения) живут в `services.forum.session_enroll` и перепроверяются на КАЖДЫЙ callback: кнопка
 в старом сообщении ничего не обходит. Тексты делегату — только из реестра настроек.
@@ -31,7 +32,7 @@ from handlers.user_actions import _returning_text_if_past_season, ensure_registe
 from keyboards.menu_dynamic import DynamicMenuText
 from services.forum import session_enroll as svc
 from services.forum.checkin import checkin_denial
-from services.forum.program import program_photo_caption, resolve_program_photo_source
+from services.forum.program import day_photo, entry_agenda_photo
 
 logger = logging.getLogger(__name__)
 
@@ -202,11 +203,18 @@ async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = F
     if ctx is None:
         await target.answer(refusal)
         return False
-    if not await svc.slots_for_city(ctx.city):
+    flat = await _flat_slots(ctx.city)
+    if not flat:
         await target.answer(await ctx.t("session_enroll_no_sessions_text"))
         return False
     if not edit:
-        await _send_agenda_photo(target, ctx.city)
+        try:
+            source = await entry_agenda_photo(ctx.city, flat[0][0])
+        except Exception as e:
+            logger.warning("session_enroll: картинка повестки не нашлась: %s", e)
+            source = None
+        if source:
+            await _send_photo(target, source)
     if await svc.deadline_passed(ctx.city):
         await _schedule_screen(target, ctx, edit=False)
         return True
@@ -214,18 +222,43 @@ async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = F
     return True
 
 
-async def _send_agenda_photo(target: types.Message, city: str) -> None:
-    """Повестка перед выбором. Сбой фото не ломает поток (fail-soft, как `show_program`)."""
+async def _send_photo(target: types.Message, source: dict) -> bool:
+    """Картинка повестки. True — отправлена; сбой не ломает поток (fail-soft, как `show_program`).
+    Подпись картинки дня уже HTML (`caption_html`), подпись общего фото экранируем."""
     try:
-        source = await resolve_program_photo_source(city)
-        if not source:
-            return
-        caption = await program_photo_caption(city)
         photo = source.get("file_id") or FSInputFile(source["path"])
-        await target.answer_photo(photo, caption=html.escape(caption) if caption else None,
-                                  parse_mode="HTML")
+        caption = source.get("caption")
+        if caption and not source.get("caption_html"):
+            caption = html.escape(caption)
+        await target.answer_photo(photo, caption=caption or None, parse_mode="HTML")
+        return True
     except Exception as e:
         logger.warning("session_enroll: фото повестки не отправилось: %s", e)
+        return False
+
+
+async def _advance(callback: types.CallbackQuery, ctx: _Ctx, tid: int, gi: int) -> None:
+    """Единственный путь «вперёд» по слотам. При переходе к первому слоту НОВОГО дня, у которого
+    есть своя картинка, шлёт её один раз, а слот показывает новым сообщением под ней."""
+    flat = await _flat_slots(ctx.city)
+    if not 0 <= gi < len(flat):
+        await _schedule_screen(callback.message, ctx, edit=True)
+        return
+    if gi > 0 and flat[gi][0] != flat[gi - 1][0]:
+        try:
+            source = await day_photo(ctx.city, flat[gi][0])
+        except Exception as e:
+            logger.warning("session_enroll: картинка дня не нашлась: %s", e)
+            source = None
+        if source:
+            try:
+                await callback.message.edit_reply_markup(reply_markup=None)
+            except Exception as e:
+                logger.info("session_enroll: клавиатура старого слота не снялась: %s", e)
+            if await _send_photo(callback.message, source):
+                await _slot_screen(callback.message, ctx, tid, gi, edit=False)
+                return
+    await _slot_screen(callback.message, ctx, tid, gi)
 
 
 async def open_from_deeplink(message: types.Message, state: FSMContext) -> bool:
@@ -293,7 +326,7 @@ async def se_slot(callback: types.CallbackQuery):
     if args is None:
         await _schedule_screen(callback.message, ctx, edit=True)
         return
-    await _slot_screen(callback.message, ctx, args[0], args[1])
+    await _advance(callback, ctx, args[0], args[1])
 
 
 async def _replace_screen(callback, ctx, tid, gi, old, new) -> None:
@@ -305,11 +338,7 @@ async def _replace_screen(callback, ctx, tid, gi, old, new) -> None:
 
 
 async def _after_pick(callback, ctx, tid: int, gi: int) -> None:
-    flat = await _flat_slots(ctx.city)
-    if gi + 1 < len(flat):
-        await _slot_screen(callback.message, ctx, tid, gi + 1)
-    else:
-        await _schedule_screen(callback.message, ctx, edit=True)
+    await _advance(callback, ctx, tid, gi + 1)
 
 
 async def _do_enroll(callback: types.CallbackQuery, *, confirm_replace: bool) -> None:

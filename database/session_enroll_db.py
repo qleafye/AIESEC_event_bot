@@ -63,6 +63,11 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
     await db.execute(
         "CREATE INDEX IF NOT EXISTS idx_session_enroll_session ON session_enrollments(session_id)"
     )
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS program_day_photos ("
+        "city TEXT NOT NULL, day TEXT NOT NULL, file_id TEXT NOT NULL, caption TEXT, "
+        "updated_at TEXT, PRIMARY KEY (city, day))"
+    )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_program_tracks_city ON program_tracks(city)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_competencies_city ON competencies(city)")
 
@@ -512,3 +517,49 @@ async def delete_enrollments_for_user(telegram_id: int) -> int:
         )
         await db.commit()
     return removed
+
+
+# ── Картинки дней программы (повестка для записи) ────────────────────────────────────────────
+# Ключ — (город, день ISO из программы): дат в коде нет. Это не данные делегата, поэтому в
+# очистку пользователя таблица не входит.
+
+async def get_day_photo(city: str, day: str) -> dict | None:
+    """{file_id, caption} картинки дня города или None."""
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT file_id, caption FROM program_day_photos WHERE city = ? AND day = ?",
+            (city, day),
+        ) as cursor:
+            row = await cursor.fetchone()
+    return {"file_id": row[0], "caption": row[1]} if row else None
+
+
+async def set_day_photo(city: str, day: str, file_id: str, caption: str | None) -> None:
+    """Сохраняет или заменяет картинку дня."""
+    async with _db._connect() as db:
+        await db.execute(
+            "INSERT INTO program_day_photos (city, day, file_id, caption, updated_at) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(city, day) DO UPDATE SET "
+            "file_id = excluded.file_id, caption = excluded.caption, updated_at = excluded.updated_at",
+            (city, day, file_id, caption, _stamp()),
+        )
+        await db.commit()
+
+
+async def delete_day_photo(city: str, day: str) -> bool:
+    """Убирает картинку дня. True — она была."""
+    async with _db._connect() as db:
+        cursor = await db.execute(
+            "DELETE FROM program_day_photos WHERE city = ? AND day = ?", (city, day),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def day_photo_days(city: str) -> set[str]:
+    """Дни города, у которых есть своя картинка."""
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT day FROM program_day_photos WHERE city = ?", (city,),
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}

@@ -258,10 +258,10 @@ async def render_day_screen(code: str, day: str) -> tuple[str, InlineKeyboardMar
         lines.append("Сессий пока нет.")
     buttons.append([InlineKeyboardButton(text="➕ Сессия", callback_data=f"prog_new:{code}:{day}")])
     if sessions:
-        # Форум-ночь п.9 (идея №15, D-24): «📊 Оценки сессий» — только когда в дне уже есть
-        # сессии, что оценивать (пустой день -> кнопка не нужна, тот же приём, что «➕ Сессия»
-        # выше показывается всегда, а не наоборот — но здесь показывать нечего вовсе).
+        # «📊 Оценки сессий» — только когда в дне уже есть сессии, что оценивать.
         buttons.append([InlineKeyboardButton(text="📊 Оценки сессий", callback_data=f"prog_fbday:{code}:{day}")])
+    from handlers.forum.admin_program_view import day_photo_button  # ленивый: порядок хендлеров в golden
+    buttons.append([await day_photo_button(code, day)])
     buttons.append([InlineKeyboardButton(text="← К программе", callback_data=f"prog_city:{code}")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
 
