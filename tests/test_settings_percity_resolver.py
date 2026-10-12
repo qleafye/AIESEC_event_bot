@@ -47,6 +47,7 @@ EXPECTED_PER_CITY_KEYS = {
     "session_enroll_intro_text",
     "session_enroll_mix_button",
     "session_enroll_slot_text",
+    "session_enroll_session_line",
     "session_enroll_next_button",
     "session_enroll_clear_button",
     "session_enroll_closed_label",
