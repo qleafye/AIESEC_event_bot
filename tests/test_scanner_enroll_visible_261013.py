@@ -100,3 +100,10 @@ def test_submit_scan_closes_popup_for_enroll_offer():
     assert "if (!holds) return undefined;" in body
     # тон отметки не трогаем: new/moved остаются success
     assert 'new: "success"' in text and 'moved: "success"' in text
+
+
+def test_live_point_chip_is_text_not_red_dot():
+    text = SCANNER_JS.read_text(encoding="utf-8")
+    chips = text[text.index("function renderPointChips"):text.index("async function loadPoints")]
+    assert '"🔴 "' not in chips  # 🔴 упомянут в комментарии — проверяем литерал
+    assert '" · идёт сейчас"' in chips
