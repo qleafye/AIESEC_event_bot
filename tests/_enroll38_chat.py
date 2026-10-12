@@ -32,6 +32,7 @@ class FakeMessage:
         self.edits: list[tuple[str, object]] = []
         self.photos: list[tuple[object, object]] = []
         self.fail_photo = False
+        self.markup_edits: list[object] = []
 
     async def answer(self, text=None, reply_markup=None, **kw):
         self.answers.append((text, reply_markup))
@@ -39,6 +40,10 @@ class FakeMessage:
 
     async def edit_text(self, text, reply_markup=None, **kw):
         self.edits.append((text, reply_markup))
+        return self
+
+    async def edit_reply_markup(self, reply_markup=None, **kw):
+        self.markup_edits.append(reply_markup)
         return self
 
     async def answer_photo(self, photo, caption=None, **kw):

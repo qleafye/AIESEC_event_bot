@@ -571,3 +571,27 @@ async def build_delegate_program(city: str | None, at: datetime | None = None) -
                 for session in slot["sessions"]:
                     session["next"] = session["start_time"] == first
     return days
+
+
+async def day_photo(city: str, day: str) -> dict | None:
+    """Своя картинка повестки дня программы города для перехода ко дню в записи на сессии:
+    `{"file_id", "caption", "caption_html": True}` (подпись — сохранённый html_text) или None.
+    Общее фото программы сюда не подставляется: на переходе ко дню шлётся только картинка дня."""
+    from database import session_enroll_db as _edb
+    own = await _edb.get_day_photo(city, day)
+    if not own:
+        return None
+    return {"file_id": own["file_id"], "caption": own["caption"], "caption_html": True}
+
+
+async def entry_agenda_photo(city: str, first_day: str) -> dict | None:
+    """Картинка при ВХОДЕ в запись: картинка первого дня потока, иначе общее фото программы
+    (`resolve_program_photo_source`), иначе None. Подпись общего фото — обычный текст
+    (`caption_html: False`), подпись картинки дня уже HTML."""
+    own = await day_photo(city, first_day)
+    if own:
+        return own
+    source = await resolve_program_photo_source(city)
+    if not source:
+        return None
+    return {**source, "caption": await program_photo_caption(city), "caption_html": False}

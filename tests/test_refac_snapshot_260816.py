@@ -774,6 +774,8 @@ admin|message|cancel_rgnm_time_edit|state:RegionalNoshowMoveTimeEdit:*,state:Reg
 admin|message|rgnm_time_step|state:RegionalNoshowMoveTimeEdit:*
 admin|message|prog_photo_receive|state:ProgramPhotoUpload:*
 admin|message|prog_photo_not_photo|state:ProgramPhotoUpload:*
+admin|message|prog_agd_receive|state:ProgramPhotoUpload:*
+admin|message|prog_agd_not_photo|state:ProgramPhotoUpload:*
 admin|message|volunteer_invite_wizard_cancel|state:VolunteerInviteWizard:*,state:VolunteerInviteWizard:*
 admin|message|volunteer_invite_wizard_cancel|state:VolunteerInviteWizard:*,state:VolunteerInviteWizard:*
 admin|message|volinv_link_date_step|state:VolunteerInviteWizard:*
@@ -1376,6 +1378,12 @@ admin|callback_query|prog_photo_start|prog_photo:*
 admin|callback_query|prog_photo_cancel|prog_photo_cancel:*
 admin|callback_query|prog_photo_del_ask|prog_photo_del:*
 admin|callback_query|prog_photo_del_go|prog_photo_delgo:*
+admin|callback_query|prog_agd_open|prog_agd:*
+admin|callback_query|prog_agd_upload|prog_agdup:*
+admin|callback_query|prog_agd_back|prog_agdx:*
+admin|callback_query|prog_agd_show|prog_agdshow:*
+admin|callback_query|prog_agd_del_ask|prog_agddel:*
+admin|callback_query|prog_agd_del_go|prog_agddelgo:*
 admin|callback_query|checkin_stats_open|checkin_stats
 admin|callback_query|checkin_stats_refresh|checkin_stats_refresh
 admin|callback_query|checkin_stats_csv|checkin_stats_csv
@@ -2489,7 +2497,9 @@ def test_snapshot_total_handler_count_is_292():
     # 11.10 (правило включено при выключенных всех правилах, handlers/applications/admin_reject_master.py —
     # импорт в начале admin_reject_rules.py): +1 admin.callback_query arr_master_on прямо перед
     # admin_reject_rules; чистая вставка (1247 -> 1248).
-    assert len(GOLDEN_SNAPSHOT) == 1248
+    # 12.10 (картинка дня программы, handlers/forum/admin_program_view.py): +2 admin.message и +6 admin.callback_query
+    # prog_agd* после prog_photo_del_go (callback) / prog_photo_not_photo (message); чистая вставка (1248 -> 1256).
+    assert len(GOLDEN_SNAPSHOT) == 1256
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
