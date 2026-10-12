@@ -32,7 +32,7 @@ from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, per_city_key
+from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, header_snapshot, per_city_key
 from database.db import get_program_session
 from handlers.i18n import reg_i18n
 from handlers.admin import router
@@ -332,7 +332,7 @@ async def prog_fbdelay_custom_start(callback: types.CallbackQuery, state: FSMCon
         await callback.answer("Неизвестный город", show_alert=True)
         return
     await state.set_state(EditSetting.waiting_for_value)
-    await state.set_data({"setting_key": key, **back})
+    await state.set_data({"setting_key": key, **back, **await header_snapshot(callback.from_user.id)})  # город из кнопки
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")]])
     await callback.answer()
     await callback.message.answer(
