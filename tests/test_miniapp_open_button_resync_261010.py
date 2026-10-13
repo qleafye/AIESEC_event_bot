@@ -84,7 +84,9 @@ def test_switching_app_off_removes_the_button_from_delegates_with_language(monke
     _ready(monkeypatch, tmp_path, bot)
     _save("miniapp_enabled", "off")
     buttons = _by_chat(bot)
-    assert set(buttons) == {None, EN_DELEGATE, RU_DELEGATE}
+    # 13.10: при выключении приложения кнопки менеджеров (ставятся лично при «Только
+    # менеджерам») тоже сбрасываются — суперадмины из config.ADMIN_IDS в наборе допустимы.
+    assert set(buttons) - {int(i) for i in config.ADMIN_IDS} == {None, EN_DELEGATE, RU_DELEGATE}
     assert all(isinstance(b, MenuButtonDefault) for b in buttons.values())
 
 
