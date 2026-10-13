@@ -885,6 +885,9 @@ _REGISTRY_TEXTS_EN = {
     "✍️ Написать текстом": "✍️ Type it instead",
     "Опиши свой опыт текстом: где работаешь или учишься, какие проекты, стажировки или волонтёрство есть, какие задачи решал(а) и каких результатов добился(ась) — коротко.": "Describe your experience in text: where you work or study, what projects, internships or volunteering you've done, what tasks you handled and what results you got — keep it short.",
     "Опиши опыт текстом ответом в чате.": "Describe your experience in a text reply in the chat.",
+    "Просим иметь резюме с собой на форуме в распечатанном виде.": "Please bring a printed copy of your resume to the forum.",
+    # Режим резюме «только мини-анкета»: prompt() клеит напоминание к вопросу — tr() ищет СОСТАВНУЮ строку целиком.
+    "Просим иметь резюме с собой на форуме в распечатанном виде.\n\nРасскажи о своих проектах — учебных, пет-, рабочих. Что делал(а), какую роль играл(а)?": "Please bring a printed copy of your resume to the forum.\n\nTell us about your projects — academic, pet, or work ones. What did you do, what role did you play?",
     "🙅 У меня нет резюме": "🙅 I don't have a CV",
     "Выбери способ кнопкой выше ⬆️ — в том числе если хочешь написать об опыте текстом.": (
         "Choose a way with the button above ⬆️ — including if you want to describe your experience in text."
