@@ -33,6 +33,7 @@ from tests._dbtpl import fast_init_db
 # per_city у неё такой же, как у остальных menu_*; этого требуют соседние тесты
 # test_menu_keys_match_menu_buttons_literal / test_menu_keys_are_enum_on_off_default_on_per_city.
 EXPECTED_PER_CITY_KEYS = {
+    "reg_resume_mini_only_notice_text",
     "start_text", "start_text_registered", "reg_complete_text", "approve_text",
     "contact_person", "contact_vk", "contact_tg", "event_date", "event_time",
     "event_place_name", "event_place_address", "registration_mode",
