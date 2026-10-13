@@ -543,6 +543,8 @@ async def volinv_remove_user(callback: types.CallbackQuery):
         await callback.answer("Этот человек не входил по этой ссылке", show_alert=True)
         return
     await remove_staff(tid, invite_role(await get_volunteer_invite(code_token)))
+    from handlers.settings.admin_miniapp import refresh_staff_menu_button
+    await refresh_staff_menu_button(getattr(callback, "bot", None), tid)
     await callback.answer("Снят", show_alert=True)
     text, kb = await _users_text_kb(code_token)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)

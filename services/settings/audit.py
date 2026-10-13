@@ -73,7 +73,7 @@ async def run_setting_hooks(key: str, *, reject_rules: bool = True, reschedule: 
 # Один проход на процесс: новое сохранение отменяет идущий проход и начинает заново. Проход
 # читает настройки в момент установки кнопки, поэтому побеждает последнее сохранение, а не тот
 # из двух параллельных проходов, что закончил позже.
-MENU_BUTTON_KEYS = frozenset({"miniapp_open_button", "miniapp_enabled"})
+MENU_BUTTON_KEYS = frozenset({"miniapp_open_button", "miniapp_enabled", "miniapp_staff_only"})
 _menu_resync_task = None
 
 _RESYNC_RUNNING_NOTE = (

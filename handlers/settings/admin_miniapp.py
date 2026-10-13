@@ -159,24 +159,74 @@ async def sync_chat_menu_button(bot, chat_id: int | None = None, lang: str = "ru
     дефолт для чатов, для которых своя кнопка ещё не ставилась, byte-for-byte прежнее поведение
     (`lang="ru"` по умолчанию — перевод не запускается вовсе, `tr_text` вернёт тот же объект)."""
     enabled = await get_setting_typed("miniapp_enabled") == "on"
+    staff_only = await get_setting_typed("miniapp_staff_only") == "on"
     url = config.DASHBOARD_PUBLIC_URL
     kwargs = {"chat_id": chat_id} if chat_id is not None else {}
-    if enabled and url:
-        button_text = await get_setting_typed("miniapp_open_button")
-        if lang == "en":
-            from handlers.i18n import reg_i18n
-            from services.i18n import i18n as i18n_service
-            tr_map = await i18n_service.load_map("en")
-            button_text = reg_i18n.tr_text(button_text, "en", tr_map)
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text=button_text,
-                web_app=WebAppInfo(url=url.rstrip("/") + "/app"),
-            ),
-            **kwargs,
-        )
-    else:
+    if not (enabled and url):
+        # Приложение выключено (или адрес не задан): у всех обычная кнопка. Кнопки менеджеров,
+        # поставленные при «Только менеджерам», при выключении тоже сбрасываем.
         await bot.set_chat_menu_button(menu_button=MenuButtonDefault(), **kwargs)
+        if chat_id is None and staff_only:
+            await _set_staff_menu_buttons(bot, None)
+        return
+    if staff_only:
+        if chat_id is None:
+            # Общая кнопка — обычная (делегат приложения не видит), менеджерам — своя каждому.
+            await bot.set_chat_menu_button(menu_button=MenuButtonDefault())
+            await _set_staff_menu_buttons(bot, await _open_button(url, lang))
+            return
+        from handlers.access.admin_caps import resolve_capabilities
+        if not await resolve_capabilities(chat_id):
+            await bot.set_chat_menu_button(menu_button=MenuButtonDefault(), chat_id=chat_id)
+            return
+    await bot.set_chat_menu_button(menu_button=await _open_button(url, lang), **kwargs)
+
+
+async def _open_button(url: str, lang: str) -> MenuButtonWebApp:
+    button_text = await get_setting_typed("miniapp_open_button")
+    if lang == "en":
+        from handlers.i18n import reg_i18n
+        from services.i18n import i18n as i18n_service
+        tr_map = await i18n_service.load_map("en")
+        button_text = reg_i18n.tr_text(button_text, "en", tr_map)
+    return MenuButtonWebApp(text=button_text, web_app=WebAppInfo(url=url.rstrip("/") + "/app"))
+
+
+async def _staff_chat_ids() -> list[int]:
+    """Менеджеры бота: вся таблица `staff` и суперадмины из .env, без дублей."""
+    from database.db import list_staff
+
+    ids = [int(row["telegram_id"]) for row in await list_staff()]
+    ids.extend(int(i) for i in config.ADMIN_IDS)
+    return list(dict.fromkeys(ids))
+
+
+async def _set_staff_menu_buttons(bot, button: MenuButtonWebApp | None) -> None:
+    """Каждому менеджеру — своя кнопка меню чата (`button`), None — обычная. Не дошло до одного
+    (заблокировал бота) — WARNING, остальные получают."""
+    from database.db import get_stored_lang
+
+    for chat_id in await _staff_chat_ids():
+        try:
+            menu_button = button if button is not None else MenuButtonDefault()
+            if isinstance(menu_button, MenuButtonWebApp) and (await get_stored_lang(chat_id)) == "en":
+                menu_button = await _open_button(config.DASHBOARD_PUBLIC_URL, "en")
+            await bot.set_chat_menu_button(menu_button=menu_button, chat_id=chat_id)
+        except Exception:
+            logger.warning("sync_chat_menu_button: кнопка менеджера %s не встала", chat_id, exc_info=True)
+
+
+async def refresh_staff_menu_button(bot, chat_id: int) -> None:
+    """После выдачи/снятия права менеджера: переставить кнопку меню этому чату, если приложение
+    открыто только менеджерам (иначе кнопка у всех общая и менять нечего). Fail-soft."""
+    try:
+        if await get_setting_typed("miniapp_staff_only") != "on":
+            return
+        from database.db import get_stored_lang
+
+        await sync_chat_menu_button(bot, chat_id=chat_id, lang=(await get_stored_lang(chat_id)) or "ru")
+    except Exception:
+        logger.warning("refresh_staff_menu_button: не встала у %s", chat_id, exc_info=True)
 
 
 _RESYNC_CONCURRENCY = 10  # одновременных запросов
@@ -205,6 +255,12 @@ async def sync_all_chat_menu_buttons(bot, concurrency: int = _RESYNC_CONCURRENCY
         await sync_chat_menu_button(bot)
     except Exception:
         logger.warning("sync_all_chat_menu_buttons: общая кнопка не встала", exc_info=True)
+    try:
+        # Приложение выключено: у менеджеров не должна остаться кнопка с прошлых «только менеджерам».
+        if await get_setting_typed("miniapp_enabled") != "on" and await get_setting_typed("miniapp_staff_only") != "on":
+            await _set_staff_menu_buttons(bot, None)
+    except Exception:
+        logger.warning("sync_all_chat_menu_buttons: кнопки менеджеров не сброшены", exc_info=True)
     slots = asyncio.Semaphore(concurrency)
     failed: list[int] = []
 
@@ -276,7 +332,14 @@ async def toggle_miniapp_staff_only(callback: types.CallbackQuery):
     current = await get_setting_typed("miniapp_staff_only")
     new_val = "off" if current == "on" else "on"
     await set_setting_by_admin(callback.from_user.id, "miniapp_staff_only", new_val)
-    await callback.answer("Только менеджерам: " + ("да" if new_val == "on" else "нет"))
+    toast = "Только менеджерам: " + ("да" if new_val == "on" else "нет")
+    # Кнопка меню чата переставляется сразу, как при выключении приложения (остальным — фоном).
+    try:
+        await sync_chat_menu_button(callback.bot)
+    except Exception:
+        logger.warning("sync_chat_menu_button failed after staff_only toggle", exc_info=True)
+        toast += " — кнопка меню обновится при следующем запуске"
+    await callback.answer(toast)
     await _rerender(callback)
 
 
