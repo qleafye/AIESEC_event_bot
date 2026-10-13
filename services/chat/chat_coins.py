@@ -8,6 +8,11 @@
 на то же сообщение не засчитывается, менеджеру об этом тихо в личку. В группу бот по-прежнему
 ничего не пишет (правка 15.09) — только реакция.
 
+13.10 (гейм-менеджер Юлида): «+N» менеджера видят все участники чата — при сотне проверенных
+заданий это засоряет общий чат. Делегат и так получает подтверждение в личку, поэтому разобранную
+команду бот из чата убирает (тумблер `chat_coins_delete_command`, по умолчанию вкл). Реакция 👌 —
+только если убрать не вышло (нет права «Удаление сообщений» или тумблер выключен).
+
 Модуль aiogram-free по импортам: бот приходит параметром, сообщение читается по атрибутам.
 """
 from __future__ import annotations
@@ -17,7 +22,8 @@ import logging
 import re
 
 from database import chat_coins_db
-from database.db import get_balance, get_user
+from database.db import get_balance, get_chat_bot_state, get_user
+from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +79,24 @@ async def _react(bot, chat_id: int, message_id: int) -> None:
             logger.info("chat_coins: реакция %s в чате %s не встала: %s", emoji, chat_id, type(e).__name__)
 
 
+async def _remove_command(bot, chat_id: int, message_id: int) -> bool:
+    """Убрать разобранный «+N» из чата. True — сообщения в чате больше нет. Без права на
+    удаление (флаг `chat_bot_state.can_delete`, его ставит `chat_cleanup.verify_rights`) API не
+    дёргаем; ошибка удаления разбирается тем же кодом, что у автоочистки служебных сообщений."""
+    if await get_setting_typed("chat_coins_delete_command") != "on":
+        return False
+    state = await get_chat_bot_state(chat_id)
+    if state is not None and state.get("can_delete") == 0:
+        return False
+    from services import chat_cleanup
+
+    error = await chat_cleanup._with_retry(lambda: bot.delete_message(chat_id, message_id))
+    if error is None:
+        return True
+    await chat_cleanup._handle_error(bot, chat_id, [message_id], error)
+    return False
+
+
 async def is_game_manager(telegram_id: int) -> bool:
     from handlers.access.admin_caps import resolve_capabilities
 
@@ -107,24 +131,29 @@ async def try_handle(message, bot) -> bool:
         await _dm(bot, sender.id,
                   f"🪙 «+{amount}» не начислено: ответьте этим сообщением на сообщение делегата "
                   f"(свайп влево или «Ответить»), а не просто в чат.")
+        await _remove_command(bot, message.chat.id, message.message_id)
         return True
     if target is None or target.is_bot or getattr(replied, "sender_chat", None) is not None:
         await _dm(bot, sender.id,
                   f"🪙 «+{amount}» не начислено: это сообщение бота или канала — ответьте на "
                   f"сообщение самого делегата.")
+        await _remove_command(bot, message.chat.id, message.message_id)
         return True
     if target.id == sender.id:
         await _dm(bot, sender.id, f"🪙 «+{amount}» не начислено: себе начислить нельзя.")
+        await _remove_command(bot, message.chat.id, message.message_id)
         return True
     if amount <= 0 or amount > MAX_CHAT_AWARD:
         await _dm(bot, sender.id,
                   f"🪙 «+{amount}» не начислено: в чате можно начислить от 1 до {MAX_CHAT_AWARD}. "
                   f"Больше — через «🪙 Баллы вручную» в админке.")
+        await _remove_command(bot, message.chat.id, message.message_id)
         return True
     if await get_user(target.id) is None:
         await _dm(bot, sender.id,
                   f"🪙 «+{amount}» не начислено: {_display(target)} ещё не подавал(а) анкету в "
                   f"боте — баллы некуда записать. Попросите его(её) зарегистрироваться.")
+        await _remove_command(bot, message.chat.id, message.message_id)
         return True
 
     full_reason = award_reason(reason)
@@ -139,10 +168,12 @@ async def try_handle(message, bot) -> bool:
                   f"🪙 «+{amount}» не начислено: за это сообщение {_display(target)} уже "
                   f"начислено +{before} — одно сообщение = одно начисление. Поправить сумму можно "
                   f"в «🪙 Баллы вручную».")
+        await _remove_command(bot, message.chat.id, message.message_id)
         return True
 
     logger.info("chat_coins: +%s user=%s by=%s chat=%s", amount, target.id, sender.id, message.chat.id)
-    await _react(bot, message.chat.id, message.message_id)
+    if not await _remove_command(bot, message.chat.id, message.message_id):
+        await _react(bot, message.chat.id, message.message_id)
     try:
         from services.game.game_sync import request_resync
 
