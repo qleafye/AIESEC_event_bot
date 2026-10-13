@@ -427,6 +427,8 @@ def test_render_snapshot_reg(tmp_path):
         # reg_mini_portfolio_skip_label (handlers/settings/admin_settings.py::_REG_FIELD_ORDER).
         "reg_resume_fork_pick_hint_text",
         "reg_resume_fork_text_prompt_text", "reg_resume_fork_text_invalid_text",
+        # 13.10: напоминание про бумажное резюме в режиме «только мини-анкета».
+        "reg_resume_mini_only_notice_text",
         # Phase 31 (31-03, D-18): текст «заявку пересмотрят» — хвост группы (handlers/
         # admin_settings.py::_REG_FIELD_ORDER).
         "reject_rules_return_text",
