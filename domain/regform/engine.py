@@ -582,7 +582,15 @@ async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
     # числовой формат — обоим уже дан один и тот же `referrer_id`) — дефолт off (YL/РилТолк
     # байт-в-байт), `source` при этом уже получает «Реферальная ссылка» из `with_defaults`.
     skip_source_for_referred = await get_setting_typed("reg_skip_source_for_referred") == "on"
+    mini_only = await resume_mode(city) == "mini"
     for step_key, setting_key, *_rest in REG_FLOW:
+        # Режим «Без резюме — только мини-анкета»: резюме не спрашиваем вовсе, три шага
+        # мини-профиля — всегда (как при resume_type == "mini"), мимо личных тумблеров.
+        if mini_only and step_key in ("resume", "resume_link"):
+            continue
+        if mini_only and step_key in MINI_RESUME_STEPS:
+            enabled.append(step_key)
+            continue
         # Приёмка 17.09: в режиме «Спросить, как удобнее» развилка всегда показывает «Дать
         # ссылку», а шаг ссылки жил за отдельным тумблером reg_q_resume_link (по умолчанию
         # выкл) — выбор ссылки молча уводил на обзор без вопроса. Шаг ссылки — часть развилки.
@@ -845,7 +853,7 @@ async def resume_mode(city_code: str | None = None) -> str:
     общий резолвер `cities.get_setting_typed_for_city` уместен напрямую (в отличие от
     `_city_override`, который существует ради суффиксных `reg_q_*__party`/`__short`)."""
     value = await get_setting_typed_for_city("reg_resume_mode", city_code)
-    if value not in ("file_or_text", "text_only", "fork"):
+    if value not in ("file_or_text", "text_only", "fork", "mini"):
         return "file_or_text"
     return value
 
@@ -858,7 +866,7 @@ async def mini_resume_branch_active(city_code: str | None = None) -> bool:
     `mini_portfolio`/`mini_direction` не задавались вовсе, а Google-лист их не видел). Единая
     точка правды: `_enabled_steps_impl` (bypass выше в этом файле) и
     `handlers/reg_schema.active_sheet_headers` (шапка/строка листа) читают её же."""
-    return await resume_mode(city_code) == "fork"
+    return await resume_mode(city_code) in ("fork", "mini")
 
 
 # Phase 28 (28-04, SU-04): вайтлист доменов ссылки на резюме — редактируемый список (D-01),
@@ -948,6 +956,20 @@ async def _default_prompt_text(
 
 
 async def prompt(
+    step_key: str, participant_type: str | None = None, city_code: str | None = None
+) -> str:
+    """Текст вопроса шага. В режиме резюме «только мини-анкета» к первому вопросу мини-анкеты
+    спереди добавляется напоминание (`reg_resume_mini_only_notice_text`) — общая точка для
+    бота и Mini App. Остальное — `_prompt_base`."""
+    text = await _prompt_base(step_key, participant_type, city_code)
+    if step_key == "mini_projects" and await resume_mode(city_code) == "mini":
+        notice = (await get_setting_typed_for_city("reg_resume_mini_only_notice_text", city_code) or "").strip()
+        if notice:
+            return notice + "\n\n" + text
+    return text
+
+
+async def _prompt_base(
     step_key: str, participant_type: str | None = None, city_code: str | None = None
 ) -> str:
     """D-05: admin override reg_prompt_<step_key> (party track checks __party first, truthy

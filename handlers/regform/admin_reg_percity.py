@@ -493,11 +493,12 @@ _RESUME_MODE_HUMAN = {
     "file_or_text": "файл или текст", "text_only": "только текст",
     # Phase 28 (28-04, SU-04): третье значение цикла — развилка «файл / ссылка / нет резюме».
     "fork": "спросить способ",
+    "mini": "без резюме — только мини-анкета",
 }
 # Phase 28 (28-04, SU-04): единственное место, где живёт правило перехода — обе ветки
 # `reg_resume_mode_toggle` ниже (городская и глобальная) считают `new_val` через
 # `_next_resume_mode`, не своим выражением (было ДВАЖДЫ дословно — жёсткий двузначный флип).
-_RESUME_MODE_CYCLE = ("file_or_text", "text_only", "fork")
+_RESUME_MODE_CYCLE = ("file_or_text", "text_only", "fork", "mini")
 
 
 def _next_resume_mode(current: str) -> str:

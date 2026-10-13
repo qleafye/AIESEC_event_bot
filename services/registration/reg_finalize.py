@@ -604,8 +604,18 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                 )
 
             # Phase 28 (28-04, SU-04): resume_type/link_verified — узкий UPDATE, тот же приём.
+            _resume_type_val = data.get("resume_type")
+            if not _resume_type_val:
+                # Режим «Без резюме — только мини-анкета»: способ резюме не выбирался, но
+                # мини-профиль заполнен — колонка листа и карточка должны это показать.
+                try:
+                    from domain.regform.engine import resume_mode
+                    if await resume_mode(data.get("event_city")) == "mini":
+                        _resume_type_val = "mini"
+                except Exception as e:
+                    logger.error(f"resume_mode for {telegram_id} failed: {e}")
             resume_patch = await _resume_field_patch(
-                data.get("resume_type"), data.get("resume_link")
+                _resume_type_val, data.get("resume_link")
             )
             if resume_patch:
                 await update_user_answers(

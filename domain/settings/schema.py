@@ -1505,6 +1505,15 @@ SETTINGS_SCHEMA = {
         "prompt": "Подпись четвёртой кнопки на экране «Как пришлёте резюме?».",
         "default": "🙅 У меня нет резюме",
     },
+    "reg_resume_mini_only_notice_text": {
+        "type": "text", "group": "reg", "per_city": True,
+        "label": "🖨 Режим «Только мини-анкета»: напоминание про резюме",
+        "prompt": (
+            "Показывается в режиме резюме «Без резюме — только мини-анкета», перед первым "
+            "вопросом мини-анкеты (проекты). Пустое значение — не показывать."
+        ),
+        "default": "Просим иметь резюме с собой на форуме в распечатанном виде.",
+    },
     "reg_resume_link_whitelist_hint_text": {
         "type": "text", "group": "reg", "label": "🔗 Ссылка на резюме: маркер «сайт проверенный»",
         "prompt": (
@@ -2774,10 +2783,10 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "toggles", "label": "📄 Резюме",
         # Phase 28 (28-04, SU-04): третье значение "fork" — развилка «файл / ссылка / нет
         # резюме» (D-06: дефолт не тронут, "fork" только добавлен в конец списка вариантов).
-        "options": ["file_or_text", "text_only", "fork"],
+        "options": ["file_or_text", "text_only", "fork", "mini"],
         "option_labels": {
             "file_or_text": "Файл или текст", "text_only": "Только текст",
-            "fork": "Спросить, как удобнее",
+            "fork": "Спросить, как удобнее", "mini": "Без резюме — только мини-анкета",
         },
         "prompt": None,
         "default": "file_or_text", "per_city": True,
