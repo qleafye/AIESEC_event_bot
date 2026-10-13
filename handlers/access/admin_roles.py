@@ -1032,6 +1032,9 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
         return
 
     created = await add_staff(tid, role, callback.from_user.id, city=issuer_city)
+    if created:
+        from handlers.settings.admin_miniapp import refresh_staff_menu_button
+        await refresh_staff_menu_button(getattr(callback, "bot", None), tid)
     if created and issuer_city:
         await set_staff_city(tid, issuer_city)  # подтянуть к городу и истёкшие строки человека
         await callback.answer(f"Добавлен — город {await city_label(issuer_city)}, как у вас", show_alert=True)
@@ -1112,6 +1115,8 @@ async def roles_remove_yes(callback: types.CallbackQuery):
         return
 
     await remove_staff(tid, role)
+    from handlers.settings.admin_miniapp import refresh_staff_menu_button
+    await refresh_staff_menu_button(getattr(callback, "bot", None), tid)
     text = await render_roles_text()
     kb = await build_roles_keyboard(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)

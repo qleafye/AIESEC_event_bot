@@ -19,6 +19,15 @@ def is_app_staff(caps) -> bool:
     return bool(set(caps or ()) - BOT_ONLY_CAPS)
 
 
+async def miniapp_open_to_delegates() -> bool:
+    """Приложение открыто ДЕЛЕГАТАМ: включено и не стоит «🔒 Только менеджерам». Одно правило
+    для всех точек входа делегата (меню, кнопка анкеты, кнопка меню чата) — делегат не видит
+    кнопку, которая ответила бы ему «только для менеджеров»."""
+    if await get_setting_typed("miniapp_enabled") != "on":
+        return False
+    return await get_setting_typed("miniapp_staff_only") != "on"
+
+
 async def miniapp_open_for(telegram_id: int | None) -> bool:
     """Включено — открыто всем; выключено — только персоналу. Сбой чтения прав — «закрыто»."""
     if await get_setting_typed("miniapp_enabled") == "on":
