@@ -12,7 +12,7 @@ from handlers.regform import admin_reg_percity
 from services.registration import reg_finalize as rf
 from tests._dbtpl import fast_init_db
 
-NOTICE = "Просим иметь резюме с собой на форуме в распечатанном виде."
+NOTICE = "Просим иметь резюме с собой на мероприятии в распечатанном виде."
 
 
 def _ready(tmp_path, name="mini_only_261013.db"):

@@ -156,6 +156,7 @@ _REG_FIELD_ORDER = [
     # Владелец 17.09: четвёртая ветка развилки — «Написать текстом», вопрос показывается ТОЛЬКО
     # в этой ветке (не общий reg_q_resume/prompt).
     "reg_resume_fork_text_prompt_text", "reg_resume_fork_text_invalid_text",
+    "reg_resume_mini_only_notice_text",
     # Phase 31 (31-03, D-18): текст «заявку пересмотрят» — по плану сосед reject_text, но
     # reject_text физически переехал на экран «📋 Заявки» (Phase 20, _APPS_FIELD_ORDER) при
     # реорганизации IA — реестровая метаданность (`SETTINGS_SCHEMA[key]["group"]`) у обоих
