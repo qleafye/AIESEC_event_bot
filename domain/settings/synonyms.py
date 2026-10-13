@@ -262,6 +262,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "reg_resume_fork_none_label": ["кнопка нет резюме", "развилка резюме без резюме"],
     "reg_resume_link_whitelist_hint_text": ["маркер сайт проверенный", "домен из вайтлиста"],
     "reg_resume_link_other_hint_text": ["маркер личный сайт", "домен не из вайтлиста"],
+    "reg_resume_mini_only_notice_text": ["напоминание про резюме", "резюме в распечатанном виде", "резюме с собой"],
     "reg_resume_link_invalid_text": ["ошибка ссылки на резюме", "неверный формат ссылки"],
     "reg_mini_portfolio_skip_label": ["пропустить портфолио", "кнопка пропуска мини-профиля"],
     "reg_resume_fork_pick_hint_text": ["подсказка выбери способ резюме", "текст мимо кнопок резюме"],

@@ -103,3 +103,17 @@ def test_finalize_sets_resume_type_mini(tmp_path, monkeypatch):
 
     user = asyncio.run(go())
     assert user["resume_type"] == "mini"
+
+
+def test_combined_default_prompt_has_manual_en_translation(tmp_path):
+    """tr() ищет строку целиком: составной дефолт (напоминание + вопрос) обязан быть в ручном
+    словаре, иначе английский Mini App покажет вопрос по-русски."""
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
+    _ready(tmp_path)
+
+    async def go():
+        await db.set_setting("reg_resume_mode", "mini")
+        return await reg_engine.prompt("mini_projects")
+
+    combined = asyncio.run(go())
+    assert combined in FORM_DEFAULT_EN
