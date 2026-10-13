@@ -1070,6 +1070,8 @@ async def _handle_volunteer_invite(message: types.Message, bot: Bot, code: str) 
     # в handlers/access/admin_roles.py.
     await add_staff(  # роль ссылки: volunteer — checkin; reg_volunteer — ещё одобрение на месте
         user_id, (invite or {}).get("role") or "volunteer", (invite or {}).get("created_by"), expires_at=rights_expires_at)
+    from handlers.settings.admin_miniapp import refresh_staff_menu_button
+    await refresh_staff_menu_button(bot, user_id)
     # Без привязки города staff-строка значит «все города» -- волонтёр по ссылке города A смог
     # бы отмечать делегатов города B. Привязываем ТОЛЬКО на первом гранте этому человеку
     # (had_any_capability=False) -- у уже державшего роль доступ не сужаем (без привязки шире,
@@ -1203,7 +1205,8 @@ async def _reg_form_cta_kb(message: types.Message) -> InlineKeyboardMarkup | Non
     try:
         if await get_setting_typed("miniapp_section_form") != "on":
             return None
-        if await get_setting_typed("miniapp_enabled") != "on":
+        from services.access.miniapp_access import miniapp_open_to_delegates
+        if not await miniapp_open_to_delegates():  # выключено или «только менеджерам»
             return None
         url = config.DASHBOARD_PUBLIC_URL
         if not url:
