@@ -180,8 +180,8 @@ def _admin_ready(tmp_path, name="test_skillup_resume_fork_28_admin.db"):
     config.ADMIN_IDS = [ADMIN_ID]
 
 
-def test_resume_mode_toggle_cycles_three_values(tmp_path):
-    """Три тапа глобального тумблера возвращают исходное значение — цикл ровно из трёх, не
+def test_resume_mode_toggle_cycles_four_values(tmp_path):
+    """Четыре тапа глобального тумблера возвращают исходное значение — цикл ровно из четырёх, не
     жёсткий двузначный флип."""
     from handlers.regform import admin_reg_percity
 
@@ -189,13 +189,13 @@ def test_resume_mode_toggle_cycles_three_values(tmp_path):
 
     async def go():
         seen = []
-        for _ in range(3):
+        for _ in range(4):
             await admin_reg_percity.reg_resume_mode_toggle(_FakeCallback("reg_resume_mode_toggle"))
             seen.append(await db.get_setting("reg_resume_mode"))
         return seen
 
     seen = asyncio.run(go())
-    assert seen == ["text_only", "fork", "file_or_text"]
+    assert seen == ["text_only", "fork", "mini", "file_or_text"]
 
 
 def test_resume_mode_label_shows_human_words(tmp_path):
@@ -203,17 +203,17 @@ def test_resume_mode_label_shows_human_words(tmp_path):
     `text_only`/`fork`) делегату/менеджеру не показывается."""
     from handlers.regform import admin_reg_percity as p
 
-    for current in ("file_or_text", "text_only", "fork", None, "garbage"):
+    for current in ("file_or_text", "text_only", "fork", "mini", None, "garbage"):
         label = p._resume_mode_toggle_label(current)
         assert "file_or_text" not in label
         assert "text_only" not in label
         assert "fork" not in label
     assert "спросить способ" in p._resume_mode_toggle_label("text_only")
-    assert "файл или текст" in p._resume_mode_toggle_label("fork")
+    assert "файл или текст" in p._resume_mode_toggle_label("mini")
 
 
 def test_resume_mode_percity_override_cycles_too(tmp_path):
-    """Городская ветка тумблера ведёт себя как глобальная — тот же цикл из трёх, свой
+    """Городская ветка тумблера ведёт себя как глобальная — тот же цикл из четырёх, свой
     композитный ключ, глобальный ключ не тронут."""
     from handlers.regform import admin_reg_percity
     import domain.cities as cities
@@ -225,13 +225,13 @@ def test_resume_mode_percity_override_cycles_too(tmp_path):
 
     async def go():
         seen = []
-        for _ in range(3):
+        for _ in range(4):
             await admin_reg_percity.reg_resume_mode_toggle(_FakeCallback("reg_resume_mode_toggle"))
             seen.append(await db.get_setting(composed))
         return seen, await db.get_setting("reg_resume_mode")
 
     seen, global_value = asyncio.run(go())
-    assert seen == ["text_only", "fork", "file_or_text"]
+    assert seen == ["text_only", "fork", "mini", "file_or_text"]
     assert global_value is None
 
 
