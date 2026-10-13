@@ -41,7 +41,7 @@ from handlers.i18n import reg_i18n
 from handlers.registration import _advance, _safe_answer, router
 from handlers.states import Registration
 from keyboards.builders import get_cancel_kb, get_skip_kb, get_yes_no_kb
-from domain.regform.engine import STEP_TO_COLUMN, _SKIP_ALLOWED_STEPS, prompt, validate_answer
+from domain.regform.engine import STEP_TO_COLUMN, _SKIP_ALLOWED_STEPS, prompt, resume_mode, validate_answer
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +86,8 @@ async def ask_step(step_key: str, message: types.Message, state: FSMContext,
         if description:
             text = f"{text}\n\n{description}"
         kb = get_yes_no_kb()
-    elif step_key in _FORK_BACK_STEPS:
+    elif step_key in _FORK_BACK_STEPS and await resume_mode(city_code) != "mini":
+        # В режиме «Без резюме — только мини-анкета» развилки нет — «Назад» к ней не рисуем.
         kb = _fork_branch_kb(step_key)
     elif step_key in _SKIP_ALLOWED_STEPS:
         kb = get_skip_kb()
@@ -117,6 +118,15 @@ async def _receive_step(step_key: str, message: types.Message, state: FSMContext
     `validate_answer` как обычный свободный текст мини-профиля (T-28-05-03 наоборот: там, где
     свободный текст СТАНОВИТСЯ значением — «Назад» просто обязан не стать текстом ответа)."""
     if step_key in _FORK_BACK_STEPS and message.text == _FORK_BACK_LABEL:
+        data = await state.get_data()
+        if await resume_mode(data.get("event_city")) == "mini":
+            # Старая клавиатура после смены режима: развилки нет, задаём этот же вопрос заново.
+            from handlers.registration import _progress
+            from handlers.reg.reg_resume_fork import _renumber  # ленивый шов, как ниже
+            prefix = await _progress(*await _renumber(step_key, state, data))
+            await ask_step(step_key, message, state, prefix,
+                           data.get("participant_type") or "full", data.get("event_city"))
+            return
         from handlers.reg import reg_resume_fork  # ленивый шов (цикл импортов) — единая точка «Назад»
         await reg_resume_fork.back_to_fork(message, state)
         return

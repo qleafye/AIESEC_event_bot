@@ -117,3 +117,49 @@ def test_combined_default_prompt_has_manual_en_translation(tmp_path):
 
     combined = asyncio.run(go())
     assert combined in FORM_DEFAULT_EN
+
+
+def test_chat_mini_steps_have_no_back_to_fork(tmp_path):
+    """В режиме mini развилки нет: у шагов мини-анкеты в чате нет «⬅️ Назад» (кнопка вела на
+    экран «файл / ссылка / текстом / нет резюме» — ровно то, что режим убирает)."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from handlers.reg import reg_extra_steps as res
+
+    _ready(tmp_path)
+    sent = []
+
+    async def fake_answer(message, text, reply_markup=None, **kw):
+        sent.append(reply_markup)
+
+    async def go(mode):
+        await db.set_setting("reg_resume_mode", mode)
+        state = MagicMock()
+        state.set_state = AsyncMock()
+        orig = res._safe_answer
+        res._safe_answer = fake_answer
+        try:
+            for k in reg_engine.MINI_RESUME_STEPS:
+                await res.ask_step(k, MagicMock(), state, "", "full", None)
+        finally:
+            res._safe_answer = orig
+
+    def labels(kb):
+        return [b.text for row in kb.keyboard for b in row]
+
+    asyncio.run(go("mini"))
+    assert len(sent) == 3
+    assert all(res._FORK_BACK_LABEL not in labels(kb) for kb in sent)
+    sent.clear()
+    asyncio.run(go("fork"))
+    assert len(sent) == 3
+    assert all(res._FORK_BACK_LABEL in labels(kb) for kb in sent)
+
+
+def test_miniapp_back_from_mini_step_without_fork_goes_to_previous():
+    """Mini App: «Назад» с мини-подшага прыгает на развилку, только если шаг resume есть в
+    анкете; иначе stepIndexFromKey вернул бы 0 — делегата выкинуло бы на первый вопрос."""
+    from pathlib import Path
+
+    src = Path("miniapp/static/js/screens/form.js").read_text(encoding="utf-8")
+    assert 'FORK_BACK_STEPS.has(rawSpec.key) && state.specs.some((s) => s.key === "resume")' in src
