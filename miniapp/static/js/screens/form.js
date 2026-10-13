@@ -1459,7 +1459,9 @@ export async function render(root, params, ctx) {
           drawStep();
           return;
         }
-        if (FORK_BACK_STEPS.has(rawSpec.key)) {
+        // Режим «Без резюме — только мини-анкета»: развилки (шага resume) в анкете нет —
+        // «Назад» с мини-подшага ведёт на обычный предыдущий вопрос, а не на начало анкеты.
+        if (FORK_BACK_STEPS.has(rawSpec.key) && state.specs.some((s) => s.key === "resume")) {
           resumeForkBranch = null;
           stepIndex = stepIndexFromKey(state.specs, "resume");
           drawStep();
