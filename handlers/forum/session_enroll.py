@@ -14,7 +14,7 @@ deep-link `/start sessions` (`handlers/forum/forum_deeplinks.py`) и callback `s
 
 Callback'и (числа, <= 64 байт): se:open, se:t:{tid} (0 = смешать), se:s:{tid}:{gi},
 se:p:{tid}:{gi}:{sid}, se:r:{tid}:{gi}:{sid}, se:k:{tid}:{gi}, se:c:{tid}:{gi}:{sid},
-se:my, se:ok, se:ed. `gi` — глобальный индекс слота в порядке `slots_for_city`."""
+se:my, se:ok, se:ed, se:skipq (пропустить тест-развилку), se:quiz (открыть тест). `gi` — глобальный индекс слота в порядке `slots_for_city`."""
 import html
 import logging
 import re
@@ -25,6 +25,7 @@ from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarku
 from aiogram import F
 
 from domain.cities import get_setting_typed_for_city, normalize_city
+from database import quiz_db
 from database import session_enroll_db as edb
 from database.db import get_user
 from handlers.i18n import reg_i18n
@@ -225,8 +226,29 @@ async def _schedule_screen(target: types.Message, ctx: _Ctx, *, edit: bool, head
     await _show(target, text, _kb(rows), edit=edit)
 
 
-async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = False) -> bool:
-    """Общий вход: гейт, повестка картинкой, экран треков. True — экран показан."""
+async def _quiz_fork_wanted(ctx: _Ctx, telegram_id: int) -> bool:
+    """Развилка «тест / сразу к записи»: тумблер города включён, активный тест есть и не пройден."""
+    try:
+        if await get_setting_typed_for_city("session_enroll_quiz_offer", ctx.city) != "on":
+            return False
+        quiz = await quiz_db.active_quiz_for_city(ctx.city)
+        if quiz is None:
+            return False
+        return not await quiz_db.get_last_finished_attempt(telegram_id, quiz["id"])
+    except Exception as e:  # развилка — надстройка: сбой не должен закрыть запись
+        logger.warning("session_enroll: развилка с тестом не определилась: %s", e)
+        return False
+
+
+async def _quiz_fork_screen(target: types.Message, ctx: _Ctx) -> None:
+    rows = [[_btn(await ctx.t("session_enroll_quiz_offer_go_button"), "se:quiz")],
+            [_btn(await ctx.t("session_enroll_quiz_offer_skip_button"), "se:skipq")]]
+    await _show(target, await ctx.t("session_enroll_quiz_offer_text"), _kb(rows), edit=False)
+
+
+async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = False,
+                      skip_quiz: bool = False) -> bool:
+    """Общий вход: гейт, (развилка с тестом), повестка картинкой, экран треков. True — экран показан."""
     ctx, refusal = await _ctx_for(target, telegram_id)
     if ctx is None:
         await target.answer(refusal)
@@ -235,6 +257,9 @@ async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = F
     if not flat:
         await target.answer(await ctx.t("session_enroll_no_sessions_text"))
         return False
+    if not skip_quiz and not edit and not await svc.deadline_passed(ctx.city)             and await _quiz_fork_wanted(ctx, telegram_id):
+        await _quiz_fork_screen(target, ctx)
+        return True
     if not edit:
         try:
             source = await entry_agenda_photo(ctx.city, flat[0][0])
@@ -328,6 +353,27 @@ async def _editing_closed(callback: types.CallbackQuery, ctx: _Ctx) -> bool:
 async def se_open(callback: types.CallbackQuery):
     await callback.answer()
     await open_enroll(callback.message, callback.from_user.id)
+
+
+@router.callback_query(F.data == "se:skipq")
+async def se_skip_quiz(callback: types.CallbackQuery):
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception as e:
+        logger.info("session_enroll: клавиатура развилки не снялась: %s", e)
+    await open_enroll(callback.message, callback.from_user.id, skip_quiz=True)
+
+
+@router.callback_query(F.data == "se:quiz")
+async def se_quiz(callback: types.CallbackQuery):
+    from handlers.forum.quiz import open_quiz  # quiz.py сам импортирует этот модуль
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception as e:
+        logger.info("session_enroll: клавиатура развилки не снялась: %s", e)
+    await open_quiz(callback.message, callback.from_user.id)
 
 
 @router.callback_query(F.data.startswith("se:t:"))
