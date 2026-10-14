@@ -1278,6 +1278,13 @@ FORM_DEFAULT_EN: dict[str, str] = {
     "🌐 Язык / Language": "🌐 Язык / Language",  # кнопка языка двуязычна сама по себе
     # --- запись на сессии и тест по компетенциям ---
     "📅 Выбрать сессии": "📅 Choose sessions",
+    "🧭 Пройти тест": "🧭 Take the quiz",
+    "➡️ Сразу к записи": "➡️ Straight to sign-up",
+    "Перед записью можешь пройти короткий тест: узнаешь уровень своих компетенций и поймёшь, какие сессии прокачают тебя сильнее. Займёт пару минут. Можно пропустить и сразу перейти к записи.": (
+        "Before signing up, you can take a short quiz: you will see your competency levels and which "
+        "sessions will help you grow most. It takes a couple of minutes. You can skip it and go straight "
+        "to sign-up."
+    ),
     "Тест сейчас недоступен.": "The quiz is currently unavailable.",
     "🧭 Тест": "🧭 Quiz",
     "📊 Мой результат": "📊 My result",
