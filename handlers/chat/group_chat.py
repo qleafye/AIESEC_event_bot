@@ -251,6 +251,8 @@ async def on_chat_member_changed(event: types.ChatMemberUpdated):
     old_status = event.old_chat_member.status
     new_status = event.new_chat_member.status
     await upsert_chat_member(event.chat.id, user.id, new_status, source="chat_member")
+    if new_status in CHAT_PRESENT_STATUSES:
+        await upsert_chat_username(user.id, user.username, user.first_name)
     was_present = old_status in CHAT_PRESENT_STATUSES
     now_present = new_status in CHAT_PRESENT_STATUSES
     if now_present and not was_present:
@@ -268,6 +270,7 @@ async def on_new_chat_members(message: types.Message, bot: Bot | None = None):
         if user.is_bot:
             continue
         await upsert_chat_member(message.chat.id, user.id, "member", source="message")
+        await upsert_chat_username(user.id, user.username, user.first_name)
         await log_chat_event(message.chat.id, user.id, "join")
     if bot is not None:
         await chat_cleanup.handle_service_message(bot, message.chat.id, message.message_id, "join")

@@ -6709,6 +6709,21 @@ async def stale_chat_member_candidates(chat_id: int, telegram_ids: list[int],
     ]
 
 
+async def chat_members_without_username(chat_id: int) -> list[int]:
+    """Присутствующие в чате, о которых нет строки в `chat_usernames` (бот не знает ни ника,
+    ни имени). У кого строка есть — даже только с именем — повторно не спрашиваем."""
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT cm.telegram_id FROM chat_members cm WHERE cm.chat_id = ? "
+            f"AND cm.status IN ({_CHAT_PRESENT_PLACEHOLDERS}) "
+            f"AND NOT EXISTS (SELECT 1 FROM chat_usernames cu WHERE cu.telegram_id = cm.telegram_id) "
+            f"ORDER BY cm.telegram_id",
+            (chat_id, *CHAT_PRESENT_STATUSES),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [row[0] for row in rows]
+
+
 async def chat_counts(chat_id: int, city_scope: tuple | None) -> dict:
     """Четыре сходящихся числа экрана «💬 Чат»: `approved` (одобрено в этом скоупе города),
     `in_chat`/`not_in_chat` (из них — в чате / не в чате) и `unknown_members` (присутствующие
