@@ -14,7 +14,8 @@ deep-link `/start sessions` (`handlers/forum/forum_deeplinks.py`) и callback `s
 
 Callback'и (числа, <= 64 байт): se:open, se:t:{tid} (0 = смешать), se:s:{tid}:{gi},
 se:p:{tid}:{gi}:{sid}, se:r:{tid}:{gi}:{sid}, se:k:{tid}:{gi}, se:c:{tid}:{gi}:{sid},
-se:my, se:ok, se:ed, se:skipq (пропустить тест-развилку), se:quiz (открыть тест). `gi` — глобальный индекс слота в порядке `slots_for_city`."""
+se:my, se:ok, se:ed, se:skipq (пропустить тест-развилку), se:quiz (открыть тест).
+`gi` — глобальный индекс слота в порядке `slots_for_city`."""
 import html
 import logging
 import re
@@ -257,7 +258,8 @@ async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = F
     if not flat:
         await target.answer(await ctx.t("session_enroll_no_sessions_text"))
         return False
-    if not skip_quiz and not edit and not await svc.deadline_passed(ctx.city)             and await _quiz_fork_wanted(ctx, telegram_id):
+    if (not skip_quiz and not edit and not await svc.deadline_passed(ctx.city)
+            and await _quiz_fork_wanted(ctx, telegram_id)):
         await _quiz_fork_screen(target, ctx)
         return True
     if not edit:
