@@ -1651,6 +1651,8 @@ admin|callback_query|prog_enrqo|prog_enrqo:*
 admin|callback_query|prog_enrdl|prog_enrdl:*
 admin|callback_query|prog_enrtx|prog_enrtx:*
 admin|callback_query|prog_enrte|prog_enrte:*
+admin|callback_query|prog_enrsh|prog_enrsh:*
+admin|callback_query|prog_enrshgo|prog_enrshgo:*
 admin|callback_query|prog_qz|prog_qz:*
 admin|callback_query|prog_qzcancel|prog_qzcancel
 admin|callback_query|prog_qzsw|prog_qzsw:*
@@ -2503,7 +2505,8 @@ def test_snapshot_total_handler_count_is_292():
     # 12.10 (картинка дня программы, handlers/forum/admin_program_view.py): +2 admin.message и +6 admin.callback_query
     # prog_agd* после prog_photo_del_go (callback) / prog_photo_not_photo (message); чистая вставка (1248 -> 1256).
     # 14.10 (развилка «тест / сразу к записи»): +1 admin prog_enrqo, +2 user_actions se:skipq/se:quiz; чистая вставка (1256 -> 1259).
-    assert len(GOLDEN_SNAPSHOT) == 1259
+    # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
+    assert len(GOLDEN_SNAPSHOT) == 1261
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
