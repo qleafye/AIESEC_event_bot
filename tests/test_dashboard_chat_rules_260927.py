@@ -272,12 +272,18 @@ def test_chat_page_renders_rules_for_spb_and_formula_for_msk(db_path):
 
     client = _client(_cfg(db_path))
     _login(client, ADMIN_ID)
+    # Владелец 14.10: чаты городов — вкладками «Чат:», по умолчанию первый (Москва), не подряд.
     resp = client.get("/chat")
-
     assert resp.status_code == 200
     html = resp.text
-    spb_part = html.split("СПб чат")[1]
-    msk_part = html.split("Мск чат")[1].split("СПб чат")[0]
+    assert "Мск чат" in html and "СПб чат" not in html
+    assert 'aria-label="Чат города"' in html and f"chat={SPB_CHAT}" in html
+    msk_part = html.split("Мск чат")[1]
+
+    resp = client.get(f"/chat?chat={SPB_CHAT}")
+    assert resp.status_code == 200
+    assert "Мск чат" not in resp.text
+    spb_part = resp.text.split("СПб чат")[1]
     assert "Рейтинг по правилам города" in spb_part
     assert "Итого, LC" in spb_part
     assert "@spb_delegate" in spb_part
