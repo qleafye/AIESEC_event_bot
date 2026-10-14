@@ -44,9 +44,21 @@
   {% endif %}
 
   {% for card in cards %}
+  {% set ci = loop.index %}
   <section class="block">
     <h2 class="block-title">{{ card.chat.title }} ({{ card.chat.label }})</h2>
     <div class="subtitle">Последняя сверка: {{ card.last_sync or "ещё не было" }}</div>
+
+    {# Три раздела, как липкое оглавление главной (владелец 14.10): состав / активность / рейтинг.
+       id с номером карточки — на странице может быть несколько чатов. #}
+    <nav class="section-nav" aria-label="Разделы чата">
+      <a class="switch-link" href="#members-{{ ci }}">👥 Кто в чате</a>
+      <a class="switch-link" href="#activity-{{ ci }}">💬 Активность</a>
+      <a class="switch-link" href="#rating-{{ ci }}">🏆 Рейтинг</a>
+    </nav>
+
+    <section class="page-section" id="members-{{ ci }}" aria-labelledby="members-{{ ci }}-title">
+    <h2 class="section-title" id="members-{{ ci }}-title">👥 Кто в чате</h2>
 
     {# Плитки (D-14-стиль): одобрено / в чате / не в чате / в чате без заявки #}
     <div class="card">
@@ -124,6 +136,10 @@
       {% endif %}
     </div>
 
+    </section>
+
+    <section class="page-section" id="activity-{{ ci }}" aria-labelledby="activity-{{ ci }}-title">
+    <h2 class="section-title" id="activity-{{ ci }}-title">💬 Активность</h2>
     {# График сообщений по дням #}
     <div class="card">
       <h3 class="block-title">Сообщений по дням</h3>
@@ -153,6 +169,10 @@
       {% endif %}
     </div>
 
+    </section>
+
+    <section class="page-section" id="rating-{{ ci }}" aria-labelledby="rating-{{ ci }}-title">
+    <h2 class="section-title" id="rating-{{ ci }}-title">🏆 Рейтинг</h2>
     {% if card.rules_rating %}
     {# Квик 260927: город в режиме «По правилам города» (коины СПб) — таблица правил с разбивкой
        и недельным срезом. Только расчёт для публикации: бот ничего не начисляет. #}
@@ -291,6 +311,7 @@
       </details>
     </div>
     {% endif %}
+    </section>
   </section>
   {% endfor %}
 
