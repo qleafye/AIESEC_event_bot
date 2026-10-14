@@ -1647,6 +1647,7 @@ admin|callback_query|prog_enrlt|prog_enrlt:*
 admin|callback_query|prog_enrx|prog_enrx:*
 admin|callback_query|prog_enrset|prog_enrset:*
 admin|callback_query|prog_enrsw|prog_enrsw:*
+admin|callback_query|prog_enrqo|prog_enrqo:*
 admin|callback_query|prog_enrdl|prog_enrdl:*
 admin|callback_query|prog_enrtx|prog_enrtx:*
 admin|callback_query|prog_enrte|prog_enrte:*
@@ -1851,6 +1852,8 @@ user_actions|callback_query|sfb_rate|
 user_actions|callback_query|sfb_offer_comment|
 user_actions|callback_query|fnsp_answer|fnsp:*
 user_actions|callback_query|se_open|se:open
+user_actions|callback_query|se_skip_quiz|se:skipq
+user_actions|callback_query|se_quiz|se:quiz
 user_actions|callback_query|se_track|se:t:*
 user_actions|callback_query|se_slot|se:s:*
 user_actions|callback_query|se_pick|se:p:*
@@ -2499,7 +2502,8 @@ def test_snapshot_total_handler_count_is_292():
     # admin_reject_rules; чистая вставка (1247 -> 1248).
     # 12.10 (картинка дня программы, handlers/forum/admin_program_view.py): +2 admin.message и +6 admin.callback_query
     # prog_agd* после prog_photo_del_go (callback) / prog_photo_not_photo (message); чистая вставка (1248 -> 1256).
-    assert len(GOLDEN_SNAPSHOT) == 1256
+    # 14.10 (развилка «тест / сразу к записи»): +1 admin prog_enrqo, +2 user_actions se:skipq/se:quiz; чистая вставка (1256 -> 1259).
+    assert len(GOLDEN_SNAPSHOT) == 1259
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
