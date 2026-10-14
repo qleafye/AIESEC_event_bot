@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 # `kind` vocabulary shared by game_tab_plan() consumers.
 KIND_MATRIX = "matrix"
 KIND_HISTORY = "history"
+KIND_COINS_LOG = "coins_log"
 
 
 def filter_tasks_for_city(tasks: list[dict], code: str) -> list[dict]:
@@ -62,6 +63,14 @@ def filter_totals_for_city(totals: dict[int, dict], code: str | None) -> dict[in
     if code is None:
         return totals
     return {uid: t for uid, t in totals.items() if normalize_city(t.get("event_city")) == code}
+
+
+def filter_coins_log_for_city(rows: list[dict], code: str | None) -> list[dict]:
+    """Pure: строки журнала баллов людей города `code` (город получателя, `users.event_city` через
+    `normalize_city`, как у сдач). `code=None` — общая вкладка, все как есть."""
+    if code is None:
+        return rows
+    return [r for r in rows if normalize_city(r.get("user_event_city")) == code]
 
 
 async def game_tab_plan() -> list[dict]:
