@@ -1648,9 +1648,15 @@ def chat_bindings(conn) -> list[dict]:
         if code is None:
             label = "Общий чат"
         else:
-            city_row = conn.execute("SELECT label FROM cities WHERE code = ?", (code,)).fetchone()
+            city_row = conn.execute("SELECT label, sort_order FROM cities WHERE code = ?", (code,)).fetchone()
             label = city_row["label"] if city_row is not None else code
-        out.append({"city": code, "label": label, "chat_id": chat_id, "title": title or label})
+        order = -1 if code is None else (city_row["sort_order"] if city_row is not None and city_row["sort_order"] is not None else 10**6)
+        out.append({"city": code, "label": label, "chat_id": chat_id, "title": title or label, "_order": order})
+    # Порядок — как города в боте (sort_order), общий чат первым; вкладки «Чат:» на странице чата
+    # и «первый по умолчанию» опираются на него, а не на порядок ключей в bot_settings.
+    out.sort(key=lambda c: (c["_order"], c["label"]))
+    for c in out:
+        del c["_order"]
     return out
 
 
