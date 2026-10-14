@@ -56,6 +56,14 @@ def filter_submissions_for_city(submissions: list[dict], code: str) -> list[dict
     return [s for s in submissions if normalize_city(s.get("user_event_city")) == code]
 
 
+def filter_totals_for_city(totals: dict[int, dict], code: str | None) -> dict[int, dict]:
+    """Pure: итоги баллов людей города `code` (по `users.event_city` через `normalize_city`, как
+    у сдач). `code=None` — общая вкладка, все как есть."""
+    if code is None:
+        return totals
+    return {uid: t for uid, t in totals.items() if normalize_city(t.get("event_city")) == code}
+
+
 async def game_tab_plan() -> list[dict]:
     """Ordered list of every gamification tab a rebuild writes, whole-event first:
         {"kind": "matrix"|"history", "city": None|code, "city_label": str|None, "tab": name}
