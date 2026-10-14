@@ -58,6 +58,9 @@ def compact_template(template: str, values: dict[str, str]) -> str:
 # Все текстовые ключи модуля записи (для экрана «✏️ Тексты» в админке), порядок как в реестре.
 ENROLL_TEXT_KEYS: tuple[str, ...] = (
     "session_enroll_intro_text",
+    "session_enroll_quiz_offer_text",
+    "session_enroll_quiz_offer_go_button",
+    "session_enroll_quiz_offer_skip_button",
     "session_enroll_mix_button",
     "session_enroll_slot_text",
     "session_enroll_session_line",
