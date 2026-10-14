@@ -633,6 +633,7 @@ def build_forum_context(
         "arrival": arrival,
         "arrival_floor": arrival_floor,
         "sessions": sessions,
+        "enroll": queries.enroll_block(conn, scope),
         "top_sessions": top_sessions,
         "bottom_sessions": bottom_sessions,
         "sos": queries.sos_block(conn, scope),
