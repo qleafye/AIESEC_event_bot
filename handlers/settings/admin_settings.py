@@ -370,6 +370,7 @@ _SHEETS_FIELD_ORDER = [
     "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
     "city_tab_suffix__game", "city_tab_suffix__game_history", "city_tab_suffix__game_coins_log",
     "polls_sheet_tab",  # опросы: вкладка выгрузки результатов
+    "enroll_sessions_tab", "enroll_people_tab",  # запись на сессии
 ]
 
 # Квик 260927: «💬 Чат делегатов» — глобальные веса формулы рейтинга чата (человеческий порядок).
