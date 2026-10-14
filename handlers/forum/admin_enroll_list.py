@@ -13,6 +13,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, header_snapshot, per_city_key
+from database import quiz_db
 from database import session_enroll_db as edb
 from database.db import _csv_safe, get_program_session, update_program_session
 from handlers.admin import router
@@ -137,6 +138,13 @@ async def prog_enrx(callback: types.CallbackQuery):
 
 # ── Настройки модуля ─────────────────────────────────────────────────────────────────────────
 
+async def _quiz_offer_on(code: str) -> bool:
+    try:
+        return await get_setting_typed_for_city("session_enroll_quiz_offer", code) == "on"
+    except Exception:
+        return False
+
+
 async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
     on = await module_enabled(code)
     deadline = await deadline_label(code)
@@ -147,9 +155,18 @@ async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
         f"Запись на сессии: {'✅ Вкл' if on else '❌ Выкл'}",
         f"Запись закрывается: {deadline or 'дата не задана'}",
     ]
+    offer = await _quiz_offer_on(code)
+    offer_line = f"Предлагать тест перед записью: {'✅ Вкл' if offer else '❌ Выкл'}"
+    if offer and await quiz_db.active_quiz_for_city(code) is None:
+        offer_line += " (теста нет — развилка не покажется)"
+    lines.append(offer_line)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="✅ Вкл → ❌ Выкл" if on else "❌ Выкл → ✅ Вкл", callback_data=f"prog_enrsw:{code}",
+        )],
+        [InlineKeyboardButton(
+            text="🧭 Тест перед записью: ✅ → ❌" if offer else "🧭 Тест перед записью: ❌ → ✅",
+            callback_data=f"prog_enrqo:{code}",
         )],
         [InlineKeyboardButton(text=f"⏳ Закрыть запись: {deadline or 'не задано'}",
                               callback_data=f"prog_enrdl:{code}")],
@@ -186,6 +203,16 @@ async def prog_enrsw(callback: types.CallbackQuery):
         return
     new_val = "off" if await module_enabled(code) else "on"
     await set_setting_by_admin(callback.from_user.id, await _write_key("session_enroll_enabled", code), new_val)
+    await _show_settings(callback, code, "Сохранено.")
+
+
+@router.callback_query(F.data.startswith("prog_enrqo:"))
+async def prog_enrqo(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if await _deny(callback, code):
+        return
+    new_val = "off" if await _quiz_offer_on(code) else "on"
+    await set_setting_by_admin(callback.from_user.id, await _write_key("session_enroll_quiz_offer", code), new_val)
     await _show_settings(callback, code, "Сохранено.")
 
 
