@@ -71,6 +71,7 @@ _FROZEN_OLD_HARDCODE_DEFAULTS = {
     "incomplete_sheet_tab": "Незавершённые",
     "game_matrix_tab": "Гейма",
     "game_history_tab": "История сдач",
+    "game_coins_log_tab": "Журнал баллов",
     "preselect_tab": "Отобранные",
     "city_tab_suffix__short": " Акция",
     "city_tab_suffix__party": " Party",
@@ -78,6 +79,7 @@ _FROZEN_OLD_HARDCODE_DEFAULTS = {
     # Quick GAME-CITY-TABS: per-city gamification tab suffixes (services/game/game_sheets.py).
     "city_tab_suffix__game": " Гейма",
     "city_tab_suffix__game_history": " История сдач",
+    "city_tab_suffix__game_coins_log": " Журнал баллов",
 }
 
 
@@ -98,9 +100,9 @@ def test_settings_group_keys_sheets_matches_field_order():
     assert admin_settings._settings_group_keys("sheets") == admin_settings._SHEETS_FIELD_ORDER
     assert admin_settings._SHEETS_FIELD_ORDER == [
         "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
-        "game_matrix_tab", "game_history_tab", "preselect_tab",
+        "game_matrix_tab", "game_history_tab", "game_coins_log_tab", "preselect_tab",
         "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
-        "city_tab_suffix__game", "city_tab_suffix__game_history",
+        "city_tab_suffix__game", "city_tab_suffix__game_history", "city_tab_suffix__game_coins_log",
         "polls_sheet_tab",
     ]
 
