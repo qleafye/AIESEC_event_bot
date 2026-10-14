@@ -44,6 +44,10 @@ EXPECTED_PER_CITY_KEYS = {
     # Запись на сессии и тест компетенций: тумблер, дедлайн и тексты — свои у города.
     "session_enroll_enabled",
     "session_enroll_deadline",
+    "session_enroll_quiz_offer",
+    "session_enroll_quiz_offer_text",
+    "session_enroll_quiz_offer_go_button",
+    "session_enroll_quiz_offer_skip_button",
     "session_enroll_menu_label",
     "session_enroll_intro_text",
     "session_enroll_mix_button",
