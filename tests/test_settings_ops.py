@@ -48,6 +48,7 @@ def test_sheet_tab_write_mode_has_exactly_six_keys_with_expected_modes():
         "incomplete_sheet_tab": "rewrite",
         "game_matrix_tab": "rewrite",
         "game_history_tab": "rewrite",
+        "game_coins_log_tab": "rewrite",
         "short_sheet_tab": "append",
         "party_sheet_tab": "append",
     }

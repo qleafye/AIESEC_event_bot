@@ -279,16 +279,16 @@ def test_current_tab_titles_collects_keys_and_city_tracks_skips_moscow_and_prese
 
     titles = [t.title for t in targets]
     for expected in (
-        "Краткая", "Party", "Незавершённые", "Опросы", "Гейма", "История сдач",
+        "Краткая", "Party", "Незавершённые", "Опросы", "Гейма", "История сдач", "Журнал баллов",
         "История правок", "Вопросы",
     ):
         assert expected in titles
 
     spb_targets = [t for t in targets if t.city_code == "spb"]
     assert {t.title for t in spb_targets} == {
-        "СПб", "СПб Акция", "СПб Party", "СПб Незавершённые", "СПб Гейма", "СПб История сдач",
+        "СПб", "СПб Акция", "СПб Party", "СПб Незавершённые", "СПб Гейма", "СПб История сдач", "СПб Журнал баллов",
     }
-    assert len(spb_targets) == 6
+    assert len(spb_targets) == 7
     spb_main = next(t for t in spb_targets if t.kind == "main")
     assert spb_main.origin == "city"
     assert "Санкт-Петербург" in spb_main.label
@@ -639,11 +639,11 @@ ADMIN_ID_T4 = 931944
 _T4_CITY = {
     "code": "spb", "label": "Санкт-Петербург", "tab_base": "СПб", "enabled": 1, "sort_order": 1,
 }
-# 8 ключей-целей (main_sheet_tab не настроен -- пропущен) + 6 городских (СПб: main + 5 треков).
+# 9 ключей-целей (main_sheet_tab не настроен -- пропущен) + 7 городских (СПб: main + 6 треков).
 _T4_INITIAL_TITLES = [
-    "Краткая", "Party", "Незавершённые", "Опросы", "Гейма", "История сдач",
+    "Краткая", "Party", "Незавершённые", "Опросы", "Гейма", "История сдач", "Журнал баллов",
     "История правок", "Вопросы",
-    "СПб", "СПб Акция", "СПб Party", "СПб Незавершённые", "СПб Гейма", "СПб История сдач",
+    "СПб", "СПб Акция", "СПб Party", "СПб Незавершённые", "СПб Гейма", "СПб История сдач", "СПб Журнал баллов",
 ]
 
 
@@ -691,7 +691,7 @@ def test_prefix_add_screen_shows_plan_without_a_single_write(tmp_path, monkeypat
 
     button_texts = [b.text for row in callback.edited_markup.inline_keyboard for b in row]
     button_datas = [b.callback_data for row in callback.edited_markup.inline_keyboard for b in row]
-    assert any("14 вкладок" in t for t in button_texts)
+    assert any("16 вкладок" in t for t in button_texts)
     assert "sheet_tabs_prefix_add_go" in button_datas
     assert "🎯 Отобранные" in callback.edited_text
     assert "IMPORTRANGE" in callback.edited_text
@@ -735,7 +735,7 @@ def test_prefix_add_go_renames_saves_settings_and_updates_city_base_once(tmp_pat
     assert "🤖 СПб" in state["titles"]
     assert city_update_calls == [("spb", "🤖 СПб")]  # РОВНО один раз
     assert delete_calls == ["city_tab__spb"]
-    assert "Переименовано 14" in callback.edited_text
+    assert "Переименовано 16" in callback.edited_text
 
 
 def test_prefix_add_go_track_tabs_renamed_before_city_main(tmp_path, monkeypatch):
@@ -778,7 +778,7 @@ def test_prefix_add_go_error_on_one_tab_does_not_stop_the_rest(tmp_path, monkeyp
     callback = _FakeCallback(uid=ADMIN_ID_T4)
     asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add_go(callback))
 
-    assert "Переименовано 13" in callback.edited_text
+    assert "Переименовано 15" in callback.edited_text
     assert "Не удалось 1" in callback.edited_text
     assert "Гейма" in state["titles"]  # не переименован -- осталось старое имя
     assert "🤖 Гейма" not in state["titles"]
@@ -822,11 +822,11 @@ def test_prefix_round_trip_add_then_remove_restores_original_names(tmp_path, mon
 
     add_cb = _FakeCallback(uid=ADMIN_ID_T4)
     asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_add_go(add_cb))
-    assert "Переименовано 14" in add_cb.edited_text
+    assert "Переименовано 16" in add_cb.edited_text
 
     del_cb = _FakeCallback(uid=ADMIN_ID_T4)
     asyncio.run(admin_sheet_tabs.sheet_tabs_prefix_del_go(del_cb))
-    assert "Переименовано 14" in del_cb.edited_text
+    assert "Переименовано 16" in del_cb.edited_text
 
     assert sorted(state["titles"]) == sorted(_T4_INITIAL_TITLES)
     assert asyncio.run(db.get_setting("short_sheet_tab")) == "Краткая"
