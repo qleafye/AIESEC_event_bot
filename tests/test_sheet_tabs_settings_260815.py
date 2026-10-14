@@ -80,6 +80,9 @@ _FROZEN_OLD_HARDCODE_DEFAULTS = {
     "city_tab_suffix__game": " Гейма",
     "city_tab_suffix__game_history": " История сдач",
     "city_tab_suffix__game_coins_log": " Журнал баллов",
+    # Запись на сессии (14.10): общие вкладки, город — колонкой.
+    "enroll_sessions_tab": "Записи на сессии",
+    "enroll_people_tab": "Кто куда записан",
 }
 
 
@@ -104,6 +107,7 @@ def test_settings_group_keys_sheets_matches_field_order():
         "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
         "city_tab_suffix__game", "city_tab_suffix__game_history", "city_tab_suffix__game_coins_log",
         "polls_sheet_tab",
+        "enroll_sessions_tab", "enroll_people_tab",
     ]
 
 

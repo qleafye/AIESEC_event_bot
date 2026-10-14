@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import aiosqlite
 
 from database import db as _db
+from shared import enroll_stats
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -153,7 +154,10 @@ async def create_track(city: str, name: str) -> int:
 
 
 async def rename_track(track_id: int, name: str) -> bool:
-    return await _rename("program_tracks", track_id, name)
+    changed = await _rename("program_tracks", track_id, name)
+    if changed:
+        notify_enroll_changed()
+    return changed
 
 
 async def move_track(track_id: int, delta: int) -> bool:
@@ -191,6 +195,7 @@ async def delete_track(track_id: int) -> int:
         )
         await db.execute("DELETE FROM program_tracks WHERE id = ?", (int(track_id),))
         await db.commit()
+    notify_enroll_changed()
     return removed
 
 
@@ -381,6 +386,7 @@ async def enroll_tx(
         except Exception:
             await conn.rollback()
             raise
+    notify_enroll_changed()
     return EnrollResult("ok", replaced=conflicts)
 
 
@@ -391,7 +397,10 @@ async def unenroll(telegram_id: int, session_id: int) -> bool:
             (int(telegram_id), int(session_id)),
         )
         await db.commit()
-        return bool(cursor.rowcount)
+        removed = bool(cursor.rowcount)
+    if removed:
+        notify_enroll_changed()
+    return removed
 
 
 async def user_enrollment_ids(telegram_id: int) -> set[int]:
@@ -516,6 +525,8 @@ async def delete_enrollments_for_user(telegram_id: int) -> int:
             "DELETE FROM session_schedule_confirms WHERE telegram_id = ?", (int(telegram_id),),
         )
         await db.commit()
+    if removed > 0:
+        notify_enroll_changed()
     return removed
 
 
@@ -563,3 +574,34 @@ async def day_photo_days(city: str) -> set[str]:
             "SELECT day FROM program_day_photos WHERE city = ?", (city,),
         ) as cursor:
             return {r[0] for r in await cursor.fetchall()}
+
+
+# ── Выгрузка в таблицу ───────────────────────────────────────────────────────────────────────
+# SQL — в `shared/enroll_stats.py`: те же запросы исполняет дашборд.
+
+async def enroll_overview_rows(city: str | None = None) -> list[dict]:
+    """Сессии с треком + записано/пришли (для вкладки «Записи на сессии»). None — все города."""
+    sql, params = enroll_stats.sessions_query(city)
+    async with _db._connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, params) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def enroll_people_rows(city: str | None = None) -> list[dict]:
+    """Одна строка на запись (для вкладки «Кто куда записан»). None — все города."""
+    sql, params = enroll_stats.people_query(city)
+    async with _db._connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(sql, params) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+def notify_enroll_changed() -> None:
+    """Просит отложенную пересборку вкладок записи. Fail-soft: сбой планирования не должен
+    ронять саму запись. Ленивый импорт — слой БД не тянет services на импорте модуля."""
+    try:
+        from services.forum.enroll_sheets import request_enroll_sheet_resync
+        request_enroll_sheet_resync()
+    except Exception as e:
+        logger.warning("enroll sheets autosync scheduling failed: %s", e)

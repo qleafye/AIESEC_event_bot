@@ -12440,13 +12440,26 @@ async def get_program_hall(hall_id: int) -> dict | None:
     return dict(row) if row else None
 
 
+def _notify_enroll_changed() -> None:
+    """Правка программы меняет вкладки записи на сессии — просим отложенную пересборку.
+    Ленивый импорт (db.py — нижний слой), fail-soft."""
+    try:
+        from database.session_enroll_db import notify_enroll_changed
+        notify_enroll_changed()
+    except Exception as e:
+        logger.warning("enroll sheets autosync scheduling failed: %s", e)
+
+
 async def rename_program_hall(hall_id: int, name: str) -> bool:
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE program_halls SET name = ? WHERE id = ?", (name, hall_id),
         )
         await db.commit()
-        return bool(cursor.rowcount)
+        changed = bool(cursor.rowcount)
+    if changed:
+        _notify_enroll_changed()
+    return changed
 
 
 async def count_program_sessions_for_hall(hall_id: int) -> int:
@@ -12523,7 +12536,10 @@ async def update_program_session(session_id: int, **fields) -> bool:
             f"UPDATE program_sessions SET {', '.join(sets)} WHERE id = ?", values,
         )
         await db.commit()
-        return bool(cursor.rowcount)
+        changed = bool(cursor.rowcount)
+    if changed:
+        _notify_enroll_changed()
+    return changed
 
 
 async def delete_program_session(session_id: int) -> bool:
@@ -12535,7 +12551,10 @@ async def delete_program_session(session_id: int) -> bool:
         )
         cursor = await db.execute("DELETE FROM program_sessions WHERE id = ?", (session_id,))
         await db.commit()
-        return bool(cursor.rowcount)
+        changed = bool(cursor.rowcount)
+    if changed:
+        _notify_enroll_changed()
+    return changed
 
 
 async def list_program_sessions_for_city_day(city: str, day: str) -> list[dict]:
