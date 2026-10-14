@@ -21,6 +21,7 @@ import logging
 import re
 
 from aiogram import types
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram import F
@@ -82,7 +83,13 @@ async def _show(target: types.Message, text: str, kb, *, edit: bool) -> None:
         try:
             await target.edit_text(text, reply_markup=kb)
             return
-        except Exception as e:  # сообщение устарело/не изменилось — просто шлём новое
+        except TelegramBadRequest as e:
+            # Повторное нажатие той же кнопки: на экране уже ровно это — второе сообщение
+            # с тем же текстом делегат принимает за сбой («бот заново отправляет»).
+            if "message is not modified" in str(e):
+                return
+            logger.info("session_enroll: edit_text не удался: %s", e)
+        except Exception as e:  # сообщение устарело — просто шлём новое
             logger.info("session_enroll: edit_text не удался: %s", e)
     try:
         await target.answer(text, reply_markup=kb)
@@ -214,7 +221,10 @@ async def _schedule_text(ctx: _Ctx) -> str:
     return "\n".join(lines)
 
 
-async def _schedule_screen(target: types.Message, ctx: _Ctx, *, edit: bool, head: str | None = None) -> None:
+async def _schedule_screen(target: types.Message, ctx: _Ctx, *, edit: bool, head: str | None = None,
+                           confirmed: bool = False) -> None:
+    """`confirmed` — экран сразу после «Подтвердить»: кнопку подтверждения не показываем, иначе её
+    жмут ещё раз, думая, что первое нажатие не сработало."""
     text = await _schedule_text(ctx)
     if head:
         text = f"{head}\n\n{text}"
@@ -222,8 +232,10 @@ async def _schedule_screen(target: types.Message, ctx: _Ctx, *, edit: bool, head
     if await svc.deadline_passed(ctx.city):
         text += "\n\n" + await ctx.with_deadline("session_enroll_err_deadline")
     else:
-        rows.append([_btn(await ctx.t("session_enroll_change_button"), "se:ed"),
-                     _btn(await ctx.t("session_enroll_confirm_button"), "se:ok")])
+        row = [_btn(await ctx.t("session_enroll_change_button"), "se:ed")]
+        if not confirmed:
+            row.append(_btn(await ctx.t("session_enroll_confirm_button"), "se:ok"))
+        rows.append(row)
     await _show(target, text, _kb(rows), edit=edit)
 
 
@@ -522,4 +534,4 @@ async def se_confirm(callback: types.CallbackQuery):
     await svc.confirm(callback.from_user.id, ctx.city)
     await callback.answer()
     await _schedule_screen(callback.message, ctx, edit=True,
-                           head=await ctx.with_deadline("session_enroll_confirmed_text"))
+                           head=await ctx.with_deadline("session_enroll_confirmed_text"), confirmed=True)
