@@ -56,7 +56,9 @@ def test_reconcile_runs_with_tracking_off_and_reports(tmp_path):
         return ids, reports, queued
 
     ids, reports, queued = _run(go())
-    assert len(bot.calls) == 5
+    # 5 — сверка одобренных; +2 — догон ников у присутствующих (800000, 800004): заглушка
+    # отвечает без `.user`, строки в chat_usernames у них так и не появляется
+    assert len(bot.calls) == 7
     assert len(reports) == 1
     rep = reports[0]
     assert rep["title"] == "Форум «Юлид»" and rep["city"] is None and rep["chat_id"] == CHAT_ID
