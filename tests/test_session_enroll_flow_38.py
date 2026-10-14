@@ -236,3 +236,34 @@ def test_html_in_session_title_is_escaped(tmp_path):
         text = cb.message.last[0]
         assert "Q&amp;A &lt;лекция&gt;" in text and "<лекция>" not in text
     run(go())
+
+
+def test_confirm_hides_confirm_button_and_repeat_press_sends_nothing(tmp_path):
+    """14.10 прод: «нажимаю подтвердить — бот заново отправляет сообщение». После подтверждения
+    остаётся только «Изменить»; повторное нажатие старой кнопки при «message is not modified»
+    не шлёт второе сообщение."""
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.methods import EditMessageText
+
+    ready(tmp_path)
+
+    async def go():
+        ids = await setup_world()
+        await press(f"se:p:0:0:{ids['A']}")
+        cb = await press("se:ok")
+        assert "подтверждено!" in cb.message.last[0]
+        assert [t for t, _ in buttons(cb.message.last[1])] == ["✏️ Изменить"]
+
+        msg = FakeMessage(U, "x")
+
+        async def not_modified(text, reply_markup=None, **kw):
+            raise TelegramBadRequest(
+                method=EditMessageText(text=text),
+                message="Bad Request: message is not modified: specified new message content "
+                        "and reply markup are exactly the same as a current content",
+            )
+
+        msg.edit_text = not_modified
+        await press("se:ok", message=msg)
+        assert msg.answers == []
+    run(go())
