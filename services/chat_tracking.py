@@ -28,12 +28,14 @@ from domain.cities import (
 )
 from database.db import (
     chat_member_statuses,
+    chat_members_without_username,
     count_and_list_filtered,
     enqueue_sheet_chat_cells,
     replace_chat_admins,
     set_chat_bot_state,
     stale_chat_member_candidates,
     upsert_chat_member,
+    upsert_chat_username,
     users_status_city,
     CHAT_PRESENT_STATUSES,
 )
@@ -285,6 +287,7 @@ async def refresh_chat(bot, chat_id: int, city: str | None, *,
             try:
                 member = await bot.get_chat_member(chat_id, telegram_id)
                 await upsert_chat_member(chat_id, telegram_id, member.status, source="refresh")
+                await _remember_username(member)
                 if member.status in CHAT_PRESENT_STATUSES:
                     present += 1
                 else:
@@ -319,6 +322,58 @@ async def refresh_chat(bot, chat_id: int, city: str | None, *,
     )
     return {"checked": checked, "present": present, "absent": absent, "not_found": not_found,
             "errors": errors, "truncated": truncated}
+
+
+async def _remember_username(member) -> None:
+    """Ник и имя из ответа getChatMember -> chat_usernames (боты и ответы без `.user` пропускаем)."""
+    user = getattr(member, "user", None)
+    if user is None or getattr(user, "is_bot", False):
+        return
+    await upsert_chat_username(user.id, getattr(user, "username", None),
+                               getattr(user, "first_name", None))
+
+
+async def refresh_missing_usernames(bot, chat_id: int, *,
+                                    max_calls: int = REFRESH_MAX_CALLS) -> dict:
+    """Догон ников: спрашивает getChatMember только у присутствующих в чате, о ком нет строки в
+    chat_usernames. Нужен для участников, вступивших до учёта или пришедших импортом: без ника
+    дашборд не может сопоставить их с ответами внешней формы. Батчи с паузой, потолок
+    max_calls, каждый вызов в своём try/except (fail-soft)."""
+    candidates = await chat_members_without_username(chat_id)
+    checked = named = left = errors = 0
+    truncated = False
+    for batch_start in range(0, len(candidates), REFRESH_BATCH):
+        batch = candidates[batch_start:batch_start + REFRESH_BATCH]
+        for telegram_id in batch:
+            if checked >= max_calls:
+                truncated = True
+                break
+            try:
+                member = await bot.get_chat_member(chat_id, telegram_id)
+                await upsert_chat_member(chat_id, telegram_id, member.status, source="refresh")
+                await _remember_username(member)
+                named += 1
+            except Exception as e:
+                if _is_absent_error(e):
+                    await upsert_chat_member(chat_id, telegram_id, "left", source="refresh")
+                    left += 1
+                else:
+                    errors += 1
+                    logger.warning(
+                        "chat_tracking.refresh_missing_usernames: getChatMember(%s, id=%s) "
+                        "failed: %s", chat_id, telegram_id, type(e).__name__,
+                    )
+            checked += 1
+        if truncated:
+            break
+        if batch_start + REFRESH_BATCH < len(candidates):
+            await asyncio.sleep(REFRESH_PAUSE_SECONDS)
+    logger.info(
+        "chat_tracking.refresh_missing_usernames: chat_id=%s checked=%s named=%s left=%s "
+        "errors=%s truncated=%s", chat_id, checked, named, left, errors, truncated,
+    )
+    return {"checked": checked, "named": named, "left": left, "errors": errors,
+            "truncated": truncated}
 
 
 def can_delete_from(member) -> bool:
@@ -385,6 +440,7 @@ async def refresh_all_chats(bot) -> list[dict]:
     for entry in await bound_chats():
         if tracking:
             report = await refresh_chat(bot, entry["chat_id"], entry["city"])
+            await refresh_missing_usernames(bot, entry["chat_id"])
             reports.append({**report, "chat_id": entry["chat_id"], "city": entry["city"]})
         await refresh_chat_admins(bot, entry["chat_id"])
     return reports
@@ -431,6 +487,7 @@ async def reconcile_all_now(bot, *, claimed: bool = False) -> list[dict] | None:
         for entry in await bound_chats():
             chat_id, city = entry["chat_id"], entry["city"]
             report = await refresh_chat(bot, chat_id, city)
+            await refresh_missing_usernames(bot, chat_id)
             admins_ok = await refresh_chat_admins(bot, chat_id)
             approved = await _approved_ids_for_city(city)
             statuses = await chat_member_statuses(chat_id, approved)
