@@ -232,3 +232,11 @@ def test_confirm_and_report(tmp_path, monkeypatch):
     run(el.prog_enrshgo(cb))
     assert "не удалось записать" in cb.message.text_edited
     assert "«Кто куда записан»: 2 строк." in cb.message.text_edited
+
+
+def test_people_rows_dash_username_is_empty():
+    """Прод 14.10: анкета пишет «-» тем, у кого нет ника — в листе было «@-»."""
+    row = {"city": "msk", "day": DAY, "start_time": "10:00", "end_time": "11:00", "title": "S",
+           "hall_name": "", "enrolled_at": "2026-10-14 18:54:03", "telegram_id": 1,
+           "full_name": "Без ника", "username": "-"}
+    assert enroll_stats.people_sheet_rows([row], LABELS)[0][1] == ""

@@ -53,9 +53,9 @@ def _when(stamp) -> str:
 
 def _handle(*names) -> str:
     for n in names:
-        n = (n or "").strip()
-        if n:
-            return "@" + n.lstrip("@")
+        n = (n or "").strip().lstrip("@")
+        if n and n != "-":  # «-» анкета пишет тем, у кого нет ника
+            return "@" + n
     return ""
 
 

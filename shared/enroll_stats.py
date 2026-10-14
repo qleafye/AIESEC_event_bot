@@ -161,7 +161,9 @@ def people_sheet_rows(rows: list[dict], labels: dict[str, str]) -> list[list]:
     )
     out = []
     for r in ordered:
-        username = _text(r.get("username")).lstrip("@")
+        username = _text(r.get("username")).strip().lstrip("@")
+        if username == "-":  # «-» анкета пишет тем, у кого нет ника
+            username = ""
         out.append([
             _text(r.get("full_name")),
             f"@{username}" if username else "",
