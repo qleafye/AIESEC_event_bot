@@ -705,7 +705,7 @@ def test_coins_journal_screen_says_it_is_manual_and_where_task_awards_live(tmp_p
     text, kb = asyncio.run(admin_gamification._coins_journal_screen(offset=0))
     assert text.splitlines()[0] == "📜 <b>Ручные начисления</b>"
     assert "Баллы за задания — построчно в выгрузке CSV ниже, итогом — в «📊 Статистика геймы»." in text
-    assert "Журнал баллов" not in text
+    assert "<b>Журнал баллов" not in text  # заголовок не называется журналом баллов; вкладка таблицы названа в подсказке
     assert "за приёмку" in text and "Задание: Стенд" not in text
     csv_btn = [b for row in kb.inline_keyboard for b in row if b.callback_data == "coinsjrn_csv"]
     assert csv_btn and "с заданиями" in csv_btn[0].text
