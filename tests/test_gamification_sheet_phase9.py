@@ -94,7 +94,8 @@ def test_build_game_matrix_headers_are_participants_plus_one_column_per_task():
     # Phase 09.1 (B, CONTEXT.md "Уточнение…"): "Город" column, second, right after "ФИО" --
     # the matrix tab is a whole-event export (no per-admin city_scope), so this is the ONLY
     # way it "respects" city_scope: a filter available in the sheet itself, not a row cut.
-    assert headers == ["telegram_id", "ФИО", "Город", "Юзернейм", "Задание А", long_text[:40]]
+    assert headers == ["telegram_id", "ФИО", "Город", "Юзернейм", "Задание А", long_text[:40],
+                       "Чат (+N)", "Вручную и прочее", "Итого баллов"]
     assert rows == []
 
 
@@ -118,11 +119,11 @@ def test_build_game_matrix_cell_reflects_latest_active_submission_status():
     by_uid = {r[0]: r for r in rows}
 
     # index 4+: task cells (0=telegram_id, 1=ФИО, 2=Город, 3=Юзернейм)
-    assert by_uid[101][4:] == ["✅ 30", "-"]
-    assert by_uid[102][4:] == ["⏳", "-"]
-    assert by_uid[103][4:] == ["❌", "-"]
-    assert by_uid[104][4:] == ["-", "✅ 15"]
-    assert by_uid[105][4:] == ["✅ 25", "-"]  # resubmission after rejection wins, not "❌"
+    assert by_uid[101][4:6] == ["✅ 30", "-"]
+    assert by_uid[102][4:6] == ["⏳", "-"]
+    assert by_uid[103][4:6] == ["❌", "-"]
+    assert by_uid[104][4:6] == ["-", "✅ 15"]
+    assert by_uid[105][4:6] == ["✅ 25", "-"]  # resubmission after rejection wins, not "❌"
     assert by_uid[101][2] == "-"  # no user_event_city on the hand-built fixture -> "-"
 
 

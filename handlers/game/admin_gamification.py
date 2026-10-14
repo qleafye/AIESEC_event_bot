@@ -68,6 +68,7 @@ from database.db import (
     get_user,
     get_user_by_username,
     get_wave,
+    coin_totals_by_user,
     list_all_submissions,
     list_all_tasks,
     list_manual_coin_entries,
@@ -80,7 +81,7 @@ from database.db import (
 from services.settings.audit import set_setting_by_admin
 from keyboards.builders import get_cancel_kb
 from services.sheets.sheets import sync_named_worksheet
-from services.game.game_sheets import describe_plan, game_tab_plan, rows_for_entry
+from services.game.game_sheets import describe_plan, filter_totals_for_city, game_tab_plan, rows_for_entry
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from services.amb.ambassador_waves import can_edit_wave, wave_editable_fields
@@ -1723,7 +1724,8 @@ async def grev_reject_reason(message: types.Message, state: FSMContext):
 _GAME_HISTORY_STATUS_LABELS = {"pending": "Ожидает", "approved": "Одобрено", "rejected": "Отклонено"}
 
 
-def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list[str], list[list]]:
+def _build_game_matrix(tasks: list[dict], submissions: list[dict],
+                       totals: dict[int, dict] | None = None) -> tuple[list[str], list[list]]:
     """Pure builder for the «Гейма» matrix tab (участники x задания). `tasks` must already be
     sorted oldest-first (created_at ASC) by the caller -- the earliest-created task lands in the
     leftmost column. Only participants with at least one submission become a row (CLAUDE.md:
@@ -1742,13 +1744,29 @@ def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list
         prefix = "🗄 " if t.get("archived_at") else ""
         return (prefix + task_title(t))[:40]
 
-    headers = ["telegram_id", "ФИО", "Город", "Юзернейм"] + [_matrix_col_header(t) for t in tasks]
+    # Итоги по человеку — СТРОГО в конце шапки: колонки раньше не сдвигаются (на них могут
+    # ссылаться формулы менеджеров). «Итого баллов» = баланс человека (SUM всех строк coins).
+    headers = (["telegram_id", "ФИО", "Город", "Юзернейм"] + [_matrix_col_header(t) for t in tasks]
+               + ["Чат (+N)", "Вручную и прочее", "Итого баллов"])
+    totals = totals or {}
+
+    def _totals_cells(user_id: int) -> list:
+        t = totals.get(user_id) or {}
+        return [t.get("chat") or 0, t.get("other") or 0, t.get("total") or 0]
 
     subs_by_user: dict[int, list[dict]] = {}
     for s in submissions:
         subs_by_user.setdefault(s["user_id"], []).append(s)
 
     rows: list[list] = []
+    # Люди без сдач, но с движениями баллов (например, только «+N» в чате) — тоже строкой.
+    for user_id, t in totals.items():
+        if user_id in subs_by_user:
+            continue
+        if not (t.get("chat") or t.get("other") or t.get("total")):
+            continue
+        rows.append([user_id, t.get("full_name") or "-", t.get("event_city") or "-",
+                     t.get("username") or "-"] + ["-"] * len(tasks) + _totals_cells(user_id))
     for user_id, user_subs in subs_by_user.items():
         sample = user_subs[-1]
         row = [user_id, sample.get("user_full_name") or "-", sample.get("user_event_city") or "-",
@@ -1768,7 +1786,7 @@ def _build_game_matrix(tasks: list[dict], submissions: list[dict]) -> tuple[list
                 row.append("⏳")
             else:  # rejected, and (since this IS the latest attempt) no later active submission exists
                 row.append("❌")
-        rows.append(row)
+        rows.append(row + _totals_cells(user_id))
     return headers, rows
 
 
@@ -1916,12 +1934,14 @@ async def rebuild_game_sheets_detailed() -> list[dict]:
     # either table. Do NOT add an archived_at filter here.
     tasks = sorted(await list_all_tasks(), key=lambda t: t["created_at"])
     submissions = await list_all_submissions()
+    coin_totals = await coin_totals_by_user()  # один раз на пересборку
 
     results: list[dict] = []
     for entry in await game_tab_plan():
         entry_tasks, entry_subs = rows_for_entry(entry, tasks, submissions)
         if entry["kind"] == "matrix":
-            headers, rows = _build_game_matrix(entry_tasks, entry_subs)
+            headers, rows = _build_game_matrix(
+                entry_tasks, entry_subs, filter_totals_for_city(coin_totals, entry.get("city")))
         else:
             headers, rows = _build_game_history(entry_subs)
         try:
