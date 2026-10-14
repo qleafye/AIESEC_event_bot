@@ -97,7 +97,43 @@ async def match_answer(
     return None, None
 
 
+def answer_username_needle(form: dict, items: list[dict]) -> str | None:
+    """Ник из ответа для дашборда: регистр и «@» срезаны, чтобы сравнивать с
+    LOWER(chat_usernames.username). None — у формы нет вопроса про ник; '' — ника в ответе нет."""
+    qkey = form.get("key_username_q")
+    if not qkey:
+        return None
+    return (username_from_value(_value_of(items, qkey)) or "").lower()
+
+
+async def backfill_username_needles(limit: int = 1000) -> int:
+    """Догон username_needle у ответов, принятых до появления колонки или после смены вопроса
+    про ник. Идемпотентно; в лог — только счётчик. Fail-soft."""
+    try:
+        rows = await ef.list_answers_without_needle(limit)
+        forms: dict[int, dict | None] = {}
+        updates: list[tuple[int, str]] = []
+        for row in rows:
+            fid = row["form_id"]
+            if fid not in forms:
+                forms[fid] = await ef.get_form(fid)
+            form = forms[fid]
+            if not form:
+                continue
+            needle = answer_username_needle(form, row["payload"])
+            if needle is not None:
+                updates.append((row["id"], needle))
+        await ef.set_answer_needles(updates)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("ext_forms: догон ников ответов: %s", type(e).__name__)
+        return 0
+    if updates:
+        logger.info("ext_forms: разобрано ников ответов: %d", len(updates))
+    return len(updates)
+
+
 async def rematch_unmatched(limit: int = 500) -> int:
+    await backfill_username_needles()
     rows = await ef.list_unmatched_answers(limit)
     forms: dict[int, dict | None] = {}
     phones = await _phone_map() if rows else None

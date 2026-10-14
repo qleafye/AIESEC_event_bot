@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 
 from database import ext_forms_db as ef
-from services.ext_forms.ext_forms_match import match_answer
+from services.ext_forms.ext_forms_match import answer_username_needle, match_answer
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,7 @@ async def ingest_answer(
         form_id=form["id"], answer_id=str(answer_id), answered_at=answered_at,
         received_at=msk_now().strftime("%Y-%m-%d %H:%M:%S"), payload=items, raw=raw,
         matched_telegram_id=tid, match_how=how,
+        username_needle=answer_username_needle(form, items),
     )
     if inserted:
         # Делегации вузов: отдельный try — сбой делегаций не должен ронять приём ответа
