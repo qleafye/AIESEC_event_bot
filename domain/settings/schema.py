@@ -590,6 +590,34 @@ SETTINGS_SCHEMA = {
         "options": ["on", "off"], "prompt": None, "default": "off",
         "per_city": True,
     },
+    "session_enroll_quiz_offer": {
+        "type": "enum", "group": "event", "label": "🧭 Предлагать тест перед записью",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+        "per_city": True,
+    },
+    "session_enroll_quiz_offer_text": {
+        "type": "text", "group": "event", "label": "📅 Запись на сессии: предложение пройти тест",
+        "prompt": (
+            "Первый экран записи, если у города есть тест: предложение пройти его или сразу записаться.\n\nПример: Перед записью можешь пройти короткий тест. Можно пропустить."
+        ),
+        "default": (
+            "Перед записью можешь пройти короткий тест: узнаешь уровень своих компетенций и поймёшь, "
+            "какие сессии прокачают тебя сильнее. Займёт пару минут. Можно пропустить и сразу перейти к записи."
+        ),
+        "per_city": True,
+    },
+    "session_enroll_quiz_offer_go_button": {
+        "type": "text", "group": "event", "label": "📅 Запись на сессии: кнопка «Пройти тест»",
+        "prompt": "Подпись кнопки, которая открывает тест.\n\nПример: 🧭 Пройти тест",
+        "default": "🧭 Пройти тест",
+        "per_city": True,
+    },
+    "session_enroll_quiz_offer_skip_button": {
+        "type": "text", "group": "event", "label": "📅 Запись на сессии: кнопка «Сразу к записи»",
+        "prompt": "Подпись кнопки, которая пропускает тест и открывает запись.\n\nПример: ➡️ Сразу к записи",
+        "default": "➡️ Сразу к записи",
+        "per_city": True,
+    },
     "session_enroll_deadline": {
         "type": "date", "format": "datetime", "group": "event",
         "label": "⏳ Запись на сессии закрывается",
