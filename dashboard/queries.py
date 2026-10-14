@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 import shared.arrival_stats as arrival_stats
+import shared.enroll_stats as enroll_stats
 from dashboard.amb_tiers_block import amb_tiers_block as _amb_tiers_block
 from dashboard.timeutil import msk_now
 
@@ -1423,6 +1424,47 @@ def arrival_block(conn, scope: Scope) -> dict | None:
     for s in report["sessions"]:
         s["city_label"] = labels.get(s["city"], s["city"])
     return report
+
+
+def enroll_block(conn, scope: Scope) -> dict | None:
+    """Раздел «Запись на сессии» страницы «Форум»: по каждой сессии с треком — записано, мест,
+    свободно, пришли; плюс «записались хотя бы на одну сессию: N из M одобренных». SQL — общий
+    корневой `shared/enroll_stats.py`, те же запросы исполняет бот (вкладка Google-таблицы).
+    Без ПД — только счётчики и названия сессий. Срез по `scope.city` (привязанный менеджер
+    получает свой город принудительно, см. `viewer_scope`).
+
+    `None`, если таблиц записи нет (старая база) или в срезе нет сессий с треком."""
+    def has(name: str) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+        ).fetchone() is not None
+
+    if not (has("session_enrollments") and has("program_tracks") and has("program_sessions")):
+        return None
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(program_sessions)").fetchall()}
+    if "track_id" not in cols or "enroll_limit" not in cols:
+        return None
+    sql, params = enroll_stats.sessions_query(scope.city, with_checkins=has("checkins"))
+    rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
+    if not rows:
+        return None
+    labels = {r["code"]: r["label"] for r in conn.execute("SELECT code, label FROM cities").fetchall()} if has("cities") else {}
+    sessions = enroll_stats.session_summary(rows)
+    for s in sessions:
+        s["city_label"] = labels.get(s["city"], s["city"])
+        s["day_label"] = arrival_stats.day_short(s["day"]) if s.get("day") else "—"
+    city_frag, city_params = _city_sql(conn, scope.city)
+    season_frag, season_params = _season_sql(conn, scope.season)
+    where, uparams = arrival_stats.approved_users_where(
+        [city_frag, season_frag], [*city_params, *season_params],
+    )
+    approved = _scalar(conn, f"SELECT COUNT(*) FROM users WHERE {where}", uparams) or 0
+    enrolled = _scalar(conn, *enroll_stats.enrolled_among_query(where, uparams, scope.city)) or 0
+    pct = round(enrolled * 100 / approved) if approved else None
+    return {
+        "sessions": sessions, "enrolled": enrolled, "approved": approved, "pct": pct,
+        "has_arrived": has("checkins"),
+    }
 
 
 def _floor_rows(conn, scope: Scope, city: str | None, day: str, now: datetime) -> dict:

@@ -57,6 +57,7 @@
   <nav class="section-nav" aria-label="Разделы страницы">
     <a class="switch-link" href="#arrival">Приход</a>
     <a class="switch-link" href="#sessions">Сессии</a>
+    <a class="switch-link" href="#enroll">Запись на сессии</a>
     <a class="switch-link" href="#after">После форума</a>
     <a class="switch-link" href="#sos">SOS</a>
     <a class="switch-link" href="#decisions">Решения по заявкам</a>
@@ -278,6 +279,50 @@
       </div>
     </section>
     {% endif %}
+    {% endif %}
+  </section>
+
+  {# ═══ Запись на сессии: заполненность по сессиям с треком (общий с вкладкой Google-таблицы shared/enroll_stats.py) ═══ #}
+  <section class="page-section" id="enroll" aria-labelledby="enroll-title">
+    <h2 class="section-title" id="enroll-title">Запись на сессии</h2>
+    {% if not enroll %}
+    <section class="block"><div class="card"><p class="empty-note">Нет данных — сессий, на которые можно записаться, пока нет.</p></div></section>
+    {% else %}
+    <section class="block">
+      <div class="card">
+        <p class="cut-title">Записались хотя бы на одну сессию: {{ enroll.enrolled | thousands }} из {{ enroll.approved | thousands }} одобренных{% if enroll.pct is not none %} ({{ enroll.pct }}%){% endif %}</p>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              {% if not scope.city %}<th>Город</th>{% endif %}
+              <th>День</th><th>Время</th><th>Сессия</th><th>Зал</th><th>Трек</th><th>Спикер</th>
+              <th class="num">Записано</th><th class="num">Мест</th><th class="num">Свободно</th>
+              {% if enroll.has_arrived %}<th class="num">Пришли</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in enroll.sessions %}
+            <tr>
+              {% if not scope.city %}<td data-label="Город">{{ s.city_label }}</td>{% endif %}
+              <td data-label="День">{{ s.day_label }}</td>
+              <td data-label="Время">{{ s.time }}</td>
+              <td data-label="Сессия">{% if s.enroll_closed %}🔒 {% endif %}{{ s.title }}</td>
+              <td data-label="Зал">{{ s.hall_name or "—" }}</td>
+              <td data-label="Трек">{{ s.track_name or "—" }}</td>
+              <td data-label="Спикер">{{ s.speaker or "—" }}</td>
+              <td class="num" data-label="Записано">{{ s.enrolled | thousands }}</td>
+              <td class="num" data-label="Мест">{% if s.enroll_limit is not none %}{{ s.enroll_limit | thousands }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Свободно">{% if s.free is not none %}{{ s.free | thousands }}{% else %}—{% endif %}</td>
+              {% if enroll.has_arrived %}<td class="num" data-label="Пришли">{{ (s.arrived or 0) | thousands }}</td>{% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <p class="empty-note">Те же цифры — во вкладке «Записи на сессии» Google-таблицы; список людей — во вкладке «Кто куда записан».</p>
+      </div>
+    </section>
     {% endif %}
   </section>
 
