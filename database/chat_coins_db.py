@@ -8,6 +8,9 @@
 упирается в PK и монет не пишет. Перенос — одна строка `coins` на человека: у кого строка
 с `source = 'transfer'` уже есть, повторный перенос его пропускает.
 
+Журнал баллов для вкладки таблицы (`list_coins_log`) читается здесь же: ему нужна связка
+`coins` с наградой чата (ссылка на сообщение), а раздувать `database/db.py` незачем.
+
 Отдельный модуль, а не ещё один блок в `database/db.py` (тот больше 12 тысяч строк).
 Соединение — `_db._connect()` через атрибут модуля (тесты подменяют `config.DB_PATH`).
 """
@@ -132,3 +135,28 @@ async def chat_username_ids(needles: list[str]) -> dict[str, int]:
             if row:
                 out[needle] = int(row[0])
     return out
+
+
+async def list_coins_log() -> list[dict]:
+    """Все строки `coins` для вкладки «Журнал баллов», новые сверху (по id: он строго монотонен,
+    у пачки переноса один штамп времени). Получатель и начисливший — из `users`, а если анкеты
+    нет, из `chat_usernames`. Для «+N» в чате — чат и сообщение, за которое начислили."""
+    async with _db._connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT c.id, c.user_id, c.delta, c.reason, c.changed_by, c.timestamp, c.source, "
+            "u.full_name AS user_full_name, u.username AS user_username, "
+            "u.event_city AS user_event_city, "
+            "ucu.username AS user_chat_username, ucu.first_name AS user_chat_first_name, "
+            "m.full_name AS changer_full_name, m.username AS changer_username, "
+            "mcu.username AS changer_chat_username, mcu.first_name AS changer_chat_first_name, "
+            "a.chat_id AS award_chat_id, a.message_id AS award_message_id "
+            "FROM coins c "
+            "LEFT JOIN users u ON u.telegram_id = c.user_id "
+            "LEFT JOIN chat_usernames ucu ON ucu.telegram_id = c.user_id "
+            "LEFT JOIN users m ON m.telegram_id = c.changed_by "
+            "LEFT JOIN chat_usernames mcu ON mcu.telegram_id = c.changed_by "
+            "LEFT JOIN chat_coin_awards a ON a.coin_id = c.id "
+            "ORDER BY c.id DESC"
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
