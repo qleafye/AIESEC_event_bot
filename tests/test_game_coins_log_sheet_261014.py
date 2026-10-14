@@ -181,3 +181,10 @@ def test_coins_journal_screen_points_to_journal_tab(tmp_path):
     asyncio.run(db.set_setting("game_coins_log_tab", "🤖 Журнал баллов"))
     text, _kb = asyncio.run(admin_gamification._coins_journal_screen())
     assert "во вкладке «🤖 Журнал баллов»" in text
+
+
+def test_handle_skips_dash_placeholder():
+    """«-» из анкеты — не ник: берём следующий источник ника или пусто, а не «@-»."""
+    assert cls._handle("-", "chat_nick") == "@chat_nick"
+    assert cls._handle("-", None) == ""
+    assert cls._handle("@boss") == "@boss"
