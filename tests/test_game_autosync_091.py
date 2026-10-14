@@ -290,7 +290,7 @@ def test_rebuild_game_sheets_writes_last_synced_at_on_full_success(tmp_path, mon
         assert before is None
 
         result = await admin_gamification.rebuild_game_sheets()
-        assert result == (0, 0)
+        assert result == (0, 0, 0)
 
         after = await db.get_setting("game_sheet_last_synced_at")
         assert after is not None
@@ -326,7 +326,7 @@ def test_rebuild_game_sheets_does_not_raise_on_full_failure(tmp_path, monkeypatc
 
     async def go():
         result = await admin_gamification.rebuild_game_sheets()  # must not raise
-        assert result == (-1, -1)
+        assert result == (-1, -1, -1)
         assert await db.get_setting("game_sheet_last_synced_at") is None
 
     asyncio.run(go())

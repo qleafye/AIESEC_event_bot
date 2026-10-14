@@ -195,7 +195,7 @@ def test_admin_game_sync_sheet_reports_row_counts_on_success(tmp_path, monkeypat
         await admin_gamification.sync_game_sheets(callback)
 
         titles = [c[0] for c in calls]
-        assert titles == ["Гейма", "История сдач"]
+        assert titles == ["Гейма", "История сдач", "Журнал баллов"]
         # column order follows created_at ASC (t1 earlier than t2) even though list_all_tasks()
         # itself returns DESC -- the handler must explicitly reverse it.
         matrix_headers = calls[0][1]
@@ -229,7 +229,7 @@ def test_admin_game_sync_sheet_reports_failure_without_crashing(tmp_path, monkey
         await admin_gamification.sync_game_sheets(callback)  # must not raise
 
         # both tabs were still attempted -- one failure does not cancel the other call.
-        assert calls == ["Гейма", "История сдач"]
+        assert calls == ["Гейма", "История сдач", "Журнал баллов"]
 
         text = callback.message.answers_sent[-1]
         assert "Гейма" in text and "ошибка синхронизации" in text

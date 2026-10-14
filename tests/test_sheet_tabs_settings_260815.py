@@ -384,13 +384,14 @@ def test_sync_game_sheets_uses_registry_tab_names_by_default(tmp_path, monkeypat
         await admin_gamification.sync_game_sheets(callback)
 
     asyncio.run(go())
-    assert calls == ["Гейма", "История сдач"]
+    assert calls == ["Гейма", "История сдач", "Журнал баллов"]
 
 
 def test_sync_game_sheets_confirm_shows_renamed_tabs(tmp_path, monkeypatch):
     _admin_ready(tmp_path)
     asyncio.run(db.set_setting("game_matrix_tab", "GAMIFICATION бот"))
     asyncio.run(db.set_setting("game_history_tab", "GAMIFICATION чат"))
+    asyncio.run(db.set_setting("game_coins_log_tab", "GAMIFICATION баллы"))
 
     class _FakeUser:
         def __init__(self, uid):
@@ -421,6 +422,7 @@ def test_sync_game_sheets_confirm_shows_renamed_tabs(tmp_path, monkeypatch):
     asyncio.run(go())
     assert "GAMIFICATION бот" in callback.message.text
     assert "GAMIFICATION чат" in callback.message.text
+    assert "GAMIFICATION баллы" in callback.message.text
     assert "Гейма" not in callback.message.text
     assert "История сдач" not in callback.message.text
 
