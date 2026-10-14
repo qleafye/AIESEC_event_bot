@@ -3628,6 +3628,31 @@ async def get_leaderboard(limit: int = 10) -> list[dict]:
             return [dict(row) for row in await cursor.fetchall()]
 
 
+async def coin_totals_by_user() -> dict[int, dict]:
+    """Итоги журнала баллов по каждому человеку одним запросом — для вкладки «Гейма».
+
+    `chat` — «+N» в чате (`source = 'chat'`); `other` — всё, кроме заданий и чата (ручные, перенос
+    из таблицы, реферальные, автоматические, старые строки с NULL); `total` — весь баланс
+    (то же число, что `get_balance`). Баллы за задания отдельной колонкой не нужны: они уже
+    в колонках заданий матрицы. Списания (отрицательный delta) входят в суммы как есть."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('''
+            SELECT c.user_id AS user_id,
+                   COALESCE(SUM(CASE WHEN c.source = 'chat' THEN c.delta ELSE 0 END), 0) AS chat,
+                   COALESCE(SUM(CASE WHEN c.source IS NULL OR c.source NOT IN ('task', 'chat')
+                                     THEN c.delta ELSE 0 END), 0) AS other,
+                   COALESCE(SUM(c.delta), 0) AS total,
+                   u.full_name AS full_name,
+                   u.username AS username,
+                   u.event_city AS event_city
+            FROM coins c
+            LEFT JOIN users u ON u.telegram_id = c.user_id
+            GROUP BY c.user_id
+        ''') as cursor:
+            return {int(r["user_id"]): dict(r) for r in await cursor.fetchall()}
+
+
 async def get_user_rank(user_id: int) -> int | None:
     """1-based rank by summed balance; None if the user has no ledger rows."""
     async with _connect() as db:

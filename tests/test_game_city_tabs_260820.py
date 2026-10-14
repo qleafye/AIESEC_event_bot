@@ -194,16 +194,16 @@ def test_rebuild_module_on_writes_two_plus_two_per_city_filtered(tmp_path, monke
         "Гейма", "История сдач", "СПб Гейма", "СПб История сдач", "Тюмень Гейма", "Тюмень История сдач",
     ]
     # shared tabs unchanged: every participant, every task column
-    assert len(written["Гейма"][1]) == 3 and written["Гейма"][0][4:] == ["Всем", "Питер"]
+    assert len(written["Гейма"][1]) == 3 and written["Гейма"][0][4:6] == ["Всем", "Питер"]
     assert len(written["История сдач"][1]) == 4
     # spb: only the spb delegate; both tasks visible (all-cities + spb-only)
     spb_h, spb_rows = written["СПб Гейма"]
-    assert spb_h[4:] == ["Всем", "Питер"]
+    assert spb_h[4:6] == ["Всем", "Питер"]
     assert [r[0] for r in spb_rows] == [SPB_USER]
     assert len(written["СПб История сдач"][1]) == 2
     # tyumen: only the tyumen delegate; the spb-only task is not a column there
     ty_h, ty_rows = written["Тюмень Гейма"]
-    assert ty_h[4:] == ["Всем"]
+    assert ty_h[4:5] == ["Всем"]
     assert [r[0] for r in ty_rows] == [TYUMEN_USER]
     assert len(written["Тюмень История сдач"][1]) == 1
     assert asyncio.run(db.get_setting("game_sheet_last_synced_at")) is not None
