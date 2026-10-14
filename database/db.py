@@ -2094,6 +2094,14 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_ext_answers_sheet "
             "ON external_form_answers(sheet_state, sheet_next_try_at)"
         )
+        # username_needle: ник из ответа в нижнем регистре без «@». '' = ответ разобран, ника
+        # нет; NULL = ещё не разобран. Нужен дашборду для сопоставления с chat_usernames;
+        # к сопоставлению с users (matched_telegram_id) отношения не имеет.
+        await _ensure_column(db, "external_form_answers", "username_needle", "TEXT")
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ext_answers_needle "
+            "ON external_form_answers(username_needle)"
+        )
         await db.execute('''
             CREATE TABLE IF NOT EXISTS external_form_columns (
                 form_id INTEGER NOT NULL,
