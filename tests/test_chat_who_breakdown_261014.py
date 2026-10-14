@@ -242,3 +242,178 @@ def test_set_form_keys_resets_needles(tmp_path):
     assert _needle(form["id"], "1")[0] is None
     asyncio.run(efm.backfill_username_needles())
     assert _needle(form["id"], "1")[0] == "zed_zed"
+
+
+# ── Задача 3: дашборд «Кто в чате» ───────────────────────────────────────────────────────
+
+import sqlite3  # noqa: E402
+
+from dashboard import db as dash_db  # noqa: E402
+from dashboard.queries import Scope, chat_form_delegations, chat_who_breakdown  # noqa: E402
+from tests.test_dashboard_chat_260914 import _cfg, _client, _login, STATS_MANAGER_ID  # noqa: E402
+
+MSK_CHAT = {"city": "msk", "chat_id": CHAT_ID, "title": "Чат", "label": "Москва"}
+
+
+async def _seed_who():
+    async with db._connect() as conn:
+        for code, label, order in (("msk", "Москва", 0), ("spb", "Санкт-Петербург", 1)):
+            await conn.execute(
+                "INSERT INTO cities (code, label, enabled, sort_order, created_at) "
+                "VALUES (?, ?, 1, ?, '2026-01-01 00:00:00')", (code, label, order))
+        users = [(1, "approved", "msk"), (2, "approved", "spb"), (3, "rejected", None),
+                 (4, "pending", None), (5, "waitlist", None), (13, "approved", "msk")]
+        for tid, st, city in users:
+            await conn.execute(
+                "INSERT INTO users (telegram_id, full_name, status, event_city) VALUES (?, 'X', ?, ?)",
+                (tid, st, city))
+        # 6 делегация, 7 начал анкету, 8 админ, 9 никто, 13 ушёл
+        for tid in (1, 2, 3, 4, 5, 6, 7, 8, 9):
+            await conn.execute(
+                "INSERT INTO chat_members (chat_id, telegram_id, status, source, updated_at) "
+                "VALUES (?, ?, 'member', 't', '2026-01-01 00:00:00')", (CHAT_ID, tid))
+        await conn.execute(
+            "INSERT INTO chat_members (chat_id, telegram_id, status, source, updated_at) "
+            "VALUES (?, 13, 'left', 't', '2026-01-01 00:00:00')", (CHAT_ID,))
+        await conn.execute("INSERT INTO chat_usernames (telegram_id, username, updated_at) "
+                           "VALUES (6, 'NICK_DEL', '2026-01-01')")
+        await conn.execute("INSERT INTO reg_started (telegram_id, started_at) VALUES (7, '2026-01-01')")
+        await conn.execute("INSERT INTO chat_admins (chat_id, telegram_id, synced_at) "
+                           "VALUES (?, 8, '2026-01-01')", (CHAT_ID,))
+        await conn.commit()
+
+
+def _seed_form_answer(needle_text="@Nick_Del"):
+    form = asyncio.run(ef.create_form(platform="yandex", external_id="f1", title="Ф",
+                                      key_username_q="nick"))
+    asyncio.run(ingest_answer({"id": form, "key_username_q": "nick"}, answer_id="1",
+                              answered_at=None, items=_items(needle_text), raw=None))
+    return form
+
+
+def _breakdown(path, scope=None, chat=MSK_CHAT):
+    with dash_db.read_conn(path) as conn:
+        return chat_who_breakdown(conn, scope or Scope(), chat)
+
+
+def test_who_breakdown_each_category_once_and_sum_equals_present(tmp_path):
+    config.DB_PATH = path = str(tmp_path / "who3.db")
+    fast_init_db()
+    asyncio.run(_seed_who())
+    _seed_form_answer()
+    res = _breakdown(path)
+    counts = {r["key"]: r["count"] for r in res["rows"]}
+    assert counts == {"approved_here": 1, "approved_other": 1, "rejected": 1, "pending": 1,
+                      "other_status": 1, "delegation": 1, "started": 1, "chat_admin": 1,
+                      "unidentified": 1}
+    assert res["present"] == 9 == sum(counts.values())
+    assert res["no_application"] == 4
+
+
+def test_who_breakdown_priority(tmp_path):
+    config.DB_PATH = path = str(tmp_path / "who4.db")
+    fast_init_db()
+
+    async def seed():
+        async with db._connect() as conn:
+            for tid in (10, 11, 12):
+                await conn.execute(
+                    "INSERT INTO chat_members (chat_id, telegram_id, status, source, updated_at) "
+                    "VALUES (?, ?, 'member', 't', '2026-01-01')", (CHAT_ID, tid))
+                await conn.execute("INSERT INTO chat_admins (chat_id, telegram_id, synced_at) "
+                                   "VALUES (?, ?, '2026-01-01')", (CHAT_ID, tid))
+            for tid in (10, 11):
+                await conn.execute("INSERT INTO reg_started (telegram_id, started_at) "
+                                   "VALUES (?, '2026-01-01')", (tid,))
+            await conn.execute("INSERT INTO chat_usernames (telegram_id, username, updated_at) "
+                               "VALUES (10, '@Mixed_Case', '2026-01-01')")
+            await conn.commit()
+
+    asyncio.run(seed())
+    _seed_form_answer("@mixed_case")
+    counts = {r["key"]: r["count"] for r in _breakdown(path)["rows"]}
+    assert counts["delegation"] == 1 and counts["started"] == 1 and counts["chat_admin"] == 1
+
+
+def test_who_breakdown_spb_chat_and_scope(tmp_path):
+    config.DB_PATH = path = str(tmp_path / "who5.db")
+    fast_init_db()
+    asyncio.run(_seed_who())
+    spb_chat = {"city": "spb", "chat_id": CHAT_ID, "title": "СПб", "label": "СПб"}
+    counts = {r["key"]: r["count"] for r in _breakdown(path, chat=spb_chat)["rows"]}
+    # user 1 (msk) и user 2 (spb): в чате spb «этот город» только второй
+    assert counts["approved_here"] == 1 and counts["approved_other"] == 1
+    other = _breakdown(path, scope=Scope(city="spb"))
+    assert other["present"] == 0 and all(r["count"] == 0 for r in other["rows"])
+
+
+def test_who_breakdown_without_needle_column(tmp_path):
+    config.DB_PATH = path = str(tmp_path / "who6.db")
+    fast_init_db()
+    asyncio.run(_seed_who())
+    raw = sqlite3.connect(path)
+    raw.execute("DROP INDEX IF EXISTS idx_ext_answers_needle")
+    raw.execute("ALTER TABLE external_form_answers DROP COLUMN username_needle")
+    raw.commit()
+    raw.close()
+    res = _breakdown(path)
+    assert {r["key"]: r["count"] for r in res["rows"]}["delegation"] == 0
+    assert res["present"] == 9
+    with dash_db.read_conn(path) as conn:
+        assert chat_form_delegations(conn, Scope(), MSK_CHAT) is None
+
+
+def test_form_delegations_counts_users_and_non_users(tmp_path):
+    config.DB_PATH = path = str(tmp_path / "who7.db")
+    fast_init_db()
+    asyncio.run(_seed_who())
+    with dash_db.read_conn(path) as conn:
+        assert chat_form_delegations(conn, Scope(), MSK_CHAT) is None  # форм нет
+    form = asyncio.run(ef.create_form(platform="yandex", external_id="f1", title="Ф",
+                                      key_username_q="nick"))
+    fdict = {"id": form, "key_username_q": "nick"}
+
+    async def put():
+        await db.upsert_chat_username(9, "Zed", None)
+        async with db._connect() as conn:
+            await conn.execute("UPDATE users SET username = 'UserOne' WHERE telegram_id = 1")
+            await conn.commit()
+        for aid, val in (("a", "@nick_del"), ("b", "@userone"), ("c", "@zed"), ("d", "@gone_far"),
+                         ("e", "без ника")):
+            await ingest_answer(fdict, answer_id=aid, answered_at=None, items=_items(val), raw=None)
+        async with db._connect() as conn:
+            await conn.execute("UPDATE external_form_answers SET matched_telegram_id = 2 "
+                               "WHERE answer_id = 'e'")
+            await conn.commit()
+
+    asyncio.run(put())
+    with dash_db.read_conn(path) as conn:
+        res = chat_form_delegations(conn, Scope(), MSK_CHAT)
+    # a -> id6, b -> id1 (users), c -> id9, e -> matched 2 (в чате); d вне чата
+    assert res == {"answers": 5, "in_chat": 4}
+
+
+def test_chat_route_shows_who_block(tmp_path):
+    config.DB_PATH = path = str(tmp_path / "who8.db")
+    fast_init_db()
+    asyncio.run(_seed_who())
+
+    async def staff():
+        async with db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO staff (telegram_id, role, added_by, added_at, city) "
+                "VALUES (?, 'reg_manager', 1, '2026-01-01', NULL)", (STATS_MANAGER_ID,))
+            for k, v in (("role_caps_reg_manager", "moderate_reg;stats"),
+                         ("delegate_chat_id", str(CHAT_ID)), ("delegate_chat_title", "Чат")):
+                await conn.execute("INSERT INTO bot_settings (key, value) VALUES (?, ?)", (k, v))
+            await conn.commit()
+
+    asyncio.run(staff())
+    _seed_form_answer()
+    client = _client(_cfg(path))
+    _login(client, STATS_MANAGER_ID)
+    resp = client.get("/chat")
+    assert resp.status_code == 200
+    assert "Кто в чате" in resp.text
+    assert "Ответов во внешней форме: 1" in resp.text
+    assert "В чате без заявки" in resp.text
