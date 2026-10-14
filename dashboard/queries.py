@@ -1702,6 +1702,115 @@ def chat_overview(conn, scope: Scope, chat: dict) -> dict:
     }
 
 
+def _has_column(conn, table: str, column: str) -> bool:
+    """Есть ли колонка в таблице: read-only процесс может смотреть на БД, где бот ещё не
+    перезапущен с новой миграцией."""
+    return any(row[1] == column for row in conn.execute(f"PRAGMA table_info({table})").fetchall())
+
+
+_CHAT_WHO_KEYS = (
+    "approved_here", "approved_other", "rejected", "pending", "other_status",
+    "delegation", "started", "chat_admin", "unidentified",
+)
+
+
+def _chat_who_labels(chat: dict) -> dict:
+    here = "Одобрены, этот город" if chat["city"] is not None else "Одобрены"
+    return {
+        "approved_here": (here, "заявка одобрена, город заявки совпадает с чатом"),
+        "approved_other": ("Одобрены, но другой город или город не указан",
+                           "заявка одобрена в другой город — возможно, ошиблись чатом"),
+        "rejected": ("Отклонены, но остались в чате", "заявку отклонили, из чата не вышли"),
+        "pending": ("Заявка ещё на модерации", ""),
+        "other_status": ("Заявка в другом статусе", ""),
+        "delegation": ("Делегации из внешней формы",
+                       "заявки в боте нет, но @ник совпал с ответом во внешней форме "
+                       "(Яндекс Форма делегаций)"),
+        "started": ("Начали анкету и не отправили", ""),
+        "chat_admin": ("Админы чата", "команда чата, заявка им не нужна"),
+        "unidentified": ("Не опознаны",
+                         "ни заявки, ни ответа в форме; часто это люди без @ника — бот "
+                         "узнаёт ники при сверке состава чата"),
+    }
+
+
+def chat_who_breakdown(conn, scope: Scope, chat: dict) -> dict:
+    """Кто сейчас в чате: ОДИН агрегатный запрос, каждый присутствующий попадает ровно в одну
+    категорию (порядок веток CASE = приоритет), сумма строк = число присутствующих. Ник
+    сравнивается только внутри EXISTS — колонки ника и имени не выбираются."""
+    labels = _chat_who_labels(chat)
+    counts = {key: 0 for key in _CHAT_WHO_KEYS}
+    if _chat_scope_ok(scope, chat):
+        present_ph = ",".join("?" for _ in _CHAT_PRESENT_STATUSES)
+        if chat["city"] is None:
+            here_sql, here_params = "u.status = 'approved'", []
+        else:
+            frag, here_params = _city_fragment(conn, chat["city"])
+            here_sql = f"u.status = 'approved' AND {frag}"
+        delegation = ""
+        if _has_column(conn, "external_form_answers", "username_needle"):
+            delegation = (
+                "WHEN EXISTS (SELECT 1 FROM chat_usernames cu JOIN external_form_answers a "
+                "ON a.username_needle = LOWER(LTRIM(cu.username, '@')) WHERE cu.telegram_id = cm.telegram_id "
+                "AND cu.username IS NOT NULL AND a.username_needle != '') THEN 'delegation' "
+            )
+        rows = conn.execute(
+            f"SELECT CASE WHEN {here_sql} THEN 'approved_here' "
+            "WHEN u.status = 'approved' THEN 'approved_other' "
+            "WHEN u.status = 'rejected' THEN 'rejected' "
+            "WHEN u.status = 'pending' THEN 'pending' "
+            "WHEN u.telegram_id IS NOT NULL THEN 'other_status' "
+            f"{delegation}"
+            "WHEN EXISTS (SELECT 1 FROM reg_started rs WHERE rs.telegram_id = cm.telegram_id) "
+            "THEN 'started' "
+            "WHEN EXISTS (SELECT 1 FROM chat_admins ca WHERE ca.chat_id = cm.chat_id "
+            "AND ca.telegram_id = cm.telegram_id) THEN 'chat_admin' "
+            "ELSE 'unidentified' END AS cat, COUNT(*) AS cnt "
+            "FROM chat_members cm LEFT JOIN users u ON u.telegram_id = cm.telegram_id "
+            f"WHERE cm.chat_id = ? AND cm.status IN ({present_ph}) GROUP BY cat",
+            (*here_params, chat["chat_id"], *_CHAT_PRESENT_STATUSES),
+        ).fetchall()
+        for row in rows:
+            counts[row["cat"]] = row["cnt"]
+    present = sum(counts.values())
+    return {
+        "present": present,
+        "no_application": sum(counts[k] for k in ("delegation", "started", "chat_admin", "unidentified")),
+        "rows": [{"key": k, "label": labels[k][0], "hint": labels[k][1], "count": counts[k]}
+                 for k in _CHAT_WHO_KEYS],
+    }
+
+
+def chat_form_delegations(conn, scope: Scope, chat: dict) -> dict | None:
+    """Ответы внешних форм с вопросом про ник: `answers` — всего, `in_chat` — чьи авторы сейчас
+    в ЭТОМ чате (по matched_telegram_id, по нику из chat_usernames или из users). Отдельная
+    метрика, в сумму разбивки не входит. Форма к городу не привязана, поэтому строка есть на
+    карточке любого чата, где такие ответы есть; `in_chat` считает только присутствующих здесь,
+    так что в чате другого города он естественно близок к нулю. None — нечего показывать."""
+    if not _chat_scope_ok(scope, chat):
+        return None
+    if not _has_column(conn, "external_form_answers", "username_needle"):
+        return None
+    forms = ("FROM external_form_answers a JOIN external_forms f ON f.id = a.form_id "
+             "WHERE f.key_username_q IS NOT NULL")
+    total = _scalar(conn, f"SELECT COUNT(*) {forms}") or 0
+    if not total:
+        return None
+    present_ph = ",".join("?" for _ in _CHAT_PRESENT_STATUSES)
+    in_chat = _scalar(
+        conn,
+        f"SELECT COUNT(*) {forms} AND EXISTS (SELECT 1 FROM chat_members cm "
+        f"WHERE cm.chat_id = ? AND cm.status IN ({present_ph}) AND ("
+        "cm.telegram_id = a.matched_telegram_id OR (a.username_needle != '' AND ("
+        "EXISTS (SELECT 1 FROM chat_usernames cu WHERE cu.telegram_id = cm.telegram_id "
+        "AND LOWER(LTRIM(cu.username, '@')) = a.username_needle) "
+        "OR EXISTS (SELECT 1 FROM users u WHERE u.telegram_id = cm.telegram_id "
+        "AND LOWER(u.username) = a.username_needle)))))",
+        (chat["chat_id"], *_CHAT_PRESENT_STATUSES),
+    ) or 0
+    return {"answers": total, "in_chat": in_chat}
+
+
 def chat_joins_daily(conn, chat_id: int) -> list[tuple[str, int]]:
     """Плотный календарь вступлений по дням — из `chat_events` (`event = 'join'`), тот же
     приём заполнения дыр, что `daily_registrations`."""
