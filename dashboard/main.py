@@ -491,7 +491,7 @@ def _parse_reg(reg) -> bool | None:
 
 def build_chat_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, period: str | None = None,
-    reg: str | None = None,
+    reg: str | None = None, chat: str | None = None,
 ) -> dict:
     """Квик 260914-rgr (RGR-01..07): собирает ВЕСЬ контекст страницы «Чат» одним вызовом
     (тот же принцип, что `build_page_context` — шаблон в БД не ходит). Менеджер, привязанный
@@ -510,8 +510,27 @@ def build_chat_context(
     # Ссылки переключателей сохраняют город/сезон страницы (и явный выбор «Только с анкетой»).
     base_params = {k: v for k, v in (("city", scope.city), ("season", scope.season)) if v}
     reg_params = {} if registered_only is None else {"reg": "1" if registered_only else "0"}
+    # Владелец 14.10: чаты городов не простынёй подряд, а вкладками, как «Город:» на главной.
+    # Выбор — ?chat=<chat_id>; без него — чат города из ?city=, иначе первый. Вкладки только
+    # когда чатов больше одного (менеджер города и так видит один свой).
+    selected = next((c for c in visible_chats if str(c["chat_id"]) == str(chat or "")), None)
+    if selected is None and scope.city:
+        selected = next((c for c in visible_chats if c["city"] == scope.city), None)
+    if selected is None and visible_chats:
+        selected = visible_chats[0]
+    chat_tabs = [
+        {
+            "label": c["label"],
+            "active": c is selected,
+            "href": "/chat?" + urlencode({**base_params, "chat": c["chat_id"], "period": period,
+                                          **reg_params}),
+        }
+        for c in visible_chats
+    ] if len(visible_chats) > 1 else []
+    if chat_tabs:
+        base_params = {**base_params, "chat": selected["chat_id"]}
     cards = []
-    for chat in visible_chats:
+    for chat in ([selected] if selected is not None else []):
         joins_rows = queries.chat_joins_daily(conn, chat["chat_id"])
         messages_rows = queries.chat_messages_daily(conn, chat["chat_id"])
         # NB: ключ НЕ "values" — та же ловушка, что у daily_chart в build_page_context.
@@ -563,6 +582,7 @@ def build_chat_context(
         "scope": scope,
         "chat_bindings": all_chats,
         "cards": cards,
+        "chat_tabs": chat_tabs,
         "period": period,
         "period_links": period_links,
         "bot_username": cfg.bot_username,
@@ -991,6 +1011,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         season: Optional[str] = None,
         period: Optional[str] = None,
         reg: Optional[str] = None,
+        chat: Optional[str] = None,
     ):
         """Квик 260914-rgr (RGR-01..07): периметр — КОПИЯ маршрута `/` строка в строку
         (редирект супердашборда, сессия/логин, пересверка `stats` на каждый запрос,
@@ -1023,7 +1044,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 "telegram_id": telegram_id,
                 "bound_city": staff_city(conn, telegram_id),
             }
-            context = build_chat_context(conn, cfg, scope, viewer, period=period, reg=reg)
+            context = build_chat_context(conn, cfg, scope, viewer, period=period, reg=reg, chat=chat)
 
         return templates.TemplateResponse(request, "chat.html", context)
 
