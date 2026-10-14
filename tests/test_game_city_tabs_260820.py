@@ -105,27 +105,28 @@ def test_filter_submissions_by_delegate_city_null_falls_to_default():
 
 # ── game_tab_plan: names from registry / defaults ───────────────────────────────────────────
 
-def test_tab_plan_module_off_is_exactly_the_two_shared_tabs(tmp_path):
+def test_tab_plan_module_off_is_exactly_the_three_shared_tabs(tmp_path):
     _db_ready(tmp_path)
     plan = asyncio.run(game_sheets.game_tab_plan())
     assert [(e["kind"], e["city"], e["tab"]) for e in plan] == [
         ("matrix", None, "Гейма"),
         ("history", None, "История сдач"),
+        ("coins_log", None, "Журнал баллов"),
     ]
 
 
-def test_tab_plan_module_on_adds_a_pair_per_enabled_city_with_tab_base(tmp_path):
+def test_tab_plan_module_on_adds_a_triple_per_enabled_city_with_tab_base(tmp_path):
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     plan = asyncio.run(game_sheets.game_tab_plan())
     assert [e["tab"] for e in plan] == [
-        "Гейма", "История сдач",
-        "СПб Гейма", "СПб История сдач",          # default suffix carries its own leading space
-        "Тюмень Гейма", "Тюмень История сдач",
+        "Гейма", "История сдач", "Журнал баллов",
+        "СПб Гейма", "СПб История сдач", "СПб Журнал баллов",  # default suffix has its own leading space
+        "Тюмень Гейма", "Тюмень История сдач", "Тюмень Журнал баллов",
     ]
     # Moscow (empty tab base) gets no per-city pair -- its rows are on the shared tabs.
     assert all(e["city"] != "msk" for e in plan)
-    assert plan[2]["city_label"] == "Санкт-Петербург"
+    assert plan[3]["city_label"] == "Санкт-Петербург"
 
 
 def test_tab_plan_respects_registry_suffixes_and_disabled_cities(tmp_path):
@@ -133,15 +134,17 @@ def test_tab_plan_respects_registry_suffixes_and_disabled_cities(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     asyncio.run(db.set_setting("city_tab_suffix__game", "Игра"))          # manager typed no space
     asyncio.run(db.set_setting("city_tab_suffix__game_history", " Сдачи"))
+    asyncio.run(db.set_setting("city_tab_suffix__game_coins_log", "Баллы"))
     asyncio.run(db.set_setting("game_matrix_tab", "GAME"))
     asyncio.run(db.set_setting("city_enabled__tyumen", "off"))
     plan = asyncio.run(game_sheets.game_tab_plan())
-    assert [e["tab"] for e in plan] == ["GAME", "История сдач", "СПб Игра", "СПб Сдачи"]
+    assert [e["tab"] for e in plan] == ["GAME", "История сдач", "Журнал баллов", "СПб Игра", "СПб Сдачи", "СПб Баллы"]
 
 
 def test_tab_suffix_literals_cover_new_kinds():
     assert cities.TAB_SUFFIX["game"] == " Гейма"
     assert cities.TAB_SUFFIX["game_history"] == " История сдач"
+    assert cities.TAB_SUFFIX["game_coins_log"] == " Журнал баллов"
 
 
 # ── rebuild_game_sheets with a mocked writer ────────────────────────────────────────────────

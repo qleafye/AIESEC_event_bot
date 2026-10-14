@@ -189,13 +189,14 @@ def shown_default(key: str) -> str | None:
 # Which Google Sheets tab-name keys the bot actually WRITES to, and HOW. "rewrite" = the sync
 # path does ws.clear() + full rewrite (rebuild_main_sheet / sync_named_worksheet); "append" =
 # only new rows are ever added (append_to_named_sheet), never a clear. preselect_tab
-# (read-only) and the five city_tab_suffix__* keys are deliberately ABSENT — the confirm-gate
+# (read-only) and the six city_tab_suffix__* keys are deliberately ABSENT — the confirm-gate
 # only fires for a key present in this dict.
 SHEET_TAB_WRITE_MODE = {
     "main_sheet_tab": "rewrite",
     "incomplete_sheet_tab": "rewrite",
     "game_matrix_tab": "rewrite",
     "game_history_tab": "rewrite",
+    "game_coins_log_tab": "rewrite",
     "short_sheet_tab": "append",
     "party_sheet_tab": "append",
 }
@@ -251,7 +252,7 @@ def tab_check_failed_warning(key: str) -> str:
 
 # ── Quick 260919-mlu (Task 2): план переименований вкладок ───────────────────────────────
 #
-# SHEET_TAB_NAME_KEYS — все 10 ключей-ИМЁН вкладок из реестра. Это НЕ SHEET_TAB_WRITE_MODE
+# SHEET_TAB_NAME_KEYS — все 11 ключей-ИМЁН вкладок из реестра. Это НЕ SHEET_TAB_WRITE_MODE
 # выше (там 6 ключей и только РЕЖИМ записи rewrite/append — определяет текст гейта задачи
 # 260815-3hw). Здесь — полный список ключей, чьё ЗНАЧЕНИЕ является именем реального листа
 # Google-таблицы (включая polls_sheet_tab/preselect_tab/history_sheet_tab/questions_sheet_tab,
@@ -259,17 +260,17 @@ def tab_check_failed_warning(key: str) -> str:
 # через rebuild/append-путь, который гейт 260815-3hw вообще проверяет).
 SHEET_TAB_NAME_KEYS: tuple[str, ...] = (
     "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
-    "polls_sheet_tab", "game_matrix_tab", "game_history_tab", "preselect_tab",
+    "polls_sheet_tab", "game_matrix_tab", "game_history_tab", "game_coins_log_tab", "preselect_tab",
     "history_sheet_tab", "questions_sheet_tab",
 )
 
 # Городские треки (kind), у которых есть отдельный лист = база города + приписка
 # (cities.tab_suffix). "main" — не трек, суффикса нет, база города И ЕСТЬ главная вкладка.
-_CITY_TRACK_KINDS: tuple[str, ...] = ("short", "party", "incomplete", "game", "game_history")
+_CITY_TRACK_KINDS: tuple[str, ...] = ("short", "party", "incomplete", "game", "game_history", "game_coins_log")
 
 _CITY_KIND_LABELS: dict[str, str] = {
     "main": "основная", "short": "краткая форма", "party": "вечеринка",
-    "incomplete": "незавершённые", "game": "гейма", "game_history": "история сдач",
+    "incomplete": "незавершённые", "game": "гейма", "game_history": "история сдач", "game_coins_log": "журнал баллов",
 }
 
 _PINNED_MAIN_TAB_SETTING_KEY = "sheets_main_tab_pinned_title"
@@ -474,7 +475,7 @@ EXCLUDED_GROUPS = ("roles",)
 # из веба безопасно (префикс сам по себе ничего не переименовывает — переименование делает
 # отдельная кнопка с подтверждением).
 #
-# ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ: пять `city_tab_suffix__*` здесь НЕ перечислены. Они тоже задают имена
+# ИЗВЕСТНОЕ ОГРАНИЧЕНИЕ: шесть `city_tab_suffix__*` здесь НЕ перечислены. Они тоже задают имена
 # вкладок, но развилки под них нет и в самом боте (гейт смотрит только SHEET_TAB_WRITE_MODE) —
 # запирать их в вебе, оставляя открытыми в боте, значило бы прятать проблему, а не чинить.
 # Гейт для суффиксов — отдельная задача, до неё суффиксы ведут себя как раньше в обеих

@@ -1,10 +1,10 @@
 """Quick GAME-CITY-TABS: per-city gamification sheet tabs.
 
-With the cities module ON, the manager gets — besides the two whole-event tabs («Гейма» matrix
-+ «История сдач») — a pair of tabs PER ENABLED CITY holding only that city's rows:
-«СПб Гейма» / «СПб История сдач». Naming follows the registration tabs byte-for-byte:
-`cities.city_tab_base(code) + cities.tab_suffix(kind)` with the two new kinds `game` /
-`game_history` (registry keys `city_tab_suffix__game` / `city_tab_suffix__game_history`).
+With the cities module ON, the manager gets — besides the three whole-event tabs («Гейма» matrix,
+«История сдач», «Журнал баллов») — a triple of tabs PER ENABLED CITY holding only that city's
+rows: «СПб Гейма» / «СПб История сдач» / «СПб Журнал баллов». Naming follows the registration tabs byte-for-byte:
+`cities.city_tab_base(code) + cities.tab_suffix(kind)` with the new kinds `game` /
+`game_history` / `game_coins_log` (registry keys `city_tab_suffix__game*`).
 
 A city whose tab base is empty (the default city, Moscow, whose registration rows live on
 the main tab) gets NO per-city gamification tabs — `"" + " Гейма"` would collide with the
@@ -75,20 +75,23 @@ def filter_coins_log_for_city(rows: list[dict], code: str | None) -> list[dict]:
 
 async def game_tab_plan() -> list[dict]:
     """Ordered list of every gamification tab a rebuild writes, whole-event first:
-        {"kind": "matrix"|"history", "city": None|code, "city_label": str|None, "tab": name}
-    Module OFF -> exactly the two whole-event tabs (behaviour unchanged). Module ON -> plus a
-    matrix+history pair for every ENABLED city that has a non-empty tab base (see module
+        {"kind": "matrix"|"history"|"coins_log", "city": None|code, "city_label": str|None, "tab": name}
+    Module OFF -> exactly the three whole-event tabs (matrix, history, coins log). Module ON ->
+    plus a matrix+history+coins-log triple for every ENABLED city that has a non-empty tab base (see module
     docstring for why an empty base is skipped)."""
     matrix_tab = await get_setting_typed("game_matrix_tab")
     history_tab = await get_setting_typed("game_history_tab")
+    coins_log_tab = await get_setting_typed("game_coins_log_tab")
     plan: list[dict] = [
         {"kind": KIND_MATRIX, "city": None, "city_label": None, "tab": matrix_tab},
         {"kind": KIND_HISTORY, "city": None, "city_label": None, "tab": history_tab},
+        {"kind": KIND_COINS_LOG, "city": None, "city_label": None, "tab": coins_log_tab},
     ]
     if not await cities_module_on():
         return plan
     matrix_suffix = await tab_suffix("game")
     history_suffix = await tab_suffix("game_history")
+    coins_log_suffix = await tab_suffix("game_coins_log")
     for city in await enabled_cities():
         code = city["code"]
         base = await city_tab_base(code)
@@ -99,6 +102,8 @@ async def game_tab_plan() -> list[dict]:
                      "tab": f"{base}{matrix_suffix}"})
         plan.append({"kind": KIND_HISTORY, "city": code, "city_label": label,
                      "tab": f"{base}{history_suffix}"})
+        plan.append({"kind": KIND_COINS_LOG, "city": code, "city_label": label,
+                     "tab": f"{base}{coins_log_suffix}"})
     return plan
 
 
@@ -111,6 +116,13 @@ def rows_for_entry(entry: dict, tasks: list[dict], submissions: list[dict]) -> t
     return filter_tasks_for_city(tasks, code), filter_submissions_for_city(submissions, code)
 
 
+_KIND_WHAT = {
+    KIND_MATRIX: "матрица участники × задания",
+    KIND_HISTORY: "все сдачи",
+    KIND_COINS_LOG: "каждое начисление и списание баллов",
+}
+
+
 def describe_plan(plan: list[dict], *, only_city: str | None = None) -> list[str]:
     """Human lines for the confirm/report screens — one line per whole-event tab, one line
     per city (both of its tabs). `only_city` narrows the per-city lines to that city (a
@@ -119,7 +131,7 @@ def describe_plan(plan: list[dict], *, only_city: str | None = None) -> list[str
     lines: list[str] = []
     for e in plan:
         if e["city"] is None:
-            what = "матрица участники × задания" if e["kind"] == KIND_MATRIX else "все сдачи"
+            what = _KIND_WHAT.get(e["kind"], "все сдачи")
             scope = ", все города" if any(x["city"] for x in plan) else ""
             lines.append(f"«{html.escape(e['tab'])}» — {what}{scope}")
     seen: set[str] = set()
