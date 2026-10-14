@@ -93,3 +93,9 @@ def test_city_tab_sees_only_own_people(tmp_path):
     assert set(game_sheets.filter_totals_for_city(totals, None)) == {SUB_USER, CHAT_USER, SPB_USER}
     _h, rows = admin_gamification._build_game_matrix([], [], spb)
     assert [r[0] for r in rows] == [SPB_USER] and rows[0][-3:] == [6, 0, 6]
+
+
+def test_coins_journal_screen_points_to_sheet_totals(tmp_path):
+    _db_ready(tmp_path)
+    text, _kb = asyncio.run(admin_gamification._coins_journal_screen(offset=0))
+    assert "во вкладке «Гейма»" in text and "«Чат (+N)»" in text and "«Итого баллов»" in text
