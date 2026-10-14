@@ -112,3 +112,123 @@ def test_registry_keys():
         assert entry["default"] == default
         assert ops.SHEET_TAB_WRITE_MODE[key] == "rewrite"
         assert key in ops.SHEET_TAB_NAME_KEYS
+
+
+# ── Пересборка вкладок ───────────────────────────────────────────────────────────────────────
+
+def _fake_sync(calls, fail_title=None):
+    async def fake(title, headers, rows):
+        calls.append((title, headers, rows))
+        return -1 if title == fail_title else len(rows)
+    return fake
+
+
+def test_rebuild_writes_both_tabs_with_default_names(tmp_path, monkeypatch):
+    from services.forum import enroll_sheets
+
+    ready(tmp_path)
+    calls = []
+    monkeypatch.setattr("services.sheets.sheets.sync_named_worksheet", _fake_sync(calls))
+
+    async def go():
+        ids = await seed_msk_program()
+        await add_user(11)
+        await edb.enroll_tx(11, ids["A"])
+        return await enroll_sheets.rebuild_enroll_sheets()
+
+    assert run(go()) == (4, 1)
+    assert [c[0] for c in calls] == ["Записи на сессии", "Кто куда записан"]
+    assert calls[0][1] == enroll_stats.SESSION_HEADERS
+    assert calls[1][1] == enroll_stats.PEOPLE_HEADERS
+    assert calls[1][2][0][0] == "Делегат 11"
+
+
+def test_rebuild_uses_renamed_tabs_and_survives_one_failure(tmp_path, monkeypatch):
+    from services.forum import enroll_sheets
+
+    ready(tmp_path)
+    calls = []
+    monkeypatch.setattr("services.sheets.sheets.sync_named_worksheet", _fake_sync(calls, "Люди"))
+
+    async def go():
+        await seed_msk_program()
+        await db.set_setting("enroll_sessions_tab", "Сессии")
+        await db.set_setting("enroll_people_tab", "Люди")
+        return await enroll_sheets.rebuild_enroll_sheets()
+
+    assert run(go()) == (4, -1)
+    assert [c[0] for c in calls] == ["Сессии", "Люди"]
+
+
+# ── Хуки автосинхрона ────────────────────────────────────────────────────────────────────────
+
+def test_hooks_fire_only_on_real_changes(tmp_path, monkeypatch):
+    ready(tmp_path)
+    fired = []
+    monkeypatch.setattr(
+        "services.forum.enroll_sheets.request_enroll_sheet_resync", lambda: fired.append(1)
+    )
+
+    async def go():
+        ids = await seed_msk_program()
+        await add_user(11)
+        fired.clear()
+        assert (await edb.enroll_tx(11, ids["A"])).status == "ok"
+        assert len(fired) == 1
+        assert (await edb.enroll_tx(11, ids["A"])).status == "already"
+        assert (await edb.enroll_tx(11, ids["B"])).status == "conflict"
+        assert len(fired) == 1
+        assert await edb.unenroll(11, ids["A"])
+        assert len(fired) == 2
+        assert not await edb.unenroll(11, ids["A"])
+        assert len(fired) == 2
+        assert await db.update_program_session(ids["A"], title="Новое")
+        assert len(fired) == 3
+        assert await db.delete_program_session(ids["D"])
+        assert len(fired) == 4
+
+    run(go())
+
+
+# ── Кнопка в админке ─────────────────────────────────────────────────────────────────────────
+
+def test_settings_screen_has_sheet_button(tmp_path):
+    from handlers.forum import admin_enroll_list as el
+    from tests.test_admin_enroll_38 import FakeCallback, cbs
+
+    ready(tmp_path)
+    cb = FakeCallback("prog_enrset:msk")
+    run(el.prog_enrset(cb))
+    assert "prog_enrsh:msk" in cbs(cb.message.edit_markup)
+    assert "Записи на сессии" in cb.message.text_edited
+
+
+def test_confirm_and_report(tmp_path, monkeypatch):
+    from handlers.forum import admin_enroll_list as el
+    from tests.test_admin_enroll_38 import FakeCallback, cbs
+
+    ready(tmp_path)
+    cb = FakeCallback("prog_enrsh:msk")
+    run(el.prog_enrsh(cb))
+    text = cb.message.text_edited
+    assert "Записи на сессии" in text and "Кто куда записан" in text
+    assert "перезапишутся целиком" in text
+    assert "prog_enrshgo:msk" in cbs(cb.message.edit_markup)
+
+    async def ok():
+        return 4, 7
+
+    monkeypatch.setattr(el, "rebuild_enroll_sheets", ok)
+    cb = FakeCallback("prog_enrshgo:msk")
+    run(el.prog_enrshgo(cb))
+    assert "«Записи на сессии»: 4 строк." in cb.message.text_edited
+    assert "«Кто куда записан»: 7 строк." in cb.message.text_edited
+
+    async def bad():
+        return -1, 2
+
+    monkeypatch.setattr(el, "rebuild_enroll_sheets", bad)
+    cb = FakeCallback("prog_enrshgo:msk")
+    run(el.prog_enrshgo(cb))
+    assert "не удалось записать" in cb.message.text_edited
+    assert "«Кто куда записан»: 2 строк." in cb.message.text_edited

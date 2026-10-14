@@ -2,8 +2,9 @@
 файлом CSV, экран настроек модуля «📅 Запись на сессии» (тумблер, дата закрытия, тексты).
 
 Форма шва — как у `admin_enroll.py` (общий `admin.router`, импорт хвостом `handlers/admin.py`,
-право `settings` по префиксу `prog_*`). В Google-таблицу записи НЕ синхронизируются — только
-выгрузка файлом. Модуль не входит в общие тумблеры и порядок событийных полей: его правит этот экран."""
+право `settings` по префиксу `prog_*`). В Google-таблицу записи уходят двумя общими вкладками
+(`services/forum/enroll_sheets.py`: сами обновляются, кнопка «🔄 Таблица записей» пересобирает
+вручную), по сессии — ещё и выгрузка файлом. Модуль не входит в общие тумблеры и порядок событийных полей: его правит этот экран."""
 import csv
 import html as html_module
 import io
@@ -19,6 +20,7 @@ from database.db import _csv_safe, get_program_session, update_program_session
 from handlers.admin import router
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.states import EditSetting
+from services.forum.enroll_sheets import enable_autosync, enroll_tab_names, rebuild_enroll_sheets
 from services.forum.session_enroll import ENROLL_TEXT_KEYS, deadline_label, module_enabled, session_open_state
 from services.settings.audit import set_setting_by_admin
 from domain.settings.placeholders import hint
@@ -160,6 +162,11 @@ async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
     if offer and await quiz_db.active_quiz_for_city(code) is None:
         offer_line += " (теста нет — развилка не покажется)"
     lines.append(offer_line)
+    sessions_tab, people_tab = await enroll_tab_names()
+    lines.append(
+        f"Google-таблица: вкладки «{html_module.escape(sessions_tab)}» и «{html_module.escape(people_tab)}» "
+        "обновляются сами через полминуты после записи или правки программы."
+    )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="✅ Вкл → ❌ Выкл" if on else "❌ Выкл → ✅ Вкл", callback_data=f"prog_enrsw:{code}",
@@ -175,6 +182,7 @@ async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="📋 Записи на сессии", callback_data=f"prog_enrl:{code}:0")],
         [InlineKeyboardButton(text="🧭 Треки", callback_data=f"prog_trkl:{code}"),
          InlineKeyboardButton(text="🎯 Компетенции", callback_data=f"prog_cmpl:{code}")],
+        [InlineKeyboardButton(text="🔄 Таблица записей", callback_data=f"prog_enrsh:{code}")],
         [InlineKeyboardButton(text="← К программе", callback_data=f"prog_city:{code}")],
     ])
     return "\n".join(lines), kb
@@ -288,3 +296,55 @@ async def prog_enrte(callback: types.CallbackQuery, state: FSMContext):
         "\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[_CANCEL_ROW]),
     )
     await callback.answer()
+
+
+# ── Таблица записей ──────────────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data.startswith("prog_enrsh:"))
+async def prog_enrsh(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if await _deny(callback, code):
+        return
+    sessions_tab, people_tab = await enroll_tab_names()
+    await callback.message.edit_text(
+        "🔄 <b>Пересобрать вкладки записи?</b>\n\n"
+        f"Вкладки «{html_module.escape(sessions_tab)}» и «{html_module.escape(people_tab)}» "
+        "перезапишутся целиком из базы бота — <b>всё, что вы писали в них руками, пропадёт</b>.\n\n"
+        "Вкладки общие для всех городов, город указан в колонке «Город». "
+        "Сами записи делегатов не меняются.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, пересобрать", callback_data=f"prog_enrshgo:{code}")],
+            [InlineKeyboardButton(text="← Назад", callback_data=f"prog_enrset:{code}")],
+        ]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("prog_enrshgo:"))
+async def prog_enrshgo(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if await _deny(callback, code):
+        return
+    await callback.answer("🔄 Пересобираю…")
+    sessions_tab, people_tab = await enroll_tab_names()
+    written = await rebuild_enroll_sheets()
+    lines = []
+    for tab, n in zip((sessions_tab, people_tab), written):
+        report = (
+            f"{n} строк" if n >= 0
+            else "⚠️ не удалось записать — проверьте, что Google-таблица подключена (раздел «📊 Данные»)"
+        )
+        lines.append(f"«{html_module.escape(tab)}»: {report}.")
+    head = "✅ " if all(n >= 0 for n in written) else "⚠️ "
+    await callback.message.edit_text(
+        head + "\n".join(lines), parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="← Настройки записи", callback_data=f"prog_enrset:{code}")],
+        ]),
+    )
+
+
+# Пересборку по событиям записи регистрирует только процесс бота (в веб-процессе Mini App этот
+# модуль не импортируется — таймер там тихо ничего не делает).
+enable_autosync()
