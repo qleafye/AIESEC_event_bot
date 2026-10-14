@@ -226,6 +226,35 @@ async def set_form_keys(form_id: int, username_q, phone_q) -> None:
         "UPDATE external_forms SET key_username_q = ?, key_phone_q = ? WHERE id = ?",
         (username_q, phone_q, form_id),
     )
+    # Вопрос про ник сменился — ники ответов этой формы пересчитает догон.
+    await _exec(
+        "UPDATE external_form_answers SET username_needle = NULL WHERE form_id = ?",
+        (form_id,),
+    )
+
+
+async def list_answers_without_needle(limit: int) -> list[dict]:
+    """Ответы форм с вопросом про ник, у которых username_needle ещё не разобран."""
+    rows = await _fetchall(
+        "SELECT a.id, a.form_id, a.payload FROM external_form_answers a "
+        "JOIN external_forms f ON f.id = a.form_id "
+        "WHERE a.username_needle IS NULL AND f.key_username_q IS NOT NULL "
+        "ORDER BY a.id LIMIT ?",
+        (limit,),
+    )
+    return [_with_payload(r) for r in rows]
+
+
+async def set_answer_needles(items: list[tuple[int, str]]) -> None:
+    if not items:
+        return
+    async with _db._connect() as db:
+        for row_id, needle in items:
+            await db.execute(
+                "UPDATE external_form_answers SET username_needle = ? WHERE id = ?",
+                (needle, row_id),
+            )
+        await db.commit()
 
 
 async def set_form_mirror(form_id: int, tab: str | None, error: str | None) -> None:
@@ -320,16 +349,17 @@ async def count_pending(form_id: int) -> int:
 async def insert_answer(
     *, form_id, answer_id, answered_at, received_at, payload: list[dict], raw: str | None,
     matched_telegram_id: int | None, match_how: str | None,
+    username_needle: str | None = None,
 ) -> bool:
     """False = такой ответ уже есть или был удалён (надгробие), ничего не изменено."""
     n = await _exec(
         "INSERT OR IGNORE INTO external_form_answers (form_id, answer_id, answered_at, "
-        "received_at, payload, raw, matched_telegram_id, match_how) "
-        "SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS "
+        "received_at, payload, raw, matched_telegram_id, match_how, username_needle) "
+        "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS "
         "(SELECT 1 FROM external_form_deleted WHERE form_id = ? AND answer_id = ?)",
         (form_id, str(answer_id), answered_at, received_at,
          json.dumps(payload, ensure_ascii=False), raw, matched_telegram_id, match_how,
-         form_id, str(answer_id)),
+         username_needle, form_id, str(answer_id)),
     )
     if n > 0:
         await _exec(

@@ -170,3 +170,75 @@ def test_join_events_store_username(tmp_path):
 
     asyncio.run(group_chat.on_new_chat_members(_Msg()))
     assert _usernames()[820002] == ("Olya_Y", "Оля")
+
+
+# ── Задача 2: username_needle в ответах внешней формы ────────────────────────────────────
+
+from database import ext_forms_db as ef  # noqa: E402
+from services.ext_forms import ext_forms_match as efm  # noqa: E402
+from services.ext_forms.ext_forms_ingest import ingest_answer  # noqa: E402
+
+
+def _form(**kw):
+    fid = asyncio.run(ef.create_form(platform="yandex", external_id="f1", title="Ф", **kw))
+    return asyncio.run(ef.get_form(fid))
+
+
+def _items(nick):
+    return [{"q": "nick", "label": "Ник в телеграме", "value": nick}]
+
+
+def _needle(form_id, answer_id):
+    row = asyncio.run(ef.get_answer(form_id, answer_id))
+    return row["username_needle"], row["matched_telegram_id"]
+
+
+def test_needle_filled_on_ingest(tmp_path):
+    _ready(tmp_path)
+    form = _form(key_username_q="nick")
+    for aid, val, want in (("1", "@Nick_Two", "nick_two"), ("2", "https://t.me/Nick_Two", "nick_two"),
+                           ("3", "-", ""), ("4", "Привет", ""), ("5", "", "")):
+        asyncio.run(ingest_answer(form, answer_id=aid, answered_at=None, items=_items(val), raw=None))
+        needle, matched = _needle(form["id"], aid)
+        assert needle == want
+        assert matched is None
+
+
+def test_needle_null_without_username_question(tmp_path):
+    _ready(tmp_path)
+    form = _form()
+    asyncio.run(ingest_answer(form, answer_id="1", answered_at=None, items=_items("@x_nick"), raw=None))
+    assert _needle(form["id"], "1")[0] is None
+
+
+def test_backfill_is_idempotent_and_rematch_calls_it(tmp_path):
+    _ready(tmp_path)
+    form = _form(key_username_q="nick")
+
+    async def put(aid, val):
+        await ef.insert_answer(form_id=form["id"], answer_id=aid, answered_at=None,
+                               received_at="2026-10-14 10:00:00", payload=_items(val), raw=None,
+                               matched_telegram_id=None, match_how=None)
+
+    asyncio.run(put("1", "@Abc_Def"))
+    asyncio.run(put("2", "нет"))
+    assert _needle(form["id"], "1")[0] is None
+    assert asyncio.run(efm.backfill_username_needles()) == 2
+    assert _needle(form["id"], "1")[0] == "abc_def"
+    assert _needle(form["id"], "2")[0] == ""
+    assert asyncio.run(efm.backfill_username_needles()) == 0
+
+    asyncio.run(put("3", "@Third_One"))
+    asyncio.run(efm.rematch_unmatched())
+    assert _needle(form["id"], "3")[0] == "third_one"
+
+
+def test_set_form_keys_resets_needles(tmp_path):
+    _ready(tmp_path)
+    form = _form(key_username_q="nick")
+    asyncio.run(ingest_answer(form, answer_id="1", answered_at=None, items=_items("@Zed_Zed"), raw=None))
+    assert _needle(form["id"], "1")[0] == "zed_zed"
+    asyncio.run(ef.set_form_keys(form["id"], "nick", None))
+    assert _needle(form["id"], "1")[0] is None
+    asyncio.run(efm.backfill_username_needles())
+    assert _needle(form["id"], "1")[0] == "zed_zed"
