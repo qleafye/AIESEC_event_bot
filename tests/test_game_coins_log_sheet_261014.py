@@ -120,3 +120,64 @@ async def _default_city():
     from domain.cities import normalize_city
     return normalize_city(None)
 
+
+
+# ── пересборка и экраны ─────────────────────────────────────────────────────────────────────
+
+def _fake_writer(monkeypatch, written):
+    from handlers.game import admin_gamification
+
+    async def _fake_sync(title, headers, rows):
+        written[title] = (headers, rows)
+        return len(rows)
+
+    monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
+    return admin_gamification
+
+
+def test_describe_plan_mentions_journal(tmp_path):
+    _db_ready(tmp_path)
+    plan = asyncio.run(game_sheets.game_tab_plan())
+    lines = game_sheets.describe_plan(plan)
+    assert "«Журнал баллов» — каждое начисление и списание баллов" in lines
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    plan = asyncio.run(game_sheets.game_tab_plan())
+    lines = game_sheets.describe_plan(plan)
+    assert any(l.startswith("«Журнал баллов»") and l.endswith(", все города") for l in lines)
+    assert any("«СПб Журнал баллов»" in l for l in lines)
+
+
+def test_rebuild_writes_journal_tab(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _seed()
+    written = {}
+    ag = _fake_writer(monkeypatch, written)
+    result = asyncio.run(ag.rebuild_game_sheets())
+    assert len(result) == 3
+    headers, rows = written["Журнал баллов"]
+    assert headers == cls.COINS_LOG_HEADERS
+    assert len(rows) == 7
+    assert rows[0][9] == "https://t.me/c/1234567890/42"    # последняя запись сверху
+
+
+def test_rebuild_city_journal_only_that_city(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    _seed()
+    written = {}
+    ag = _fake_writer(monkeypatch, written)
+    asyncio.run(ag.rebuild_game_sheets())
+    _h, spb_rows = written["СПб Журнал баллов"]
+    assert {r[3] for r in spb_rows} == {SPB_USER}
+    assert len(spb_rows) == 2
+    assert len(written["Журнал баллов"][1]) == 7
+
+
+def test_coins_journal_screen_points_to_journal_tab(tmp_path):
+    from handlers.game import admin_gamification
+    _db_ready(tmp_path)
+    text, _kb = asyncio.run(admin_gamification._coins_journal_screen())
+    assert "во вкладке «Журнал баллов»" in text
+    asyncio.run(db.set_setting("game_coins_log_tab", "🤖 Журнал баллов"))
+    text, _kb = asyncio.run(admin_gamification._coins_journal_screen())
+    assert "во вкладке «🤖 Журнал баллов»" in text

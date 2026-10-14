@@ -81,7 +81,12 @@ from database.db import (
 from services.settings.audit import set_setting_by_admin
 from keyboards.builders import get_cancel_kb
 from services.sheets.sheets import sync_named_worksheet
-from services.game.game_sheets import describe_plan, filter_totals_for_city, game_tab_plan, rows_for_entry
+from database.chat_coins_db import list_coins_log
+from services.game.coins_log_sheet import build_coins_log
+from services.game.game_sheets import (
+    KIND_COINS_LOG, describe_plan, filter_coins_log_for_city, filter_totals_for_city, game_tab_plan,
+    rows_for_entry,
+)
 from services.scheduler import _fmt_dt, _now_moscow_naive, _parse_schedule_dt
 from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from services.amb.ambassador_waves import can_edit_wave, wave_editable_fields
@@ -118,6 +123,7 @@ from domain.cities import (
     cities_module_on,
     city_codes,
     city_label,
+    city_labels_map,
     enabled_cities,
     normalize_city,
 )
@@ -1202,6 +1208,7 @@ async def _coins_journal_screen(offset: int = 0) -> tuple[str, InlineKeyboardMar
     """«Функция возвращает (text, kb)» idiom (same shape as `_game_tasks_screen`) -- every
     re-render call site (open + page nav) stays byte-identical in format."""
     limit = 10
+    coins_log_tab = html_module.escape(await get_setting_typed("game_coins_log_tab"))
     total = await count_manual_coin_entries()
     rows = await list_manual_coin_entries(limit=10, offset=offset)
 
@@ -1211,7 +1218,8 @@ async def _coins_journal_screen(offset: int = 0) -> tuple[str, InlineKeyboardMar
         "📜 <b>Ручные начисления</b>",
         "«🪙 Баллы вручную», «+N» в чате и перенос из таблицы. Баллы за задания — построчно "
         "в выгрузке CSV ниже, итогом — в «📊 Статистика геймы». Итог по каждому человеку — "
-        "во вкладке «Гейма» таблицы, колонки «Чат (+N)» и «Итого баллов».",
+        "во вкладке «Гейма» таблицы, колонки «Чат (+N)» и «Итого баллов». Каждое начисление и "
+        f"списание, включая баллы за задания, — отдельной строкой во вкладке «{coins_log_tab}» таблицы.",
     ]
     if total == 0:
         lines.append("")
@@ -1875,7 +1883,7 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
     служебный ключ bot_settings, не заведённый в SETTINGS_SCHEMA (менеджер его не редактирует,
     реестр — только для человеко-редактируемых текстов)."""
     # Quick GAME-CITY-TABS: with the cities module on, the rebuild also writes a matrix +
-    # history pair per enabled city («СПб Гейма» / «СПб История сдач») — the screen lists
+    # history + coins-log triple per enabled city («СПб Гейма» / «СПб История сдач» / «СПб Журнал баллов») — the screen lists
     # every tab that will be wiped. A manager bound to one city (Phase 09.3) sees the shared
     # tabs + THEIR city's pair (staff city binding, Phase 8/09.1 -- not admin_selected_city,
     # whose "no choice yet" default would hide the other cities from an unbound superadmin);
@@ -1895,7 +1903,7 @@ async def sync_game_sheets_confirm(callback: types.CallbackQuery):
         [InlineKeyboardButton(text="🔄 Да, пересобрать вкладки", callback_data="admin_game_sync_sheet_go")],
         [InlineKeyboardButton(text="← Отмена", callback_data="admin_menu")],
     ])
-    intro = "Заново соберу из базы бота вкладки:" if has_city_tabs else "Заново соберу из базы бота две вкладки:"
+    intro = "Заново соберу из базы бота вкладки:" if has_city_tabs else "Заново соберу из базы бота три вкладки:"
     others_note = ""
     if only_city is not None and any(e["city"] and e["city"] != only_city for e in plan):
         others_note = "Вкладки других городов пересоберутся тоже — из той же базы.\n\n"
@@ -1921,7 +1929,7 @@ async def rebuild_game_sheets_detailed() -> list[dict]:
     at the bottom of this module, through the tuple-returning wrapper rebuild_game_sheets).
 
     Quick GAME-CITY-TABS: the tab list comes from services.game.game_sheets.game_tab_plan() —
-    the two whole-event tabs first, then (cities module ON) a matrix + history pair per
+    the three whole-event tabs first, then (cities module ON) a matrix + history + coins-log triple per
     enabled city, built from the same two DB reads filtered per city (delegate's city for
     submissions, task's city / NULL="all" for the matrix columns). Returns one dict per plan
     entry with `written` (rows written, -1 on failure) added. Every tab is written
@@ -1936,6 +1944,7 @@ async def rebuild_game_sheets_detailed() -> list[dict]:
     tasks = sorted(await list_all_tasks(), key=lambda t: t["created_at"])
     submissions = await list_all_submissions()
     coin_totals = await coin_totals_by_user()  # один раз на пересборку
+    coins_log, labels = await list_coins_log(), await city_labels_map()
 
     results: list[dict] = []
     for entry in await game_tab_plan():
@@ -1943,6 +1952,8 @@ async def rebuild_game_sheets_detailed() -> list[dict]:
         if entry["kind"] == "matrix":
             headers, rows = _build_game_matrix(
                 entry_tasks, entry_subs, filter_totals_for_city(coin_totals, entry.get("city")))
+        elif entry["kind"] == KIND_COINS_LOG:
+            headers, rows = build_coins_log(filter_coins_log_for_city(coins_log, entry.get("city")), labels)
         else:
             headers, rows = _build_game_history(entry_subs)
         try:
@@ -1963,7 +1974,7 @@ async def rebuild_game_sheets_detailed() -> list[dict]:
 
 async def rebuild_game_sheets() -> tuple[int, ...]:
     """Row counts per tab in game_tab_plan() order (whole-event matrix, whole-event history,
-    then each city's pair) — -1 for a failed tab. Cities module OFF -> exactly a 2-tuple, the
+    whole-event coins log, then each city's triple) — -1 for a failed tab. Cities module OFF -> exactly a 3-tuple, the
     shape services.game.game_sync and the pre-cities callers already understand."""
     return tuple(r["written"] for r in await rebuild_game_sheets_detailed())
 

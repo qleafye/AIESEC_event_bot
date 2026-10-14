@@ -165,7 +165,7 @@ def _seed_city_data():
     asyncio.run(go())
 
 
-def test_rebuild_module_off_writes_exactly_two_tabs(tmp_path, monkeypatch):
+def test_rebuild_module_off_writes_exactly_three_tabs(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     _seed_city_data()
     written = {}
@@ -176,11 +176,11 @@ def test_rebuild_module_off_writes_exactly_two_tabs(tmp_path, monkeypatch):
 
     monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
     result = asyncio.run(admin_gamification.rebuild_game_sheets())
-    assert result == (3, 4)
-    assert list(written) == ["Гейма", "История сдач"]
+    assert result == (3, 4, 0)
+    assert list(written) == ["Гейма", "История сдач", "Журнал баллов"]
 
 
-def test_rebuild_module_on_writes_two_plus_two_per_city_filtered(tmp_path, monkeypatch):
+def test_rebuild_module_on_writes_three_plus_three_per_city_filtered(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     _seed_city_data()
@@ -192,9 +192,11 @@ def test_rebuild_module_on_writes_two_plus_two_per_city_filtered(tmp_path, monke
 
     monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
     result = asyncio.run(admin_gamification.rebuild_game_sheets())
-    assert len(result) == 2 + 2 * 2  # msk has no tab base -> only spb + tyumen pairs
+    assert len(result) == 3 + 3 * 2  # msk has no tab base -> only spb + tyumen triples
     assert list(written) == [
-        "Гейма", "История сдач", "СПб Гейма", "СПб История сдач", "Тюмень Гейма", "Тюмень История сдач",
+        "Гейма", "История сдач", "Журнал баллов",
+        "СПб Гейма", "СПб История сдач", "СПб Журнал баллов",
+        "Тюмень Гейма", "Тюмень История сдач", "Тюмень Журнал баллов",
     ]
     # shared tabs unchanged: every participant, every task column
     assert len(written["Гейма"][1]) == 3 and written["Гейма"][0][4:6] == ["Всем", "Питер"]
@@ -226,8 +228,8 @@ def test_rebuild_one_city_tab_failure_does_not_skip_the_rest(tmp_path, monkeypat
 
     monkeypatch.setattr(admin_gamification, "sync_named_worksheet", _fake_sync)
     result = asyncio.run(admin_gamification.rebuild_game_sheets())
-    assert len(calls) == 6
-    assert result[2] == -1 and all(w >= 0 for i, w in enumerate(result) if i != 2)
+    assert len(calls) == 9
+    assert result[3] == -1 and all(w >= 0 for i, w in enumerate(result) if i != 3)
     # partial failure -> no "up to date" timestamp
     assert asyncio.run(db.get_setting("game_sheet_last_synced_at")) is None
 
@@ -295,7 +297,7 @@ def test_confirm_screen_module_off_unchanged_wording(tmp_path):
     callback = _FakeCallback("admin_game_sync_sheet")
     asyncio.run(admin_gamification.sync_game_sheets_confirm(callback))
     text = callback.message.text
-    assert "две вкладки" in text
+    assert "три вкладки" in text
     assert "СПб" not in text and "все города" not in text
 
 
