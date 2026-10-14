@@ -48,7 +48,7 @@
     <h2 class="block-title">{{ card.chat.title }} ({{ card.chat.label }})</h2>
     <div class="subtitle">Последняя сверка: {{ card.last_sync or "ещё не было" }}</div>
 
-    {# Плитки (D-14-стиль): одобрено / в чате / не в чате / в чате, но не зарегистрированы #}
+    {# Плитки (D-14-стиль): одобрено / в чате / не в чате / в чате без заявки #}
     <div class="card">
       <div class="kpi-grid kpi-grid--4">
         <div class="kpi primary">
@@ -65,9 +65,34 @@
         </div>
         <div class="kpi">
           <div class="num">{{ card.overview.unknown_members | thousands }}</div>
-          <div class="lbl">В чате, но не зарегистрированы</div>
+          <div class="lbl">В чате без заявки</div>
+          <div class="delta">разбивка ниже</div>
         </div>
       </div>
+    </div>
+
+    {# Кто в чате: категории взаимоисключающие, сумма = число участников #}
+    <div class="card">
+      <h3 class="block-title">Кто в чате</h3>
+      <p class="empty-note">Все, кто сейчас в чате, по одной строке на человека — сумма равна числу участников.</p>
+      <table>
+        <thead><tr><th>Кто</th><th class="num">Человек</th></tr></thead>
+        <tbody>
+          {% for row in card.who.rows %}
+          {% if row.count > 0 or row.key in ("approved_here", "unidentified") %}
+          <tr>
+            <td>{{ row.label }}{% if row.hint %}<div class="empty-note">{{ row.hint }}</div>{% endif %}</td>
+            <td class="num">{{ row.count | thousands }}</td>
+          </tr>
+          {% endif %}
+          {% endfor %}
+          <tr><td><strong>Всего в чате</strong></td><td class="num"><strong>{{ card.who.present | thousands }}</strong></td></tr>
+        </tbody>
+      </table>
+      {% if card.form %}
+      <p class="empty-note">Ответов во внешней форме: {{ card.form.answers | thousands }}, из них в этом чате: {{ card.form.in_chat | thousands }}.
+        Считаются и те, у кого уже есть заявка в боте; в сумму выше не входит.</p>
+      {% endif %}
     </div>
 
     {# График вступлений по дням #}

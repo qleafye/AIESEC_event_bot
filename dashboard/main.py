@@ -526,6 +526,8 @@ def build_chat_context(
         cards.append({
             "chat": chat,
             "overview": queries.chat_overview(conn, scope, chat),
+            "who": queries.chat_who_breakdown(conn, scope, chat),
+            "form": queries.chat_form_delegations(conn, scope, chat),
             "joins_chart": joins_chart,
             "messages_chart": messages_chart,
             # Владелец 15.09: «последняя сверка» на карточке — тот же MAX(updated_at), что
