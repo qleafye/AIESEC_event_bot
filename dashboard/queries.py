@@ -1489,14 +1489,34 @@ def arrival_block(conn, scope: Scope) -> dict | None:
     return report
 
 
+def _enroll_common_cities(conn) -> list[str]:
+    """Города, где включена запись на общие сессии (`session_enroll_common_optional`). Читает
+    сырую `bot_settings`; коды — города, в которых есть сессии программы."""
+    rows = conn.execute(
+        "SELECT key, value FROM bot_settings WHERE key LIKE 'session_enroll_common_optional%'"
+    ).fetchall()
+    settings = {r["key"]: r["value"] for r in rows}
+    if not settings:
+        return []
+    cities_on = (conn.execute(
+        "SELECT value FROM bot_settings WHERE key = 'event_city_enabled'"
+    ).fetchone() or {"value": None})["value"] == "on"
+    codes = [r[0] for r in conn.execute(
+        "SELECT DISTINCT city FROM program_sessions WHERE city IS NOT NULL"
+    ).fetchall()]
+    return enroll_stats.common_cities(settings, codes, cities_on=cities_on)
+
+
 def enroll_block(conn, scope: Scope) -> dict | None:
     """Раздел «Запись на сессии» страницы «Форум»: по каждой сессии с треком — записано, мест,
     свободно, пришли; плюс «записались хотя бы на одну сессию: N из M одобренных». SQL — общий
     корневой `shared/enroll_stats.py`, те же запросы исполняет бот (вкладка Google-таблицы).
+    Общие сессии городов с включённой записью на них идут в списке наравне с трековыми.
     Без ПД — только счётчики и названия сессий. Срез по `scope.city` (привязанный менеджер
     получает свой город принудительно, см. `viewer_scope`).
 
-    `None`, если таблиц записи нет (старая база) или в срезе нет сессий с треком."""
+    `None`, если таблиц записи нет (старая база) или в срезе нет сессий с треком (и общих сессий
+    с включённой записью)."""
     def has(name: str) -> bool:
         return conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
@@ -1507,7 +1527,8 @@ def enroll_block(conn, scope: Scope) -> dict | None:
     cols = {r[1] for r in conn.execute("PRAGMA table_info(program_sessions)").fetchall()}
     if "track_id" not in cols or "enroll_limit" not in cols:
         return None
-    sql, params = enroll_stats.sessions_query(scope.city, with_checkins=has("checkins"))
+    common = _enroll_common_cities(conn)
+    sql, params = enroll_stats.sessions_query(scope.city, with_checkins=has("checkins"), common=common)
     rows = [dict(r) for r in conn.execute(sql, params).fetchall()]
     if not rows:
         return None
@@ -1522,7 +1543,7 @@ def enroll_block(conn, scope: Scope) -> dict | None:
         [city_frag, season_frag], [*city_params, *season_params],
     )
     approved = _scalar(conn, f"SELECT COUNT(*) FROM users WHERE {where}", uparams) or 0
-    enrolled = _scalar(conn, *enroll_stats.enrolled_among_query(where, uparams, scope.city)) or 0
+    enrolled = _scalar(conn, *enroll_stats.enrolled_among_query(where, uparams, scope.city, common=common)) or 0
     pct = round(enrolled * 100 / approved) if approved else None
     return {
         "sessions": sessions, "enrolled": enrolled, "approved": approved, "pct": pct,
