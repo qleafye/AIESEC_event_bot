@@ -551,3 +551,45 @@ def test_enroll_settings_screen_links_to_reminders(tmp_path):
 
     _text, kb = run(el.render_enroll_settings(CITY))
     assert "prog_srm:msk" in cbs(kb)
+
+
+# ── Копирование дня и предупреждение о времени утра ──────────────────────────────────────────
+
+def test_copy_day_schedules_remind_jobs_for_new_sessions(tmp_path, monkeypatch):
+    from services.forum.program import copy_program_day
+
+    ready(tmp_path)
+    _setup(monkeypatch, NOW_MORNING)
+
+    async def body(s):
+        await seed_msk_program()
+        await _on("session_remind_enabled", "session_morning_enabled")
+        await db.set_setting("event_city_enabled", "off")
+        # Копия в другой город на тот же день: джобы должны встать сразу, без рестарта.
+        result = await copy_program_day(CITY, "spb", DAY)
+        return result, [j.id for j in s.get_jobs()]
+
+    result, jobs = _run_scheduled(tmp_path, monkeypatch, body)
+    assert result["sessions_created"] == 5
+    assert len([j for j in jobs if j.startswith("session_remind:")]) == 5
+    assert sr.morning_job_id("spb", DAY) in jobs
+
+
+def test_morning_time_warning_when_not_earlier_than_first_session(tmp_path, monkeypatch):
+    ready(tmp_path)
+    _setup(monkeypatch, NOW_MORNING)
+
+    async def go():
+        await seed_msk_program()  # первая сессия дня — пленарка 09:00
+        none_when_off = await sr.morning_time_warning(CITY)
+        await _on("session_morning_enabled")
+        fine = await sr.morning_time_warning(CITY)  # 08:30 < 09:00
+        await db.set_setting("session_morning_time", "09:15")
+        bad = await sr.morning_time_warning(CITY)
+        screen, _kb = await ui.render_remind_screen(CITY)
+        return none_when_off, fine, bad, screen
+
+    off, fine, bad, screen = run(go())
+    assert off is None and fine is None
+    assert bad == "⚠️ 30.10 первая сессия в 09:00 — программа в 09:15 уже не уйдёт. Поставь время раньше."
+    assert bad in screen
