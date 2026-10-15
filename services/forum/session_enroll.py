@@ -7,7 +7,11 @@
 конфликтуют, а A с D 11:30-12:30 — нет. Это НЕ `parallel_group` / `slot_other_ids` чек-ина:
 те строят транзитивный слот. Слоты для ПОКАЗА выбора (`slots_for_city`) группируются
 `group_parallel` и только по сессиям с треком — пленарки без трека в них не входят, но есть
-в «Моём расписании» у всех.
+в «Моём расписании» у всех. Запись на пленарки «по желанию» включает настройка города
+`session_enroll_common_optional` (`common_enabled`): тогда на них можно записаться и отписаться,
+они видны отдельным блоком (`common_sessions`), участвуют в проверке пересечения и в статистике.
+Выключена — пленарки ведут себя как раньше, а уже сделанные записи на них лежат в данных
+и нигде не показываются и не считаются.
 
 Текстов для людей здесь нет: результат несёт `text_key` — ключ реестра настроек, который
 хендлер читает per_city и подставляет значения.
@@ -19,7 +23,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from domain.cities import get_setting_typed_for_city, normalize_city
+from domain.cities import city_codes, get_setting_typed_for_city, normalize_city
 from database import session_enroll_db as _edb
 from database.db import get_program_hall, get_program_session, get_user, list_program_days_for_city
 from services.forum.checkin import checkin_denial
@@ -71,6 +75,9 @@ ENROLL_TEXT_KEYS: tuple[str, ...] = (
     "session_enroll_schedule_title",
     "session_enroll_schedule_empty",
     "session_enroll_common_label",
+    "session_enroll_common_note",
+    "session_enroll_common_button",
+    "session_enroll_back_button",
     "session_enroll_change_button",
     "session_enroll_confirm_button",
     "session_enroll_confirmed_text",
@@ -163,6 +170,20 @@ async def deadline_label(city: str | None) -> str:
     return deadline.strftime(_DEADLINE_FMT) if deadline else ""
 
 
+async def common_enabled(city: str | None) -> bool:
+    """Включена ли в городе запись на общие сессии (по умолчанию нет)."""
+    try:
+        return await get_setting_typed_for_city("session_enroll_common_optional", city) == "on"
+    except Exception as e:
+        logger.warning("session_enroll_common_optional(%s) не прочитан: %s", city, e)
+        return False
+
+
+async def common_cities() -> list[str]:
+    """Коды городов, где включена запись на общие сессии (для статистики и листов)."""
+    return [code for code in sorted(city_codes()) if await common_enabled(code)]
+
+
 # ── Состояние сессии ────────────────────────────────────────────────────────────────────────
 
 async def session_open_state(session: dict, count: int | None = None) -> str:
@@ -204,7 +225,8 @@ async def enroll(telegram_id: int, session_id: int, *, confirm_replace: bool = F
         return EnrollOutcome("disabled", session=session, text_key="session_enroll_disabled_text")
     if normalize_city(user.get("event_city")) != city:
         return EnrollOutcome("wrong_city", session=session)
-    if session.get("track_id") is None:
+    common_ok = await common_enabled(city)
+    if session.get("track_id") is None and not common_ok:
         return EnrollOutcome("not_enrollable", session=session)
     if await deadline_passed(city):
         return EnrollOutcome("deadline", session=session, text_key="session_enroll_err_deadline")
@@ -217,7 +239,7 @@ async def enroll(telegram_id: int, session_id: int, *, confirm_replace: bool = F
         return EnrollOutcome("full", session=session, text_key="session_enroll_err_full")
 
     res = await _edb.enroll_tx(telegram_id, session_id, allow_replace=confirm_replace,
-                               limit_check=True, source="self")
+                               limit_check=True, source="self", common_ok=common_ok)
     return await _outcome_from_tx(res, session)
 
 
@@ -241,7 +263,8 @@ async def enroll_by_staff(telegram_id: int, session_id: int, *, by_staff_id: int
         return EnrollOutcome("no_session")
     if not await module_enabled(session["city"]):
         return EnrollOutcome("disabled", session=session, text_key="session_enroll_disabled_text")
-    if session.get("track_id") is None:
+    common_ok = await common_enabled(session["city"])
+    if session.get("track_id") is None and not common_ok:
         return EnrollOutcome("not_enrollable", session=session)
     # волонтёр не должен записывать мусор: нужен существующий одобренный делегат этого города
     user = await get_user(telegram_id)
@@ -252,7 +275,7 @@ async def enroll_by_staff(telegram_id: int, session_id: int, *, by_staff_id: int
     if normalize_city(user.get("event_city")) != session["city"]:
         return EnrollOutcome("wrong_city", session=session)
     res = await _edb.enroll_tx(telegram_id, session_id, allow_replace=True, limit_check=False,
-                               source="scan", by_staff_id=by_staff_id)
+                               source="scan", by_staff_id=by_staff_id, common_ok=common_ok)
     return await _outcome_from_tx(res, session)
 
 
@@ -293,9 +316,27 @@ async def slots_for_city(city: str) -> list[dict]:
     return [{"day": day, "slots": group_parallel(items)} for day, items in sorted(days.items())]
 
 
+async def common_sessions(city: str) -> list[dict]:
+    """Общие сессии города для блока «Общие сессии»: с hall_name, enrolled, open_state. Пусто,
+    если запись на общие сессии в городе выключена."""
+    if not await common_enabled(city):
+        return []
+    counts = await _edb.enrollment_counts_for_city(city)
+    out = []
+    for s in await _edb.list_common_sessions(city):
+        hall = await get_program_hall(s["hall_id"]) if s.get("hall_id") is not None else None
+        enrolled = counts.get(s["id"], 0)
+        out.append({**s, "track_name": None, "hall_name": hall["name"] if hall else None,
+                    "enrolled": enrolled, "open_state": await session_open_state(s, enrolled)})
+    return out
+
+
 async def my_schedule(telegram_id: int, city: str) -> list[dict]:
-    """[{day, items: [{session, kind}]}]: kind "common" (без трека) | "chosen"."""
+    """[{day, items: [{session, kind}]}]: kind "common" (без трека, не записан) | "chosen".
+    Записи на общие сессии учитываются, только пока в городе включена запись на них."""
     chosen = await _edb.list_user_enrollments(telegram_id, city)
+    if not await common_enabled(city):
+        chosen = [s for s in chosen if s.get("track_id") is not None]
     chosen_ids = {s["id"] for s in chosen}
     by_day: dict[str, list[dict]] = {}
     for s in chosen:
@@ -322,13 +363,16 @@ async def scan_hint(user: dict, session_id: int) -> dict | None:
     label}}` или None. Fail-soft: сбой не должен ронять скан."""
     try:
         session = await get_program_session(session_id)
-        if not session or session.get("track_id") is None:
+        if not session:
             return None
         city = session["city"]
+        common_ok = await common_enabled(city)
+        if session.get("track_id") is None and not common_ok:
+            return None
         if not await module_enabled(city):
             return None
         mine = [s for s in await _edb.list_user_enrollments(user["telegram_id"], city)
-                if s["day"] == session["day"]]
+                if s["day"] == session["day"] and (common_ok or s.get("track_id") is not None)]
         if any(s["id"] == session["id"] for s in mine):
             return None
         clash = [s for s in mine if overlaps(s, session)]

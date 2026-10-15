@@ -51,11 +51,14 @@ async def rebuild_enroll_sheets() -> tuple[int, int]:
     from domain.cities import city_labels_map
     from services.sheets.sheets import sync_named_worksheet  # sheets тянет gspread — лениво
 
+    from services.forum.session_enroll import common_cities  # ленивый импорт: цикл через слой БД
+
     sessions_tab, people_tab = await enroll_tab_names()
     labels = await city_labels_map()
+    common = await common_cities()
     try:
         session_rows = _safe_rows(
-            enroll_stats.sessions_sheet_rows(await edb.enroll_overview_rows(None), labels)
+            enroll_stats.sessions_sheet_rows(await edb.enroll_overview_rows(None, common=common), labels)
         )
         n_sessions = await sync_named_worksheet(sessions_tab, enroll_stats.SESSION_HEADERS, session_rows)
     except Exception as e:
@@ -63,7 +66,7 @@ async def rebuild_enroll_sheets() -> tuple[int, int]:
         n_sessions = -1
     try:
         people_rows = _safe_rows(
-            enroll_stats.people_sheet_rows(await edb.enroll_people_rows(None), labels)
+            enroll_stats.people_sheet_rows(await edb.enroll_people_rows(None, common=common), labels)
         )
         n_people = await sync_named_worksheet(people_tab, enroll_stats.PEOPLE_HEADERS, people_rows)
     except Exception as e:

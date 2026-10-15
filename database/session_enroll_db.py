@@ -4,8 +4,9 @@
 Отдельный модуль, а не ещё один блок в `database/db.py` (тот уже больше 12 тысяч строк).
 
 Модель. Сессия программы (`program_sessions`) может входить в трек (`track_id`). Записываться
-можно только на сессии с треком; пленарки (без трека) общие для всех и в проверке пересечения
-не участвуют. Запись — строка `session_enrollments` с PK (telegram_id, session_id). Треки и
+можно на сессии с треком; пленарки (без трека) общие для всех: на них запись «по желанию» —
+только в городах, где включена `session_enroll_common_optional` (решает вызывающий и передаёт
+`common_ok`); в проверке пересечения пленарки участвуют тоже только при `common_ok`. Запись — строка `session_enrollments` с PK (telegram_id, session_id). Треки и
 компетенции — справочники города с порядком; пустыми они создаются на чистой БД, названия
 заводит менеджер.
 
@@ -284,13 +285,22 @@ async def competency_names_for_sessions(session_ids: list[int]) -> dict[int, lis
     return out
 
 
-async def list_trackable_sessions(city: str, day: str | None = None) -> list[dict]:
-    """Сессии города с треком (на них можно записаться) + `track_name`."""
-    sql = (
-        "SELECT s.*, t.name AS track_name FROM program_sessions s "
-        "JOIN program_tracks t ON t.id = s.track_id "
-        "WHERE s.city = ? AND s.track_id IS NOT NULL"
-    )
+async def list_trackable_sessions(
+    city: str, day: str | None = None, *, include_common: bool = False,
+) -> list[dict]:
+    """Сессии города с треком (на них можно записаться) + `track_name`. `include_common` —
+    добавить общие сессии (без трека; `track_name` у них None): запись на них включена."""
+    if include_common:
+        sql = (
+            "SELECT s.*, t.name AS track_name FROM program_sessions s "
+            "LEFT JOIN program_tracks t ON t.id = s.track_id WHERE s.city = ?"
+        )
+    else:
+        sql = (
+            "SELECT s.*, t.name AS track_name FROM program_sessions s "
+            "JOIN program_tracks t ON t.id = s.track_id "
+            "WHERE s.city = ? AND s.track_id IS NOT NULL"
+        )
     params: list = [city]
     if day is not None:
         sql += " AND s.day = ?"
@@ -299,6 +309,17 @@ async def list_trackable_sessions(city: str, day: str | None = None) -> list[dic
     async with _db._connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(sql, params) as cursor:
+            return [dict(r) for r in await cursor.fetchall()]
+
+
+async def list_common_sessions(city: str) -> list[dict]:
+    """Общие сессии города (без трека) по дню и времени."""
+    async with _db._connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM program_sessions WHERE city = ? AND track_id IS NULL "
+            "ORDER BY day, start_time, id", (city,),
+        ) as cursor:
             return [dict(r) for r in await cursor.fetchall()]
 
 
@@ -316,6 +337,7 @@ class EnrollResult:
 async def enroll_tx(
     telegram_id: int, session_id: int, *, allow_replace: bool = False,
     limit_check: bool = True, source: str = "self", by_staff_id: int | None = None,
+    common_ok: bool = False,
 ) -> EnrollResult:
     """Записать делегата на сессию одной транзакцией `BEGIN IMMEDIATE` (бот и веб-процесс
     Mini App пишут одну SQLite — проверка и вставка не должны разъезжаться).
@@ -325,7 +347,9 @@ async def enroll_tx(
     `slot_other_ids` чек-ина: те строят транзитивный слот (A пересекает B, B пересекает C ->
     все трое «параллельны»), а для записи A и C, не пересекающиеся между собой, совместимы.
 
-    Сессия без трека — `not_enrollable` (пленарка общая). `enroll_closed` здесь не проверяется:
+    Сессия без трека — `not_enrollable` (пленарка общая), если не `common_ok` (в городе включена
+    запись на общие сессии); при `common_ok` пленарки есть и среди целей, и среди конфликтов.
+    `enroll_closed` здесь не проверяется:
     это правило сервиса, а сканер на входе его игнорирует (`limit_check=False` — тоже путь
     сканера: волонтёр не отказывает человеку у двери)."""
     tid, sid = int(telegram_id), int(session_id)
@@ -342,7 +366,7 @@ async def enroll_tx(
             if target is None:
                 await conn.rollback()
                 return EnrollResult("no_session")
-            if target["track_id"] is None:
+            if target["track_id"] is None and not common_ok:
                 await conn.rollback()
                 return EnrollResult("not_enrollable")
             async with conn.execute(
@@ -355,9 +379,9 @@ async def enroll_tx(
             async with conn.execute(
                 "SELECT s.id FROM session_enrollments e JOIN program_sessions s "
                 "ON s.id = e.session_id WHERE e.telegram_id = ? AND s.city = ? AND s.day = ? "
-                "AND s.track_id IS NOT NULL AND s.id != ? "
+                "AND (s.track_id IS NOT NULL OR ?) AND s.id != ? "
                 "AND s.start_time < ? AND ? < s.end_time ORDER BY s.start_time, s.id",
-                (tid, target["city"], target["day"], sid,
+                (tid, target["city"], target["day"], 1 if common_ok else 0, sid,
                  target["end_time"], target["start_time"]),
             ) as cur:
                 conflicts = [int(r[0]) for r in await cur.fetchall()]
@@ -579,18 +603,23 @@ async def day_photo_days(city: str) -> set[str]:
 # ── Выгрузка в таблицу ───────────────────────────────────────────────────────────────────────
 # SQL — в `shared/enroll_stats.py`: те же запросы исполняет дашборд.
 
-async def enroll_overview_rows(city: str | None = None) -> list[dict]:
-    """Сессии с треком + записано/пришли (для вкладки «Записи на сессии»). None — все города."""
-    sql, params = enroll_stats.sessions_query(city)
+async def enroll_overview_rows(
+    city: str | None = None, *, common: list[str] | tuple[str, ...] = (),
+) -> list[dict]:
+    """Сессии с треком (и общие городов из `common`) + записано/пришли (для вкладки «Записи на
+    сессии»). None — все города."""
+    sql, params = enroll_stats.sessions_query(city, common=common)
     async with _db._connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(sql, params) as cursor:
             return [dict(r) for r in await cursor.fetchall()]
 
 
-async def enroll_people_rows(city: str | None = None) -> list[dict]:
+async def enroll_people_rows(
+    city: str | None = None, *, common: list[str] | tuple[str, ...] = (),
+) -> list[dict]:
     """Одна строка на запись (для вкладки «Кто куда записан»). None — все города."""
-    sql, params = enroll_stats.people_query(city)
+    sql, params = enroll_stats.people_query(city, common=common)
     async with _db._connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(sql, params) as cursor:
