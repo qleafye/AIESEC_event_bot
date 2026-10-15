@@ -1330,6 +1330,18 @@ FORM_DEFAULT_EN: dict[str, str] = {
     "{day}, {time}. Выбери одну сессию:": "{day}, {time}. Pick one session:",
     "• <b>{title}</b> — {speaker}\nТрек: {track} · {competencies}": "• <b>{title}</b> — {speaker}\nTrack: {track} · {competencies}",
     "Эта сессия больше недоступна — обнови список.": "This session is no longer available — please refresh the list.",
+    # --- общие сессии и напоминания о сессиях ---
+    "← К выбору трека": "← Back to track selection",
+    "🏛 Общие сессии": "🏛 Common sessions",
+    "🏛 Общие сессии — открытие, закрытие и другие для всех. Записываться на них не обязательно, прийти можно и так. Но отметь, на какие точно придёшь — так мы поймём, сколько людей ждать в зале.": (
+        "🏛 Common sessions — the opening, the closing and others for everyone. Signing up for them is "
+        "optional, you can simply show up. But do mark the ones you will definitely attend — that way "
+        "we'll know how many people to expect in the hall."
+    ),
+    "☀️ Доброе утро! Твоя программа на сегодня:": "☀️ Good morning! Here is your program for today:",
+    "⏰ Через {minutes} мин начнётся твоя сессия «{title}»\n🕒 {start}\n🏛 Зал «{hall}»\n🎯 На сессии получишь компетенцию: {competencies}": (
+        "⏰ Your session “{title}” starts in {minutes} min\n🕒 {start}\n🏛 Hall “{hall}”\n🎯 You will gain the competency: {competencies}"
+    ),
 }
 
 
