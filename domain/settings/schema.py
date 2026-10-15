@@ -887,6 +887,65 @@ SETTINGS_SCHEMA = {
         "per_city": True,
         "placeholders": {"title": "название сессии"},
     },
+    # Напоминания о сессиях делегату (services/forum/session_remind.py): за N минут до начала —
+    # тем, кто записан, и утренняя «программа на день». Всё per_city (форумы идут в разные дни и
+    # часовые пояса), оба тумблера по умолчанию выключены. Правятся кнопками с экрана
+    # «⏰ Напоминания о сессиях» (handlers/forum/admin_session_remind.py).
+    "session_remind_enabled": {
+        "type": "enum", "group": "event", "label": "⏰ Напоминание о сессии за N минут",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+        "per_city": True,
+    },
+    "session_remind_minutes": {
+        "type": "int", "group": "event", "label": "⏰ Напоминание о сессии: за сколько минут",
+        "prompt": (
+            "За сколько минут до начала сессии записанному делегату придёт личное напоминание.\n\n"
+            "В МИНУТАХ, например: 10."
+        ),
+        "default": 10,
+        "per_city": True,
+    },
+    "session_remind_text": {
+        "type": "text", "group": "event", "label": "⏰ Напоминание о сессии: текст",
+        "prompt": (
+            "Личное сообщение делегату перед сессией. Пустое поле (нет зала, нет компетенции) бот "
+            "уберёт вместе со строкой.\n\nПример: ⏰ Через {minutes} мин начнётся твоя сессия «{title}»\n"
+            "🕒 {start}\n🏛 Зал «{hall}»\n🎯 На сессии получишь компетенцию: {competencies}\n\n"
+            "Подстановки: {minutes} — за сколько минут; {title} — название сессии; {start} — время "
+            "начала; {hall} — зал; {competencies} — компетенции сессии. Скобки бот заменит сам."
+        ),
+        "default": (
+            "⏰ Через {minutes} мин начнётся твоя сессия «{title}»\n🕒 {start}\n🏛 Зал «{hall}»\n"
+            "🎯 На сессии получишь компетенцию: {competencies}"
+        ),
+        "per_city": True,
+        "placeholders": {"minutes": "за сколько минут", "title": "название сессии",
+                         "start": "время начала", "hall": "зал", "competencies": "компетенции сессии"},
+    },
+    "session_morning_enabled": {
+        "type": "enum", "group": "event", "label": "☀️ Утром — программа на день",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+        "per_city": True,
+    },
+    "session_morning_time": {
+        "type": "text", "group": "event", "label": "☀️ Программа на день: во сколько",
+        "prompt": (
+            "Во сколько утром в каждый день программы присылать делегатам их расписание. "
+            "Формат <code>ЧЧ:ММ</code>, например <code>08:30</code>. Время — по часовому поясу города."
+        ),
+        "default": "08:30",
+        "format": "time",
+        "per_city": True,
+    },
+    "session_morning_head": {
+        "type": "text", "group": "event", "label": "☀️ Программа на день: шапка",
+        "prompt": (
+            "Первая строка утреннего сообщения, под ней бот сам перечисляет сессии дня.\n\n"
+            "Пример: ☀️ Доброе утро! Твоя программа на сегодня:"
+        ),
+        "default": "☀️ Доброе утро! Твоя программа на сегодня:",
+        "per_city": True,
+    },
     "quiz_menu_label": {
         "type": "text", "group": "event", "label": "🧭 Тест: кнопка меню",
         "prompt": (

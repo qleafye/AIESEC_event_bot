@@ -25,6 +25,12 @@ _SPECS = (
     ("forum_noshow_poll", frozenset({
         "forum_date", "forum_noshow_poll_enabled", "forum_noshow_poll_time",
     }), "services.forum_noshow_poll", "reconcile", "schedule_city_job"),
+    # Напоминания о сессиях делегатам: тумблеры, минуты, время утра; сдвиг часового пояса двигает
+    # момент каждой джобы. Тексты джоба читает в момент отправки — перестановки не требуют.
+    ("session_remind", frozenset({
+        "session_remind_enabled", "session_remind_minutes", "session_morning_enabled",
+        "session_morning_time", "city_tz_offset",
+    }), "services.forum.session_remind", "reconcile", "schedule_city_job"),
     # Предложение «в Москву» зависит и от своих двух ключей, и от опроса неявившихся
     # (уходит не раньше чем через 3 часа после него), и от даты форума города.
     ("regional_noshow_move", frozenset({
