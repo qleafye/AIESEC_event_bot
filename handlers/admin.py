@@ -1200,6 +1200,8 @@ from handlers.applications import admin_participants  # noqa: E402,F401
 from handlers.forum import admin_enroll  # noqa: E402,F401
 # Список записей, выгрузка и настройки записи (handlers/forum/admin_enroll_list.py) — golden append в хвост.
 from handlers.forum import admin_enroll_list  # noqa: E402,F401
+# Экран «⏰ Напоминания о сессиях» (handlers/forum/admin_session_remind.py) — golden append в хвост.
+from handlers.forum import admin_session_remind  # noqa: E402,F401
 # Тест компетенций: настройки, вопросы, баллы (handlers/forum/admin_quiz.py) — golden append в хвост.
 from handlers.forum import admin_quiz  # noqa: E402,F401
 # «🖼 Аватар бота» в «🎪 Событие» (handlers/settings/admin_bot_avatar.py) — golden append в хвост.
