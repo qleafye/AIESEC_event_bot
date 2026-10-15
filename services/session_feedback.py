@@ -95,6 +95,24 @@ def cancel_for_session(session_id: int) -> None:
         pass  # не стояла или уже сработала — оба случая ОК (форма cancel_escalation у SOS)
 
 
+async def on_session_saved(session_id: int) -> None:
+    """Единая точка после создания/правки сессии в админке программы: отзыв + напоминания
+    (`services/forum/session_remind.py`). Вынесена сюда, чтобы хендлер не рос на каждую джобу."""
+    from services.forum import session_remind
+
+    await schedule_for_session(session_id)
+    await session_remind.on_session_changed(session_id)
+
+
+async def on_session_deleted(session_id: int, city: str) -> None:
+    """Сессию удалили: снять джобу отзыва и напоминания, переставить утренние джобы города."""
+    from services.forum import session_remind
+
+    cancel_for_session(session_id)
+    session_remind.cancel_for_session(session_id)
+    await session_remind.on_session_changed(session_id, city)
+
+
 async def schedule_for_session(session_id: int) -> bool:
     """Ставит/переставляет джобу отзыва сессии — вызывается после ЛЮБОГО создания/правки
     сессии (`handlers/forum/admin_program.py`), идемпотентно (`replace_existing=True`, тот же id
