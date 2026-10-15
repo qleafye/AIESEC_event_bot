@@ -413,6 +413,7 @@ def build_page_context(
         "bound_city_label": _city_label(conn, bound_city_code),
         "season_options": queries.season_options(conn),
         "kpi": queries.kpi_row(conn, scope),
+        "past_season": queries.past_season_block(conn, scope),
         # Подписи «реальных N» под первыми плитками «Сейчас» видны только при включённом
         # автоотказе (решение владельца 23.09: отдельного ряда «Реальные заявки» больше нет).
         "reject_rules_enabled": flags.get("reject_rules_enabled") == "on",
