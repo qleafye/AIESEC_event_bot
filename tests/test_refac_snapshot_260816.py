@@ -1654,6 +1654,13 @@ admin|callback_query|prog_enrtx|prog_enrtx:*
 admin|callback_query|prog_enrte|prog_enrte:*
 admin|callback_query|prog_enrsh|prog_enrsh:*
 admin|callback_query|prog_enrshgo|prog_enrshgo:*
+admin|callback_query|prog_srm|prog_srm:*
+admin|callback_query|prog_srmon|prog_srmon:*
+admin|callback_query|prog_srmmo|prog_srmmo:*
+admin|callback_query|prog_srmmin|prog_srmmin:*
+admin|callback_query|prog_srmtx|prog_srmtx:*
+admin|callback_query|prog_srmtm|prog_srmtm:*
+admin|callback_query|prog_srmex|prog_srmex:*
 admin|callback_query|prog_qz|prog_qz:*
 admin|callback_query|prog_qzcancel|prog_qzcancel
 admin|callback_query|prog_qzsw|prog_qzsw:*
@@ -2510,7 +2517,8 @@ def test_snapshot_total_handler_count_is_292():
     # 14.10 (развилка «тест / сразу к записи»): +1 admin prog_enrqo, +2 user_actions se:skipq/se:quiz; чистая вставка (1256 -> 1259).
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
     # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
-    assert len(GOLDEN_SNAPSHOT) == 1264
+    # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
+    assert len(GOLDEN_SNAPSHOT) == 1271
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
