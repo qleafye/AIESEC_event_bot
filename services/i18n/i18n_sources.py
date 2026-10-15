@@ -155,6 +155,9 @@ _NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({
     "contact_person", "contact_vk", "contact_tg",
     # Ревью 24.09 (находка 1): телефон/контакт, не язык — тот же довод, что contact_person.
     "sos_fallback_contact_text",
+    # 15.10: время утренней программы «ЧЧ:ММ» — число, не текст на языке (в реестре типа
+    # «время» нет, есть только мета format=time у text), переводить нечего.
+    "session_morning_time",
 })
 
 # 08.10: описание бота ставится в Telegram одно на всех (`services.bot.bot_profile`), без
