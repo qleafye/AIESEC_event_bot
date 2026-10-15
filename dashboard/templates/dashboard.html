@@ -126,6 +126,19 @@
           <div class="delta">ещё не подали анкету · вернулись: {{ past_season.returned | thousands }}</div>
         </div>
         {% endif %}
+        {% if deleg_daily %}
+        <div class="kpi">
+          <div class="num">{{ deleg_daily.form_today | thousands }}</div>
+          <div class="lbl">Делегации (форма)</div>
+          <div class="delta">за 7 дней {{ deleg_daily.form_week | thousands }} · всего {{ deleg_daily.form_total | thousands }}</div>
+          <div class="delta">форма делегаций — без разбивки по городам</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ deleg_daily.total_today | thousands }}</div>
+          <div class="lbl">Итого с делегациями</div>
+          <div class="delta">сегодня: реальные + форма без анкеты в боте · всего {{ deleg_daily.total_all | thousands }}</div>
+        </div>
+        {% endif %}
       </div>
     </section>
   </section>
@@ -164,6 +177,20 @@
         </details>
         {% else %}
         <p class="empty-note">Появится после первой заявки — график строится по дате регистрации.</p>
+        {% endif %}
+        {% if deleg_daily %}
+        <details class="chart-table" open>
+          <summary>По дням: бот и форма делегаций (14 дней)</summary>
+          <table>
+            <thead><tr><th>Дата</th><th class="num">Реальные</th><th class="num">Делегации (форма)</th><th class="num">Итого</th></tr></thead>
+            <tbody>
+              {% for r in deleg_daily.rows %}
+              <tr><td>{{ r.day }}</td><td class="num">{{ r.real | thousands }}</td><td class="num">{{ r.form | thousands }}</td><td class="num">{{ r.total | thousands }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <p class="empty-note">Форма делегаций — без разбивки по городам. «Итого» не считает дважды тех, кто уже есть в боте.</p>
+        </details>
         {% endif %}
       </div>
     </section>

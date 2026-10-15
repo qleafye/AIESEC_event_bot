@@ -1520,6 +1520,76 @@ def _delegations_summary(conn, scope: Scope, parts: list[str], params: tuple) ->
     }
 
 
+def delegation_daily(conn, scope: Scope, days: int = 14) -> dict | None:
+    """Регистрации через форму делегаций (UR REGS) по дням рядом с реальными из бота.
+
+    `None`, пока в `delegation_answers` нет ни одной строки. День — первые 10 символов
+    `answered_at` (МСК; нет — `created_at`). Считаем ЦА (`ta_status = 'ok'`), без повторов
+    (`link_how = 'duplicate'`) и один раз на человека (по анкете или нику). «Форма» —
+    все такие люди; «добавка» — те, кого нет среди анкет бота (не связаны и ник не найден
+    в `users` сезона): только они прибавляются к реальным, чтобы не считать дважды.
+    У формы нет города — числа формы не сужаются по скоупу, реальные — сужаются."""
+    has_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'delegation_answers'"
+    ).fetchone()
+    if has_table is None or not _scalar(conn, "SELECT EXISTS(SELECT 1 FROM delegation_answers)"):
+        return None
+    parts, params = _scope_sql(conn, scope)
+    season_frag, season_params = _season_sql(conn, scope.season)
+    season_where = f" WHERE {season_frag}" if season_frag else ""
+    known = {
+        _norm_needle(r[0]) for r in conn.execute(
+            f"SELECT username FROM users{season_where}", tuple(season_params)
+        ).fetchall()
+    }
+    known.discard("")
+    form: dict[str, int] = {}
+    extra: dict[str, int] = {}
+    seen: set = set()
+    for i, r in enumerate(conn.execute(
+        "SELECT username_needle, linked_telegram_id, answered_at, created_at "
+        "FROM delegation_answers WHERE ta_status = 'ok' AND COALESCE(link_how, '') != 'duplicate' "
+        "ORDER BY COALESCE(NULLIF(answered_at, ''), created_at), id"
+    ).fetchall()):
+        needle = _norm_needle(r["username_needle"])
+        linked = r["linked_telegram_id"] is not None
+        key = ("t", r["linked_telegram_id"]) if linked else (("n", needle) if needle else ("i", i))
+        if key in seen:
+            continue
+        seen.add(key)
+        day = (r["answered_at"] or r["created_at"] or "")[:10]
+        if len(day) != 10:
+            continue
+        form[day] = form.get(day, 0) + 1
+        if not linked and needle not in known:
+            extra[day] = extra.get(day, 0) + 1
+    no_auto_reject = "(auto_reject_rule_ids IS NULL OR TRIM(auto_reject_rule_ids) IN ('', '[]'))"
+    real_rows = conn.execute(
+        "SELECT substr(registration_date, 1, 10) AS day, COUNT(*) AS cnt FROM users"
+        f"{_where(parts + [no_auto_reject, 'registration_date IS NOT NULL'])} GROUP BY day",
+        params,
+    ).fetchall()
+    real = {r["day"]: r["cnt"] for r in real_rows}
+    now = msk_now()
+    today = now.strftime("%Y-%m-%d")
+    week_start = (now - timedelta(days=6)).strftime("%Y-%m-%d")
+    rows = []
+    for back in range(days - 1, -1, -1):
+        d = (now - timedelta(days=back)).strftime("%Y-%m-%d")
+        rows.append({
+            "day": d, "real": real.get(d, 0), "form": form.get(d, 0),
+            "total": real.get(d, 0) + extra.get(d, 0),
+        })
+    return {
+        "form_today": form.get(today, 0),
+        "form_week": sum(v for d, v in form.items() if week_start <= d <= today),
+        "form_total": sum(form.values()),
+        "total_today": real.get(today, 0) + extra.get(today, 0),
+        "total_all": sum(real.values()) + sum(extra.values()),
+        "rows": rows,
+    }
+
+
 def arrival_block(conn, scope: Scope) -> dict | None:
     """Блок «Приход» (бэклог чек-ина п.10): одобрено / пришли / не пришли, по дням, по
     сессиям. SQL и сборка отчёта — общий корневой `shared/arrival_stats.py`, те же запросы исполняет
