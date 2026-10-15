@@ -1455,6 +1455,68 @@ def delegations_block(conn, scope: Scope) -> dict | None:
         "total_ta": sum(r["ta"] for r in rows),
         "total_in_bot": sum(r["in_bot"] for r in rows),
         "total_arrived": sum(r["arrived"] for r in rows),
+        "summary": _delegations_summary(conn, scope, parts, params),
+    }
+
+
+def _norm_needle(value) -> str:
+    """Ник для сравнения: нижний регистр, без пробелов и ведущих «@»."""
+    return (value or "").strip().lstrip("@").strip().lower()
+
+
+def _delegations_summary(conn, scope: Scope, parts: list[str], params: tuple) -> dict:
+    """Сводка «регистрации вместе с делегациями»: одобрено в боте (в скоупе, как KPI), из них
+    из делегаций, и ЦА, которые есть только в форме (ещё не подали анкету в боте).
+
+    «Только в форме» — уникальные по нормализованному нику ответы без связи с анкетой
+    (`linked_telegram_id` пуст, `link_how != 'duplicate'`), чей ник не совпал с `users.username`
+    сезона. Ответ без ника считается отдельным человеком (ник неизвестен). Если один ник
+    встречается в нескольких статусах — берём лучший (ok > check > no).
+
+    Города у формы делегаций нет (`external_forms` города не хранит), поэтому форма
+    относится ко всем городам: в скоупе города эти числа не сужаются."""
+    approved_parts = parts + ["status = 'approved'"]
+    approved = _scalar(conn, f"SELECT COUNT(*) FROM users{_where(approved_parts)}", params) or 0
+    from_deleg = _scalar(
+        conn,
+        f"SELECT COUNT(*) FROM users{_where(approved_parts)} AND (COALESCE(TRIM(delegation), '') != '' "
+        "OR telegram_id IN (SELECT linked_telegram_id FROM delegation_answers "
+        "WHERE linked_telegram_id IS NOT NULL))",
+        params,
+    ) or 0
+    season_frag, season_params = _season_sql(conn, scope.season)
+    season_where = f" WHERE {season_frag}" if season_frag else ""
+    known = {
+        _norm_needle(r[0]) for r in conn.execute(
+            f"SELECT username FROM users{season_where}", tuple(season_params)
+        ).fetchall()
+    }
+    known.discard("")
+    rank = {"ok": 0, "check": 1, "no": 2}
+    best: dict[str, str] = {}
+    anon = {"ok": 0, "check": 0, "no": 0}
+    for r in conn.execute(
+        "SELECT ta_status, username_needle FROM delegation_answers "
+        "WHERE linked_telegram_id IS NULL AND COALESCE(link_how, '') != 'duplicate'"
+    ).fetchall():
+        status = r["ta_status"]
+        if status not in rank:
+            continue
+        needle = _norm_needle(r["username_needle"])
+        if not needle:
+            anon[status] += 1
+        elif needle not in known:
+            if needle not in best or rank[status] < rank[best[needle]]:
+                best[needle] = status
+    only = {k: anon[k] + sum(1 for v in best.values() if v == k) for k in rank}
+    return {
+        "approved": approved,
+        "from_delegations": from_deleg,
+        "only_ok": only["ok"],
+        "only_check": only["check"],
+        "only_no": only["no"],
+        "total": approved + only["ok"],
+        "total_with_check": approved + only["ok"] + only["check"],
     }
 
 
