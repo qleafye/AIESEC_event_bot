@@ -331,6 +331,67 @@ def _pending_parts(conn, parts: list[str]) -> list[str]:
     return parts + ["status = ?"] + ([not_walkin] if not_walkin else [])
 
 
+def past_season_block(conn, scope: Scope) -> dict | None:
+    """Плитка «Были в прошлом сезоне»: одобренные делегаты прошлых сезонов, которые ещё не
+    подали анкету на текущий (`not_returned`), и сколько уже вернулись (`returned`).
+
+    `None` — плитки нет: сезон мероприятия не задан, выбран не текущий сезон, либо прошлых
+    сезонов в базе нет. Повторная регистрация перезаписывает `season` текущим, а прошлый
+    уходит в `prev_season` — по нему считаем вернувшихся (как `get_returning_count` в боте).
+
+    Город: у импортированных делегатов `event_city` обычно NULL, а `city` — текст анкеты
+    («Москва и МО»). Поэтому строка относится к городу, если `event_city` равен коду города
+    либо `event_city` пуст, а текст `city` начинается с названия города из `cities`."""
+    current = _current_event_season(conn)
+    if not current:
+        return None
+    if scope.season is not None and scope.season != current:
+        return None
+
+    city_parts: list[str] = []
+    city_params: list = []
+    if scope.city is not None:
+        row = conn.execute("SELECT label FROM cities WHERE code = ?", (scope.city,)).fetchone()
+        label = (row["label"] or "").strip() if row is not None else ""
+        if label:
+            escaped = label.replace("!", "!!").replace("%", "!%").replace("_", "!_")
+            city_parts.append(
+                "(event_city = ? OR (event_city IS NULL AND TRIM(city) LIKE ? ESCAPE '!'))"
+            )
+            city_params = [scope.city, escaped + "%"]
+        else:
+            city_parts.append("event_city = ?")
+            city_params = [scope.city]
+
+    not_returned = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM users"
+        + _where(["season IS NOT NULL", "season != ?", "status = ?"] + city_parts),
+        tuple([current, "approved"] + city_params),
+    ) or 0
+    returned = _scalar(
+        conn,
+        "SELECT COUNT(*) FROM users"
+        + _where(
+            ["season = ?", "prev_season IS NOT NULL", "TRIM(prev_season) != ''", "prev_season != ?"]
+            + city_parts
+        ),
+        tuple([current, current] + city_params),
+    ) or 0
+    if not_returned == 0 and returned == 0:
+        return None
+    past = conn.execute(
+        "SELECT season FROM users WHERE season IS NOT NULL AND season != ? "
+        "GROUP BY season ORDER BY COUNT(*) DESC LIMIT 1",
+        (current,),
+    ).fetchone()
+    return {
+        "not_returned": int(not_returned),
+        "returned": int(returned),
+        "past_season": past["season"] if past is not None else None,
+    }
+
+
 def kpi_row(conn, scope: Scope) -> dict:
     parts, params = _scope_sql(conn, scope)
 
