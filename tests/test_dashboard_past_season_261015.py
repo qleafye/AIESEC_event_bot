@@ -121,3 +121,16 @@ def test_tile_rendered_on_current_season_only(tmp_path):
     past = client.get("/", params={"season": OLD})
     assert past.status_code == 200
     assert "Были в прошлом сезоне" not in past.text
+
+
+def test_city_label_with_date_uses_base_name(tmp_path):
+    path = _use_tmp_db(tmp_path)
+    asyncio.run(_seed_async(
+        [
+            {"season": OLD, "event_city": None, "city": "Москва и МО"},
+            {"season": OLD, "event_city": None, "city": "Санкт-Петербург"},
+        ],
+        cities=[("msk", "Москва, 30-31 октября", 1), ("spb", "Санкт-Петербург, 3 октября", 2)],
+    ))
+    assert _block(path, Scope(city="msk"))["not_returned"] == 1
+    assert _block(path, Scope(city="spb"))["not_returned"] == 1

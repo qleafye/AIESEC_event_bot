@@ -353,6 +353,8 @@ def past_season_block(conn, scope: Scope) -> dict | None:
     if scope.city is not None:
         row = conn.execute("SELECT label FROM cities WHERE code = ?", (scope.city,)).fetchone()
         label = (row["label"] or "").strip() if row is not None else ""
+        # В label на проде бывает дата: «Москва, 30-31 октября» — берём базовое имя города.
+        label = re.split(r",| \(| —", label, maxsplit=1)[0].strip()
         if label:
             escaped = label.replace("!", "!!").replace("%", "!%").replace("_", "!_")
             city_parts.append(
