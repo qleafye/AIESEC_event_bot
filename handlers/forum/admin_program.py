@@ -66,6 +66,7 @@ from services.forum.program import (
 # ЛЮБОГО создания/правки сессии, снимается после удаления; статистика — в карточке сессии.
 # Планирование/агрегаты живут в services/session_feedback.py, здесь только точки вызова.
 from services import session_feedback
+from services.forum import session_remind
 
 _CITY_FORBIDDEN_ALERT = "Этот город правит другой менеджер."
 _CANCEL_WORDS = {"Отмена", "/cancel"}
@@ -600,6 +601,7 @@ async def prog_description_step(message: types.Message, state: FSMContext):
             speaker=data.get("pw_speaker"), hall_id=data.get("pw_hall_id"), description=value,
         )
         await session_feedback.schedule_for_session(session_id)  # Форум-ночь п.9
+        await session_remind.on_session_changed(session_id)
         await state.clear()
         await message.answer("✅ Сессия добавлена в программу.", reply_markup=ReplyKeyboardRemove())
         screen = await render_session_card(session_id)
@@ -767,6 +769,7 @@ async def _send_card(message: types.Message, session_id: int, *, intro: str | No
     # (см. докстринг `services.session_feedback.schedule_for_session`) — переставляет джобу
     # отзыва на новый момент, идемпотентно.
     await session_feedback.schedule_for_session(session_id)
+    await session_remind.on_session_changed(session_id)
     screen = await render_session_card(session_id)
     if screen is None:
         await message.answer("Сессия больше недоступна.", reply_markup=ReplyKeyboardRemove())
@@ -779,6 +782,7 @@ async def _send_card(message: types.Message, session_id: int, *, intro: str | No
 
 async def _edit_to_card(callback: types.CallbackQuery, session_id: int) -> None:
     await session_feedback.schedule_for_session(session_id)
+    await session_remind.on_session_changed(session_id)
     screen = await render_session_card(session_id)
     if screen is None:
         await callback.message.edit_text("Сессия больше недоступна.")
@@ -876,6 +880,8 @@ async def prog_delete_go(callback: types.CallbackQuery):
     city, day = session["city"], session["day"]
     await delete_program_session(session_id)
     session_feedback.cancel_for_session(session_id)  # Форум-ночь п.9 — не отправлять отзыв удалённой сессии
+    session_remind.cancel_for_session(session_id)
+    await session_remind.on_session_changed(session_id, city)
     text, kb = await render_day_screen(city, day)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer("Сессия удалена.")
