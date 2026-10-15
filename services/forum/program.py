@@ -317,6 +317,21 @@ def scanned_outside_session_window(
     return not (start <= dt <= end)
 
 
+async def _schedule_new_sessions(session_ids: list[int], city: str) -> None:
+    """Скопированным сессиям нужны джобы отзыва и напоминаний (обычное создание ставит их в
+    хендлере карточки). Fail-soft: планировщика может не быть (тест, веб-процесс)."""
+    try:
+        from services import session_feedback
+        from services.forum import session_remind
+
+        for sid in session_ids:
+            await session_feedback.schedule_for_session(sid)
+            await session_remind.on_session_changed(sid, city)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("copy_program_day: постановка джоб не удалась", exc_info=True)
+
+
 async def copy_program_day(from_city: str, to_city: str, day: str) -> dict:
     """Копирует залы (по имени — существующий зал с тем же именем в `to_city` переиспользуется,
     иначе заводится новый) и сессии ОДНОГО дня `day` из `from_city` в `to_city`, СОХРАНЯЯ саму
@@ -334,6 +349,7 @@ async def copy_program_day(from_city: str, to_city: str, day: str) -> dict:
     dst_tracks = {t["name"]: t["id"] for t in await _edb.list_tracks(to_city)}
     halls_created = 0
     sessions_created = 0
+    new_ids: list[int] = []
     for session in source_sessions:
         hall_id = session.get("hall_id")
         new_hall_id = None
@@ -362,6 +378,8 @@ async def copy_program_day(from_city: str, to_city: str, day: str) -> dict:
         if new_track:
             await update_program_session(new_id, track_id=new_track)
         sessions_created += 1
+        new_ids.append(new_id)
+    await _schedule_new_sessions(new_ids, to_city)
     return {"halls_created": halls_created, "sessions_created": sessions_created}
 
 
