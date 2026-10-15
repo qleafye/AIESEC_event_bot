@@ -21,7 +21,7 @@ from handlers.admin import router
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.states import EditSetting
 from services.forum.enroll_sheets import enable_autosync, enroll_tab_names, rebuild_enroll_sheets
-from services.forum.session_enroll import ENROLL_TEXT_KEYS, deadline_label, module_enabled, session_open_state
+from services.forum.session_enroll import ENROLL_TEXT_KEYS, common_enabled, deadline_label, module_enabled, session_open_state
 from services.settings.audit import set_setting_by_admin
 from domain.settings.placeholders import hint
 from domain.settings.schema import SETTINGS_SCHEMA
@@ -46,7 +46,8 @@ async def _write_key(base_key: str, code: str) -> str:
 # ── Список «📋 Записи на сессии» ──────────────────────────────────────────────────────────────
 
 async def render_enroll_list(code: str, page: int) -> tuple[str, InlineKeyboardMarkup]:
-    sessions = await edb.list_trackable_sessions(code)
+    common_on = await common_enabled(code)
+    sessions = await edb.list_trackable_sessions(code, include_common=common_on)
     counts = await edb.enrollment_counts_for_city(code)
     pages = max(1, -(-len(sessions) // _PAGE))
     page = min(max(page, 0), pages - 1)
@@ -58,6 +59,8 @@ async def render_enroll_list(code: str, page: int) -> tuple[str, InlineKeyboardM
     buttons: list[list[InlineKeyboardButton]] = []
     if not sessions:
         lines += ["", "Сессий с треком пока нет. Назначьте трек в карточке сессии («🧭 Запись и треки»)."]
+    elif common_on:
+        lines += ["", "Общие сессии идут в списке с пометкой «🏛 общая»: записываться на них не обязательно."]
     else:
         lines += ["", "Нажмите на сессию, чтобы выгрузить список записанных файлом. "
                       "Замок рядом закрывает или открывает запись."]
@@ -66,7 +69,7 @@ async def render_enroll_list(code: str, page: int) -> tuple[str, InlineKeyboardM
         n = counts.get(s["id"], 0)
         taken = f"{n}/{s['enroll_limit']}" if s.get("enroll_limit") is not None else str(n)
         day = f"{s['day'][8:10]}.{s['day'][5:7]} " if many_days else ""
-        label = f"{day}{s['start_time']} {s['track_name']} · {_short(s['title'], 24)} — {taken}"
+        label = f"{day}{s['start_time']} {s['track_name'] or '🏛 общая'} · {_short(s['title'], 24)} — {taken}"
         closed = bool(s.get("enroll_closed"))
         buttons.append([
             InlineKeyboardButton(text=("🔒 " if closed else "") + label, callback_data=f"prog_enrx:{s['id']}"),
@@ -162,6 +165,11 @@ async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
     if offer and await quiz_db.active_quiz_for_city(code) is None:
         offer_line += " (теста нет — развилка не покажется)"
     lines.append(offer_line)
+    common_on = await common_enabled(code)
+    lines.append(
+        f"Общие сессии (открытие, закрытие): запись по желанию {'✅ Вкл' if common_on else '❌ Выкл'}"
+        + (" — делегаты отмечают, на какие придут; прийти можно и без записи." if common_on else "")
+    )
     sessions_tab, people_tab = await enroll_tab_names()
     lines.append(
         f"Google-таблица: вкладки «{html_module.escape(sessions_tab)}» и «{html_module.escape(people_tab)}» "
@@ -174,6 +182,10 @@ async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(
             text="🧭 Тест перед записью: ✅ → ❌" if offer else "🧭 Тест перед записью: ❌ → ✅",
             callback_data=f"prog_enrqo:{code}",
+        )],
+        [InlineKeyboardButton(
+            text=f"🏛 Общие сессии: запись по желанию — {'✅ вкл' if common_on else '❌ выкл'}",
+            callback_data=f"prog_enrco:{code}",
         )],
         [InlineKeyboardButton(text=f"⏳ Закрыть запись: {deadline or 'не задано'}",
                               callback_data=f"prog_enrdl:{code}")],
@@ -222,6 +234,16 @@ async def prog_enrqo(callback: types.CallbackQuery):
         return
     new_val = "off" if await _quiz_offer_on(code) else "on"
     await set_setting_by_admin(callback.from_user.id, await _write_key("session_enroll_quiz_offer", code), new_val)
+    await _show_settings(callback, code, "Сохранено.")
+
+
+@router.callback_query(F.data.startswith("prog_enrco:"))
+async def prog_enrco(callback: types.CallbackQuery):
+    code = callback.data.split(":", 1)[1]
+    if await _deny(callback, code):
+        return
+    new_val = "off" if await common_enabled(code) else "on"
+    await set_setting_by_admin(callback.from_user.id, await _write_key("session_enroll_common_optional", code), new_val)
     await _show_settings(callback, code, "Сохранено.")
 
 

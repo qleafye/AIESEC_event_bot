@@ -1648,6 +1648,7 @@ admin|callback_query|prog_enrx|prog_enrx:*
 admin|callback_query|prog_enrset|prog_enrset:*
 admin|callback_query|prog_enrsw|prog_enrsw:*
 admin|callback_query|prog_enrqo|prog_enrqo:*
+admin|callback_query|prog_enrco|prog_enrco:*
 admin|callback_query|prog_enrdl|prog_enrdl:*
 admin|callback_query|prog_enrtx|prog_enrtx:*
 admin|callback_query|prog_enrte|prog_enrte:*
@@ -1862,6 +1863,8 @@ user_actions|callback_query|se_pick|se:p:*
 user_actions|callback_query|se_replace|se:r:*
 user_actions|callback_query|se_keep|se:k:*
 user_actions|callback_query|se_clear|se:c:*
+user_actions|callback_query|se_common|se:g
+user_actions|callback_query|se_common_toggle|se:g:*
 user_actions|callback_query|se_my|se:my
 user_actions|callback_query|se_edit|se:ed
 user_actions|callback_query|se_confirm|se:ok
@@ -2506,7 +2509,8 @@ def test_snapshot_total_handler_count_is_292():
     # prog_agd* после prog_photo_del_go (callback) / prog_photo_not_photo (message); чистая вставка (1248 -> 1256).
     # 14.10 (развилка «тест / сразу к записи»): +1 admin prog_enrqo, +2 user_actions se:skipq/se:quiz; чистая вставка (1256 -> 1259).
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
-    assert len(GOLDEN_SNAPSHOT) == 1261
+    # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
+    assert len(GOLDEN_SNAPSHOT) == 1264
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
