@@ -455,6 +455,9 @@ async def init_scheduler(bot):
     # тот же приём, что реконсиляции выше.
     from services.session_feedback import reconcile_all as _reconcile_session_feedback
     await _reconcile_session_feedback()
+    # Напоминания о сессиях делегатам (за N минут и утренняя программа) — тот же приём.
+    from services.forum.session_remind import reconcile as _reconcile_session_remind
+    await _reconcile_session_remind()
     # Идея №16 бэклога чек-ина: «📊 Отчёт дня форума» вечером — (пере)ставить self-rescheduling
     # джобу каждого города на старте, тот же приём, что у соседей выше.
     from services.forum_day_report import reconcile as _reconcile_day_report

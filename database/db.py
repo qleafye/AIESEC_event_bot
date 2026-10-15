@@ -2631,6 +2631,8 @@ async def init_db():
         # Запись на сессии программы: треки, компетенции, записи, подтверждение расписания.
         from database import session_enroll_db
         await session_enroll_db.ensure_schema(db)
+        from database import session_remind_db
+        await session_remind_db.ensure_schema(db)
         from database import quiz_db
         await quiz_db.ensure_schema(db)
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
