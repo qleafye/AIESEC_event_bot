@@ -18,6 +18,7 @@ from database.quiz_db import get_quiz_for_city
 from database.session_enroll_db import list_trackable_sessions
 from handlers.admin import router
 from handlers.states import Broadcast
+from services.forum.session_enroll import common_enabled
 from services.forum.program import day_label, session_point_label
 
 _KINDS = (SESSION_ENROLL_IN, SESSION_ENROLL_NONE, "quiz")
@@ -33,7 +34,7 @@ async def _city_codes() -> list[str]:
 async def _has_content(kind: str, code: str) -> bool:
     if kind == "quiz":
         return await get_quiz_for_city(code) is not None
-    return bool(await list_trackable_sessions(code))
+    return bool(await list_trackable_sessions(code, include_common=await common_enabled(code)))
 
 
 async def _cities_with(kind: str) -> list[str]:
@@ -41,7 +42,7 @@ async def _cities_with(kind: str) -> list[str]:
 
 
 async def enroll_menu_rows() -> list[list[InlineKeyboardButton]]:
-    """Ряды кнопок меню фильтров: запись — если есть сессии с треком, тест — если он есть."""
+    """Ряды кнопок меню фильтров: запись — если есть сессии с треком (или общие с включённой записью), тест — если он есть."""
     rows = []
     if await _cities_with(SESSION_ENROLL_IN):
         rows.append([
@@ -81,7 +82,7 @@ async def _after_city(callback: types.CallbackQuery, state: FSMContext, kind: st
         await _finish(callback, state, cond)
         return
     await state.update_data(enrf_city=code)
-    days = sorted({s["day"] for s in await list_trackable_sessions(code)})
+    days = sorted({s["day"] for s in await list_trackable_sessions(code, include_common=await common_enabled(code))})
     buttons = [[InlineKeyboardButton(text=f"📅 {day_label(d)}", callback_data=f"enrf_day:{d}")] for d in days]
     await callback.message.edit_text(
         f"📅 Программа — {await city_label(code)}. Выберите день:",
@@ -131,7 +132,7 @@ async def enrf_day_pick(callback: types.CallbackQuery, state: FSMContext):
     if data.get("enrf_kind") != SESSION_ENROLL_IN or not code:
         await callback.answer("Сессия устарела, начните заново.", show_alert=True)
         return
-    sessions = await list_trackable_sessions(code, day)
+    sessions = await list_trackable_sessions(code, day, include_common=await common_enabled(code))
     buttons = [[InlineKeyboardButton(text=session_point_label(s), callback_data=f"enrf_pick:{s['id']}")]
                for s in sessions]
     await callback.answer()

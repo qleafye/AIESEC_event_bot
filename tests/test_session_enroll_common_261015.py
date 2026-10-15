@@ -391,3 +391,61 @@ def test_admin_switch_track_to_common_keeps_enrollments_when_on(tmp_path):
     run(admin_enroll.prog_enrtrk(cb))
     assert "записи на эту сессию удалятся: 1" in cb.message.text_edited
     assert run(db.get_program_session(ids["B"]))["track_id"] == ids["business"]
+
+
+# ── Фильтры рассылки ─────────────────────────────────────────────────────────────────────────
+
+from handlers.comms import admin_broadcast_enroll_filter as ef  # noqa: E402
+from handlers.comms import admin_broadcasts as ab  # noqa: E402
+from handlers.states import Broadcast  # noqa: E402
+from tests._enroll38 import ADMIN_ID  # noqa: E402
+from tests.test_roles_phase8 import FakeCallback as RolesCallback, FakeMessage as RolesMessage, _fresh_state  # noqa: E402
+
+
+def _flat(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def test_broadcast_filter_lists_common_sessions_only_when_on(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        sid = await db.create_program_session(CITY, DAY, "09:00", "10:00", "Открытие")
+        await db.set_setting("event_city_enabled", "on")
+
+        async def menu():
+            msg = RolesMessage()
+            await ab._render_filter_menu(msg, [], edit=False)
+            return _flat(msg.answers[-1][2])
+
+        assert "enrf_start:in" not in await menu()               # тумблер выключен
+        await db.set_setting(per_city_key("session_enroll_common_optional", CITY), "on")
+        assert "enrf_start:in" in await menu()
+        state = _fresh_state(ADMIN_ID)
+        await state.update_data(filters=[])
+        await state.set_state(Broadcast.filter_field)
+        await ef.enrf_start(RolesCallback("enrf_start:in", ADMIN_ID), state)
+        cb = RolesCallback(f"enrf_day:{DAY}", ADMIN_ID)
+        await ef.enrf_day_pick(cb, state)
+        assert f"enrf_pick:{sid}" in _flat(cb.message.markup)
+        return sid
+    run(go())
+
+
+def test_filter_none_ignores_common_enrollments(tmp_path):
+    from tests.test_broadcast_filters_sql_38 import _ids
+
+    ready(tmp_path)
+
+    async def go():
+        ids = await _setup(common=True)
+        await se.enroll(U, ids["P"])                              # только на общую
+        await se.enroll(102, ids["A"])                            # на трековую
+        spec = [{"field": "session_enroll", "value": db.SESSION_ENROLL_NONE, "city": CITY}]
+        got = await _ids(spec)
+        assert U in got and 102 not in got
+        # фильтр «записан на сессию» по общей сессии работает
+        got_in = await _ids([{"field": "session_enroll", "value": db.SESSION_ENROLL_IN,
+                              "session_id": ids["P"]}])
+        assert U in got_in
+    run(go())

@@ -5721,7 +5721,7 @@ def _enroll_quiz_clause(f: dict) -> tuple[str, list]:
         return (
             f"({guard} AND {city_frag} AND NOT EXISTS (SELECT 1 FROM session_enrollments e "
             "JOIN program_sessions s ON s.id = e.session_id "
-            "WHERE e.telegram_id = users.telegram_id AND s.city = ?))",
+            "WHERE e.telegram_id = users.telegram_id AND s.city = ? AND s.track_id IS NOT NULL))",
             [*guard_params, *city_params, city],
         )
     if field == "quiz" and value == QUIZ_NOT_PASSED:
