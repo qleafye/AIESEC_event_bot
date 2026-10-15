@@ -14,8 +14,14 @@ deep-link `/start sessions` (`handlers/forum/forum_deeplinks.py`) и callback `s
 
 Callback'и (числа, <= 64 байт): se:open, se:t:{tid} (0 = смешать), se:s:{tid}:{gi},
 se:p:{tid}:{gi}:{sid}, se:r:{tid}:{gi}:{sid}, se:k:{tid}:{gi}, se:c:{tid}:{gi}:{sid},
-se:my, se:ok, se:ed, se:skipq (пропустить тест-развилку), se:quiz (открыть тест).
-`gi` — глобальный индекс слота в порядке `slots_for_city`."""
+se:my, se:ok, se:ed, se:skipq (пропустить тест-развилку), se:quiz (открыть тест),
+se:g (список общих сессий), se:g:{sid} (записаться / выйти с общей сессии).
+`gi` — глобальный индекс слота в порядке `slots_for_city`; -1 — «из списка общих сессий»
+(замена при пересечении возвращает туда же).
+
+Общие сессии (пленарки) — отдельным блоком, а не слотом: слот — «выбери одну из параллельных»,
+а общих сессий можно отметить несколько. Блок есть, только если в городе включена
+`session_enroll_common_optional`; записываться на них не обязательно."""
 import html
 import logging
 import re
@@ -135,8 +141,36 @@ def _parse(data: str, count: int) -> list[int] | None:
 async def _tracks_screen(target: types.Message, ctx: _Ctx, *, edit: bool) -> None:
     rows = [[_btn(t["name"], f"se:t:{t['id']}")] for t in await edb.list_tracks(ctx.city)]
     rows.append([_btn(await ctx.t("session_enroll_mix_button"), "se:t:0")])
+    text = await ctx.t("session_enroll_intro_text")
+    if await svc.common_sessions(ctx.city):
+        rows.append([_btn(await ctx.t("session_enroll_common_button"), "se:g")])
+        text += "\n\n" + await ctx.t("session_enroll_common_note")
     rows.append([_btn(await ctx.t("session_enroll_schedule_title"), "se:my")])
-    await _show(target, await ctx.t("session_enroll_intro_text"), _kb(rows), edit=edit)
+    await _show(target, text, _kb(rows), edit=edit)
+
+
+async def _common_screen(target: types.Message, ctx: _Ctx, *, edit: bool) -> None:
+    """Блок «Общие сессии»: пояснение «записываться не обязательно» и кнопка на каждую сессию
+    (✅ — записан; повторное нажатие снимает запись)."""
+    sessions = await svc.common_sessions(ctx.city)
+    if not sessions:  # тумблер выключили или сессии убрали, пока экран был открыт
+        await _tracks_screen(target, ctx, edit=edit)
+        return
+    mine = await edb.user_enrollment_ids(ctx.user["telegram_id"])
+    many_days = len({s["day"] for s in sessions}) > 1
+    rows = []
+    for s in sessions:
+        day = f"{_day_label(s['day'])} " if many_days else ""
+        label = f"{'✅ ' if s['id'] in mine else ''}{day}{s['start_time']} {s['title']}"
+        if s["open_state"] == "closed":
+            label += f" · {await ctx.t('session_enroll_closed_label')}"
+        elif s["open_state"] == "full":
+            label += f" · {await ctx.t('session_enroll_full_label')}"
+        rows.append([_btn(label, f"se:g:{s['id']}")])
+    rows.append([_btn(await ctx.t("session_enroll_back_button"), "se:ed")])
+    rows.append([_btn(await ctx.t("session_enroll_schedule_title"), "se:my")])
+    head = await ctx.t("session_enroll_common_note")
+    await _show(target, await _with_session_blocks(ctx, head, sessions), _kb(rows), edit=edit)
 
 
 _TEXT_LIMIT = 4000  # Telegram режет сообщение на 4096
@@ -267,7 +301,8 @@ async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = F
         await target.answer(refusal)
         return False
     flat = await _flat_slots(ctx.city)
-    if not flat:
+    common = await svc.common_sessions(ctx.city)
+    if not flat and not common:
         await target.answer(await ctx.t("session_enroll_no_sessions_text"))
         return False
     if (not skip_quiz and not edit and not await svc.deadline_passed(ctx.city)
@@ -276,7 +311,7 @@ async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = F
         return True
     if not edit:
         try:
-            source = await entry_agenda_photo(ctx.city, flat[0][0])
+            source = await entry_agenda_photo(ctx.city, flat[0][0] if flat else common[0]["day"])
         except Exception as e:
             logger.warning("session_enroll: картинка повестки не нашлась: %s", e)
             source = None
@@ -285,7 +320,10 @@ async def open_enroll(target: types.Message, telegram_id: int, *, edit: bool = F
     if await svc.deadline_passed(ctx.city):
         await _schedule_screen(target, ctx, edit=False)
         return True
-    await _tracks_screen(target, ctx, edit=edit)
+    if flat:
+        await _tracks_screen(target, ctx, edit=edit)
+    else:  # сессий с треком нет, есть только общие
+        await _common_screen(target, ctx, edit=edit)
     return True
 
 
@@ -426,6 +464,9 @@ async def _replace_screen(callback, ctx, tid, gi, old, new) -> None:
 
 
 async def _after_pick(callback, ctx, tid: int, gi: int) -> None:
+    if gi < 0:  # запись шла из списка общих сессий — возвращаем туда же
+        await _common_screen(callback.message, ctx, edit=True)
+        return
     await _advance(callback, ctx, tid, gi + 1)
 
 
@@ -481,6 +522,9 @@ async def se_keep(callback: types.CallbackQuery):
     if args is None:
         await _schedule_screen(callback.message, ctx, edit=True)
         return
+    if args[1] < 0:
+        await _common_screen(callback.message, ctx, edit=True)
+        return
     await _slot_screen(callback.message, ctx, args[0], args[1])
 
 
@@ -506,6 +550,47 @@ async def se_clear(callback: types.CallbackQuery):
             return
     await callback.answer()
     await _slot_screen(callback.message, ctx, tid, gi)
+
+
+@router.callback_query(F.data == "se:g")
+async def se_common(callback: types.CallbackQuery):
+    ctx = await _callback_ctx(callback)
+    if ctx is None or await _editing_closed(callback, ctx):
+        return
+    await callback.answer()
+    await _common_screen(callback.message, ctx, edit=True)
+
+
+@router.callback_query(F.data.startswith("se:g:"))
+async def se_common_toggle(callback: types.CallbackQuery):
+    """Нажатие на общую сессию: не записан — записать, записан — снять запись."""
+    args = _parse(callback.data, 1)
+    ctx = await _callback_ctx(callback)
+    if ctx is None:
+        return
+    if args is None:
+        await callback.answer()
+        await _schedule_screen(callback.message, ctx, edit=True)
+        return
+    if await _editing_closed(callback, ctx):
+        return
+    sid, uid = args[0], callback.from_user.id
+    if not await svc.common_enabled(ctx.city):
+        await callback.answer(await ctx.t("session_enroll_unavailable_text"), show_alert=True)
+        await _tracks_screen(callback.message, ctx, edit=True)
+        return
+    if sid in await edb.user_enrollment_ids(uid):
+        out = await svc.unenroll(uid, sid)
+    else:
+        out = await svc.enroll(uid, sid)
+    if out.status in ("ok", "already"):
+        await callback.answer()
+        await _common_screen(callback.message, ctx, edit=True)
+    elif out.status == "conflict":
+        await callback.answer()
+        await _replace_screen(callback, ctx, 0, -1, out.conflicts[0], out.session)
+    else:
+        await _alert_refusal(callback, ctx, out)
 
 
 @router.callback_query(F.data == "se:my")
