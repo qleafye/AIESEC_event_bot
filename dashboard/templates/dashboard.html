@@ -117,6 +117,15 @@
           <div class="delta">ждут на стойке {{ kpi.pending_walkin | thousands }}</div>
           {% endif %}
         </div>
+        {# Были в прошлом сезоне — кого ещё дожимать: одобренные прошлых сезонов без новой
+           анкеты. Плитки нет на архивном сезоне и когда прошлых сезонов нет. #}
+        {% if past_season %}
+        <div class="kpi">
+          <div class="num">{{ past_season.not_returned | thousands }}</div>
+          <div class="lbl">Были в прошлом сезоне</div>
+          <div class="delta">ещё не подали анкету · вернулись: {{ past_season.returned | thousands }}</div>
+        </div>
+        {% endif %}
       </div>
     </section>
   </section>
