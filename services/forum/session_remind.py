@@ -124,9 +124,14 @@ def _esc(value) -> str:
 def _translate(text: str, lang: str, tr_map: dict | None) -> str:
     if lang == "ru" or not tr_map:
         return text
-    from handlers.i18n.reg_i18n import tr_text
+    # То же, что `handlers.i18n.reg_i18n.tr_text` без прогресс-префикса: ведущий эмодзи не
+    # переводится, ядро идёт через общий `i18n.tr` (сервисы handlers не импортируют).
+    from services.i18n import i18n as i18n_service
+    from services.i18n.i18n_glossary import split_leading_symbols
 
-    return tr_text(text, lang, tr_map)
+    prefix, core = split_leading_symbols(text)
+    translated = i18n_service.tr(core, lang, tr_map)
+    return f"{prefix}{translated}" if prefix else translated
 
 
 async def _hall_name(session: dict) -> str:
