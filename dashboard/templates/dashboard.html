@@ -643,6 +643,33 @@
     <h2 class="section-title" id="delegations-title">Делегации</h2>
     <section class="block">
       <h2 class="visually-hidden">Делегации по вузам</h2>
+      {% set ds = delegations.summary %}
+      <div class="kpi-grid">
+        <div class="kpi primary">
+          <div class="num">{{ ds.total | thousands }}</div>
+          <div class="lbl">Итого с делегациями</div>
+          <div class="delta">с учётом «проверить»: {{ ds.total_with_check | thousands }}</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ ds.approved | thousands }}</div>
+          <div class="lbl">Одобрено в боте</div>
+          <div class="delta">из них из делегаций {{ ds.from_delegations | thousands }}</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ ds.only_ok | thousands }}</div>
+          <div class="lbl">Только в форме: ЦА</div>
+          <div class="delta">в боте нет</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ ds.only_check | thousands }}</div>
+          <div class="lbl">Только в форме: проверить</div>
+        </div>
+        <div class="kpi">
+          <div class="num">{{ ds.only_no | thousands }}</div>
+          <div class="lbl">Только в форме: не ЦА</div>
+        </div>
+      </div>
+      <p class="empty-note">Форма делегаций — без разбивки по городам: числа «только в форме» не зависят от выбранного города.</p>
       {% if delegations.rows %}
       <div class="card">
         <div class="table-wrap">
