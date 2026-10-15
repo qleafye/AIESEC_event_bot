@@ -79,6 +79,9 @@ async def render_remind_screen(code: str) -> tuple[str, InlineKeyboardMarkup]:
         f"Утром — программа на день: {_onoff(morning_on)}, в {morning_at} по времени города",
         "", await _status_line(code),
     ]
+    warning = await sr.morning_time_warning(code)
+    if warning:
+        lines += ["", html_module.escape(warning)]
     minute_row = [
         InlineKeyboardButton(text=("✅ " if m == minutes else "") + f"{m} мин", callback_data=f"prog_srmmin:{code}:{m}")
         for m in sr.MINUTES_CHOICES

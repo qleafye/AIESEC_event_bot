@@ -543,6 +543,34 @@ async def planned_summary(city: str) -> dict:
     return {"day": None, "reminders": 0, "sessions": 0, "morning": False}
 
 
+async def morning_time_warning(city: str) -> str | None:
+    """Предупреждение менеджеру: утро включено, а время программы не раньше начала первой сессии
+    одного из предстоящих дней — в этот день сообщение не уйдёт (дедлайн джобы). Берётся первый
+    такой день. None — всё в порядке."""
+    from services.forum.program import sessions_for_city_day
+    from services.infra.timeutil import city_now
+
+    if not await morning_enabled(city):
+        return None
+    at = await morning_time(city)
+    parsed = parse_hhmm(at)
+    now_local = await city_now(city)
+    for day in await _program_days(city):
+        starts = [
+            d for d in (_local_dt(s["day"], s["start_time"]) for s in await sessions_for_city_day(city, day))
+            if d is not None and d > now_local
+        ]
+        if not starts or parsed is None:
+            continue
+        first = min(starts)
+        if (first.hour, first.minute) <= parsed:
+            return (
+                f"⚠️ {day[8:10]}.{day[5:7]} первая сессия в {first.strftime('%H:%M')} — "
+                f"программа в {at} уже не уйдёт. Поставь время раньше."
+            )
+    return None
+
+
 async def build_examples(city: str, telegram_id: int) -> tuple[str, str] | None:
     """Пример для менеджера на реальных данных: (напоминание о ближайшей сессии, программа дня).
     None — в программе города нет ни одной сессии."""
