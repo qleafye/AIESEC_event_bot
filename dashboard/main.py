@@ -462,6 +462,7 @@ def build_page_context(
         "ambassadors": ambassadors,
         "referrals": referrals,
         "delegations": delegations,
+        "deleg_daily": queries.delegation_daily(conn, scope),
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,
     }
