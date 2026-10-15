@@ -180,6 +180,7 @@ async def render_enroll_settings(code: str) -> tuple[str, InlineKeyboardMarkup]:
         [InlineKeyboardButton(text="✏️ Тексты", callback_data=f"prog_enrtx:{code}:0")],
         [InlineKeyboardButton(text="🧭 Тест компетенций", callback_data=f"prog_qz:{code}")],
         [InlineKeyboardButton(text="📋 Записи на сессии", callback_data=f"prog_enrl:{code}:0")],
+        [InlineKeyboardButton(text="⏰ Напоминания о сессиях", callback_data=f"prog_srm:{code}")],
         [InlineKeyboardButton(text="🧭 Треки", callback_data=f"prog_trkl:{code}"),
          InlineKeyboardButton(text="🎯 Компетенции", callback_data=f"prog_cmpl:{code}")],
         [InlineKeyboardButton(text="🔄 Таблица записей", callback_data=f"prog_enrsh:{code}")],
