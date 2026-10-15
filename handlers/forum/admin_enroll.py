@@ -20,7 +20,7 @@ from handlers.admin import router
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed, _short
 from handlers.forum.admin_enroll_guard import confirm_limit
 from handlers.states import ProgramCompetencyEdit, ProgramEnrollLimit, ProgramTrackEdit
-from services.forum.session_enroll import session_open_state
+from services.forum.session_enroll import common_enabled, session_open_state
 
 _NAME_MAX = 60
 _CANCEL_WORDS = {"Отмена", "/cancel"}
@@ -370,10 +370,14 @@ async def enroll_card_lines(session: dict) -> list[str]:
     state = _STATE_WORDS[await session_open_state(session, count)]
     limit = session.get("enroll_limit")
     limit_text = f"лимит {limit}" if limit is not None else "без лимита"
+    if track is None and await common_enabled(session["city"]):
+        enroll_line = f"📅 Запись по желанию: {state} · {limit_text} · {count} записались"
+    else:
+        enroll_line = f"📅 Запись: {state} · {limit_text} · записано {count}"
     return [
         f"🧭 Трек: {html_module.escape(track['name']) if track else 'общая сессия'}",
         f"🎯 Компетенции: {html_module.escape(', '.join(names)) if names else '—'}",
-        f"📅 Запись: {state} · {limit_text} · записано {count}",
+        enroll_line,
     ]
 
 
@@ -386,8 +390,13 @@ async def render_enroll_card(session: dict) -> tuple[str, InlineKeyboardMarkup]:
 
     tracks = await edb.list_tracks(code)
     if tracks:
-        lines.append("Трек определяет, на какие сессии можно записаться. Без трека сессия общая "
-                     "(пленарка) — записи на неё нет.")
+        if await common_enabled(code):
+            lines.append("Трек определяет, на какие сессии можно записаться. Без трека сессия общая "
+                         "(пленарка) — запись на неё по желанию: прийти можно и без записи, "
+                         "но так видно, сколько людей будет в зале.")
+        else:
+            lines.append("Трек определяет, на какие сессии можно записаться. Без трека сессия общая "
+                         "(пленарка) — записи на неё нет.")
         for t in tracks:
             mark = "✅ " if t["id"] == session.get("track_id") else ""
             buttons.append([InlineKeyboardButton(
@@ -479,7 +488,9 @@ async def prog_enrtrk(callback: types.CallbackQuery):
         await update_program_session(session["id"], track_id=tid)
         await _show_card(callback, session["id"])
         return
-    count = await edb.count_enrollments(session["id"]) if session.get("track_id") else 0
+    # запись на общие сессии включена — записи остаются как «по желанию», удалять нечего
+    keep = await common_enabled(session["city"])
+    count = await edb.count_enrollments(session["id"]) if session.get("track_id") and not keep else 0
     if count:
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🗑 Да, сделать общей", callback_data=f"prog_enrtrkgo:{session['id']}:0")],

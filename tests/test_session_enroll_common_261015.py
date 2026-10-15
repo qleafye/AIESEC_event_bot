@@ -205,3 +205,189 @@ def test_common_cities_ladder():
     assert f(s, ["msk", "spb"], cities_on=True) == ["msk"]
     assert f(s, ["msk", "spb"], cities_on=False) == ["msk", "spb"]   # модуль городов выключен
     assert f({}, ["msk"], cities_on=True) == []
+
+
+# ── Делегатский экран ────────────────────────────────────────────────────────────────────────
+
+from handlers.forum import session_enroll as h  # noqa: E402
+from tests._enroll38_chat import FakeCallback, FakeMessage, buttons, setup_world  # noqa: E402
+
+NOTE_START = "🏛 Общие сессии — открытие, закрытие и другие для всех. Записываться на них не обязательно"
+
+
+async def _world(common: bool):
+    ids = await setup_world()
+    if common:
+        await db.set_setting(per_city_key("session_enroll_common_optional", CITY), "on")
+    return ids
+
+
+async def _press(data, uid=U):
+    cb = FakeCallback(data, uid)
+    handler = h.se_common if data == "se:g" else {
+        "se:g:": h.se_common_toggle, "se:r:": h.se_replace, "se:k:": h.se_keep,
+    }[data[:5]]
+    await handler(cb)
+    return cb
+
+
+def test_tracks_screen_shows_common_block_only_when_on(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        await _world(common=False)
+        msg = FakeMessage(U)
+        assert await h.open_enroll(msg, U, skip_quiz=True)
+        text, kb = msg.last
+        assert "Общие сессии" not in text and "se:g" not in [d for _, d in buttons(kb)]
+
+        await db.set_setting(per_city_key("session_enroll_common_optional", CITY), "on")
+        msg = FakeMessage(U)
+        assert await h.open_enroll(msg, U, skip_quiz=True)
+        text, kb = msg.last
+        assert NOTE_START in text
+        assert ("🏛 Общие сессии", "se:g") in buttons(kb)
+    run(go())
+
+
+def test_common_screen_toggle_enroll_and_unenroll(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await _world(common=True)
+        cb = await _press("se:g")
+        text, kb = cb.message.last
+        assert NOTE_START in text
+        labels = dict((d, t) for t, d in buttons(kb))
+        assert labels[f"se:g:{ids['P']}"] == "09:00 Пленарка"
+        cb = await _press(f"se:g:{ids['P']}")
+        assert await edb.user_enrollment_ids(U) == {ids["P"]}
+        labels = dict((d, t) for t, d in buttons(cb.message.last[1]))
+        assert labels[f"se:g:{ids['P']}"] == "✅ 09:00 Пленарка"
+        cb = await _press(f"se:g:{ids['P']}")
+        assert await edb.user_enrollment_ids(U) == set()
+    run(go())
+
+
+def test_common_conflict_goes_through_replace_and_returns_to_block(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await _world(common=True)
+        q = await db.create_program_session(CITY, "2026-10-30", "10:30", "11:30", "Закрытие")
+        await se.enroll(U, ids["A"])
+        cb = await _press(f"se:g:{q}")
+        text, kb = cb.message.last
+        assert "Сессия A" in text and "Закрытие" in text            # вопрос о замене
+        assert await edb.user_enrollment_ids(U) == {ids["A"]}
+        yes = next(d for t, d in buttons(kb) if d.startswith("se:r:"))
+        assert yes == f"se:r:0:-1:{q}"
+        cb = await _press(yes)
+        assert await edb.user_enrollment_ids(U) == {q}
+        assert NOTE_START in cb.message.last[0]                      # вернулись в блок общих
+        # «Оставить как было» тоже возвращает в блок общих
+        cb = await _press("se:k:0:-1")
+        assert NOTE_START in cb.message.last[0]
+    run(go())
+
+
+def test_common_toggle_off_refuses(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await _world(common=False)
+        cb = await _press(f"se:g:{ids['P']}")
+        assert cb.alerts[-1][1] is True
+        assert await edb.user_enrollment_ids(U) == set()
+    run(go())
+
+
+def test_schedule_text_marks_common(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await _world(common=True)
+        await se.enroll(U, ids["P"])
+        ctx, _ = await h._ctx_for(FakeMessage(U), U)
+        text = await h._schedule_text(ctx)
+        assert "09:00–10:00 Пленарка" in text and "Пленарка (для всех)" not in text
+    run(go())
+
+
+# ── Админка ──────────────────────────────────────────────────────────────────────────────────
+
+from handlers.forum import admin_enroll, admin_enroll_list as el  # noqa: E402
+from handlers.forum import admin_program  # noqa: E402
+from tests.test_admin_enroll_38 import FakeCallback as AdminCallback, cbs, texts  # noqa: E402
+
+
+def test_admin_toggle_button_switches_setting(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        await seed_msk_program()
+        await db.set_setting("event_city_enabled", "on")
+    run(go())
+    cb = AdminCallback("prog_enrset:msk")
+    run(el.prog_enrset(cb))
+    assert "🏛 Общие сессии: запись по желанию — ❌ выкл" in texts(cb.message.edit_markup)
+    assert "prog_enrco:msk" in cbs(cb.message.edit_markup)
+    run(el.prog_enrco(AdminCallback("prog_enrco:msk")))
+    assert run(se.common_enabled(CITY)) is True
+    cb = AdminCallback("prog_enrset:msk")
+    run(el.prog_enrset(cb))
+    assert "🏛 Общие сессии: запись по желанию — ✅ вкл" in texts(cb.message.edit_markup)
+    run(el.prog_enrco(AdminCallback("prog_enrco:msk")))
+    assert run(se.common_enabled(CITY)) is False
+
+
+def test_admin_note_text_is_editable(tmp_path):
+    from services.forum.session_enroll import ENROLL_TEXT_KEYS
+    assert "session_enroll_common_note" in ENROLL_TEXT_KEYS
+
+
+def test_admin_card_and_list_for_common_session(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await _setup(common=False)
+        return ids
+    ids = run(go())
+    text, _kb = run(admin_program.render_session_card(ids["P"]))
+    assert "Запись: открыта · без лимита · записано 0" in text      # как раньше
+    assert not [t for t in texts(run(el.render_enroll_list(CITY, 0))[1]) if "Пленарка" in t]
+
+    run(db.set_setting(per_city_key("session_enroll_common_optional", CITY), "on"))
+    run(se.enroll(U, ids["P"]))
+    text, _kb = run(admin_program.render_session_card(ids["P"]))
+    assert "Запись по желанию: открыта · без лимита · 1 записались" in text
+    _head, kb = run(el.render_enroll_list(CITY, 0))
+    assert any("Пленарка" in t and "🏛 общая" in t and t.endswith("— 1") for t in texts(kb))
+    # закрытие записи и лимит доступны в карточке общей сессии
+    _t, card_kb = run(admin_enroll.render_enroll_card(run(db.get_program_session(ids["P"]))))
+    assert f"prog_enrcl:{ids['P']}" in cbs(card_kb) and f"prog_enrlim:{ids['P']}" in cbs(card_kb)
+
+
+def test_admin_switch_track_to_common_keeps_enrollments_when_on(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        ids = await _setup(common=True)
+        await se.enroll(U, ids["A"])
+        return ids
+    ids = run(go())
+    cb = AdminCallback(f"prog_enrtrk:{ids['A']}:0")
+    run(admin_enroll.prog_enrtrk(cb))
+    session = run(db.get_program_session(ids["A"]))
+    assert session["track_id"] is None                              # без подтверждения
+    assert run(edb.count_enrollments(ids["A"])) == 1                # запись осталась
+
+    # тумблер выключен — прежнее поведение: подтверждение и удаление записей
+    run(db.set_setting(per_city_key("session_enroll_common_optional", CITY), "off"))
+    run(se.common_enabled(CITY))
+    run(db.update_program_session(ids["B"], track_id=ids["business"]))
+    run(edb.enroll_tx(102, ids["B"]))
+    cb = AdminCallback(f"prog_enrtrk:{ids['B']}:0")
+    run(admin_enroll.prog_enrtrk(cb))
+    assert "записи на эту сессию удалятся: 1" in cb.message.text_edited
+    assert run(db.get_program_session(ids["B"]))["track_id"] == ids["business"]
