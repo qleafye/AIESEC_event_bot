@@ -1141,6 +1141,9 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "speaker": "Анна Майорова",
     "track": "Карьера",
     "competencies": "Адаптивность, Командная работа",
+    # Напоминание о сессии (services/forum/session_remind.py): время начала и зал.
+    "start": "10:30",
+    "hall": "Главный зал",
     "step": "4",
     "date": "02.09.2026 14:30",
     "rank": "5",
