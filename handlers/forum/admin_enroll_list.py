@@ -53,7 +53,7 @@ async def render_enroll_list(code: str, page: int) -> tuple[str, InlineKeyboardM
     page = min(max(page, 0), pages - 1)
     lines = [
         f"📋 <b>Записи на сессии</b> — {html_module.escape(await city_label(code))}", "",
-        f"Записались: {await edb.count_enrolled_users(code)} чел., "
+        f"Записались: {await edb.count_enrolled_users(code, include_common=common_on)} чел., "
         f"подтвердили расписание: {await edb.count_schedule_confirms(code)}",
     ]
     buttons: list[list[InlineKeyboardButton]] = []
