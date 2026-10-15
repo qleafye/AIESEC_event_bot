@@ -471,12 +471,14 @@ async def enrollment_counts_for_city(city: str) -> dict[int, int]:
             return {int(r[0]): int(r[1]) for r in await cursor.fetchall()}
 
 
-async def count_enrolled_users(city: str) -> int:
-    """Сколько разных делегатов записано хотя бы на одну сессию города."""
+async def count_enrolled_users(city: str, *, include_common: bool = True) -> int:
+    """Сколько разных делегатов записано хотя бы на одну сессию города. `include_common=False` —
+    общие сессии (без трека) не считаются (запись на них в городе выключена)."""
     async with _db._connect() as db:
         async with db.execute(
             "SELECT COUNT(DISTINCT e.telegram_id) FROM session_enrollments e "
-            "JOIN program_sessions s ON s.id = e.session_id WHERE s.city = ?", (city,),
+            "JOIN program_sessions s ON s.id = e.session_id WHERE s.city = ? "
+            "AND (s.track_id IS NOT NULL OR ?)", (city, 1 if include_common else 0),
         ) as cursor:
             return int((await cursor.fetchone())[0])
 
