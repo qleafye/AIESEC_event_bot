@@ -59,6 +59,7 @@ Thumbs.db
 !.claude/skills/
 !.claude/escalations.md
 !.claude/orchestrate-project.md
+!.claude/orchestrate-runs/
 # Журнал плана оркестратора без GSD (облачная сессия).
 .orchestrate/
 .agents/
