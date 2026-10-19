@@ -8,6 +8,7 @@ from tests._paths import REPO_ROOT
 import importlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -69,10 +70,13 @@ def test_reset_without_file_creates_empty_state(board):
     assert not [p for p in Path(board.DATA).parent.iterdir() if ".bak-" in p.name]
 
 
-def test_board_page_is_served_with_two_blocks(board):
+def test_board_page_is_served_with_three_blocks(board):
     html = board.HTML.decode("utf-8") if isinstance(board.HTML, bytes) else board.HTML
-    assert "Долг" in html and "Новое" in html
-    assert 'key:"deleg"' in html
+    blocks = html[html.index("const BLOCKS"):html.index("const SESS_TAG")]
+    keys = re.findall(r'^\{ key:"(\w+)", icon:', blocks, flags=re.M)
+    assert keys == ["nov", "chk", "msk"], keys
+    for title in ("Новое с 13.10", "Перепроверка ❌ прошлого прогона", "Форум Москвы: генеральная репетиция"):
+        assert title in blocks, title
 
 
 def _deck_get(board, path):
