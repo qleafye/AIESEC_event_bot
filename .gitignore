@@ -54,6 +54,12 @@ Thumbs.db
 # sessionUrl=false (иначе коммиты валит шаг CI commit-trailers) и хук старта.
 .claude/*
 !.claude/settings.json
+# Оркестратор (скилл orchestrate): агенты, скилл и журнал эскалаций нужны и облачной сессии.
+!.claude/agents/
+!.claude/skills/
+!.claude/escalations.md
+# Журнал плана оркестратора без GSD (облачная сессия).
+.orchestrate/
 .agents/
 .cursor/
 .codex/
