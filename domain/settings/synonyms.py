@@ -420,6 +420,8 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "payment_requisites": ["реквизиты", "карта", "куда платить"],
     "payment_requisites_by_lc": ["реквизиты по комитету", "реквизиты лк"],
     "payment_deadline": ["дедлайн", "срок оплаты"],
+    "payment_reminder_first_days": ["за сколько дней напомнить об оплате", "первое напоминание об оплате"],
+    "payment_reminder_second_days": ["второе напоминание об оплате", "повторное напоминание об оплате"],
     "payment_reminder_text": ["напоминание об оплате", "не забудьте оплатить"],
     "payment_overdue_text": ["просрочка оплаты", "оплата просрочена текст"],
     "penalty_schedule": ["штрафы", "условия отмены"],

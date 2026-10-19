@@ -176,12 +176,21 @@ async def _schedule_deadline_reminders(telegram_id: int):
         # часы контейнера — UTC; на 3-часовой разнице напоминание уезжало в прошлое, и
         # misfire_grace_time стрелял им немедленно (см. остальные точки TZFIX-260816).
         now = _now_moscow_naive()
-        minus3d = deadline - timedelta(days=3)
-        minus1d = deadline - timedelta(days=1)
-        if minus3d > now:
-            schedule_payment_reminder(telegram_id, minus3d, "minus3d")
-        if minus1d > now:
-            schedule_payment_reminder(telegram_id, minus1d, "minus1d")
+        # Сроки — из настроек; id джоб «minus3d»/«minus1d» не меняем, в БД уже есть такие.
+        try:
+            first_days = int(await get_setting_typed("payment_reminder_first_days"))
+            second_days = int(await get_setting_typed("payment_reminder_second_days"))
+        except Exception as e:
+            logger.error(f"Failed to read payment reminder days, using 3/1: {e}")
+            first_days, second_days = 3, 1
+        if first_days > 0:
+            minus3d = deadline - timedelta(days=first_days)
+            if minus3d > now:
+                schedule_payment_reminder(telegram_id, minus3d, "minus3d")
+        if second_days > 0:
+            minus1d = deadline - timedelta(days=second_days)
+            if minus1d > now:
+                schedule_payment_reminder(telegram_id, minus1d, "minus1d")
     except Exception as e:
         logger.error(f"Failed to schedule payment reminders for {telegram_id}: {e}")
 
