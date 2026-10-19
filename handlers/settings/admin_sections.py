@@ -639,6 +639,10 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
             if _sheet_id():  # таблица не задана — кнопку не показываем
                 buttons.append([InlineKeyboardButton(text=row[2], url=sheet_url())])
         elif kind in ("screen", "screen_admin"):
+            if row[1] == "admin_chat_reconcile":
+                from services import chat_tracking  # ленивый шов: тот же критерий, что у хендлера
+                if not await chat_tracking.bound_chats():  # чата нет — сверять нечего, кнопку не показываем
+                    continue
             buttons.append([InlineKeyboardButton(text=row[2], callback_data=row[1])])
         elif kind == "toggle":
             # Проверяем НАЛИЧИЕ ключа, а не истинность: пустой список строк у существующего
