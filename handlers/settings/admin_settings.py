@@ -280,7 +280,8 @@ _APPS_FIELD_ORDER = [
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
-    "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+    "payment_deadline", "payment_reminder_first_days", "payment_reminder_second_days",
+    "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
     # Phase 17.1 (17.1-02): делегатские экраны платёжного потока (handlers/payment.py) —
     # в порядке, в котором делегат их видит: выбор варианта → экран оплаты → «оплачу позже»
     # → «чек получен».
