@@ -25,22 +25,20 @@ def _js_list(html: str, start: str) -> str:
     return html[i:html.index("\n];", i)]
 
 
-def test_moscow_block_is_first_and_split_by_function():
+def test_moscow_block_is_last_and_split_by_function():
     html = _board()
     blocks = _js_list(html, "const BLOCKS = [")
-    keys = re.findall(r'^\{ key:"(\w+)", pre:', blocks, flags=re.M)
-    assert keys[0] == "msk", keys
-    msk = blocks[blocks.index('{ key:"msk"'):blocks.index('{ key:"fix"')]
-    titles = re.findall(r'title:"([^"]+)", from:\["ms\.', msk)
+    keys = re.findall(r'^\{ key:"(\w+)", icon:', blocks, flags=re.M)
+    assert keys == ["nov", "chk", "msk"], keys
+    msk = blocks[blocks.index('{ key:"msk"'):]
+    titles = re.findall(r'title:"([^"]+)", from:\["rh\.', msk)
     for want in ("Подготовка", "Картинки дней", "Тест: настройка", "Расписание: запись делегата",
                  "Чек-ин на сессиях", "Рассылки, выгрузки, статистика", "Закрытие записи и возврат стенда"):
         assert want in titles, want
-    path = _js_list(html, "const PATH = [")
-    first = re.findall(r'"([\w-]+)"', path)[:len(titles)]
-    assert all(p.startswith("msk-") for p in first), first
-    # старые разделы той же фичи из «Новое» убраны — без дублей
-    for old in ("enroll0910", "enrscan0910", "quiz0910"):
-        assert f'"bl.{old}"' not in blocks and f'"new-{old}"' not in path
+    # каждый раздел сессии rh попадает в блок Москвы ровно один раз
+    assert len(re.findall(r'from:\["rh\.\w+"\]', msk)) == len(titles) == 9
+    # блок Москвы не тянет разделы чужих сессий
+    assert 'from:["nw.' not in msk and 'from:["rc.' not in msk
 
 
 def test_no_tester_names_on_board():

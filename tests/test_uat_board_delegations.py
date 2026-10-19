@@ -1,37 +1,36 @@
-"""Доска приёмки `tools/uat_board/index.html`: два блока («Долг» / «Новое»), раздел «Делегации
-вузов» и сохранность ключей отметок.
+"""Доска приёмки `tools/uat_board/index.html` (прогон 20.10): три блока («Новое с 13.10»,
+«Перепроверка», «Форум Москвы»), размещение разделов сессий и устойчивость ключей отметок.
 
-Доска — один HTML с данными в JS. Ключ отметки считается как `<сессия>.<раздел>.<шаг>`; по нему
-тестировщики уже ставят отметки на сервере, поэтому ни один прежний ключ исчезнуть не должен.
-Исключение — шаги, переписанные под новую раскладку: переносятся с прежним ключом (поле `ref`), а
-устаревшие из явно названных разделов убираются (_RETIRED).
+Доска — один HTML с данными в JS. Ключ отметки считается как `<сессия>.<раздел>.<шаг>`; тестировщики
+ставят отметки на сервере по этим ключам, поэтому ключи внутри файла уникальны и не зависят от
+группировки в блоки.
 """
 from __future__ import annotations
 from tests._paths import REPO_ROOT
 
 import re
-import subprocess
-from pathlib import Path
+from collections import Counter
 
-ROOT = REPO_ROOT
-BOARD = ROOT / "tools" / "uat_board" / "index.html"
+BOARD = REPO_ROOT / "tools" / "uat_board" / "index.html"
 
-_SESSION = re.compile(r'^\{ key:"(s\d|bl|ms)", n:')
+_SESSION = re.compile(r'^\{ key:"(nw|rc|rh)", n:')
 _SECTION = re.compile(r'^\s*\{ key:"(\w+)", title:')
 _STEP = re.compile(r'^\s*\{id:"(\w+)"')
 _REF = re.compile(r'^\s*\{ref:"([\w.]+)"')
-# 12.10: старые шаги записи на сессии и теста переписаны под форум Москвы. Что осталось верным,
-# перенесено в блок «Форум Москвы» с прежним ключом (ref); остальное из этих разделов убрано.
-_RETIRED = ("bl.enroll0910.", "bl.enrscan0910.", "bl.quiz0910.")
+BLOCK_ORDER = ["nov", "chk", "msk"]
 
 
-def _step_keys(html: str) -> set[str]:
+def _board() -> str:
+    return BOARD.read_text(encoding="utf-8")
+
+
+def _step_keys(html: str) -> list[str]:
     """Ключи шагов и пунктов «Перед началом» из данных SESSIONS — тем же правилом, что и JS."""
-    keys: set[str] = set()
+    keys: list[str] = []
     sess = sec = None
     in_setup = False
     for line in html.splitlines():
-        if line.startswith("/* ───────── верхний уровень") or line.startswith("const BLOCKS"):
+        if line.startswith("const BLOCKS"):
             break
         m = _SESSION.match(line)
         if m:
@@ -49,69 +48,16 @@ def _step_keys(html: str) -> set[str]:
             continue
         m = _REF.match(line)
         if sess and m:
-            keys.add(m.group(1))
+            keys.append(m.group(1))
             continue
         m = _STEP.match(line)
         if sess and m:
-            keys.add(f"{sess}.pre.{m.group(1)}" if in_setup else f"{sess}.{sec}.{m.group(1)}")
+            keys.append(f"{sess}.pre.{m.group(1)}" if in_setup else f"{sess}.{sec}.{m.group(1)}")
     return keys
 
 
-def _board() -> str:
-    return BOARD.read_text(encoding="utf-8")
-
-
-def _head_board() -> str:
-    # Эталон — доска, которой тестеры пользуются сейчас (до перестройки на два блока).
-    out = subprocess.run(
-        ["git", "show", "HEAD:tools/uat_board/index.html"],
-        cwd=ROOT, capture_output=True, check=True,
-    ).stdout
-    return out.decode("utf-8")
-
-
-def _deleg_block(html: str) -> str:
-    i = html.index('{ key:"deleg"')
-    j = html.index("\n  ]},", i)
-    return html[i:j]
-
-
-def test_deleg_section_has_enough_steps_and_real_texts():
-    block = _deleg_block(_board())
-    assert len(re.findall(r'\{id:"', block)) >= 12
-    assert "soon:" not in block and "скоро" not in block
-    for needle in (
-        "🏫 Делегации", "UR REGS", "Проверить курс", "Не зашли", "Привязать", "📊 Дашборд",
-        "ЦА в форме", "для делегаций выключены", "🎮 Геймификация для делегатов",
-        "Приходит «Привет! Ты в списке делегации",
-    ):
-        assert needle in block, needle
-
-
-def test_old_step_keys_all_survive():
-    old = _step_keys(_head_board())
-    new = _step_keys(_board())
-    assert len(old) > 150  # парсер реально нашёл шаги
-    missing = sorted(k for k in old - new if not k.startswith(_RETIRED))
-    assert not missing, f"пропали ключи отметок: {missing[:10]}"
-
-
-def test_new_deleg_keys_are_stable_and_unique():
-    new = _step_keys(_board())
-    deleg = {k for k in new if k.startswith("s2.deleg.")}
-    assert len(deleg) >= 12
-    assert "s2.deleg.1" in deleg
-
-
-def test_two_blocks_exist_and_every_section_is_placed_once():
-    html = _board()
-    assert 'key:"debt"' in html and 'title:"Долг"' in html
-    assert 'key:"new"' in html and 'title:"Новое"' in html
-    block_js = html[html.index("const BLOCKS"):html.index("const SESS_TAG")]
-    refs = re.findall(r'"((?:s\d|bl|ms)\.\w+)"', block_js)
-    assert len(refs) == len(set(refs)), "раздел сессии попал в блоки дважды"
-    # Все разделы исходных сессий размещены в каком-то блоке.
-    sections = set()
+def _sections_of_sessions(html: str) -> set[str]:
+    sections: set[str] = set()
     sess = None
     for line in html[: html.index("const BLOCKS")].splitlines():
         m = _SESSION.match(line)
@@ -119,18 +65,58 @@ def test_two_blocks_exist_and_every_section_is_placed_once():
             sess = m.group(1)
             continue
         m = _SECTION.match(line)
-        if sess and m and not line.strip().startswith("setup"):
+        if sess and m:
             sections.add(f"{sess}.{m.group(1)}")
+    return sections
+
+
+def test_three_blocks_exist_in_order_and_every_section_is_placed_once():
+    html = _board()
+    block_js = html[html.index("const BLOCKS"):html.index("const SESS_TAG")]
+    assert re.findall(r'^\{ key:"(\w+)", icon:', block_js, flags=re.M) == BLOCK_ORDER
+    refs = re.findall(r'from:\["((?:nw|rc|rh)\.\w+)"\]', block_js)
+    assert len(refs) == len(set(refs)), "раздел сессии попал в блоки дважды"
+    sections = _sections_of_sessions(html)
+    assert len(sections) >= 20
     assert sections == set(refs), sorted(sections ^ set(refs))
-    # «Новое» держит делегации и внешние формы.
-    new_js = block_js[block_js.index('key:"new"'):]
-    assert '"s2.deleg"' in new_js and '"s2.ext"' in new_js
+    # разделы каждой сессии лежат в «своём» блоке
+    chunks = {k: block_js[block_js.index(f'{{ key:"{k}"'):] for k in BLOCK_ORDER}
+    nov = chunks["nov"][: chunks["nov"].index('{ key:"chk"')]
+    chk = chunks["chk"][: chunks["chk"].index('{ key:"msk"')]
+    msk = chunks["msk"]
+    assert set(re.findall(r'from:\["(\w+)\.', nov)) == {"nw"}
+    assert set(re.findall(r'from:\["(\w+)\.', chk)) == {"rc"}
+    assert set(re.findall(r'from:\["(\w+)\.', msk)) == {"rh"}
+
+
+def test_step_keys_are_unique_and_stable():
+    keys = _step_keys(_board())
+    assert len(keys) > 100  # парсер реально нашёл шаги
+    dup = [k for k, n in Counter(keys).items() if n > 1]
+    assert not dup, f"повторяются ключи отметок: {dup[:10]}"
+    assert all(re.fullmatch(r"(nw|rc|rh)\.\w+\.\w+", k) for k in keys), [k for k in keys if not re.fullmatch(r"(nw|rc|rh)\.\w+\.\w+", k)][:5]
+    assert {"nw.prep.1", "rc.rules1.1", "rh.prep.1"} <= set(keys)
+    assert {k.split(".")[0] for k in keys} == {"nw", "rc", "rh"}
+
+
+def test_every_recheck_section_says_what_was_wrong_last_time():
+    """Шаг ❌ прошлого прогона несёт поле was; в каждом разделе «Перепроверки» такой шаг есть."""
+    html = _board()
+    rc = html[html.index('{ key:"rc", n:'):html.index('{ key:"rh", n:')]
+    parts = re.split(r'^\s*\{ key:"\w+", title:', rc, flags=re.M)[1:]
+    assert len(parts) == 6
+    for part in parts:
+        assert re.search(r'^\s*was:"[^"]{20,}"', part, flags=re.M), part[:80]
 
 
 def test_session_filter_chips_and_shared_features_kept():
     html = _board()
-    for tag in ("Сессия 1 · 06.10", "Сессия 2 · 13.10", "Сессия 3 · 20.10", "Без сессии"):
-        assert tag in html, tag
+    assert 'const SESS_TAG = { nw: "Новое с 13.10", rc: "Перепроверка", rh: "Форум Москвы" };' in html
+    assert 'const SESS_ORDER = ["nw", "rc", "rh"];' in html
+    assert 'const LS = "uat-261020";' in html
+    tabs = html[html.index("const TABS = {"):html.index("const tabOf")]
+    assert re.findall(r'^\s+(\w): \{ name: "([^"]+)"', tabs, flags=re.M) == [
+        ("D", "Делегат"), ("M", "Менеджер"), ("V", "Волонтёр"), ("O", "Владелец")]
     for needle in ('"/api/state"', '"/api/step"', "Кто проверяет", "Перед началом", "Если застряли",
                    "Повторная проверка", 'id="copy"', "overflow-x:hidden"):
         assert needle in html, needle
