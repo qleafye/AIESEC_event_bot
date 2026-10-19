@@ -732,7 +732,8 @@ def test_render_snapshot_pay(tmp_path):
 
     expected_keys = [
         "payment_options", "payment_requisites", "payment_requisites_by_lc",
-        "payment_deadline", "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
+        "payment_deadline", "payment_reminder_first_days", "payment_reminder_second_days",
+        "payment_reminder_text", "payment_overdue_text", "penalty_schedule",
         # Phase 17.1 (17.1-02): делегатские экраны платёжного потока — в хвосте группы.
         "payment_option_picker_header_text", "payment_details_template_text",
         "payment_pay_later_text", "payment_pay_later_menu_hint_text",
@@ -740,7 +741,9 @@ def test_render_snapshot_pay(tmp_path):
     ]
     expected_labels = [
         "💳 Варианты оплаты", "💰 Реквизиты оплаты", "💳 Реквизиты по ЛК",
-        "📅 Дедлайн оплаты", "⏰ Текст напоминания об оплате", "⌛ Текст «оплата просрочена»",
+        "📅 Дедлайн оплаты",
+        "⏰ Первое напоминание об оплате, за сколько дней",
+        "⏰ Второе напоминание об оплате, за сколько дней", "⏰ Текст напоминания об оплате", "⌛ Текст «оплата просрочена»",
         "⚠️ Штрафы за отмену",
     ]
     # Phase 17.1 (17.1-02): у новых ключей есть дефолт в реестре -> флаг «по умолчанию»
