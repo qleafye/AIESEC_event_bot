@@ -5,3 +5,6 @@ miniapp/static/pattern/*.svg -text
 
 # Git-хуки — shell-скрипты: CRLF ломает их в sh на любой ОС.
 .githooks/* text eol=lf
+
+# Хук старта облачной сессии Claude Code — тоже shell.
+scripts/*.sh text eol=lf

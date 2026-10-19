@@ -1,0 +1,19 @@
+{
+  "attribution": {
+    "sessionUrl": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/scripts/cloud_session_start.sh\"",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}
