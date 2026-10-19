@@ -50,7 +50,10 @@ Thumbs.db
 
 # Служебные папки инструментов разработки (не относятся к коду бота)
 .planning/
-.claude/
+# .claude/ закрыт целиком, кроме settings.json: облачной сессии Claude Code нужны
+# sessionUrl=false (иначе коммиты валит шаг CI commit-trailers) и хук старта.
+.claude/*
+!.claude/settings.json
 .agents/
 .cursor/
 .codex/
