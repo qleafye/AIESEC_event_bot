@@ -1791,6 +1791,7 @@ from handlers.forum import session_enroll  # noqa: E402,F401
 from handlers.forum import quiz as quiz_handlers  # noqa: E402,F401
 from handlers.reg import menu_edit_anketa  # noqa: E402,F401  -- «✏️ Изменить анкету», до фолбэка
 from handlers.reg import menu_tap_escape  # noqa: E402,F401  -- кнопка меню посреди ответа делегата
+from handlers.comms import survey_delegate  # noqa: E402,F401  -- анкета: sv:* и ответ текстом, до фолбэка
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
