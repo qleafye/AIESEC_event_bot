@@ -116,6 +116,26 @@ async def _send_one(bot, poll: dict, chat_id: int, intro: str | None, now):
     return delivered[0] if delivered else None
 
 
+async def _send_invite(bot, poll: dict, chat_id: int, now):
+    """Приглашение в анкету: текст-вступление + кнопка «Пройти опрос» (sv:s:<id>). Через тихие
+    часы делегата, как и обычный опрос. Возвращает (message_id | None, в очереди ли)."""
+    from services.comms import quiet_hours, surveys
+
+    text = html_module.escape((poll.get("intro_text") or "").strip() or poll["question"])
+    kb = surveys.invite_kb(poll["id"])
+    delivered = []
+
+    async def _sender():
+        delivered.append(await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb))
+
+    sent_now = await quiet_hours.send_or_queue_text(
+        now, chat_id, text, sender=_sender, reply_markup=kb,
+    )
+    if sent_now and delivered:
+        return getattr(delivered[0], "message_id", None), False
+    return None, not sent_now
+
+
 async def deliver_poll(bot, poll_id: int) -> dict | None:
     """Разослать опрос его аудитории. Идемпотентно: клейм 'scheduled' → 'sending' (второй
     вызов выходит сразу), каждый чат чекпоинтится в poll_messages, повторный прогон после
@@ -140,14 +160,26 @@ async def deliver_poll(bot, poll_id: int) -> dict | None:
             # фиксируется как failed, чтобы при дошлёте не долбить чат снова (как
             # list_delivered_chat_ids у рассылок). Ошибка записи чекпоинта — это уже крах
             # процесса: она уходит наружу, строка остаётся 'sending', бут дошлёт хвост.
+            is_survey = poll.get("kind") == "survey"
             try:
-                msg = await _send_one(bot, poll, chat_id, intro, now)
+                if is_survey:
+                    invite_mid, invite_queued = await _send_invite(bot, poll, chat_id, now)
+                else:
+                    msg = await _send_one(bot, poll, chat_id, intro, now)
             except Exception as e:
                 logger.warning("poll %s to %s failed: %s", poll_id, chat_id, e)
                 await record_poll_message(poll_id, chat_id, None, None, False)
                 failed += 1
             else:
-                if msg is None:
+                if is_survey:
+                    # Чекпоинт сразу, и для отложенного приглашения тоже: получатель нужен
+                    # sv:s (survey_recipient), а дошлёт не должен задвоить приглашение.
+                    await record_poll_message(poll_id, chat_id, None, invite_mid, True)
+                    if invite_queued:
+                        queued += 1
+                    else:
+                        sent += 1
+                elif msg is None:
                     # Тихие часы делегата: опрос лежит в очереди, чекпоинт запишет flush_due.
                     # `already` его не увидит, так что аварийный дошлёт после краха ПОСРЕДИ
                     # рассылки может поставить второй — принятый размен: строка очереди
@@ -176,6 +208,11 @@ async def close_poll(bot, poll_id: int) -> tuple[int, int]:
     чат — остальным это не мешает). Статус → 'closed' в любом случае: ответы на уже
     остановленных опросах Telegram не принимает, а на недоступных — некому. (ok, failed)."""
     ok = failed = 0
+    poll = await get_poll(poll_id)
+    if poll and poll.get("kind") == "survey":
+        # У анкеты нет нативных опросов Telegram — останавливать нечего.
+        await set_poll_status(poll_id, "closed")
+        return 0, 0
     for m in await list_poll_messages(poll_id):
         try:
             await bot.stop_poll(m["chat_id"], m["message_id"])
