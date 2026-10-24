@@ -266,7 +266,8 @@ async def build_polls_sheet_rows(poll_ids: list[int] | None = None) -> list[list
     """Строки вкладки «Опросы». Неанонимный опрос — строка на ответ (делегат + выбранные
     варианты через «; »). Анонимный — строка на вариант с числом голосов (людей Telegram не
     отдаёт). `poll_ids=None` — все опросы, вкладка перезаписывается целиком (идемпотентно)."""
-    polls = await list_polls()
+    # Анкеты и их черновики (kind='survey') едут в свои вкладки «Опрос <id>», не в общую.
+    polls = [p for p in await list_polls() if p.get("kind", "poll") == "poll"]
     if poll_ids is not None:
         polls = [p for p in polls if p["id"] in set(poll_ids)]
     from domain.cities import city_label  # cities импортирует database.db, обратной зависимости нет
