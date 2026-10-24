@@ -576,3 +576,7 @@ async def survey_schedule_when(message: types.Message, state: FSMContext):
         f"({audience_label(data.get('audience'))}).\nОтменить можно в карточке опроса: «📊 Опросы».",
         reply_markup=ReplyKeyboardRemove(),
     )
+
+
+# Мастер добавления вопроса живёт в своём модуле; импорт в конце, чтобы избежать цикла.
+from handlers.comms import admin_survey_question  # noqa: E402, F401
