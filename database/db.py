@@ -2635,6 +2635,8 @@ async def init_db():
         await session_remind_db.ensure_schema(db)
         from database import quiz_db
         await quiz_db.ensure_schema(db)
+        from database import survey_db
+        await survey_db.ensure_schema(db)
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
@@ -10347,6 +10349,7 @@ POLL_STATUS_LABELS = {
     "sending": "⏳ Отправляется",
     "open": "🟢 Открыт",
     "closed": "⏹ Закрыт",
+    "draft": "✏️ Черновик",
 }
 
 
@@ -10467,6 +10470,9 @@ async def set_poll_status(poll_id: int, status: str):
 
 async def delete_poll(poll_id: int):
     async with _connect() as db:
+        await db.execute("DELETE FROM survey_answers WHERE poll_id = ?", (poll_id,))
+        await db.execute("DELETE FROM survey_progress WHERE poll_id = ?", (poll_id,))
+        await db.execute("DELETE FROM survey_questions WHERE poll_id = ?", (poll_id,))
         await db.execute("DELETE FROM poll_answers WHERE poll_id = ?", (poll_id,))
         await db.execute("DELETE FROM poll_messages WHERE poll_id = ?", (poll_id,))
         await db.execute("DELETE FROM polls WHERE id = ?", (poll_id,))
@@ -11046,6 +11052,8 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("session_schedule_confirms", "telegram_id", "enrollments"),
     ("quiz_attempts", "telegram_id", "quiz"),
     ("poll_answers", "user_id", "deliveries"),
+    ("survey_progress", "user_id", "deliveries"),
+    ("survey_answers", "user_id", "deliveries"),
     ("poll_messages", "chat_id", "deliveries"),
     ("broadcast_deliveries", "chat_id", "deliveries"),
     ("scheduled_broadcast_deliveries", "chat_id", "deliveries"),
