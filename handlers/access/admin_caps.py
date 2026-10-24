@@ -561,6 +561,11 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "poll_del:*": "broadcast",
     "poll_del_go:*": "broadcast",
     "state:PollCreate:*": "broadcast",
+    # Анкета из нескольких вопросов (handlers/comms/admin_survey_builder.py, admin_survey_question.py,
+    # admin_survey_results.py) — то же право. Делегатские колбэки sv:* — не админские, ключей нет.
+    "poll_new_single": "broadcast",
+    "psv_*": "broadcast",
+    "state:SurveyBuild:*": "broadcast",
 
     # ── settings ─────────────────────────────────────────────────────────────────────────
     "approval_auto_go:*": "settings",

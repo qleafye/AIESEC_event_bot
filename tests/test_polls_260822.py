@@ -301,7 +301,7 @@ def test_dispatcher_requests_poll_updates_only_with_polls_router():
 
 def test_poll_callbacks_require_broadcast_capability_and_menu_row_exists(tmp_path):
     _ready(tmp_path)
-    for key in ("admin_polls", "admin_polls_closed", "poll_new", "poll_opts_done", "poll_tg_anon",
+    for key in ("admin_polls", "admin_polls_closed", "poll_new", "poll_new_single", "poll_opts_done", "poll_tg_anon",
                 "poll_settings_next", "poll_aud:city:spb", "poll_send_now", "poll_schedule",
                 "poll_cancel", "poll_card:1", "poll_close:1", "poll_export:1", "poll_del:1",
                 "poll_del_go:1"):
@@ -359,6 +359,14 @@ def test_split_options_accepts_lines_and_semicolons():
     assert wiz.split_options("  ;  ") == []
 
 
+def test_poll_new_shows_type_choice(tmp_path):
+    _ready(tmp_path)
+    state, bot = _state(ADMIN_ID), FakeBot()
+    _, ev = _cb("poll_new", state, bot)
+    data = _flat_callback_data(ev.message.markup)
+    assert "poll_new_single" in data and "psv_new" in data
+
+
 def test_wizard_happy_path_send_now(tmp_path, monkeypatch):
     _ready(tmp_path)
     asyncio.run(_add_user(1))
@@ -371,7 +379,7 @@ def test_wizard_happy_path_send_now(tmp_path, monkeypatch):
     assert result is not UNHANDLED
     assert "poll_new" in _flat_callback_data(ev.message.markup)
 
-    _cb("poll_new", state, bot)
+    _cb("poll_new_single", state, bot)
     assert asyncio.run(state.get_state()) == "PollCreate:question"
     _msg("Во сколько начинаем?", state, bot)
     assert asyncio.run(state.get_state()) == "PollCreate:options"
@@ -415,7 +423,7 @@ def test_wizard_happy_path_send_now(tmp_path, monkeypatch):
 def test_wizard_validation_limits(tmp_path):
     _ready(tmp_path)
     state, bot = _state(ADMIN_ID), FakeBot()
-    _cb("poll_new", state, bot)
+    _cb("poll_new_single", state, bot)
     _, ev = _msg("x" * 301, state, bot)
     assert "до 300" in ev.answers[-1][0]
     assert asyncio.run(state.get_state()) == "PollCreate:question"
@@ -439,7 +447,7 @@ def test_wizard_schedule_path_creates_job(tmp_path, monkeypatch):
     jobs = []
     monkeypatch.setattr(wiz, "schedule_poll_job", lambda pid, when: jobs.append((pid, when)))
     state, bot = _state(ADMIN_ID), FakeBot()
-    _cb("poll_new", state, bot)
+    _cb("poll_new_single", state, bot)
     _msg("Q?", state, bot)
     _msg("A; B", state, bot)
     _cb("poll_opts_done", state, bot)
@@ -645,7 +653,7 @@ def test_wizard_every_screen_numbered_out_of_five(tmp_path):
     asyncio.run(_add_user(1))
     state, bot = _state(ADMIN_ID), FakeBot()
     texts = []
-    _, ev = _cb("poll_new", state, bot)
+    _, ev = _cb("poll_new_single", state, bot)
     texts.append(ev.message.answers[-1][0])
     _, ev = _msg("Q?", state, bot)
     texts.append(ev.answers[-1][0])
