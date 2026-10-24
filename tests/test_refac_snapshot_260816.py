@@ -621,6 +621,14 @@ def _build_snapshot_lines():
 # handlers/ext_forms/admin_ext_forms_push.py), две чистые вставки рядом с extf_connect_link и extf_keys_ok (1063 -> 1070);
 # мастер подключения личной формы (admin_ext_forms_connect.py): +3 хендлера (extf_push_title, extf_push,
 # extf_push_title_default), чистые вставки рядом с extf_connect_link и extf_add_google (1070 -> 1073).
+# Дрифт-нота (24.10, анкета из нескольких вопросов в «📊 Опросах»): +54 хендлера, чистые вставки
+# (1271 -> 1325), пересчитано RUNNING `_build_snapshot_lines()` и сверено diff'ом
+# (difflib.SequenceMatcher) с прежним 1271-строчным снимком: 5 вставок, 0 удалений, 0 реордеров.
+# admin.router: конструктор анкеты и вопросы (admin_survey_builder/admin_survey_question/
+# admin_survey_results, `psv_*`) плюс `poll_new_single` -- вставлены рядом с экраном «📊 Опросы»
+# (цепочка импортов admin.py) в четырёх точках; user_actions.router: `survey_text_step`/
+# `survey_non_text_step` (message) и `sv_start`/`sv_continue`/`sv_option`/`sv_done`/`sv_skip`/
+# `sv_scale`/`sv_table` (callback_query) -- ПЕРЕД `reg_handoff_idle_fallback`.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -739,6 +747,21 @@ admin|message|poll_wizard_cancel|state:PollCreate:*,state:PollCreate:*
 admin|message|poll_question_step|state:PollCreate:*
 admin|message|poll_options_step|state:PollCreate:*
 admin|message|poll_schedule_when|state:PollCreate:*
+admin|message|survey_cancel|state:SurveyBuild:*,state:SurveyBuild:*
+admin|message|survey_cancel|state:SurveyBuild:*,state:SurveyBuild:*
+admin|message|survey_title_step|state:SurveyBuild:*
+admin|message|survey_title_save|state:SurveyBuild:*
+admin|message|survey_intro_save|state:SurveyBuild:*
+admin|message|survey_outro_save|state:SurveyBuild:*
+admin|message|survey_question_text_save|state:SurveyBuild:*
+admin|message|survey_schedule_when|state:SurveyBuild:*
+admin|message|survey_qtext|state:SurveyBuild:*
+admin|message|survey_qoptions_step|state:SurveyBuild:*
+admin|message|survey_qmore_text|state:SurveyBuild:*
+admin|message|survey_scale_lo|state:SurveyBuild:*
+admin|message|survey_scale_hi|state:SurveyBuild:*
+admin|message|survey_qrows_step|state:SurveyBuild:*
+admin|message|survey_qna_text|state:SurveyBuild:*
 admin|message|cmd_delete_user|cmd:delete_user
 admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
 admin|message|cancel_checkin_import|state:CheckinImport:*,state:CheckinImport:*
@@ -1300,6 +1323,7 @@ admin|callback_query|poll_export_action|poll_export:*
 admin|callback_query|poll_delete_confirm|poll_del:*
 admin|callback_query|poll_delete_go|poll_del_go:*
 admin|callback_query|poll_new|poll_new
+admin|callback_query|poll_new_single|poll_new_single
 admin|callback_query|poll_cancel_callback|poll_cancel
 admin|callback_query|poll_options_done|poll_opts_done
 admin|callback_query|poll_toggle_setting|poll_tg_anon,poll_tg_multi
@@ -1307,6 +1331,35 @@ admin|callback_query|poll_settings_next|poll_settings_next
 admin|callback_query|poll_audience_pick|poll_aud:*
 admin|callback_query|poll_send_now|poll_send_now
 admin|callback_query|poll_schedule_start|poll_schedule
+admin|callback_query|survey_new|psv_new
+admin|callback_query|survey_draft|psv_draft:*
+admin|callback_query|survey_title_ask|psv_title:*
+admin|callback_query|survey_intro_ask|psv_intro:*
+admin|callback_query|survey_outro_ask|psv_outro:*
+admin|callback_query|survey_question_card|psv_q:*
+admin|callback_query|survey_question_text_ask|psv_qtxt:*
+admin|callback_query|survey_question_up|psv_qup:*
+admin|callback_query|survey_question_down|psv_qdn:*
+admin|callback_query|survey_question_delete_ask|psv_qdel:*
+admin|callback_query|survey_question_delete_go|psv_qdelgo:*
+admin|callback_query|survey_preview|psv_prev:*
+admin|callback_query|survey_go|psv_go:*
+admin|callback_query|survey_audience_pick|poll_aud:*
+admin|callback_query|survey_send_now|psv_send:*
+admin|callback_query|survey_schedule_start|psv_sched:*
+admin|callback_query|survey_qadd|psv_qadd:*
+admin|callback_query|survey_qtype|psv_qt:*
+admin|callback_query|survey_qoptions_done|psv_qopts
+admin|callback_query|survey_qmax|psv_qmax:*
+admin|callback_query|survey_qmore|psv_qmore:*
+admin|callback_query|survey_qmore_done|psv_qmore_done
+admin|callback_query|survey_qrows_done|psv_qrows
+admin|callback_query|survey_qna|psv_qna:*
+admin|callback_query|survey_qreq|psv_qreq
+admin|callback_query|survey_qsave|psv_qsave
+admin|callback_query|survey_results|psv_res:*
+admin|callback_query|survey_text_answers|psv_txt:*
+admin|callback_query|survey_copy|psv_copy:*
 admin|callback_query|delete_user_confirm|delu_go:*
 admin|callback_query|delete_user_cancel|delu_no
 admin|callback_query|show_admin_checkin|admin_checkin
@@ -1839,6 +1892,8 @@ user_actions|message|fnsp_other_step|state:ForumNoshowPollOther:*
 user_actions|message|session_enroll_menu|
 user_actions|message|quiz_menu|
 user_actions|message|menu_edit_anketa|
+user_actions|message|survey_text_step|
+user_actions|message|survey_non_text_step|
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1879,6 +1934,13 @@ user_actions|callback_query|quiz_go|qz:go
 user_actions|callback_query|quiz_answer|qz:a:*
 user_actions|callback_query|quiz_result|qz:res
 user_actions|callback_query|quiz_retake|qz:re
+user_actions|callback_query|sv_start|sv:s:*
+user_actions|callback_query|sv_continue|sv:c:*
+user_actions|callback_query|sv_option|sv:o:*
+user_actions|callback_query|sv_done|sv:d:*
+user_actions|callback_query|sv_skip|sv:k:*
+user_actions|callback_query|sv_scale|sv:n:*
+user_actions|callback_query|sv_table|sv:t:*
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2518,7 +2580,8 @@ def test_snapshot_total_handler_count_is_292():
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
     # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
-    assert len(GOLDEN_SNAPSHOT) == 1271
+    assert len(GOLDEN_SNAPSHOT) == 1325
+    # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
     # admin_quiet_hours и перед sync_sheet: шов импортируется из хвоста
