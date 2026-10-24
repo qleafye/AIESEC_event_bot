@@ -241,6 +241,28 @@ class PollCreate(StatesGroup):
     schedule_when = State()  # дата-время ДД.ММ.ГГГГ ЧЧ:ММ
 
 
+class SurveyBuild(StatesGroup):
+    # «📊 Опросы» → «➕ Новый опрос» → «📋 Анкета» (handlers/comms/admin_survey_builder.py,
+    # admin_survey_question.py), право `broadcast` ("state:SurveyBuild:*" в handlers/access/admin_caps.py).
+    # Черновик живёт в БД (polls.status='draft'), в FSM только poll_id и текущий шаг ввода.
+    title = State()          # название анкеты при создании
+    edit_title = State()     # правка названия
+    intro = State()          # текст приглашения
+    outro = State()          # финальный текст
+    q_edit_text = State()    # новый текст существующего вопроса
+    audience = State()       # кому: все / одобренные / город / трек
+    confirm = State()        # превью анкеты, ждём «отправить сейчас» / «запланировать»
+    schedule_when = State()  # дата-время ДД.ММ.ГГГГ ЧЧ:ММ
+    # добавление вопроса (admin_survey_question.py)
+    q_text = State()
+    q_options = State()
+    q_more_text = State()
+    q_rows = State()
+    q_scale_lo = State()
+    q_scale_hi = State()
+    q_na = State()
+
+
 class MiniAppTheme(StatesGroup):
     # Phase 19 (08, D-06) + Phase 19.1 (07, D-20): экраны «🎨 Оформление» / «🎭 Пресеты и ручки»
     # Mini App (handlers/settings/admin_miniapp.py + handlers/settings/admin_miniapp_theme.py), право `settings`
