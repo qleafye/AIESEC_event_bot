@@ -166,6 +166,26 @@ def _confirm_kb() -> InlineKeyboardMarkup:
 @router.callback_query(F.data == "poll_new")
 async def poll_new(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
+    await callback.answer()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📊 Один вопрос (опрос Telegram)", callback_data="poll_new_single")],
+        [InlineKeyboardButton(text="📋 Анкета из нескольких вопросов", callback_data="psv_new")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_polls")],
+    ])
+    text = (
+        "📊 <b>Новый опрос</b>\n\nЧто создаём?\n\n"
+        "• <b>Один вопрос</b> — обычный опрос Telegram с вариантами ответа.\n"
+        "• <b>Анкета</b> — несколько вопросов подряд: варианты, шкала 1–5, свободный ответ, таблица."
+    )
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data == "poll_new_single")
+async def poll_new_single(callback: types.CallbackQuery, state: FSMContext):
+    await state.clear()
     await state.set_state(PollCreate.question)
     await callback.answer()
     try:
@@ -417,3 +437,7 @@ async def poll_schedule_when(message: types.Message, state: FSMContext):
         f"({audience_label(data.get('audience'))}).\nОтменить можно в карточке опроса: «📊 Опросы».",
         reply_markup=ReplyKeyboardRemove(),
     )
+
+
+# Конструктор анкеты регистрируется после мастера: его хендлеры на тот же роутер.
+from handlers.comms import admin_survey_builder  # noqa: E402, F401
