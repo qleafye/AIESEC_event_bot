@@ -31,13 +31,15 @@ from services.comms.polls import (
     render_results_text,
     audience_label,
 )
+from database.survey_db import count_survey_progress
+from services.comms.survey_report import export_survey_to_sheet
 from services.scheduler import cancel_poll_job
 from handlers.settings.admin_core import _admin_city_view
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)
 
-_ACTIVE_STATUSES = ("scheduled", "sending", "open")
+_ACTIVE_STATUSES = ("scheduled", "sending", "open", "draft")
 _LIST_LIMIT = 15
 
 _OUT_OF_SCOPE = "Этот опрос адресован другому городу — переключите город в шапке."
@@ -84,9 +86,13 @@ async def render_poll_list(admin_id: int, *, closed: bool) -> tuple[str, InlineK
     if not polls:
         lines.append("\nПока ничего нет." if closed else "\nОткрытых опросов нет — создайте первый.")
     for p in polls[:_LIST_LIMIT]:
-        n = await count_poll_respondents(p["id"]) if not p["is_anonymous"] else None
         status = POLL_STATUS_LABELS.get(p["status"], p["status"])
-        tail = f" · {n} отв." if n is not None else " · анон."
+        if p.get("kind") == "survey":
+            n = (await count_survey_progress(p["id"]))[1] if p["status"] != "draft" else None
+            tail = "" if p["status"] == "draft" else f" · {n} отв."
+        else:
+            n = await count_poll_respondents(p["id"]) if not p["is_anonymous"] else None
+            tail = f" · {n} отв." if n is not None else " · анон."
         if p["status"] == "scheduled":
             tail = f" · {_fmt_dt(p.get('scheduled_at'))}"
         rows.append([InlineKeyboardButton(
@@ -120,6 +126,13 @@ async def show_admin_polls_closed(callback: types.CallbackQuery):
 
 
 async def render_poll_card(poll_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+    head = await get_poll(poll_id)
+    if head is not None and head.get("kind") == "survey":
+        from handlers.comms.admin_survey_builder import render_survey_draft
+        from handlers.comms.admin_survey_results import render_survey_card
+        if head["status"] == "draft":
+            return await render_survey_draft(poll_id)
+        return await render_survey_card(head)
     results = await get_poll_results(poll_id)
     if results is None:
         return None
@@ -179,7 +192,9 @@ async def poll_close_action(callback: types.CallbackQuery, bot: Bot):
     await callback.answer("Закрываю опрос у всех получивших…")
     ok, failed = await close_poll(bot, pid)
     note = f"⏹ Опрос закрыт: остановлен у {ok}"
-    if failed:
+    if poll.get("kind") == "survey":
+        note = "⏹ Анкета закрыта — новые ответы больше не принимаются."
+    elif failed:
         note += f", не удалось у {failed} (чат недоступен — ответы от них уже не придут)"
     text, kb = await render_poll_card(pid)
     await callback.message.edit_text(f"{note}\n\n{text}", parse_mode="HTML", reply_markup=kb)
@@ -191,6 +206,20 @@ async def poll_export_action(callback: types.CallbackQuery):
     poll = await get_poll(pid) if pid is not None else None
     if poll is None:
         await callback.answer("Опрос уже удалён.", show_alert=True)
+        return
+    if poll.get("kind") == "survey":
+        if await _poll_out_of_scope(callback.from_user.id, poll):
+            await callback.answer(_OUT_OF_SCOPE, show_alert=True)
+            return
+        await callback.answer("Выгружаю в таблицу…")
+        written = await export_survey_to_sheet(pid)
+        if written < 0:
+            await callback.message.answer(
+                "⚠️ Таблица сейчас недоступна — попробуйте через пару минут. "
+                "Итоги видны в боте: «📊 Итоги по вопросам»."
+            )
+        else:
+            await callback.message.answer(f"✅ Вкладка «Опрос {pid}» обновлена: {written} строк.")
         return
     await callback.answer("Выгружаю в таблицу…")
     written = await export_polls_to_sheet()
@@ -217,6 +246,12 @@ async def poll_delete_confirm(callback: types.CallbackQuery):
         return
     if poll["status"] == "scheduled":
         what = "Отправка будет отменена, делегаты ничего не получат."
+    elif poll.get("kind") == "survey":
+        started, _ = await count_survey_progress(pid)
+        what = (
+            f"Пропадут вопросы и ответы {started} чел. Вкладка «Опрос {pid}» в таблице останется."
+            " Восстановить будет нельзя."
+        )
     else:
         n = await count_poll_respondents(pid)
         what = (
@@ -255,3 +290,4 @@ async def poll_delete_go(callback: types.CallbackQuery, state: FSMContext):
 # Мастер создания регистрируется ПОСЛЕ экранов списка/карточки — независимо от того, какой
 # модуль импортирован первым (см. docstring и прецедент admin_gamification → admin_game_tasks).
 from handlers.comms import admin_poll_wizard  # noqa: E402, F401
+from handlers.comms import admin_survey_results  # noqa: E402, F401
