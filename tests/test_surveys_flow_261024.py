@@ -143,3 +143,237 @@ def test_close_survey_does_not_stop_poll(tmp_path):
     pid, bot, res = _run(go())
     assert res == (0, 0) and bot.stopped == []
     assert _run(db.get_poll(pid))["status"] == "closed"
+
+
+# ── прохождение: sv:* ────────────────────────────────────────────────────────────────────────
+
+import handlers.user_actions  # noqa: E402,F401  -- порядок регистрации: user_actions первым
+from handlers.comms import survey_delegate as sd  # noqa: E402
+from handlers.access.admin_caps import required_capability  # noqa: E402
+
+
+class FakeMsg:
+    def __init__(self):
+        self.edits = []
+        self.answers = []
+        self.markups = []
+
+    async def edit_text(self, text, reply_markup=None, parse_mode=None):
+        self.edits.append((text, reply_markup))
+
+    async def answer(self, text, reply_markup=None, parse_mode=None):
+        self.answers.append((text, reply_markup))
+
+    async def edit_reply_markup(self, reply_markup=None):
+        self.markups.append(reply_markup)
+
+
+class FakeCb:
+    def __init__(self, data, uid):
+        self.data = data
+        self.from_user = SimpleNamespace(id=uid)
+        self.message = FakeMsg()
+        self.alerts = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.alerts.append((text, show_alert))
+
+
+def _tap(handler, data, uid=U1):
+    cb = FakeCb(data, uid)
+    _run(handler(cb))
+    return cb
+
+
+def _last(cb):
+    return (cb.message.edits + cb.message.answers)[-1][0]
+
+
+async def _ready_survey(questions, **kw):
+    await _add_user(U1)
+    pid, qids = await _survey(questions, status="open", **kw)
+    await db.record_poll_message(pid, U1, None, 1, True)
+    return pid, qids
+
+
+def test_start_non_recipient_and_recipient(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {})]))
+    cb = _tap(sd.sv_start, f"sv:s:{pid}", uid=U2)
+    assert cb.alerts[0][0] == "Этот опрос отправлен не тебе"
+    assert _run(survey_db.get_survey_progress(pid, U2)) is None
+    cb = _tap(sd.sv_start, f"sv:s:{pid}")
+    assert "Вопрос 1 из 1" in cb.message.answers[0][0]
+    assert cb.message.markups[0].inline_keyboard[0][0].callback_data == f"sv:c:{pid}"
+    assert _run(survey_db.get_survey_progress(pid, U1))["current_qid"] == qids[0]
+
+
+def test_continue_after_restart_shows_same_question(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {}), ("single", {})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    _tap(sd.sv_option, f"sv:o:{qids[0]}:0")
+    cb = _tap(sd.sv_continue, f"sv:c:{pid}")  # каждый _run открывает новые соединения БД
+    assert "Вопрос 2 из 2" in cb.message.answers[0][0]
+
+
+def test_single_answer_advances_and_finishes_with_outro(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {}), ("single", {})], outro="Пока!"))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_option, f"sv:o:{qids[0]}:1")
+    assert "Вопрос 2 из 2" in _last(cb)
+    cb = _tap(sd.sv_option, f"sv:o:{qids[1]}:0")
+    assert _last(cb) == "Пока!"
+    assert _run(survey_db.get_survey_progress(pid, U1))["state"] == "done"
+    answers = {(a["question_id"], a["sub"]): a["value"] for a in _run(survey_db.list_survey_answers(pid))}
+    assert answers == {(qids[0], ""): 1, (qids[1], ""): 0}
+    cb = _tap(sd.sv_option, f"sv:o:{qids[1]}:0")
+    assert cb.alerts[0][0] == "Ты уже ответил(а), спасибо"
+
+
+def test_default_outro(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_option, f"sv:o:{qids[0]}:0")
+    assert "Спасибо" in _last(cb)
+
+
+def test_multi_toggle_limit_and_done(tmp_path):
+    _ready(tmp_path)
+    opts = [{"t": "A", "more": None}, {"t": "B", "more": None}, {"t": "C", "more": None}]
+    pid, qids = _run(_ready_survey([("multi", {"options": opts, "max_choices": 2}), ("single", {})]))
+    q = qids[0]
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_done, f"sv:d:{q}")
+    assert cb.alerts[0][0] == "Выбери хотя бы один вариант"
+    cb = _tap(sd.sv_option, f"sv:o:{q}:0")
+    assert "✓ A" in str(cb.message.edits[0][1])
+    _tap(sd.sv_option, f"sv:o:{q}:1")
+    cb = _tap(sd.sv_option, f"sv:o:{q}:2")
+    assert "не больше 2" in cb.alerts[0][0]
+    cb = _tap(sd.sv_option, f"sv:o:{q}:0")  # снятие
+    assert "✓ A" not in str(cb.message.edits[0][1])
+    cb = _tap(sd.sv_done, f"sv:d:{q}")
+    assert "Вопрос 2 из 2" in _last(cb)
+    answers = {a["question_id"]: a["value"] for a in _run(survey_db.list_survey_answers(pid))}
+    assert answers[q] == [1]
+
+
+def test_more_clarification_queue_and_skip(tmp_path):
+    _ready(tmp_path)
+    opts = [{"t": "A", "more": "Что именно A?"}, {"t": "B", "more": "Что именно B?"}, {"t": "C", "more": None}]
+    pid, qids = _run(_ready_survey([("multi", {"options": opts}), ("single", {})]))
+    q = qids[0]
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    _tap(sd.sv_option, f"sv:o:{q}:0")
+    _tap(sd.sv_option, f"sv:o:{q}:1")
+    cb = _tap(sd.sv_done, f"sv:d:{q}")
+    assert "Что именно A?" in _last(cb)
+    wait = _run(survey_db.get_survey_wait(U1))
+    assert wait["await"] == {"qid": q, "sub": "m0", "queue": [1]}
+    # устаревший тап варианта во время уточнения лишь перерисовывает уточнение
+    cb = _tap(sd.sv_option, f"sv:o:{q}:2")
+    assert "Что именно A?" in _last(cb)
+    cb = _tap(sd.sv_skip, f"sv:k:{q}")
+    assert "Что именно B?" in _last(cb)
+    cb = _tap(sd.sv_skip, f"sv:k:{q}")
+    assert "Вопрос 2 из 2" in _last(cb)
+
+
+def test_scale_and_table(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("scale", {}), ("table", {"rows": ["Еда", "Зал"]})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_scale, f"sv:n:{qids[0]}:4")
+    assert "Строка 1 из 2" in _last(cb)
+    cb = _tap(sd.sv_table, f"sv:t:{qids[1]}:3")
+    assert "Строка 2 из 2" in _last(cb)
+    _tap(sd.sv_table, f"sv:t:{qids[1]}:0")
+    answers = {(a["question_id"], a["sub"]): a["value"] for a in _run(survey_db.list_survey_answers(pid))}
+    assert answers == {(qids[0], ""): 4, (qids[1], "r0"): 3, (qids[1], "r1"): 0}
+    assert _run(survey_db.get_survey_progress(pid, U1))["state"] == "done"
+
+
+def test_scale_out_of_range_rejected(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("scale", {})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_scale, f"sv:n:{qids[0]}:9")
+    assert cb.alerts and _run(survey_db.list_survey_answers(pid)) == []
+
+
+def test_text_question_sets_await(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("text", {})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    wait = _run(survey_db.get_survey_wait(U1))
+    assert wait["current_qid"] == qids[0] and wait["await"]["sub"] == ""
+
+
+def test_skip_required_forbidden_optional_ok(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("scale", {}), ("scale", {})]))
+
+    async def make_optional():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE survey_questions SET required = 0 WHERE id = ?", (qids[1],))
+            await conn.commit()
+
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_skip, f"sv:k:{qids[0]}")
+    assert cb.alerts[0][0] == "Этот вопрос обязательный"
+    _tap(sd.sv_scale, f"sv:n:{qids[0]}:5")
+    _run(make_optional())
+    _tap(sd.sv_skip, f"sv:k:{qids[1]}")
+    assert _run(survey_db.get_survey_progress(pid, U1))["state"] == "done"
+    assert [a["question_id"] for a in _run(survey_db.list_survey_answers(pid))] == [qids[0]]
+
+
+def test_closed_survey_alert(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    _run(db.set_poll_status(pid, "closed"))
+    for h, d in ((sd.sv_option, f"sv:o:{qids[0]}:0"), (sd.sv_continue, f"sv:c:{pid}"),
+                 (sd.sv_start, f"sv:s:{pid}")):
+        assert _tap(h, d).alerts[0][0] == "Опрос закрыт"
+
+
+def test_stale_question_redraws_current(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {}), ("single", {})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_option, f"sv:o:{qids[1]}:0")  # второй, а текущий первый
+    assert "Вопрос 1 из 2" in _last(cb)
+    assert _run(survey_db.list_survey_answers(pid)) == []
+
+
+def test_foreign_question_and_bad_index_write_nothing(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {})]))
+    other, oq = _run(_survey([("single", {})], status="open"))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    cb = _tap(sd.sv_option, f"sv:o:{oq[0]}:0")
+    assert cb.alerts  # по чужой анкете у делегата нет прогресса
+    cb = _tap(sd.sv_option, f"sv:o:{qids[0]}:7")
+    assert cb.alerts
+    assert _run(survey_db.list_survey_answers(pid)) == []
+    assert _run(survey_db.list_survey_answers(other)) == []
+
+
+def test_double_tap_single_transition(tmp_path):
+    _ready(tmp_path)
+    pid, qids = _run(_ready_survey([("single", {}), ("single", {})]))
+    _tap(sd.sv_start, f"sv:s:{pid}")
+    _tap(sd.sv_option, f"sv:o:{qids[0]}:0")
+    cb = _tap(sd.sv_option, f"sv:o:{qids[0]}:1")  # второй тап по уже пройденному вопросу
+    assert "Вопрос 2 из 2" in _last(cb)
+    answers = [(a["question_id"], a["value"]) for a in _run(survey_db.list_survey_answers(pid))]
+    assert answers == [(qids[0], 0)]
+
+
+def test_sv_prefixes_not_capability_gated():
+    for data in ("sv:s:1", "sv:c:1", "sv:o:1:0", "sv:d:1", "sv:k:1", "sv:n:1:3", "sv:t:1:0"):
+        assert required_capability(callback_data=data) is None
