@@ -117,7 +117,7 @@ def test_more_queue_and_prompt():
     opts = [{"t": "a", "more": None}, {"t": "b", "more": "Что именно?"},
             {"t": "c", "more": None}, {"t": "d", "more": "Почему?"}]
     q = _q("multi", options=opts)
-    assert sv.more_queue(q, [1, 3]) == [3] or sv.more_queue(q, [1, 3]) == [1, 3]
+    assert sv.more_queue(q, [1, 3]) == [1, 3]
     assert sv.more_queue(q, [3, 1]) == [1, 3]
     assert sv.more_queue(q, [0, 2]) == []
     text, kb = sv.render_more_prompt(q, 3)
