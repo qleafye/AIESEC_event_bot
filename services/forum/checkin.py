@@ -361,12 +361,38 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
     if payload is None:
         raise ValueError(f"build_checkin_qr: нет пользователя {user.get('telegram_id')}")
 
+    caption = await get_setting_typed("checkin_qr_caption_text") or _DEFAULT_CAPTION
+    try:
+        return await _render_card(user, payload), caption
+    except Exception as e:  # пропуск важнее оформления: любой сбой рендера — голый QR
+        logger.warning(f"build_checkin_qr: карточка не собралась, шлём голый QR: {e}")
+
     qr = segno.make(payload)
     buf = io.BytesIO()
     qr.save(buf, kind="png", scale=6, border=2)
-
-    caption = await get_setting_typed("checkin_qr_caption_text") or _DEFAULT_CAPTION
     return buf.getvalue(), caption
+
+
+async def _render_card(user: dict, payload: str) -> bytes:
+    """Оформленная карточка (`services.forum.qr_card`) — заголовок и фон из `event_name`,
+    город человеческим названием, а не кодом."""
+    import asyncio
+
+    from domain.cities import city_label_or_none
+    from services.forum.qr_card import render_qr_card
+
+    event = (await get_setting_typed("event_name") or "").strip()
+    title = f"Пропуск на {event}" if event else "Пропуск на форум"
+    from services.i18n.i18n_glossary import split_leading_symbols
+
+    # ведущий эмодзи подписи города шрифт карточки не рисует — был бы квадратик
+    city = (await city_label_or_none(user.get("event_city")) or "").strip()
+    prefix, rest = split_leading_symbols(city)
+    city = rest.strip() if prefix else city
+    name = (user.get("full_name") or "").strip() or "—"
+    return await asyncio.to_thread(
+        render_qr_card, payload, name, city, title, "Покажи этот QR на входе", (event or "АЙСЕК").upper(),
+    )
 
 
 # Форум-ночь B4 (идея №8): «🧪 Проверить приложение-сканер» — волонтёр без делегатского QR
