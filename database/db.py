@@ -2637,6 +2637,9 @@ async def init_db():
         await quiz_db.ensure_schema(db)
         from database import survey_db
         await survey_db.ensure_schema(db)
+        # Сертификаты после форума: шаблоны, списки волонтёров/амбассадоров, выдачи.
+        from database import certificates_db
+        await certificates_db.ensure_schema(db)
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
