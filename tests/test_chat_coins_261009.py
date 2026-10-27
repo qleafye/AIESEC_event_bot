@@ -226,3 +226,24 @@ def test_transfer_plan_apply_and_rerun_is_idempotent(env):
 def test_transfer_callbacks_need_game_right():
     for data in ("admin_coins_transfer", "cointr_go:notify", "cointr_tab:5", "cointr_cancel"):
         assert required_capability(callback_data=data) == "moderate_game"
+
+
+def test_transfer_rerun_after_table_change_adds_only_difference(env):
+    """Таблицу ведут и во время форума: повторный перенос дописывает разницу, а не всю сумму,
+    и второй запуск с той же таблицей ничего не добавляет."""
+    plan = _run(coins_transfer.build_plan(coins_transfer.parse_values(SHEET)))
+    _run(coins_transfer.apply_plan(plan, "Гейма", MANAGER))
+
+    changed = [row[:] for row in SHEET]
+    changed[1] = ["@delegate_one", "10", "", "20"]  # 15 -> 20: итог 50 -> 55
+    plan = _run(coins_transfer.build_plan(coins_transfer.parse_values(changed)))
+    assert plan.matched == []
+    assert [(tid, old, p.total) for p, tid, old in plan.updated] == [(DELEGATE, 50, 55)]
+
+    fixed = _run(coins_transfer.apply_updates(plan, "Гейма", MANAGER))
+    assert [(tid, diff) for _, tid, diff in fixed] == [(DELEGATE, 5)]
+    assert _run(db.get_balance(DELEGATE)) == 55
+    assert _run(coins_transfer.apply_updates(plan, "Гейма", MANAGER)) == []
+
+    plan = _run(coins_transfer.build_plan(coins_transfer.parse_values(changed)))
+    assert plan.updated == [] and len(plan.already) == 1
