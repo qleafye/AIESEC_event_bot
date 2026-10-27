@@ -179,9 +179,17 @@ async def _preview(target: types.Message, state: FSMContext, sheet_id: str, gid:
         lines.append(f"  · @{html.escape(person.nick)} — +{person.total}")
     if len(plan.matched) > 10:
         lines.append(f"  · …и ещё {len(plan.matched) - 10}")
+    if plan.updated:
+        lines.append("")
+        lines.append(f"🔄 В таблице изменились баллы у {len(plan.updated)} — допишу разницу:")
+        for person, _, old in plan.updated[:10]:
+            diff = person.total - old
+            lines.append(f"  · @{html.escape(person.nick)}: было {old}, стало {person.total} ({diff:+d})")
+        if len(plan.updated) > 10:
+            lines.append(f"  · …и ещё {len(plan.updated) - 10}")
     if plan.already:
         lines.append("")
-        lines.append(f"⏭ Уже переносили раньше, второй раз не начислю: {len(plan.already)}.")
+        lines.append(f"⏭ Уже переносили, в таблице без изменений: {len(plan.already)}.")
     if plan.unknown:
         lines.append("")
         lines.append(f"❓ Не нашёл в боте ({len(plan.unknown)}) — им ничего не начислится:")
@@ -196,7 +204,7 @@ async def _preview(target: types.Message, state: FSMContext, sheet_id: str, gid:
                  "можно через «🪙 Баллы вручную».")
 
     rows = []
-    if plan.matched:
+    if plan.matched or plan.updated:
         rows.append([InlineKeyboardButton(text="✅ Перенести и написать каждому",
                                           callback_data="cointr_go:notify")])
         rows.append([InlineKeyboardButton(text="✅ Перенести без сообщений",
@@ -230,6 +238,7 @@ async def cointr_go(callback: types.CallbackQuery, state: FSMContext):
         await callback.message.answer("Вкладка изменилась — колонки с никами больше нет. Ничего не записано.")
         return
     done = await coins_transfer.apply_plan(plan, tab_name, callback.from_user.id)
+    fixed = await coins_transfer.apply_updates(plan, tab_name, callback.from_user.id)
     total = sum(p.total for p, _ in done)
     logger.info("coins_transfer: %s человек, %s монет, by=%s", len(done), total, callback.from_user.id)
     try:
@@ -249,10 +258,20 @@ async def cointr_go(callback: types.CallbackQuery, state: FSMContext):
                                          await get_balance(tid)):
                 delivered += 1
             await asyncio.sleep(0.05)
+    if notify and fixed:
+        from services.game.coins_notify import notify_manual_coins
+
+        for person, tid, diff in fixed:
+            reason = f"Обновление из таблицы «{tab_name}»"
+            if await notify_manual_coins(callback.bot, tid, diff, reason, await get_balance(tid)):
+                delivered += 1
+            await asyncio.sleep(0.05)
 
     lines = [f"✅ Перенесено: {len(done)} делегатам, {total} {points_word(total)}."]
-    if notify and done:
-        lines.append(f"Сообщение получили: {delivered} из {len(done)}.")
+    if fixed:
+        lines.append(f"🔄 Обновлено по изменённой таблице: {len(fixed)}.")
+    if notify and (done or fixed):
+        lines.append(f"Сообщение получили: {delivered} из {len(done) + len(fixed)}.")
     if plan.unknown:
         lines.append(f"Не нашёл в боте: {len(plan.unknown)} — после правки ников запустите перенос ещё раз.")
     lines.append("Все строки — в «📜 Ручные начисления».")
