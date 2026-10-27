@@ -478,6 +478,10 @@ async def init_scheduler(bot):
     from services.chat_rating_post import reconcile as _reconcile_chat_rating_post
     await _reconcile_chat_rating_post()
     _add_interval_job(_reconcile_chat_rating_post, "chat_rating_post_reconcile", timedelta(minutes=10))
+    # Сертификаты после форума: с момента открытия выдачи — «сертификат готов» каждому, кому
+    # положен, один раз (services/forum/certificates.py::announce_job, идемпотентна).
+    from services.forum.certificates import announce_job as _certificate_announce
+    _add_interval_job(_certificate_announce, "certificate_announce", timedelta(minutes=5))
     # Nothing (interval or date) may fire until the whole schedule above is assembled.
     _scheduler.resume()
     _nudge, _allow = _scheduler.get_job("nudge_scan"), _scheduler.get_job("allowlist_refresh")

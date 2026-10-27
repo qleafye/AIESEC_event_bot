@@ -1188,6 +1188,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Часовой пояс города (экран хаба «🎪 Форум: функции»): та же капа, что у соседних экранов.
     "forumtz_cfg:*": "moderate_reg",
     "forumtz_set:*": "moderate_reg",
+    # «🎓 Сертификаты» (handlers/forum/admin_certificates.py): шаблоны, списки, дата выдачи.
+    "certadm_*": "moderate_reg",
+    "state:CertAdmin:*": "moderate_reg",
     "forumdaymenu_cfg:*": "moderate_reg",
     "forumdaymenu_toggle:*": "moderate_reg",
     "forumdaymenu_time:*": "moderate_reg",

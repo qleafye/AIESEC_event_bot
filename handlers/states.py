@@ -689,3 +689,15 @@ class ChatExportImport(StatesGroup):
     # файл несёт state.get_data(); текстового ввода нет.
     waiting_file = State()
     confirm = State()
+
+
+class CertificateName(StatesGroup):
+    """Делегат исправляет имя перед выдачей сертификата (handlers/forum/certificates.py)."""
+    waiting = State()
+
+
+class CertAdmin(StatesGroup):
+    """«🎓 Сертификаты» в админке (handlers/forum/admin_certificates.py)."""
+    open_at = State()
+    template = State()
+    people = State()

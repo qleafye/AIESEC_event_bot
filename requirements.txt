@@ -13,6 +13,9 @@ segno
 # Бэклог чек-ина №7: лист A4 учебных QR (services/forum/checkin_training.py). Колесо manylinux несёт
 # freetype+brotli внутри — шрифты Mini App (woff2) читаются без системных пакетов.
 pillow>=11,<12
+# Сертификаты после форума (services/forum/certificate_render.py): имя в PDF-шаблон дизайнера.
+# Чистый Python, без системных библиотек.
+pypdf>=6,<7
 
 # Phase 27 (27-03, LANG-04/LANG-10): встроенный драйвер перевода делегатской анкеты
 # (services/i18n/i18n_engine.py::EmbeddedArgosDriver). Пин `-lt` (torch-free форк, MIT), а не

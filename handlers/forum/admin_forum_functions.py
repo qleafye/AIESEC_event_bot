@@ -294,6 +294,14 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="📊 Настройки карточки «Мы в цифрах»", callback_data=f"forumstats_cfg:{_encode_city(code)}",
         )])
 
+    # Сертификаты после форума (handlers/forum/admin_certificates.py) — общие на все города.
+    from database.certificates_db import get_open_at
+    from services.forum.certificates import human_open_at
+    cert_when = human_open_at(await get_open_at())
+    lines.append(f"🎓 Сертификаты: {'выдача ' + cert_when if cert_when else 'выдача не назначена'}")
+    if visible("certadm_home"):
+        buttons.append([InlineKeyboardButton(text="🎓 Сертификаты", callback_data="certadm_home")])
+
     if not await cities_module_on():
         lines.append("\n<i>Модуль городов выключен — показаны общие (не городские) значения.</i>")
 

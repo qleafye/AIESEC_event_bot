@@ -629,6 +629,10 @@ def _build_snapshot_lines():
 # (цепочка импортов admin.py) в четырёх точках; user_actions.router: `survey_text_step`/
 # `survey_non_text_step` (message) и `sv_start`/`sv_continue`/`sv_option`/`sv_done`/`sv_skip`/
 # `sv_scale`/`sv_table` (callback_query) -- ПЕРЕД `reg_handoff_idle_fallback`.
+# Дрифт-нота (28.10, сертификаты после форума): +18 хендлеров, чистые вставки (1325 -> 1343), пересчитано
+# RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 4 вставки, 0 удалений, 0 реордеров.
+# admin.router: certadm_* (handlers/forum/admin_certificates.py, хвост admin.py) — 4 message + 9 callback_query;
+# user_actions.router: /certificate, ввод имени, cert_get/cert_edit/cert_ok — ПЕРЕД reg_handoff_idle_fallback.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -870,6 +874,10 @@ admin|message|settings_search_not_text|state:SettingsSearch:*
 admin|message|sheet_target_cancel|state:SheetTarget:*,state:SheetTarget:*
 admin|message|sheet_target_cancel|state:SheetTarget:*,state:SheetTarget:*
 admin|message|sheet_target_receive|state:SheetTarget:*
+admin|message|certadm_open_input|state:CertAdmin:*
+admin|message|certadm_tpl_file|state:CertAdmin:*
+admin|message|certadm_tpl_not_file|state:CertAdmin:*
+admin|message|certadm_ppl_input|state:CertAdmin:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1767,6 +1775,15 @@ admin|callback_query|setup_wizard_overview|admin_setup_wizard
 admin|callback_query|setup_wizard_step|setupw_s:*
 admin|callback_query|setup_wizard_field|setupw_f:*
 admin|callback_query|setup_wizard_screen|setupw_scr:*
+admin|callback_query|certadm_home|certadm_home
+admin|callback_query|certadm_open|certadm_open
+admin|callback_query|certadm_tpls|certadm_tpls
+admin|callback_query|certadm_tpl|certadm_tpl:*
+admin|callback_query|certadm_tpldel|certadm_tpldel:*
+admin|callback_query|certadm_ppl|certadm_ppl:*
+admin|callback_query|certadm_clr|certadm_clr:*
+admin|callback_query|certadm_clrgo|certadm_clrgo:*
+admin|callback_query|certadm_preview|certadm_preview
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1894,6 +1911,8 @@ user_actions|message|quiz_menu|
 user_actions|message|menu_edit_anketa|
 user_actions|message|survey_text_step|
 user_actions|message|survey_non_text_step|
+user_actions|message|certificate_command|cmd:certificate
+user_actions|message|certificate_name_input|state:CertificateName:*
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -1941,6 +1960,9 @@ user_actions|callback_query|sv_done|sv:d:*
 user_actions|callback_query|sv_skip|sv:k:*
 user_actions|callback_query|sv_scale|sv:n:*
 user_actions|callback_query|sv_table|sv:t:*
+user_actions|callback_query|certificate_get|cert_get
+user_actions|callback_query|certificate_edit|cert_edit
+user_actions|callback_query|certificate_send|cert_ok
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2580,7 +2602,8 @@ def test_snapshot_total_handler_count_is_292():
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
     # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
-    assert len(GOLDEN_SNAPSHOT) == 1325
+    assert len(GOLDEN_SNAPSHOT) == 1343
+    # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/
     # status_screen/header_settings/haptics — девять тумблеров «Анкета 2.0»), встали сразу после
