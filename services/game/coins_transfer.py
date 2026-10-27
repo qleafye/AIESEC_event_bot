@@ -121,8 +121,11 @@ def parse_values(values: list[list[str]]) -> Parsed | None:
 @dataclass
 class Plan:
     matched: list[tuple[Person, int]]       # (человек, telegram_id) — начислим
-    already: list[tuple[Person, int]]       # перенос уже был
+    already: list[tuple[Person, int]]       # перенос уже был, в таблице с тех пор без изменений
     unknown: list[Person]                   # нет в боте
+    # Перенос уже был, но в таблице теперь другая сумма: (человек, telegram_id, сколько перенесено).
+    # Таблицу ведут и во время форума — повторный перенос дописывает разницу.
+    updated: list[tuple[Person, int, int]] = field(default_factory=list)
 
     @property
     def total(self) -> int:
@@ -139,7 +142,7 @@ async def build_plan(parsed: Parsed) -> Plan:
         else:
             missing.append(person.nick.lower())
     found.update(await chat_coins_db.chat_username_ids(missing))
-    done = await chat_coins_db.transferred_user_ids()
+    done = await chat_coins_db.transferred_sums()
 
     matched, already, unknown = [], [], []
     seen_ids: dict[int, Person] = {}
@@ -147,8 +150,6 @@ async def build_plan(parsed: Parsed) -> Plan:
         tid = found.get(person.nick.lower())
         if tid is None:
             unknown.append(person)
-        elif tid in done:
-            already.append((person, tid))
         elif tid in seen_ids:
             # Два ника в таблице — один человек (сменил ник): складываем.
             other = seen_ids[tid]
@@ -158,10 +159,29 @@ async def build_plan(parsed: Parsed) -> Plan:
         else:
             seen_ids[tid] = person
             matched.append((person, tid))
-    return Plan(matched=matched, already=already, unknown=unknown)
+    # Уже переносили — сравнить с таблицей ПОСЛЕ склейки двух ников одного человека.
+    fresh, updated = [], []
+    for person, tid in matched:
+        if tid not in done:
+            fresh.append((person, tid))
+        elif person.total != done[tid]:
+            updated.append((person, tid, done[tid]))
+        else:
+            already.append((person, tid))
+    return Plan(matched=fresh, already=already, unknown=unknown, updated=updated)
 
 
 async def apply_plan(plan: Plan, tab_title: str, changed_by: int) -> list[tuple[Person, int]]:
     entries = [(tid, person.total, person.reason(tab_title)) for person, tid in plan.matched]
     done = set(await chat_coins_db.record_transfer(entries, changed_by))
     return [(person, tid) for person, tid in plan.matched if tid in done]
+
+
+async def apply_updates(plan: Plan, tab_title: str, changed_by: int) -> list[tuple[Person, int, int]]:
+    """Поправки тем, у кого сумма в таблице изменилась: [(человек, telegram_id, поправка)]."""
+    entries = [
+        (tid, person.total, f"Обновление из таблицы «{tab_title}»: было {old}, стало {person.total}")
+        for person, tid, old in plan.updated
+    ]
+    done = dict(await chat_coins_db.record_transfer_updates(entries, changed_by))
+    return [(person, tid, done[tid]) for person, tid, _ in plan.updated if tid in done]

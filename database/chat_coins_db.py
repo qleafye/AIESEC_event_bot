@@ -105,6 +105,41 @@ async def record_transfer(entries: list[tuple[int, int, str]], changed_by: int) 
     return done
 
 
+async def transferred_sums() -> dict[int, int]:
+    """Сколько каждому уже перенесено из таблицы (сумма всех строк `transfer`, с поправками)."""
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT user_id, SUM(delta) FROM coins WHERE source = ? GROUP BY user_id", (SOURCE_TRANSFER,)
+        ) as cur:
+            return {int(r[0]): int(r[1] or 0) for r in await cur.fetchall()}
+
+
+async def record_transfer_updates(entries: list[tuple[int, int, str]], changed_by: int) -> list[tuple[int, int]]:
+    """Таблицу поменяли после переноса: entries — (user_id, сколько в таблице СЕЙЧАС, причина).
+    Пишет строку-поправку на разницу с уже перенесённым, разница считается внутри транзакции —
+    повторный запуск с той же таблицей ничего не допишет. Возвращает [(user_id, поправка)]."""
+    stamp = _stamp()
+    done: list[tuple[int, int]] = []
+    async with _db._connect() as db:
+        for user_id, target, reason in entries:
+            async with db.execute(
+                "SELECT COALESCE(SUM(delta), 0) FROM coins WHERE user_id = ? AND source = ?",
+                (user_id, SOURCE_TRANSFER),
+            ) as cur:
+                current = int((await cur.fetchone())[0])
+            delta = target - current
+            if delta == 0:
+                continue
+            await db.execute(
+                "INSERT INTO coins (user_id, delta, reason, changed_by, timestamp, source) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (user_id, delta, reason, changed_by, stamp, SOURCE_TRANSFER),
+            )
+            done.append((user_id, delta))
+        await db.commit()
+    return done
+
+
 async def chat_username_entry(telegram_id: int) -> dict | None:
     """`{"username", "first_name"}` из `chat_usernames` — то, что бот видел у человека в чате или
     в пересылке при выдаче роли; `None`, если ничего."""
