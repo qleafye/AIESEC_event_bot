@@ -39,6 +39,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 import domain.regform.engine as reg_engine
+from services.game.city_texts import city_text  # тексты геймы и волн города делегата + {chat}
 from domain.cities import (
     cities_module_on,
     city_label,
@@ -1177,7 +1178,7 @@ async def draft_submit(
             logger.exception("reg draft submit: delegate_state failed telegram_id=%s", p.telegram_id)
             amb_state = "open"
         if amb_state == "candidate":
-            response["ambassador_note"] = await i18n.tr_setting("amb_candidate_ack_text", lang, tr_map)
+            response["ambassador_note"] = await city_text("amb_candidate_ack_text", p.telegram_id, lang=lang, tr_map=tr_map)
             response["ambassador_link"] = await _ambassador_link_payload(request, p.telegram_id)
         elif amb_state not in ("full", "declined") and await get_setting_typed("reg_offer_ref_link") == "on":
             response["ambassador"] = {
@@ -1231,13 +1232,13 @@ async def draft_ambassador(
     if result.outcome in ("full", "declined"):
         lang, tr_map = await i18n.context(p.telegram_id)
         lang = lang if lang in ("ru", "en") else "ru"
-        return {"state": "full", "message": await i18n.tr_setting("amb_slots_full_text", lang, tr_map)}
+        return {"state": "full", "message": await city_text("amb_slots_full_text", p.telegram_id, lang=lang, tr_map=tr_map)}
     payload = await _ambassador_link_payload(request, p.telegram_id)
     if result.outcome in ("candidate", "already_candidate"):
         lang, tr_map = await i18n.context(p.telegram_id)
         lang = lang if lang in ("ru", "en") else "ru"
         payload["state"] = "candidate"
-        payload["status_note"] = await i18n.tr_setting("amb_candidate_ack_text", lang, tr_map)
+        payload["status_note"] = await city_text("amb_candidate_ack_text", p.telegram_id, lang=lang, tr_map=tr_map)
     else:
         payload["state"] = "active" if result.outcome in ("active", "already_active") else "none"
     return payload
