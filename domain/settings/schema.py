@@ -3280,11 +3280,6 @@ SETTINGS_SCHEMA = {
         ),
         "default": "Пропустить",
     },
-    "reg_form_continue_button_text": {
-        "type": "text", "group": "reg_prompts", "label": "➡️ Кнопка «Продолжить» (новая анкета)",
-        "prompt": "Главная кнопка мастера, когда есть что продолжать.",
-        "default": "Продолжить",
-    },
     "reg_form_own_option_text": {
         "type": "text", "group": "reg_prompts", "label": "✍️ Подсказка «впиши сам» (справочник)",
         "prompt": (
