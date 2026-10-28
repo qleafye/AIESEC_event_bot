@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import io
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -48,10 +49,37 @@ def _fit(draw, text: str, name: str, size: int, max_w: int, min_size: int = 34):
     return _font(name, min_size)
 
 
+def _ellipsize(draw, text: str, font, max_w: int) -> str:
+    """Строка, обрезанная с «…», если не влезает по ширине."""
+    if draw.textlength(text, font=font) <= max_w:
+        return text
+    while text and draw.textlength(text + "…", font=font) > max_w:
+        text = text[:-1]
+    return text.rstrip() + "…"
+
+
+def _split_long(draw, word: str, font, max_w: int) -> list[str]:
+    """Слово шире строки («Абдурахмангаджиева-Константинопольская») — режем после дефиса, а
+    кусок, которому и строки мало, — по буквам: иначе слово вылезло бы за край карточки."""
+    pieces, cur = [], ""
+    for chunk in re.split(r"(?<=-)", word):
+        for part in (chunk if draw.textlength(chunk, font=font) > max_w else [chunk]):
+            if cur and draw.textlength(cur + part, font=font) > max_w:
+                pieces.append(cur)
+                cur = ""
+            cur += part
+    if cur:
+        pieces.append(cur)
+    return pieces
+
+
 def _wrap(draw, text: str, font, max_w: int, max_lines: int = 2) -> list[str]:
-    words, lines, cur = text.split(), [], ""
-    for word in words:
-        probe = f"{cur} {word}".strip()
+    # (кусок, приклеен ли к предыдущему без пробела) — куски одного длинного слова
+    words, lines, cur = [], [], ""
+    for word in text.split():
+        words += [(piece, i > 0) for i, piece in enumerate(_split_long(draw, word, font, max_w))]
+    for word, glued in words:
+        probe = cur + word if glued else f"{cur} {word}".strip()
         if draw.textlength(probe, font=font) <= max_w or not cur:
             cur = probe
         else:
@@ -61,9 +89,10 @@ def _wrap(draw, text: str, font, max_w: int, max_lines: int = 2) -> list[str]:
         lines.append(cur)
     if len(lines) > max_lines:
         lines = lines[:max_lines]
-        while lines[-1] and draw.textlength(lines[-1] + "…", font=font) > max_w:
-            lines[-1] = lines[-1][:-1]
-        lines[-1] = lines[-1].rstrip() + "…"
+        last = lines[-1]
+        while last and draw.textlength(last + "…", font=font) > max_w:
+            last = last[:-1]
+        lines[-1] = last.rstrip() + "…"
     return lines
 
 
@@ -112,7 +141,7 @@ def _background(title: str, watermark: str):
     img.alpha_composite(logo, (_PAD, _PAD))
     y = _PAD + logo.height + 40
     f_title = _fit(draw, title, "raleway-800italic.woff2", 76, _W - 2 * _PAD, min_size=48)
-    draw.text((_PAD, y), title, font=f_title, fill=_WHITE)
+    draw.text((_PAD, y), _ellipsize(draw, title, f_title, _W - 2 * _PAD), font=f_title, fill=_WHITE)
     return img, y + f_title.size + 44
 
 
@@ -138,6 +167,7 @@ def render_qr_card(payload: str, name: str, city: str, title: str, footer: str, 
     f_name = _fit(draw, name, "raleway-800.woff2", 64, inner_w, min_size=40)
     name_lines = _wrap(draw, name, f_name, inner_w)
     f_city = _font("lato-700.woff2", 40)
+    city = _ellipsize(draw, city, f_city, inner_w) if city else city
     text_h = len(name_lines) * (f_name.size + 10) + (f_city.size + 14 if city else 0)
 
     card_h = _CARD_PAD + qr_img.height + 40 + text_h + _CARD_PAD
