@@ -105,3 +105,65 @@ def test_resume_fork_labels_without_leading_emoji():
     assert out[0] == "Загрузить файл"
     for text in out:
         assert text and (text[0].isalnum()), text
+
+
+# ── одна подпись «Дальше» в мастере ────────────────────────────────────────────────────
+
+
+def _db(tmp_path, name="acceptance_minor_261028.db"):
+    from config import config
+    from tests._dbtpl import fast_init_db
+
+    config.DB_PATH = str(tmp_path / name)
+    fast_init_db()
+
+
+def _continue_button():
+    from domain.regform import engine
+
+    return asyncio.run(engine._v2_texts_for("multi", "projects", None))["continue_button"]
+
+
+def test_continue_key_removed_from_registry():
+    from domain.settings.schema import SETTINGS_SCHEMA
+
+    assert "reg_form_continue_button_text" not in SETTINGS_SCHEMA
+    assert SETTINGS_SCHEMA["reg_form_next_cta_text"]["default"] == "Дальше"
+
+
+def test_multi_continue_defaults_to_next_cta(tmp_path):
+    _db(tmp_path)
+    assert _continue_button() == "Дальше"
+
+
+def test_multi_continue_follows_next_cta(tmp_path):
+    from database.db import set_setting
+
+    _db(tmp_path)
+    asyncio.run(set_setting("reg_form_next_cta_text", "Вперёд"))
+    assert _continue_button() == "Вперёд"
+
+
+def test_multi_continue_legacy_value_kept(tmp_path):
+    from database.db import set_setting
+
+    _db(tmp_path)
+    asyncio.run(set_setting("reg_form_continue_button_text", "Продолжить ✨"))
+    assert _continue_button() == "Продолжить ✨"
+
+
+def test_multi_continue_next_cta_wins_over_legacy(tmp_path):
+    from database.db import set_setting
+
+    _db(tmp_path)
+    asyncio.run(set_setting("reg_form_continue_button_text", "Продолжить ✨"))
+    asyncio.run(set_setting("reg_form_next_cta_text", "Вперёд"))
+    assert _continue_button() == "Вперёд"
+
+
+def test_multi_continue_blank_legacy_ignored(tmp_path):
+    from database.db import set_setting
+
+    _db(tmp_path)
+    asyncio.run(set_setting("reg_form_continue_button_text", "   "))
+    assert _continue_button() == "Дальше"
