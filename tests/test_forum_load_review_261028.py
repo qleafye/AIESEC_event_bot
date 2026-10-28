@@ -3,7 +3,9 @@
 - страховка утреннего повтора QR живёт весь цикл: на ~2400 человек он длиннее страховки, и
   APScheduler пропускал её срабатывание и удалял джобу — рестарт не дослал бы хвост;
 - чек делегату о выдаче и отмене в магазине: название товара и магазина экранируются — бот по
-  умолчанию шлёт в HTML, и «Стикер <3» или «M&M's» роняли отправку чека."""
+  умолчанию шлёт в HTML, и «Стикер <3» или «M&M's» роняли отправку чека;
+- точка «🛍 Магазин» в сканере не выглядит как пропуск на входе: плашка не зелёная, в заголовке
+  и под точками сказано, что вход не отмечен."""
 from __future__ import annotations
 
 import asyncio
@@ -119,3 +121,35 @@ def test_shop_undo_message_escapes_item_title(tmp_path):
     _run(adm.shop_undo_go(_cb(f"shp_undogo:{sale['id']}", bot)))
     text = _receipt(bot)
     assert html.escape(TRICKY) in text and "<3" not in text
+
+
+# ── точка «🛍 Магазин» в сканере ───────────────────────────────────────────────────────
+
+def test_shop_point_carries_not_an_entry_note(tmp_path):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    _run(shop_db.add_item("Шоппер", 150, 10, None))
+    points = client.get(f"{BASE}/points", headers=_hdr(GAME_MANAGER_ID)).json()["points"]
+    [shop] = [p for p in points if p["point"] == "shop"]
+    assert "не отмечается" in shop["note"]
+
+
+def test_shop_scan_says_entry_not_marked(tmp_path, monkeypatch):
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 2610281
+    # не одобрен: на входе его бы не пропустили, а на точке магазина плашка не должна этого скрывать
+    _run(_insert_user(uid, full_name="Петров Пётр", city="spb", status="rejected"))
+    _run(shop_db.add_item("Шоппер", 150, 10, None))
+    monkeypatch.setattr(telegram_api, "send_message", AsyncMock(return_value={}))
+    body = client.post(f"{BASE}/scan", json={"payload": _qr(uid, full_name="Петров Пётр"), "point": "shop"},
+                       headers=_hdr(GAME_MANAGER_ID)).json()
+    assert body["status"] == "shop"
+    assert "вход не отмечен" in body["hint"].lower()
+
+
+def test_scanner_shop_plaque_is_not_green():
+    js = (REPO_ROOT / "miniapp/static/js/screens/scanner.js").read_text(encoding="utf-8")
+    assert 'shop: "success"' not in js
+    assert 'shop: "warn"' in js
+    assert "вход НЕ отмечен" in js
