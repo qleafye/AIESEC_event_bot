@@ -19,7 +19,11 @@
 действующих броней — его называют голосом) и случайный `pickup_token` — он уходит в QR, по нему
 сканер находит бронь (4 цифры подбираемы, токен — нет). Выдача (`issue_reservation`) — атомарный
 UPDATE `status = 'issued'`, второй тап ничего не выдаёт. Отмена брони, как отмена выдачи, строку
-не удаляет: `undone_at` и возврат строкой `coins`."""
+не удаляет: `undone_at` и возврат строкой `coins`.
+
+Фото товара — `shop_items.photo_file_id` (NULL — фото нет): Telegram file_id именно фото (не
+документа), его показывают и альбом витрины в чате, и Mini App через прокси файлов. Прокси отдаёт
+картинку, только пока товар на витрине (`is_item_photo`)."""
 from __future__ import annotations
 
 import re
@@ -61,6 +65,7 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
     await _db._ensure_column(db, "shop_sales", "issued_at", "TEXT")
     await _db._ensure_column(db, "shop_sales", "issued_by", "INTEGER")
     await _db._ensure_column(db, "shop_config", "reserve", "INTEGER NOT NULL DEFAULT 0")
+    await _db._ensure_column(db, "shop_items", "photo_file_id", "TEXT")
     await db.execute(
         "UPDATE shop_sales SET issued_at = sold_at, issued_by = sold_by WHERE issued_at IS NULL AND status = 'issued'"
     )
@@ -165,6 +170,24 @@ async def set_stock(item_id: int, stock: int | None) -> None:
                 (stock, max(stock - sold, 0), item_id),
             )
         await db.commit()
+
+
+async def set_item_photo(item_id: int, file_id: str | None) -> None:
+    """Поставить (file_id) или убрать (None) фото товара."""
+    async with _db._connect() as db:
+        await db.execute("UPDATE shop_items SET photo_file_id = ? WHERE id = ?", (file_id or None, item_id))
+        await db.commit()
+
+
+async def is_item_photo(file_id: str) -> bool:
+    """Это фото товара, который сейчас на витрине (для прокси файлов Mini App)."""
+    if not file_id:
+        return False
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM shop_items WHERE photo_file_id = ? AND active = 1 LIMIT 1", (file_id,),
+        ) as cur:
+            return await cur.fetchone() is not None
 
 
 async def delete_item(item_id: int) -> bool:

@@ -9,6 +9,11 @@ INVARIANT: каждый @router.* — декоратор в ОДНУ строк�
 «🎫 Мои брони» и может отменить бронь до выдачи. «🎫 Мои брони» видны, пока есть действующая
 бронь, даже если витрину скрыли — бронь, за которую уже списаны баллы, не теряется.
 
+«🖼 Фото товаров» (`shopv_ph`) присылает фото товаров альбомом по кнопке, а не автоматически:
+`shopv` — цель «◀️ Назад» со всех экранов брони, автоматический альбом слал бы фото при каждом
+возврате. После альбома витрина приходит заново новым сообщением — под альбомом, у старой
+снимаются кнопки.
+
 Кнопка витрины появляется, только пока менеджер открыл витрину и на ней есть товары. Колбэки
 `shopv*` не админские — в ADMIN_CAPS их нет. Двойной тап «✅ Да, списать» даёт одну бронь:
 одноразовый номер в FSM-данных забирается под замком (тот же приём, что `shop_go` у стойки).
@@ -22,9 +27,9 @@ import logging
 import secrets
 
 from aiogram import F, types
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 
 from database import shop_db
 from database.db import get_balance
@@ -132,8 +137,22 @@ async def showcase_kb(telegram_id: int, lang: str = "ru", tr_map: dict | None = 
     my = await _my_button(telegram_id, lang, tr_map)
     if my is not None:
         rows.append([my])
+    if await _photo_items():
+        rows.append([_btn(await _t("shop_photos_button_text", lang, tr_map), "shopv_ph")])
     rows.append([_btn(reg_i18n.tr_text("◀️ Назад", lang, tr_map), "gbal_back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _photo_items() -> list[dict]:
+    """Активные товары с фото, пока витрина открыта (порядок — как на витрине)."""
+    if not await shop_db.is_open():
+        return []
+    return [i for i in await shop_db.list_items(active_only=True) if i.get("photo_file_id")]
+
+
+async def showcase_screen(telegram_id: int, lang: str = "ru", tr_map: dict | None = None):
+    """Экран витрины `(text, kb)` — общий для `shopv` и повторной витрины после альбома."""
+    return await showcase_text(telegram_id, lang, tr_map), await showcase_kb(telegram_id, lang, tr_map)
 
 
 async def _show(callback: types.CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
@@ -176,9 +195,39 @@ async def _own_active(sale_id: int, telegram_id: int) -> dict | None:
 @router.callback_query(F.data == "shopv")
 async def shop_showcase(callback: types.CallbackQuery):
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    uid = callback.from_user.id
-    await _show(callback, await showcase_text(uid, lang, tr_map), await showcase_kb(uid, lang, tr_map))
+    text, kb = await showcase_screen(callback.from_user.id, lang, tr_map)
+    await _show(callback, text, kb)
     await callback.answer()
+
+
+@router.callback_query(F.data == "shopv_ph")
+async def shop_photos(callback: types.CallbackQuery):
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    uid = callback.from_user.id
+    items = await _photo_items()
+    if not items:  # витрину скрыли или фото убрали, пока экран висел
+        await shop_showcase(callback)
+        return
+    template = reg_i18n.tr_text(await get_setting_typed("shop_photo_caption_text") or "", lang, tr_map) or ""
+    media = []
+    for item in items:
+        caption = agree_placeholder(template, "price", item["price"])
+        caption = caption.replace("{price}", str(item["price"])).replace("{title}", item["title"])
+        media.append(InputMediaPhoto(media=item["photo_file_id"], caption=caption[:1024], parse_mode=None))
+    try:
+        for start in range(0, len(media), 10):
+            await callback.bot.send_media_group(callback.message.chat.id, media[start:start + 10])
+    except TelegramAPIError as e:
+        logger.info(f"shop_delegate: альбом витрины не ушёл: {type(e).__name__}")
+        await callback.answer(await _t("shop_photos_failed_text", lang, tr_map), show_alert=True)
+        return
+    await callback.answer()
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest:
+        pass
+    text, kb = await showcase_screen(uid, lang, tr_map)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("shopv_take:"))
