@@ -30,6 +30,7 @@ from services.comms.polls import (
     export_polls_to_sheet,
     render_results_text,
     audience_label,
+    results_hint_line,
 )
 from database.survey_db import count_survey_progress
 from services.comms.survey_report import export_survey_to_sheet
@@ -150,6 +151,9 @@ async def render_poll_card(poll_id: int) -> tuple[str, InlineKeyboardMarkup] | N
         lines.append(f"Отправка: {_fmt_dt(poll.get('scheduled_at'))}")
     lines.append("")
     lines.append(render_results_text(results))
+    hint = await results_hint_line()
+    if hint:
+        lines.extend(["", hint])
     rows = []
     if poll["status"] == "open":
         rows.append([InlineKeyboardButton(text="⏹ Закрыть опрос", callback_data=f"poll_close:{poll_id}")])

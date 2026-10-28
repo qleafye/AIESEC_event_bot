@@ -232,6 +232,13 @@ def _bar(count: int, total: int, width: int = 10) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+async def results_hint_line() -> str:
+    """Подсказка менеджеру, где смотреть итоги (ключ `poll_results_admin_hint_text`), готовая
+    для HTML-сообщения. Пустой ключ — `""`, и вызывающий не добавляет ни строки."""
+    value = (await get_setting_typed("poll_results_admin_hint_text") or "").strip()
+    return html_module.escape(value) if value else ""
+
+
 def render_results_text(results: dict) -> str:
     """HTML-текст итогов для карточки опроса: полоски по вариантам + сводка."""
     poll = results["poll"]
