@@ -134,6 +134,8 @@ async def build_miniapp_settings_keyboard() -> InlineKeyboardMarkup:
     buttons.append([InlineKeyboardButton(
         text="🎭 Пресеты и ручки оформления", callback_data="miniapp_theme_open",
     )])
+    # Оформление карточки QR делегата — handlers/settings/admin_qr_card_theme.py.
+    buttons.append([InlineKeyboardButton(text="🎟 Карточка QR", callback_data="qrct_open")])
     # Phase 20 (20-03): «Назад» ведёт в раздел-владелец экрана («🔧 Управление»).
     from handlers.settings.admin_sections import back_button  # ленивый шов: модульный импорт даст цикл
     buttons.append([back_button("admin_miniapp_settings")])
