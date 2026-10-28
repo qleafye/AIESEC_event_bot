@@ -46,6 +46,8 @@ PLACEHOLDER_LABELS: dict[str, str] = {
     "week": "неделя", "where": "место", "who": "кто", "winners": "победители",
     "season": "название сезона", "remaining": "сколько осталось", "currency": "название валюты",
     "event": "название мероприятия",
+    # Бронь в магазине баллов (у ключей shop_* свои подписи в реестре, здесь — общие).
+    "price": "цена в баллах", "code": "код выдачи брони", "shop": "название магазина",
 }
 
 PROMPT_ONLY_PLACEHOLDERS: dict[str, tuple[str, ...]] = {
