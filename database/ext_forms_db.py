@@ -150,18 +150,27 @@ async def list_connections_to_alert() -> list[dict]:
 
 # ---------- формы ----------
 
+# Назначения формы (подписи — services/ext_forms/ext_forms_purpose.PURPOSE_LABELS).
+PURPOSES = ("delegations", "registration", "answers")
+REG_APPROVE_MODES = ("queue", "auto")
+
 async def create_form(
     *, platform, external_id, title, connection_id=None, gsheet_gid=None, secret=None,
     key_username_q=None, key_phone_q=None, mirror_tab=None, created_by=None,
-    ingest_mode="api",
+    ingest_mode="api", purpose=None, reg_q_fullname=None,
 ) -> int:
+    """`purpose` None — назначение по прежнему правилу (ext_forms_purpose.legacy_purpose)."""
+    if purpose is not None and purpose not in PURPOSES:
+        raise ValueError(f"неизвестное назначение формы: {purpose!r}")
     async with _db._connect() as db:
         cursor = await db.execute(
             "INSERT INTO external_forms (platform, connection_id, external_id, gsheet_gid, title, "
-            "secret, key_username_q, key_phone_q, mirror_tab, created_at, created_by, ingest_mode) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "secret, key_username_q, key_phone_q, mirror_tab, created_at, created_by, ingest_mode, "
+            "purpose, reg_q_fullname) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (platform, connection_id, external_id, gsheet_gid, title, secret,
-             key_username_q, key_phone_q, mirror_tab, _now(), created_by, ingest_mode),
+             key_username_q, key_phone_q, mirror_tab, _now(), created_by, ingest_mode,
+             purpose, reg_q_fullname),
         )
         await db.commit()
         return cursor.lastrowid
@@ -197,6 +206,11 @@ async def list_forms() -> list[dict]:
         "f.secret, f.key_username_q, f.key_phone_q, f.mirror_tab, f.mirror_error, f.status, "
         "f.notify, f.notified_at, f.last_sync_at, f.sync_error, f.created_at, f.created_by, "
         "f.ingest_mode, f.push_warning, f.dlg_off_seen_at, f.dlg_off_alerted_at, "
+        "f.mirror_mode, f.purpose, f.purpose_since, f.reg_q_fullname, f.reg_city, f.reg_approve, "
+        "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id "
+        "   AND a.reg_state IN ('created', 'linked')) AS reg_done, "
+        "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id "
+        "   AND a.reg_state = 'waiting') AS reg_waiting, "
         "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id) AS total, "
         "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id "
         "   AND a.matched_telegram_id IS NULL) AS unmatched, "
@@ -303,6 +317,32 @@ async def set_form_dlg_off(form_id: int, seen_at: str | None, alerted_at: str | 
         "UPDATE external_forms SET dlg_off_seen_at = ?, dlg_off_alerted_at = ? WHERE id = ?",
         (seen_at, alerted_at, form_id),
     )
+
+
+async def set_form_purpose(form_id: int, purpose: str, since: str | None) -> None:
+    """Назначение формы и момент смены (None — назначение выбрано до первых ответов)."""
+    if purpose not in PURPOSES:
+        raise ValueError(f"неизвестное назначение формы: {purpose!r}")
+    await _exec("UPDATE external_forms SET purpose = ?, purpose_since = ? WHERE id = ?",
+                (purpose, since, form_id))
+
+
+async def list_forms_without_purpose() -> list[dict]:
+    return await _fetchall("SELECT * FROM external_forms WHERE purpose IS NULL ORDER BY id")
+
+
+async def set_form_reg_fullname_q(form_id: int, qkey: str | None) -> None:
+    await _exec("UPDATE external_forms SET reg_q_fullname = ? WHERE id = ?", (qkey, form_id))
+
+
+async def set_form_reg_city(form_id: int, code: str | None) -> None:
+    await _exec("UPDATE external_forms SET reg_city = ? WHERE id = ?", (code, form_id))
+
+
+async def set_form_reg_approve(form_id: int, mode: str) -> None:
+    if mode not in REG_APPROVE_MODES:
+        raise ValueError(f"неизвестный режим одобрения: {mode!r}")
+    await _exec("UPDATE external_forms SET reg_approve = ? WHERE id = ?", (mode, form_id))
 
 
 # ---------- очередь дочитывания ----------
@@ -467,6 +507,36 @@ async def set_answer_match(answer_row_id: int, telegram_id: int, how: str) -> bo
         (telegram_id, how, answer_row_id),
     )
     return n > 0
+
+
+async def set_answer_reg(answer_row_id: int, state: str, telegram_id: int | None) -> None:
+    """Итог регистрации из ответа формы «Регистрация» (см. колонку reg_state в init_db)."""
+    await _exec(
+        "UPDATE external_form_answers SET reg_state = ?, reg_telegram_id = ? WHERE id = ?",
+        (state, telegram_id, answer_row_id),
+    )
+
+
+async def claim_answer_reg(answer_row_id: int, telegram_id: int) -> bool:
+    """Занять ответ под заявку: 'created', если он ещё не обработан ('created'/'linked').
+    Два пути (приём ответа и /start) не создадут заявку дважды — проигравший получает False."""
+    n = await _exec(
+        "UPDATE external_form_answers SET reg_state = 'created', reg_telegram_id = ? "
+        "WHERE id = ? AND (reg_state IS NULL OR reg_state NOT IN ('created', 'linked'))",
+        (telegram_id, answer_row_id),
+    )
+    return n > 0
+
+
+async def list_waiting_registration_answers(needle_lower: str) -> list[dict]:
+    """Ответы форм «Регистрация», ждущие /start человека с этим ником (в нижнем регистре)."""
+    rows = await _fetchall(
+        "SELECT a.* FROM external_form_answers a JOIN external_forms f ON f.id = a.form_id "
+        "WHERE f.purpose = 'registration' AND f.status != 'disabled' "
+        "AND a.reg_state = 'waiting' AND a.username_needle = ? ORDER BY a.id",
+        (needle_lower,),
+    )
+    return [_with_payload(r) for r in rows]
 
 
 async def list_sheet_due(now: str, limit: int) -> list[dict]:
