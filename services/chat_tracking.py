@@ -61,7 +61,7 @@ REFRESH_MAX_CALLS = 500
 # Квик 260915-twr (D2): ключи реестра для личных сообщений админу вокруг разовой сверки
 # после привязки чата — group "system" в domain/settings/schema.py, НЕ в _SYSTEM_FIELD_ORDER
 # (тот же прецедент, что у CHAT_ID_KEY/CHAT_TITLE_KEY: это служебные сообщения о фоновом
-# прогоне, не делегатская копирайтинг-копия, экран настроек их не показывает).
+# прогоне, не делегатская копирайтинг-копия; правятся в 🔧 Управление → 🔗 Привязка чата).
 CHAT_BIND_RECONCILE_START_KEY = "chat_bind_reconcile_start_text"
 CHAT_BIND_RECONCILE_DONE_KEY = "chat_bind_reconcile_done_text"
 

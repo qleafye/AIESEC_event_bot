@@ -105,6 +105,8 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
         # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
+        # Сообщения менеджеру о сверке после привязки чата.
+        "settings_group:chat_bind_texts",
     ]
     assert not any(cd and cd.startswith("settings_edit:") for cd in flat)
     assert not any(cd and cd.startswith("settings_photo:") for cd in flat)
