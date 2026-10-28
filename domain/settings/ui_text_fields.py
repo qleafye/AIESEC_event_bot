@@ -209,9 +209,10 @@ GAME_SCREEN_FIELD_ORDER = [
 
 async def ui_text(key: str) -> str:
     """Значение подписи; пустое — подпись по умолчанию (пустую кнопку Telegram не примет)."""
-    from domain.settings.schema import get_setting_typed  # ленивый: settings_schema импортирует этот модуль
+    from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # ленивый: settings_schema импортирует этот модуль
 
-    return (await get_setting_typed(key) or "").strip() or UI_TEXT_SCHEMA[key]["default"] or ""
+    # Дефолт — из общего реестра: так же работают ключи delegate_text_fields и прежние ключи схемы.
+    return (await get_setting_typed(key) or "").strip() or SETTINGS_SCHEMA[key]["default"] or ""
 
 
 async def ui_tr(key: str, translate) -> str:
