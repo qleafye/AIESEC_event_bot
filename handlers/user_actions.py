@@ -111,10 +111,7 @@ def _gate_decision(status) -> tuple[bool, str | None]:
 async def ensure_registered(message: types.Message) -> bool:
     user = await get_user(message.from_user.id)
     if not user:
-        await reg_i18n.say(
-            message,
-            "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start.",
-        )
+        await reg_i18n.say(message, await ui_text("not_registered_text"))
         return False
 
     allowed, kind = _gate_decision(user.get("status"))
@@ -183,7 +180,7 @@ async def _returning_text_if_past_season(
     except Exception as e:
         logger.error(f"_returning_text_if_past_season: сбой чтения event_season для {telegram_id}: {e}")
         return None
-    prev_label = ((user or {}).get("season") or "").strip() or "прошлом событии"
+    prev_label = ((user or {}).get("season") or "").strip() or reg_i18n.tr_text(await ui_text("returning_prev_season_fallback_text"), lang, tr_map)
     raw_text = await get_setting("start_text_returning") or DEFAULT_START_RETURNING_TEXT
     return reg_i18n.tr_fmt(raw_text, lang, tr_map, season=prev_label)
 
@@ -200,7 +197,7 @@ async def ensure_current_season(message: types.Message) -> bool:
     if text is None:
         return True
     if "/start" not in text:
-        hint = reg_i18n.tr_text("Нажми /start, чтобы обновить анкету.", lang, tr_map)
+        hint = reg_i18n.tr_text(await ui_text("returning_update_hint_text"), lang, tr_map)
         text = f"{text}\n\n{hint}"
     await reg_i18n.say(message, text)
     return False
@@ -647,14 +644,14 @@ def _submit_button_label(task: dict) -> str:
 # function -- imported above under the old name (tests call `ua_mod._render_task_card_text`).
 
 
-def _game_task_card_kb(task_id: int, can_submit: bool, lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:
+def _game_task_card_kb(task_id: int, can_submit: bool, lang: str = "ru", tr_map: dict | None = None, labels: tuple | None = None) -> InlineKeyboardMarkup:
     """Phase 16 (16-01): «◀️ Назад» now targets `gtasks_back:0` (CONTEXT.md rename, page
     threading from list to card not implemented this plan -- `mytask_back` parses generically
     so a future plan can build `gtasks_back:N` for N>0 without another rename). `can_submit`
     False (stale-pending re-tap, T-16-01-02) drops the "📤 Сдать" row entirely."""
-    tr_map = tr_map or {}
-    submit_text = reg_i18n.tr_text("📤 Сдать", lang, tr_map)
-    back_text = reg_i18n.tr_text("◀️ Назад", lang, tr_map)
+    tr_map = tr_map or {}  # labels — (сдать, назад) из реестра; None — дефолты реестра
+    labels = labels or tuple(SETTINGS_SCHEMA[k]["default"] for k in ("game_submit_button_text", "game_back_button_text"))
+    submit_text, back_text = (reg_i18n.tr_text(t, lang, tr_map) for t in labels)
     if can_submit:
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=submit_text, callback_data=f"mytask_submit:{task_id}")],
@@ -687,25 +684,21 @@ async def mytask_open(callback: types.CallbackQuery):
     try:
         task_id = int(callback.data.split(":", 1)[1])
     except ValueError:
-        await callback.answer(reg_i18n.tr_text("Некорректное задание", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("game_task_invalid_text"), lang, tr_map), show_alert=True)
         return
     task = await get_task(task_id)
     if task is None or task.get("archived_at"):
         # Same wording as mytask_submit_start's own archived-task alert (T-14-01 precedent) --
         # a stale list message can still carry a button for a task removed since it was sent.
         await callback.answer(
-            reg_i18n.tr_text(
-                "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Задания», "
-                "там актуальный список.",
-                lang, tr_map,
-            ),
+            reg_i18n.tr_text(await ui_text("game_task_archived_text"), lang, tr_map),
             show_alert=True,
         )
         return
 
     user = await get_user(callback.from_user.id)
     if not await task_visible_to(user, task):  # WR-08 (32-REVIEW.md)
-        await callback.answer(reg_i18n.tr_text("Это задание сейчас тебе недоступно — загляни в «🎯 Задания».", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("game_task_not_visible_text"), lang, tr_map), show_alert=True)
         return
 
     active = await get_active_submission(task_id, callback.from_user.id)
@@ -727,7 +720,7 @@ async def mytask_open(callback: types.CallbackQuery):
         attempt = rejected
 
     card_text = await _render_task_card_text(task, status_line, attempt)
-    card_kb = _game_task_card_kb(task_id, can_submit, lang, tr_map)
+    card_kb = _game_task_card_kb(task_id, can_submit, lang, tr_map, labels=(await ui_text("game_submit_button_text"), await ui_text("game_back_button_text")))
     photo_id = task.get("photo_file_id")
     if photo_id:
         caption = card_text if len(card_text) <= 1024 else card_text[:1021] + "…"
@@ -853,12 +846,12 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     try:
         task_id = int(callback.data.split(":", 1)[1])
     except ValueError:
-        await callback.answer(reg_i18n.tr_text("Некорректное задание", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("game_task_invalid_text"), lang, tr_map), show_alert=True)
         return
 
     task = await get_task(task_id)
     if task is None:
-        await callback.answer(reg_i18n.tr_text("Задание не найдено", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("game_task_not_found_text"), lang, tr_map), show_alert=True)
         return
 
     # WR-06 (09.1-REVIEW.md): show_game_tasks filters the LIST by city, but this handler used
@@ -870,17 +863,17 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     user = await get_user(callback.from_user.id)
     if await cities_module_on() and task.get("event_city"):
         if normalize_city(user.get("event_city") if user else None) != normalize_city(task["event_city"]):
-            await callback.answer(reg_i18n.tr_text("Это задание для другого города", lang, tr_map), show_alert=True)
+            await callback.answer(reg_i18n.tr_text(await ui_text("game_task_other_city_text"), lang, tr_map), show_alert=True)
             return
     if not await task_visible_to(user, task):  # WR-08 (32-REVIEW.md)
-        await callback.answer(reg_i18n.tr_text("Это задание сейчас тебе недоступно — загляни в «🎯 Задания».", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("game_task_not_visible_text"), lang, tr_map), show_alert=True)
         return
 
     # A-05 (созвон 13.08): дедлайн мягкий -- НЕ блокирует сдачу. Единственный оставшийся
     # серверный гвард на этом пути -- дубль-сдача (T-09-09), проверяется ниже.
     active = await get_active_submission(task_id, callback.from_user.id)
     if active is not None:
-        await callback.answer(reg_i18n.tr_text("Уже отправлено, ожидай проверки", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("game_submit_already_text"), lang, tr_map), show_alert=True)
         return
 
     # T-14-01 (GAME-08, Pitfall 3): a delegate may already have the OLD task-list message
@@ -891,11 +884,7 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     # screen).
     if task.get("archived_at"):
         await callback.answer(
-            reg_i18n.tr_text(
-                "Это задание убрали в архив — сдать его больше нельзя. Загляни в «🎯 Мои "
-                "задания», там актуальный список.",
-                lang, tr_map,
-            ),
+            reg_i18n.tr_text(await ui_text("game_task_archived_submit_text"), lang, tr_map),
             show_alert=True,
         )
         return
@@ -908,11 +897,7 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
         rejected_count = await count_rejected_submissions(task_id, callback.from_user.id)
         if rejected_count >= limit:
             await callback.answer(
-                reg_i18n.tr_fmt(
-                    "Лимит попыток по этому заданию исчерпан ({limit}). Если считаешь, что "
-                    "это ошибка — напиши менеджеру через «❓ Задать вопрос».",
-                    lang, tr_map, limit=limit,
-                ),
+                reg_i18n.tr_fmt(await ui_text("game_submit_limit_text"), lang, tr_map, limit=limit),
                 show_alert=True,
             )
             return
@@ -929,12 +914,7 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     if deadline_passed:
         # Делегат не должен узнавать об этом только из отсутствия баллов -- предупреждаем
         # прямо в промпте, отправка при этом РАЗРЕШЕНА (A-05, созвон 13.08).
-        prompt = (
-            reg_i18n.tr_text(
-                "⏰ Срок сдачи вышел. Отправить можно, но начислять баллы будет решать менеджер.",
-                lang, tr_map,
-            ) + "\n\n" + prompt
-        )
+        prompt = reg_i18n.tr_text(await ui_text("game_submit_deadline_passed_text"), lang, tr_map) + "\n\n" + prompt
 
     await callback.message.answer(prompt, reply_markup=get_cancel_kb())
     # T-091 (CONTEXT.md A): «✅ Готово» must be available from the very first message, or the
@@ -959,14 +939,14 @@ async def _do_cancel_submit(state: FSMContext) -> None:
 @router.message(GameSubmit.proof, F.text.in_({"Отмена"}))
 async def cancel_game_submit(message: types.Message, state: FSMContext):
     await _do_cancel_submit(state)
-    await reg_i18n.say(message, "Действие отменено.", reply_markup=await get_main_menu_kb(message.from_user.id))
+    await reg_i18n.say(message, await ui_text("action_cancelled_text"), reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
 @router.message(GameSubmit.proof)
 async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
     kind, content, caption = _classify_part(message)
     if kind is None:
-        await reg_i18n.say(message, "Не понял, пришли фото, документ, текст или ссылку.")
+        await reg_i18n.say(message, await ui_text("game_proof_unrecognized_text"))
         return  # остаёмся в GameSubmit.proof, часть НЕ добавлена
 
     data = await state.get_data()
@@ -981,11 +961,7 @@ async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
             return
         lang, tr_map = await reg_i18n.ctx_for(message)
         await message.answer(
-            reg_i18n.tr_fmt(
-                "Больше {max_parts} частей в одну сдачу не влезет — нажми «✅ Готово», "
-                "менеджер уже увидит присланное.",
-                lang, tr_map, max_parts=MAX_PARTS,
-            ),
+            reg_i18n.tr_fmt(await ui_text("game_proof_overflow_text"), lang, tr_map, max_parts=MAX_PARTS),
             reply_markup=await _game_counter_kb([], lang, tr_map),  # «Готово»/«Отмена» под рукой, без «Убрать»
         )
         if mgid:
@@ -1031,7 +1007,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
         await state.set_state(None)
         await callback.answer()
         await callback.message.answer(
-            reg_i18n.tr_text("Это задание больше не доступно.", lang, tr_map),
+            reg_i18n.tr_text(await ui_text("game_task_gone_text"), lang, tr_map),
             reply_markup=await get_main_menu_kb(callback.from_user.id),
         )
         return
@@ -1049,7 +1025,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
         await state.set_state(None)
         await callback.answer()
         await callback.message.answer(
-            reg_i18n.tr_text("Уже отправлено — кто-то опередил на долю секунды. Обнови список заданий.", lang, tr_map),
+            reg_i18n.tr_text(await ui_text("game_submit_race_text"), lang, tr_map),
             reply_markup=await get_main_menu_kb(callback.from_user.id),
         )
         return
@@ -1080,7 +1056,7 @@ async def gs_remove_last(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     parts = list(data.get("gs_parts", []))
     if not parts:
-        await callback.answer(await reg_i18n.tr_for(callback, "Уже пусто"), show_alert=True)
+        await callback.answer(await reg_i18n.tr_for(callback, await ui_text("game_proof_already_empty_text")), show_alert=True)
         return
     parts.pop()
     await state.update_data(gs_parts=parts)
@@ -1099,14 +1075,12 @@ async def gs_remove_last(callback: types.CallbackQuery, state: FSMContext):
 async def gs_cancel(callback: types.CallbackQuery, state: FSMContext):
     await _do_cancel_submit(state)
     try:
-        await callback.message.edit_text(await reg_i18n.tr_for(callback, "Сдача отменена, части не сохранены."))
+        await callback.message.edit_text(await reg_i18n.tr_for(callback, await ui_text("game_submit_cancelled_text")))
     except Exception:
         pass
     await callback.answer()
     # Reply-клавиатуру «Отмена» edit'ом не убрать -- главное меню новым сообщением (UAT-fix c79cd6f).
-    await reg_i18n.say(
-        callback.message, "Действие отменено.", reply_markup=await get_main_menu_kb(callback.from_user.id),
-    )
+    await reg_i18n.say(callback.message, await ui_text("action_cancelled_text"), reply_markup=await get_main_menu_kb(callback.from_user.id))
 
 
 @router.message(MenuButton("menu_payment"))
@@ -1118,7 +1092,7 @@ async def upload_receipt_entry(message: types.Message, bot: Bot):
         return
     from handlers.payment import should_offer_receipt_upload, start_payment_step
     if not await should_offer_receipt_upload(message.from_user.id):
-        await reg_i18n.say(message, "Оплатили или оплата не требуется.")
+        await reg_i18n.say(message, await ui_text("payment_not_owed_text"))
         return
     try:
         user_row = await get_user(message.from_user.id)
@@ -1496,7 +1470,7 @@ async def faq_open_answer(callback: types.CallbackQuery):
     try:
         item_id = int(callback.data.split(":", 1)[1])
     except (IndexError, ValueError):
-        await callback.answer(reg_i18n.tr_text("Вопрос не найден.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("faq_question_not_found_text"), lang, tr_map), show_alert=True)
         return
     city = await _delegate_city_for_faq(callback.from_user.id)
     items = await _faq_visible_items(city)
@@ -1505,7 +1479,7 @@ async def faq_open_answer(callback: types.CallbackQuery):
         # Стейл-клавиатура: пункт удалили/скрыли/сменили город — экран не пустой, а список.
         text, kb = await faq_screen(city, lang=lang, tr_map=tr_map)
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-        await callback.answer(reg_i18n.tr_text("Этот вопрос уже недоступен.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("faq_question_gone_text"), lang, tr_map), show_alert=True)
         return
     # Квик 260917-en: сам вопрос/ответ — свободный текст менеджера per-пункт FAQ, не переводится
     # (см. faq_screen docstring выше).
@@ -1514,7 +1488,7 @@ async def faq_open_answer(callback: types.CallbackQuery):
         f"{html.escape(str(item.get('answer') or ''))}"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=reg_i18n.tr_text("← К вопросам", lang, tr_map), callback_data="faq_list:0")],
+        [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("faq_back_button_text"), lang, tr_map), callback_data="faq_list:0")],
         [InlineKeyboardButton(
             text=reg_i18n.tr_text(await get_setting_typed("faq_ask_button_text"), lang, tr_map), callback_data="faq_ask",
         )],
@@ -1556,13 +1530,13 @@ async def ask_organizer_start(message: types.Message, state: FSMContext):
 async def cancel_question(message: types.Message, state: FSMContext):
     logger.info(f"User {message.from_user.id} canceled question")
     await state.clear()
-    await reg_i18n.say(message, "Действие отменено.", reply_markup=await get_main_menu_kb(message.from_user.id))
+    await reg_i18n.say(message, await ui_text("action_cancelled_text"), reply_markup=await get_main_menu_kb(message.from_user.id))
 
 
 @router.message(Question.waiting_for_question)
 async def process_question(message: types.Message, state: FSMContext, bot: Bot):
     if not message.text:
-        await reg_i18n.say(message, "Пожалуйста, отправь вопрос текстом.")
+        await reg_i18n.say(message, await ui_text("ask_question_text_only_text"))
         return
     question_text = message.text
     logger.info(f"User {message.from_user.id} sent question: {question_text}")
@@ -1612,10 +1586,10 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
         )
     elif config.ADMIN_IDS:
         logger.error(f"Failed to send question from {message.from_user.id} to any admin")
-        await reg_i18n.say(message, "Не удалось отправить вопрос, попробуйте позже.", reply_markup=await get_main_menu_kb(message.from_user.id))
+        await reg_i18n.say(message, await ui_text("ask_question_send_failed_text"), reply_markup=await get_main_menu_kb(message.from_user.id))
     else:
         logger.warning("No admins configured to receive questions")
-        await reg_i18n.say(message, "Администраторы не настроены.", reply_markup=await get_main_menu_kb(message.from_user.id))
+        await reg_i18n.say(message, await ui_text("ask_question_no_admins_text"), reply_markup=await get_main_menu_kb(message.from_user.id))
 
     await state.clear()
 
@@ -1759,14 +1733,14 @@ async def show_important_today(message: types.Message):
     today = msk_now().strftime("%Y-%m-%d")
     rows = await important_messages_today(message.from_user.id, today)
     if not rows:
-        await message.answer(reg_i18n.tr_text("Сегодня важных рассылок не было.", lang, tr_map))
+        await message.answer(reg_i18n.tr_text(await ui_text("important_today_empty_text"), lang, tr_map))
         return
     lines = []
     for row in rows:
         stamp = (row.get("sent_at") or "")[11:16]  # 'YYYY-MM-DD HH:MM:SS' -> 'HH:MM'
-        text = row.get("text") or "[рассылка без текста]"
+        text = row.get("text") or await ui_text("important_today_no_text_text")
         lines.append(f"🕐 {stamp}\n{text}")
-    header = reg_i18n.tr_text("❗ Важные рассылки за сегодня:", lang, tr_map)
+    header = reg_i18n.tr_text(await ui_text("important_today_header_text"), lang, tr_map)
     await message.answer(header + "\n\n" + "\n\n".join(lines))
 
 
@@ -1866,7 +1840,7 @@ async def _wave_rating_screen(
         lines.append("")
         lines.append(own_line)
 
-    back_text = reg_i18n.tr_text("◀️ Назад", lang, tr_map)
+    back_text = reg_i18n.tr_text(await ui_text("game_back_button_text"), lang, tr_map)
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=back_text, callback_data="gtasks_back:0"),
     ]])
@@ -1900,16 +1874,16 @@ async def show_wave_rating(callback: types.CallbackQuery):
         closing = is_ambassador and await latest_closing_wave_for(user, city_scope=city_scope(code) if cities_on else None)
         if closing:
             text, kb = await _wave_rating_screen(closing["id"], callback.from_user.id, lang, tr_map)
-            text += "\n\n" + reg_i18n.tr_text("Волна закончилась — итоги готовятся.", lang, tr_map)
+            text += "\n\n" + reg_i18n.tr_text(await ui_text("wave_ended_note_text"), lang, tr_map)
         else:
             text = reg_i18n.tr_text(await get_setting_typed("wave_rating_closed_text"), lang, tr_map)
-            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=reg_i18n.tr_text("◀️ Назад", lang, tr_map), callback_data="gtasks_back:0")]])
+            kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("game_back_button_text"), lang, tr_map), callback_data="gtasks_back:0")]])
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         await callback.answer()
         return
 
     if not is_ambassador or not wave_eligible(user, current_wave):
-        await callback.answer(reg_i18n.tr_text("Рейтинг волны виден только участникам текущей волны амбассадоров.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("wave_rating_not_eligible_text"), lang, tr_map), show_alert=True)
         return
 
     text, kb = await _wave_rating_screen(current_wave["id"], callback.from_user.id, lang, tr_map)
@@ -1942,8 +1916,8 @@ async def ambassador_leave_start(callback: types.CallbackQuery):
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_confirm_text"), lang, tr_map)
     kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=reg_i18n.tr_text("Да, выйти", lang, tr_map), callback_data="ambleave_go"),
-        InlineKeyboardButton(text=reg_i18n.tr_text("Отмена", lang, tr_map), callback_data="ambleave_no"),
+        InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("ambassador_leave_confirm_yes_button_text"), lang, tr_map), callback_data="ambleave_go"),
+        InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("ambassador_leave_confirm_no_button_text"), lang, tr_map), callback_data="ambleave_no"),
     ]])
     await callback.message.edit_text(text, reply_markup=kb)
     await callback.answer()
@@ -2031,10 +2005,7 @@ async def checkin_not_arrived_respond(callback: types.CallbackQuery):
             logger.error(f"checkin_not_arrived_respond: get_checkin_status failed: {e}")
             entry = None
         if entry is not None and (entry.get("day") == day or entry.get("is_today")):
-            text = reg_i18n.tr_fmt(
-                "Ты уже отмечен(а) на входе в {time} — всё в порядке, хорошего дня!",
-                lang, tr_map, time=entry["time_label"],
-            )
+            text = reg_i18n.tr_fmt(await ui_text("checkin_not_arrived_already_checked_text"), lang, tr_map, time=entry["time_label"])
             await callback.answer("✅ " + text, show_alert=True)
             return
         # «Покажи QR волонтёру на входе» — сам QR НЕ отправляется автоматически, делегат жмёт
@@ -2042,7 +2013,7 @@ async def checkin_not_arrived_respond(callback: types.CallbackQuery):
         # переиспользуется напрямую, там `types.Message`, здесь `CallbackQuery`; логика допуска
         # та же `checkin_denial`/`build_checkin_qr`, что и там).
         kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🎟 Мой QR", callback_data="cna_qr"),
+            InlineKeyboardButton(text=await ui_text("checkin_not_arrived_qr_button_text"), callback_data="cna_qr"),
         ]])
         # D-34 (24.09): дефолт зеркалит registry-ключ `checkin_not_arrived_show_qr_hint_text`.
         hint_text = await get_setting_typed("checkin_not_arrived_show_qr_hint_text") or (
@@ -2119,14 +2090,14 @@ async def regional_noshow_move_accept(callback: types.CallbackQuery):
         await callback.answer()
         return
     if state.get("response") == RNM_MOVED:
-        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("regional_noshow_already_moved_text"), lang, tr_map), show_alert=True)
         return
 
     user = await get_user(tid)
     source_city = normalize_city(state.get("source_city"))
     if user is None or normalize_city(user.get("event_city")) != source_city:
         label = html.escape(await city_label(source_city))
-        text = reg_i18n.tr_text("Заявка уже не в {city}.", lang, tr_map).replace("{city}", label)
+        text = reg_i18n.tr_text(await ui_text("regional_noshow_wrong_city_text"), lang, tr_map).replace("{city}", label)
         await callback.answer(text, show_alert=True)
         return
 
@@ -2134,10 +2105,7 @@ async def regional_noshow_move_accept(callback: types.CallbackQuery):
     # фраза построена БЕЗ падежа («город: Название»), т.к. `city_label` может быть произвольной
     # строкой реестра, где предлог «в …» грамматически ломается на части городов.
     target_label = await city_label(await target_city_for(source_city))
-    text = reg_i18n.tr_fmt(
-        "Перенести заявку в другой город: {target_city}? Анкету заново заполнять не нужно.",
-        lang, tr_map, target_city=target_label,
-    )
+    text = reg_i18n.tr_fmt(await ui_text("regional_noshow_confirm_question_text"), lang, tr_map, target_city=target_label)
     await callback.message.edit_text(text, reply_markup=await _rnm_confirm_kb(lang, tr_map))
     await callback.answer()
 
@@ -2161,15 +2129,15 @@ async def regional_noshow_move_confirm(callback: types.CallbackQuery):
         reason = check["reason"]
         if reason == "wrong_city":
             label = html.escape(await city_label(check["source_city"]))
-            text = reg_i18n.tr_text("Заявка уже не в {city}.", lang, tr_map).replace("{city}", label)
+            text = reg_i18n.tr_text(await ui_text("regional_noshow_wrong_city_text"), lang, tr_map).replace("{city}", label)
         elif reason == "already_answered":
             already_moved = check["state"].get("response") == RNM_MOVED
-            key = "Уже перенесено." if already_moved else "Предложение уже отвечено."
-            text = reg_i18n.tr_text(key, lang, tr_map)
+            key = "regional_noshow_already_moved_text" if already_moved else "regional_noshow_already_answered_text"
+            text = reg_i18n.tr_text(await ui_text(key), lang, tr_map)
         elif reason == "no_user":
-            text = reg_i18n.tr_text("Не нашли твою заявку — напиши организаторам.", lang, tr_map)
+            text = reg_i18n.tr_text(await ui_text("regional_noshow_no_user_text"), lang, tr_map)
         else:  # ineligible — не approved / сезон сменился / уже отмечен вход
-            text = reg_i18n.tr_text("Перенос сейчас недоступен — напиши организаторам.", lang, tr_map)
+            text = reg_i18n.tr_text(await ui_text("regional_noshow_unavailable_text"), lang, tr_map)
         await callback.answer(text, show_alert=True)
         return
 
@@ -2177,29 +2145,22 @@ async def regional_noshow_move_confirm(callback: types.CallbackQuery):
     if report.get("claim_lost"):
         # Гонка двойного тапа (ревью 🟡4) — строку уже забрал другой запрос, move_user_city для
         # ЭТОГО тапа вообще не звался, повторного переноса не будет.
-        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("regional_noshow_already_moved_text"), lang, tr_map), show_alert=True)
         return
     if not report.get("ok"):
         # Fail-soft (D-04): перенос не удался технически (например, город исчез из реестра
         # между тапами) — сообщаем человеческими словами, не роняем хендлер. Строка предложения
         # вернулась в response=NULL (apply_move) — повторный тап можно будет повторить.
-        await callback.message.answer(
-            reg_i18n.tr_text(
-                "Не получилось перенести заявку — напиши организаторам.", lang, tr_map,
-            ),
-        )
+        await callback.message.answer(reg_i18n.tr_text(await ui_text("regional_noshow_failed_text"), lang, tr_map))
         await callback.answer()
         return
 
     target_label = await city_label(
         (report.get("after") or {}).get("event_city") or check["source_city"],
     )
-    lines = [reg_i18n.tr_fmt(
-        "Готово, твоя заявка теперь здесь: {target_city}. Даты и место — в меню.",
-        lang, tr_map, target_city=target_label,
-    )]
+    lines = [reg_i18n.tr_fmt(await ui_text("regional_noshow_done_text"), lang, tr_map, target_city=target_label)]
     if report.get("status_changed"):
-        lines.append(reg_i18n.tr_text("Заявку посмотрят ещё раз.", lang, tr_map))
+        lines.append(reg_i18n.tr_text(await ui_text("regional_noshow_rereview_text"), lang, tr_map))
     await callback.message.edit_text("\n".join(lines))
     await callback.answer()
 
@@ -2216,11 +2177,11 @@ async def regional_noshow_move_decline(callback: types.CallbackQuery):
         await callback.answer()
         return
     if state.get("response") == RNM_MOVED:
-        await callback.answer(reg_i18n.tr_text("Уже перенесено.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("regional_noshow_already_moved_text"), lang, tr_map), show_alert=True)
         return
 
     await record_decline(tid)
-    text = reg_i18n.tr_text("Хорошо, до встречи в следующий раз!", lang, tr_map)
+    text = reg_i18n.tr_text(await ui_text("regional_noshow_declined_text"), lang, tr_map)
     await callback.message.edit_text(text)
     await callback.answer()
 
