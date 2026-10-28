@@ -63,6 +63,7 @@ from database.db import (
 )
 from domain.game.labels import visible_tasks_for  # Phase 32 (32-06, D-28/D-36, T-32-06-02)
 from services.i18n import i18n
+from services.game.city_texts import city_text  # тексты геймы и волн города делегата + {chat}
 from services.amb.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
 from domain.settings.schema import get_setting_typed
 
@@ -546,5 +547,5 @@ async def create_submission_route(
     })
     return {
         "submission_id": submission_id,
-        "accepted_text": await i18n.tr_setting("game_submit_accepted_text", lang, tr_map),
+        "accepted_text": await city_text("game_submit_accepted_text", p.telegram_id, lang=lang, tr_map=tr_map),
     }

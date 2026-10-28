@@ -33,6 +33,7 @@ from handlers.registration import router
 from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link  # решение владельца 17.09: один формат amb_<id> везде
 from services.amb import amb_status
+from services.game import city_texts
 
 _ALERT_MAX = 200  # потолок текста всплывающего алерта Telegram
 
@@ -65,7 +66,7 @@ async def offer_ref_link(message: types.Message, telegram_id: int, event_city: s
             state = "open"
         if state == "candidate":
             # Подтверждение обещает ссылку («уже твоя») — она идёт следом, как после кнопки.
-            ack = await get_setting_typed("amb_candidate_ack_text")
+            ack = await _city_text("amb_candidate_ack_text", telegram_id, message)
             if ack:
                 await reg_i18n.say(message, ack)
             await _send_link_and_note(message, message.bot, telegram_id)
@@ -93,6 +94,13 @@ async def offer_ref_link(message: types.Message, telegram_id: int, event_city: s
         await reg_i18n.say(message, text, reply_markup=kb, parse_mode="HTML")
     except Exception as e:
         logger.error(f"offer_ref_link failed for {telegram_id}: {e}")
+
+
+async def _city_text(key: str, uid: int, where) -> str:
+    """Текст города делегата со ссылкой на его чат (`{chat}`), переведённый по исходному
+    шаблону — `say`/повторный перевод готовый текст не меняет (services/game/city_texts.py)."""
+    lang, tr_map = await reg_i18n.ctx_for(where)
+    return await city_texts.city_text(key, uid, lang=lang, tr_map=tr_map, tr=reg_i18n.tr_text)
 
 
 def _alert_text(text: str) -> str:
@@ -137,7 +145,7 @@ async def regamb_want(callback: types.CallbackQuery):
     result = await amb_status.request_join(uid, source="button_bot")
     outcome = result.outcome
     if outcome in ("full", "declined"):
-        text = await reg_i18n.tr_for(callback, await get_setting_typed("amb_slots_full_text") or "")
+        text = await _city_text("amb_slots_full_text", uid, callback)
         await callback.answer(_alert_text(text), show_alert=True)
         await _hide_keyboard(callback)
         if len(text) > _ALERT_MAX:
@@ -148,7 +156,7 @@ async def regamb_want(callback: types.CallbackQuery):
     if outcome == "no_user":
         return
     if outcome in ("candidate", "already_candidate"):
-        ack = await get_setting_typed("amb_candidate_ack_text")
+        ack = await _city_text("amb_candidate_ack_text", uid, callback)
         if ack:
             await reg_i18n.say(callback.message, ack)
     await _send_link_and_note(callback.message, callback.bot, uid)

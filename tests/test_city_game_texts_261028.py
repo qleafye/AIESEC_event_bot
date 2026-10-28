@@ -363,3 +363,253 @@ def test_manual_coins_city_text(tmp_path, monkeypatch):
     assert a == f"+5: &lt;b&gt;за пост&lt;/b&gt;, всего 15. Чат: {LINK_A}"
     [b] = bot.texts(301)
     assert "Чат:" not in b and "+5" in b
+
+
+# ── экраны бота: текст города делегата ────────────────────────────────────────────────────
+
+def _set_event_city(tid, code):
+    import sqlite3
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET event_city = ? WHERE telegram_id = ?", (code, tid))
+    conn.commit()
+    conn.close()
+
+
+def _city_override(key, text, code=A, link=LINK_A):
+    _set_city(key, code, text)
+    _set_city(CHAT_LINK_KEY, code, link)
+
+
+def test_bot_finalize_submission_city_accepted_text(tmp_path):
+    from handlers import user_actions as ua
+    from tests.test_gamification_delegate_phase9 import (
+        DELEGATE_ID, FakeBot as GBot, FakeCallback, FakeMessage, _db_ready, _seed_delegate,
+        _start_submission,
+    )
+
+    _db_ready(tmp_path)
+    _seed_delegate()
+    _enable_cities()
+    _set_event_city(DELEGATE_ID, A)
+    _city_override("game_submit_accepted_text", "Принято! Обсуждаем в чате {chat}")
+    task_id = _run(db.create_task("Пост", "Light", 10, "text", "2026-12-31 23:59:00", None))
+    state, _ = _start_submission(task_id)
+    _run(ua.receive_proof(FakeMessage(text="вот скрин"), GBot(), state))
+    cb = FakeCallback("gs_done")
+    _run(ua.finalize_game_submission(cb, GBot(), state))
+    assert cb.message.answers[-1][0] == f"Принято! Обсуждаем в чате {LINK_A}"
+
+
+def test_bot_task_list_empty_city_text(tmp_path):
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _enable_cities()
+    _seed_user(701, event_city=A)
+    _seed_user(702, event_city=B)
+    _city_override("game_task_list_empty", "Заданий нет — новости в чате {chat}")
+    assert _run(ua._game_task_list_screen(701))[0] == f"Заданий нет — новости в чате {LINK_A}"
+    assert _run(ua._game_task_list_screen(702))[0] == SETTINGS_SCHEMA["game_task_list_empty"]["default"]
+
+
+class _Me:
+    username = "yulid_bot"
+
+
+class _Bot:
+    async def get_me(self):
+        return _Me()
+
+
+class _Msg:
+    def __init__(self, uid):
+        self.chat = type("C", (), {"id": uid})()
+        self.edits = []
+        self.answers = []
+
+    async def edit_text(self, text, **kw):
+        self.edits.append(text)
+
+    async def edit_reply_markup(self, **kw):
+        pass
+
+    async def answer(self, text=None, **kw):
+        self.answers.append(text)
+
+
+class _Cb:
+    def __init__(self, uid, data):
+        self.data = data
+        self.from_user = type("U", (), {"id": uid, "language_code": "ru"})()
+        self.message = _Msg(uid)
+        self.bot = _Bot()
+        self.alerts = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.alerts.append((text, show_alert))
+
+
+def test_bot_leave_done_city_text(tmp_path):
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _enable_cities()
+    _make_ambassador(801, A)
+    _city_override("ambassador_leave_done_text", "Ты вышел. Чат остаётся: {chat}")
+    cb = _Cb(801, "ambleave_go")
+    _run(ua.ambassador_leave_confirm(cb))
+    assert cb.message.edits == [f"Ты вышел. Чат остаётся: {LINK_A}"]
+
+
+def _force_full(monkeypatch):
+    from services.amb import amb_status
+
+    class _R:
+        outcome = "full"
+
+    async def _join(*a, **k):
+        return _R()
+    monkeypatch.setattr(amb_status, "request_join", _join)
+
+
+def test_bot_join_full_city_alert(tmp_path, monkeypatch):
+    from handlers import user_actions as ua
+    from handlers.reg import reg_ambassador
+
+    _ready(tmp_path)
+    _enable_cities()
+    _seed_user(811, event_city=A)
+    _city_override("amb_slots_full_text", "Мест нет. Чат: {chat}")
+    _force_full(monkeypatch)
+    cb = _Cb(811, "ambjoin")
+    _run(ua.ambassador_join(cb, _Bot()))
+    assert cb.alerts == [(f"Мест нет. Чат: {LINK_A}", True)]
+    cb2 = _Cb(811, "regamb:want")
+    _run(reg_ambassador.regamb_want(cb2))
+    assert cb2.alerts == [(f"Мест нет. Чат: {LINK_A}", True)]
+
+
+def test_bot_regamb_candidate_ack_city_text(tmp_path, monkeypatch):
+    from handlers.reg import reg_ambassador
+    from services.amb import amb_status
+
+    _ready(tmp_path)
+    _enable_cities()
+    _seed_user(821, event_city=A)
+    _city_override("amb_candidate_ack_text", "Заявка у нас. Чат: {chat}")
+
+    class _R:
+        outcome = "candidate"
+
+    async def _join(*a, **k):
+        return _R()
+    monkeypatch.setattr(amb_status, "request_join", _join)
+    said = []
+
+    async def _say(message, text, **kw):
+        said.append(text)
+    monkeypatch.setattr(reg_ambassador.reg_i18n, "say", _say)
+    _run(reg_ambassador.regamb_want(_Cb(821, "regamb:want")))
+    assert said[0] == f"Заявка у нас. Чат: {LINK_A}"
+
+
+def test_bot_referral_screen_city_prompt_and_status(tmp_path):
+    from database import amb_status_db as sdb
+    from handlers.game import referral_screen as rs
+    from services.i18n.i18n import src_hash
+
+    _ready(tmp_path)
+    _enable_cities()
+    _run(db.set_setting("amb_team_selection_enabled", "on"))
+    _run(db.set_setting("amb_join_mode", "selection"))
+    _seed_user(831, event_city=A)
+    _run(sdb.set_status(831, "candidate", at="2026-09-30 12:00:00"))
+    _city_override("referral_link_prompt_text", "Ссылка: {link}\nЧат: {chat}")
+    _set_city("amb_status_candidate_text", A, "⏳ Заявка рассматривается, вопросы — {chat}")
+    text, _kb = _run(rs.referral_screen(831, _Bot()))
+    assert text.startswith(f"Ссылка: https://t.me/yulid_bot?start=amb_831\nЧат: {LINK_A}")
+    assert f"⏳ Заявка рассматривается, вопросы — {LINK_A}" in text
+
+    tr_map = {src_hash("Ссылка: {link}\nЧат: {chat}"): "Link: {link}\nChat: {chat}"}
+    text_en, _kb = _run(rs.referral_screen(831, _Bot(), "en", tr_map))
+    assert text_en.startswith(f"Link: https://t.me/yulid_bot?start=amb_831\nChat: {LINK_A}")
+
+
+def test_bot_wave_rating_closed_city_text(tmp_path):
+    from handlers import user_actions as ua
+
+    _ready(tmp_path)
+    _enable_cities()
+    _make_ambassador(841, A)
+    _city_override("wave_rating_closed_text", "Волны нет. Новости — {chat}")
+    cb = _Cb(841, "wave_rating")
+    _run(ua.show_wave_rating(cb))
+    assert cb.message.edits == [f"Волны нет. Новости — {LINK_A}"]
+
+
+# ── Mini App ───────────────────────────────────────────────────────────────────────────────
+
+def test_miniapp_tasks_empty_and_ambassador_full_city_texts(tmp_path, monkeypatch):
+    from tests.test_miniapp_routes import (
+        DELEGATE_ID, _cfg, _client, _hdr, _set as _http_set, _standard_seed, _use_tmp_db,
+    )
+
+    path = _use_tmp_db(tmp_path, "city_game_texts_http.db")
+    _standard_seed()
+    _http_set("event_city_enabled", "on")
+    _set_event_city(DELEGATE_ID, A)
+    _city_override("game_task_list_empty", "Пусто — загляни в чат {chat}")
+    _city_override("amb_slots_full_text", "Мест нет. Чат: {chat}")
+    _force_full(monkeypatch)
+    client = _client(_cfg(path))
+    body = client.get("/app/api/tasks", headers=_hdr(DELEGATE_ID)).json()
+    assert body["empty_text"] == f"Пусто — загляни в чат {LINK_A}"
+    resp = client.post("/app/api/reg/ambassador", headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["message"] == f"Мест нет. Чат: {LINK_A}"
+
+
+# ── сторож мест чтения ─────────────────────────────────────────────────────────────────────
+
+_ALLOWED_COMMON_READS = {
+    # превью массовых действий менеджеру: получатели из разных городов — общий текст с {chat}
+    ("handlers/amb/admin_amb_bulk.py", "amb_decline_all_text"),
+    ("handlers/amb/admin_amb_bulk.py", "amb_taken_text"),
+}
+
+
+def test_no_common_reads_of_city_texts():
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    files = [p for d in ("handlers", "services", "miniapp") for p in (root / d).rglob("*.py")]
+    bad = []
+    for path in files:
+        src = path.read_text(encoding="utf-8")
+        rel = path.relative_to(root).as_posix()
+        for key in CITY_CHAT_TEXT_KEYS:
+            pat = re.compile(
+                r'(get_setting_typed|tr_setting|_tr_key)\(\s*"' + re.escape(key) + r'"'
+            )
+            if pat.search(src) and (rel, key) not in _ALLOWED_COMMON_READS:
+                bad.append((rel, key))
+    assert not bad, bad
+
+
+def test_miniapp_hub_status_line_city_text(tmp_path):
+    from database import amb_status_db as sdb
+    from miniapp.routers import hub
+
+    _ready(tmp_path)
+    _enable_cities()
+    _run(db.set_setting("amb_team_selection_enabled", "on"))
+    _run(db.set_setting("amb_join_mode", "selection"))
+    _seed_user(851, event_city=A)
+    _run(sdb.set_status(851, "candidate", at="2026-09-30 12:00:00"))
+    _city_override("amb_status_candidate_text", "⏳ Рассматриваем, вопросы — {chat}")
+    user = _run(db.get_user(851))
+    status, _points, _wave = _run(hub._amb_lines(851, "ru", {}, user))
+    assert status == f"⏳ Рассматриваем, вопросы — {LINK_A}"
+    status2, _p, _w = _run(hub._amb_lines(851, "ru", {}, None))
+    assert status2 == status
