@@ -1,8 +1,8 @@
 """«🚦 Готовность к форуму» (бэклог чек-ина №25, урезанный): один экран-светофор по городу —
-«всё ли готово СЕЙЧАС», а не «как настроить» (это мастер первой настройки). Семь строк:
-дата форума, вход по QR и его рассылка, волонтёры с правом отметки, программа, чат SOS, запись
-в таблицу, чат делегатов. У красной/жёлтой строки — кнопка на РОДНОЙ экран этой настройки
-(существующие callback'и, свой логики записи здесь нет — экран только читает).
+«всё ли готово СЕЙЧАС», а не «как настроить» (это мастер первой настройки). Строки:
+дата форума, вход по QR и его рассылка, сканер в приложении, волонтёры с правом отметки,
+программа, чат SOS, название мероприятия, запись в таблицу, чат делегатов. У красной/жёлтой
+строки — кнопка на РОДНОЙ экран этой настройки (существующие callback'и, свой логики записи здесь нет — экран только читает).
 
 Рассылку QR проверяем чтением планировщика (`get_job`), НЕ вызовом
 `services.checkin_broadcast.schedule_city_jobs` — тот переставляет джобы.
@@ -86,12 +86,56 @@ async def _row_forum_date(code: str | None) -> dict:
                     ("🗓 Обновить дату форума", date_cb))
     edit = [("🗓 Изменить дату", date_cb), ("🗓 Сколько дней идёт", days_cb)]
     tail = " — идёт сегодня" if start <= today else ""
+    inherited = await _inherited_common(code)
+    if inherited:
+        # Своего значения у города нет, а общее кто-то задал из «🌍 Все города» (например,
+        # регион поставил «1 день») — город молча живёт по чужому: 1 день у Москвы закрывает
+        # вход 31.10. Не красим «🟢 1 день», пока город не подтвердит своё.
+        if "пояс" in inherited:
+            edit.append(("🕐 Часовой пояс", f"forumtz_cfg:{_encode_city(code)}"))
+        return _row(YELLOW, f"Форум: {span} ({_days_word(days)}){tail} — ⚠️ не своё у города, а из "
+                    f"общей настройки: {inherited}. Задайте городу своё значение", edit)
     if days != 1:
         # Не ошибка (у Москвы два дня законно), но жёлтым: однодневный региональный форум с
         # длиной 2 получает второй «день форума» — отчёт «пришли 0», SOS и меню ещё сутки.
         return _row(YELLOW, f"Форум: {span} ({_days_word(days)}){tail} — ⚠️ дольше одного дня. "
                     "Если форум однодневный, поправьте «Сколько дней идёт»", edit)
     return _row(GREEN, f"Форум: {span} ({_days_word(days)}){tail}", edit)
+
+
+async def _inherited_common(code: str | None) -> str | None:
+    """«длина форума и часовой пояс» — что из них город берёт из общего значения, заданного с
+    шапкой «🌍 Все города». `None` — всё своё или общего нет (действует дефолт реестра)."""
+    if not code or not await cities_module_on():
+        return None
+    from database.db import get_setting
+    from domain.cities import per_city_key
+    names = {"sos_active_days": "длина форума", "city_tz_offset": "часовой пояс"}
+    got = [name for key, name in names.items()
+           if not await get_setting(per_city_key(key, code)) and await get_setting(key)]
+    return " и ".join(got) or None
+
+
+async def _row_scanner(code: str | None) -> dict:
+    """Сканер в Mini App — основной способ входа (D-08). Персонал открывает приложение и при
+    выключенном «📱 Mini App включён», но без адреса приложения кнопки «📱 Приложение» нет ни у
+    кого, а без раздела «🎫 Сканер» в приложении нет экрана."""
+    fix = ("📱 Настройки приложения", f"forumfn_open:app:{_encode_city(code)}")
+    if not (config.DASHBOARD_PUBLIC_URL or "").strip():
+        return _row(RED, "Сканер в приложении недоступен: у бота не задан адрес приложения — "
+                         "волонтёры не откроют сканер. Напишите разработчику")
+    if await get_setting_typed("miniapp_section_checkin") != "on":
+        return _row(RED, "Сканер в приложении выключен — волонтёрам нечем отмечать вход", fix)
+    return _row(GREEN, "Сканер в приложении включён")
+
+
+async def _row_event_name() -> dict:
+    name = (await get_setting_typed("event_name") or "").strip()
+    if not name:
+        return _row(YELLOW, "Название мероприятия не задано — в QR будет «Пропуск на форум», "
+                            "в приветствии на входе — «мероприятие»",
+                    ("🎪 Задать название", "settings_edit:event_name"))
+    return _row(GREEN, f"Название: {html.escape(name)}")
 
 
 def _job_next_run(job_id: str):
@@ -258,9 +302,11 @@ async def render_ready(admin_id: int, code: str | None, bot) -> tuple[str, Inlin
     rows = [
         await _safe_row("Дата форума", _row_forum_date, code),
         await _safe_row("Вход по QR", _row_qr, code),
+        await _safe_row("Сканер в приложении", _row_scanner, code),
         await _safe_row("Право отметки на входе", _row_volunteers, code),
         await _safe_row("Программа", _row_program, code),
         await _safe_row("Чат SOS", _row_sos, code, bot),
+        await _safe_row("Название мероприятия", _row_event_name),
         await _safe_row("Таблица", _row_sheet),
         await _safe_row("Чат делегатов", _row_delegate_chat, code),
     ]
