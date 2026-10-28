@@ -108,7 +108,7 @@ async def entitlements(telegram_id: int, username: str | None) -> list[tuple[str
     days = await cdb.entry_days(telegram_id, ENTRY_POINT)
     if days:
         out.append((KIND_PARTICIPANT, days[0] if len(days) == 1 else VARIANT_ALL))
-    listed = await cdb.kinds_for_username(username)
+    listed = await cdb.kinds_for_username(username, telegram_id)
     for kind in (KIND_VOLUNTEER, KIND_AMBASSADOR):
         if kind in listed:
             out.append((kind, VARIANT_ALL))
@@ -186,7 +186,7 @@ async def announce_job() -> int:
     Возвращает, скольким отправлено за этот проход."""
     if not await is_open():
         return 0
-    from aiogram.exceptions import TelegramForbiddenError, TelegramRetryAfter
+    from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
     from services import scheduler as _sched
 
@@ -198,19 +198,22 @@ async def announce_job() -> int:
         if not await cdb.claim_announce(telegram_id):
             continue
         try:
-            await bot.send_message(telegram_id, text, reply_markup=kb)
-            sent += 1
-        except TelegramRetryAfter as e:
-            await asyncio.sleep(e.retry_after)
             try:
                 await bot.send_message(telegram_id, text, reply_markup=kb)
-                sent += 1
-            except Exception as e2:
-                logger.warning(f"certificates.announce {telegram_id}: {e2}")
-        except TelegramForbiddenError:
-            pass  # заблокировал бота — кнопка всё равно доступна командой /certificate
+            except TelegramRetryAfter as e:
+                await asyncio.sleep(e.retry_after)
+                await bot.send_message(telegram_id, text, reply_markup=kb)
+            sent += 1
+        except (TelegramForbiddenError, TelegramBadRequest) as e:
+            # заблокировал бота / чата нет — повтор не поможет; кнопка доступна командой /certificate
+            logger.info(f"certificates.announce {telegram_id}: {type(e).__name__}")
+        except asyncio.CancelledError:  # остановка бота посреди отправки
+            await cdb.release_announce(telegram_id)
+            raise
         except Exception as e:
+            # сеть, 5xx, второй flood-limit: место освобождаем — следующий проход напишет снова
             logger.warning(f"certificates.announce {telegram_id}: {e}")
+            await cdb.release_announce(telegram_id)
         await asyncio.sleep(0.05)
     if sent:
         logger.info(f"certificates.announce: отправлено {sent}")

@@ -152,12 +152,25 @@ async def list_people(kind: str) -> list[str]:
     return [r[0] for r in rows]
 
 
-async def kinds_for_username(username: str | None) -> set[str]:
-    if not username:
-        return set()
+async def kinds_for_username(username: str | None, telegram_id: int | None = None) -> set[str]:
+    """Роли из списков по нику. С `telegram_id` — ещё и по нику из анкеты (`users.username`) и
+    из чата (`chat_usernames`): рассылка «готов» (`ids_for_people`) находит человека и по ним,
+    так что сменивший ник волонтёр получил бы «готов», а по кнопке — «не нашёл тебя»."""
+    names = {normalize_username(username)} if username else set()
     async with _db._connect() as db:
+        if telegram_id is not None:
+            async with db.execute(
+                "SELECT username FROM users WHERE telegram_id = ? "
+                "UNION SELECT username FROM chat_usernames WHERE telegram_id = ?",
+                (telegram_id, telegram_id),
+            ) as cur:
+                names |= {normalize_username(r[0]) for r in await cur.fetchall() if r[0]}
+        names.discard("")
+        if not names:
+            return set()
+        marks = ", ".join("?" * len(names))
         async with db.execute(
-            "SELECT kind FROM certificate_people WHERE username = ?", (normalize_username(username),),
+            f"SELECT kind FROM certificate_people WHERE username IN ({marks})", tuple(names),
         ) as cur:
             rows = await cur.fetchall()
     return {r[0] for r in rows}
@@ -249,6 +262,14 @@ async def claim_announce(telegram_id: int) -> bool:
         )
         await db.commit()
         return bool(cur.rowcount)
+
+
+async def release_announce(telegram_id: int) -> None:
+    """Отправка «готов» не дошла по сбою сети/Telegram — освободить место, чтобы следующий
+    проход джобы написал человеку снова."""
+    async with _db._connect() as db:
+        await db.execute("DELETE FROM certificate_announces WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
 
 
 async def announce_count() -> int:
