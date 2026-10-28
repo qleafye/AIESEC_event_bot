@@ -1,7 +1,9 @@
 """Ревью нагрузки и дня форума Юлид Москва (29–31.10): регрессии найденных дефектов.
 
 - страховка утреннего повтора QR живёт весь цикл: на ~2400 человек он длиннее страховки, и
-  APScheduler пропускал её срабатывание и удалял джобу — рестарт не дослал бы хвост."""
+  APScheduler пропускал её срабатывание и удалял джобу — рестарт не дослал бы хвост;
+- чек делегату о выдаче и отмене в магазине: название товара и магазина экранируются — бот по
+  умолчанию шлёт в HTML, и «Стикер <3» или «M&M's» роняли отправку чека."""
 from __future__ import annotations
 
 import asyncio
@@ -69,3 +71,51 @@ def test_morning_guard_survives_cycle_longer_than_guard(monkeypatch):
     assert during, "страховка пропала посреди цикла — рестарт не дошлёт хвост"
     assert not after
     assert sends == [None]  # сработавшая страховка не запускает второй повтор параллельно
+
+
+# ── чек делегату из магазина ───────────────────────────────────────────────────────────
+
+def _state():
+    store = {}
+
+    async def get_data():
+        return dict(store)
+
+    async def update_data(**kw):
+        store.update(kw)
+
+    return store, SimpleNamespace(get_data=get_data, update_data=update_data, set_state=AsyncMock())
+
+
+def _cb(data, bot):
+    msg = SimpleNamespace(edit_text=AsyncMock(), answer=AsyncMock())
+    return SimpleNamespace(data=data, from_user=SimpleNamespace(id=STAFF), message=msg, answer=AsyncMock(), bot=bot)
+
+
+def _receipt(bot) -> str:
+    [call] = bot.send_message.await_args_list
+    assert call.args[0] == UID
+    return call.args[1]
+
+
+def test_shop_receipt_escapes_item_title(tmp_path):
+    _env(tmp_path)
+    _run(db.set_setting("event_name", "Юлид & Co"))
+    item = _run(shop_db.add_item(TRICKY, 10, None, None))
+    store, state = _state()
+    _run(adm.shop_pick(_cb(f"shp_p:{UID}:{item}", SimpleNamespace(send_message=AsyncMock())), state))
+    bot = SimpleNamespace(send_message=AsyncMock())
+    _run(adm.shop_go(_cb(f"shp_go:{store['shp_nonce']}", bot), state))
+    text = _receipt(bot)
+    assert html.escape(TRICKY) in text and "<3" not in text
+    assert "Юлид &amp; Co" in text
+
+
+def test_shop_undo_message_escapes_item_title(tmp_path):
+    _env(tmp_path)
+    item = _run(shop_db.add_item(TRICKY, 10, None, None))
+    sale = _run(shop_db.sell(item, UID, STAFF))
+    bot = SimpleNamespace(send_message=AsyncMock())
+    _run(adm.shop_undo_go(_cb(f"shp_undogo:{sale['id']}", bot)))
+    text = _receipt(bot)
+    assert html.escape(TRICKY) in text and "<3" not in text
