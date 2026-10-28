@@ -416,6 +416,15 @@ async def init_scheduler(bot):
         id=_DIGEST_JOB_ID, replace_existing=True,
     )
 
+    # «✅ Готовность к форуму»: утреннее напоминание менеджерам о ненастроенном за
+    # ready_remind_days дней до даты форума города. Одна cron-джоба, 10:00 МСК, на каждом старте
+    # заново (replace_existing); тумблер и окно джоба перечитывает у себя.
+    from services.forum.readiness import JOB_ID as _READY_JOB_ID, READY_REMIND_HOUR, readiness_remind_job
+    _scheduler.add_job(
+        readiness_remind_job, "cron", hour=READY_REMIND_HOUR, minute=0,
+        id=_READY_JOB_ID, replace_existing=True,
+    )
+
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()

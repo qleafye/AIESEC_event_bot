@@ -359,6 +359,8 @@ _SYSTEM_FIELD_ORDER = [
     # файла); сам тумблер «❗ Отметить как важное» — не настройка реестра, а кнопка мастера
     # рассылки (handlers/comms/admin_broadcasts.py), сюда НЕ входит.
     "important_broadcast_label",
+    # Напоминание «✅ Готовность к форуму» (services/forum/readiness.py) — тумблер и срок.
+    "ready_remind_enabled", "ready_remind_days",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки
