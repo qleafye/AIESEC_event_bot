@@ -32,16 +32,20 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import domain.regform.engine as reg_engine
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
-from handlers.access.admin_caps import has_capability
+from handlers.access.admin_caps import has_capability, notify_by_capability
 from handlers.admin import router
 from handlers.states import DelegationEdit
 from domain.regform.moderation_card import EMPTY_SENTINEL
-from services.delegations import delegations
+from services.delegations import delegations, delegations_off_alert
 from services.infra.background import spawn
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
+
+# Предупреждение «делегации выключены» шлёт сервис, которому нельзя импортировать handlers:
+# рассылку по праву он получает отсюда.
+delegations_off_alert.set_sender(notify_by_capability)
 
 SCREEN = "admin_delegations"
 PAGE = 8
