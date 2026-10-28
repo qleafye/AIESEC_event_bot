@@ -111,7 +111,7 @@ _EVENT_FIELD_ORDER = [
     # «Задать вопрос» — иначе менеджер их на экране группы не увидит вовсе.
     "faq_intro_text", "faq_empty_text", "faq_ask_button_text",
     # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
-    "poll_intro_text",
+    "poll_intro_text", "poll_results_admin_hint_text",
     "event_name", "event_name_genitive", "event_season", "event_type", "bot_name",
     "bot_description", "bot_short_description", *_UI.BOT_COMMAND_FIELD_ORDER, *_UI.INFO_SCREEN_FIELD_ORDER]
 _EVENT_FIELDS = [
