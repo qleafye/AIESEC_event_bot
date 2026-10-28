@@ -4359,6 +4359,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Взять»",
         "prompt": "Кнопка под витриной у каждого товара, который делегат может взять сам (когда включена «Бронь делегатом»).\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах",
         "default": "🛒 Взять: {title} · {price}",
+        "placeholders": {"title": "товар", "price": "цена в баллах"},
     },
     "shop_reserve_hint_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: подсказка про бронь",
@@ -4369,6 +4370,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🛍 Магазин: подтверждение брони",
         "prompt": "Вопрос перед списанием баллов за товар.\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах\n{left} — сколько баллов останется",
         "default": "Списать {price} баллов за «{title}»?\nОстанется {left}. Забрать товар — на стойке магазина по коду выдачи.",
+        "placeholders": {"price": "цена в баллах", "title": "товар", "left": "сколько баллов останется"},
     },
     "shop_take_confirm_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Да, списать»",
@@ -4379,6 +4381,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🛍 Магазин: бронь оформлена",
         "prompt": "Сообщение после брони, под ним приходит QR. Поддерживается HTML.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи\n{price} — списано баллов\n{balance} — осталось на счету",
         "default": "✅ Забронировано: «{title}»\nКод выдачи: <b>{code}</b>\nСписано {price} баллов, на счету {balance}.\n\nПокажи QR ниже или назови код на стойке магазина.",
+        "placeholders": {"title": "товар", "code": "код выдачи брони", "price": "цена в баллах", "balance": "баланс после операции"},
     },
     "shop_my_reservations_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Мои брони»",
@@ -4399,16 +4402,19 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка QR брони",
         "prompt": "Кнопка в «🎫 Мои брони» — прислать QR брони ещё раз.\n\nПодставляется:\n{code} — код выдачи",
         "default": "🔳 QR {code}",
+        "placeholders": {"code": "код выдачи брони"},
     },
     "shop_reservation_cancel_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка отмены брони",
         "prompt": "Кнопка в «🎫 Мои брони» — отменить бронь.\n\nПодставляется:\n{code} — код выдачи",
         "default": "✖ Отменить {code}",
+        "placeholders": {"code": "код выдачи брони"},
     },
     "shop_cancel_confirm_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: подтверждение отмены брони",
         "prompt": "Вопрос перед отменой брони делегатом.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи\n{price} — сколько баллов вернём",
         "default": "Отменить бронь «{title}» (код {code})?\n\nВернём {price} баллов, товар вернётся на витрину, код перестанет работать.",
+        "placeholders": {"title": "товар", "code": "код выдачи брони", "price": "цена в баллах"},
     },
     "shop_cancel_confirm_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Да, отменить бронь»",
@@ -4424,6 +4430,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🛍 Магазин: бронь отменена",
         "prompt": "Сообщение делегату после отмены брони.\n\nПодставляются:\n{title} — товар\n{price} — сколько баллов вернули\n{balance} — на счету после возврата",
         "default": "↩️ Бронь «{title}» отменена, {price} баллов вернулись. На счету: {balance}.",
+        "placeholders": {"title": "товар", "price": "цена в баллах", "balance": "баланс после операции"},
     },
     "shop_reservation_gone_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: бронь уже неактуальна",
@@ -4439,11 +4446,13 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🛍 Магазин: уведомление «бронь выдана»",
         "prompt": "Сообщение делегату, когда на стойке выдали его бронь.\n\nПодставляются:\n{shop} — название магазина\n{code} — код выдачи\n{title} — товар",
         "default": "🛍 {shop}: по брони {code} выдали «{title}».",
+        "placeholders": {"shop": "название магазина", "code": "код выдачи брони", "title": "товар"},
     },
     "shop_cancelled_by_staff_notify_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: уведомление «бронь отменили на стойке»",
         "prompt": "Сообщение делегату, когда менеджер отменил его бронь.\n\nПодставляются:\n{shop} — название магазина\n{code} — код выдачи\n{title} — товар\n{price} — сколько баллов вернули\n{balance} — на счету после возврата",
         "default": "🛍 {shop}: бронь {code} «{title}» отменили на стойке, {price} баллов вернулись. На счету: {balance}.",
+        "placeholders": {"shop": "название магазина", "code": "код выдачи брони", "title": "товар", "price": "цена в баллах", "balance": "баланс после операции"},
     },
     "leaderboard_header_text": {
         "type": "text", "group": "game", "label": "🏆 Рейтинг: заголовок",
