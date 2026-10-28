@@ -337,6 +337,12 @@ async def _run_evening_job(city: str | None) -> dict:
 async def _run_morning_job(city: str | None) -> dict:
     """То же самое для утреннего повтора — см. `_run_evening_job`/`_city_still_valid`;
     уходит только в сам день форума."""
+    if city in _morning_in_progress:
+        # Сработала страховка, а повтор ещё идёт (на ~2400 человек он дольше страховки):
+        # перевзвести её и выйти — иначе после этого срабатывания джобы в хранилище нет, и
+        # рестарт не дошлёт хвост.
+        _arm_morning_guard(city)
+        return {"sent": 0, "failed": 0, "total": 0, "skipped": "in_progress"}
     if not await _city_still_valid(city):
         logger.info(
             f"checkin_broadcast: morning job for city={city!r} skipped — "
@@ -345,27 +351,33 @@ async def _run_morning_job(city: str | None) -> dict:
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "disabled"}
     if await _wrong_day(city, 0, "morning"):
         return {"sent": 0, "failed": 0, "total": 0, "skipped": "wrong_day"}
-    jid = morning_job_id(city)
-    sched = None
     _morning_in_progress.add(city)
     try:
-        try:
-            sched = _sched.get_scheduler()
-            sched.add_job(
-                _run_morning_job, "date", run_date=msk_now() + timedelta(minutes=MORNING_GUARD_MINUTES),
-                args=[city], id=jid, replace_existing=True,
-            )
-        except Exception as e:
-            logger.error(f"checkin_broadcast: morning guard for {city!r} not armed: {e}")
+        armed = _arm_morning_guard(city)
         result = await send_morning_repeat(city)
     finally:
         _morning_in_progress.discard(city)
-    if sched is not None:
+    if armed:
         try:
-            sched.remove_job(jid)  # цикл дошёл до конца — страховка не нужна
+            _sched.get_scheduler().remove_job(morning_job_id(city))  # цикл дошёл до конца — страховка не нужна
         except Exception:
             pass
     return result
+
+
+def _arm_morning_guard(city: str | None) -> bool:
+    """Страховка утреннего повтора (см. `MORNING_GUARD_MINUTES`). `max_instances=2`: при
+    единице APScheduler пропускал срабатывание страховки посреди ещё идущего цикла (тот же id)
+    и удалял date-джобу, а так она доходит до `_run_morning_job` и перевзводится."""
+    try:
+        _sched.get_scheduler().add_job(
+            _run_morning_job, "date", run_date=msk_now() + timedelta(minutes=MORNING_GUARD_MINUTES),
+            args=[city], id=morning_job_id(city), replace_existing=True, max_instances=2,
+        )
+        return True
+    except Exception as e:
+        logger.error(f"checkin_broadcast: morning guard for {city!r} not armed: {e}")
+        return False
 
 
 def _cancel_stale_city_jobs(enabled_codes: set[str]) -> None:
