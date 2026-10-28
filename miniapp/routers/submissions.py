@@ -236,9 +236,12 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
             "text": await i18n.tr_setting("reg_form_resume_text_only_text", lang, tr_map),
         })
     if not reg_engine.is_allowed_resume(filename):
+        # `{formats}` — после перевода: в английском тексте тоже «PDF, DOCX»; текст менеджера
+        # без плейсхолдера уходит как есть.
+        text = (await i18n.tr_setting("reg_form_resume_wrong_type_text", lang, tr_map) or "")
         raise HTTPException(400, {
             "reason": "bad_type",
-            "text": await i18n.tr_setting("reg_form_resume_wrong_type_text", lang, tr_map),
+            "text": text.replace("{formats}", reg_engine.resume_formats_label()),
         })
     if reg_engine.resume_too_large(len(content)):
         raise HTTPException(413, {
