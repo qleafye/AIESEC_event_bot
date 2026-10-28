@@ -449,3 +449,111 @@ def test_delegate_callbacks_are_not_admin():
 
     for data in ("shopv_take:1", "shopv_go:ab", "shopv_my", "shopv_qr:1", "shopv_cancel:1", "shopv_cgo:1"):
         assert required_capability(callback_data=data) is None, data
+
+
+# ── стойка: тумблер, выдача по коду, отмена чужой брони ──────────────────────────────
+
+def test_reserve_toggle_needs_items(tmp_path):
+    from handlers.game import admin_shop as adm
+    from handlers.game import admin_shop_reserve as res_adm
+
+    _env(tmp_path, on=False)
+    cb = _cb("shp_resv", uid=STAFF)
+    _run(res_adm.shop_toggle_reserve(cb))
+    assert "Сначала добавьте" in _alert(cb) and _run(shop_db.is_reserve_on()) is False
+    _run(shop_db.add_item("Шоппер", 150, 3, None))
+    _run(res_adm.shop_toggle_reserve(_cb("shp_resv", uid=STAFF)))
+    assert _run(shop_db.is_reserve_on()) is True
+    text, kb = _run(adm.home_text_kb())
+    assert "Бронь делегатом: ✅ включена" in text
+    assert "shp_code" in _datas(kb) and "shp_resv" in _datas(kb)
+    _run(res_adm.shop_toggle_reserve(_cb("shp_resv", uid=STAFF)))
+    assert _run(shop_db.is_reserve_on()) is False
+
+
+def test_counter_finds_reservation_by_code(tmp_path, monkeypatch):
+    from handlers.game import admin_shop_reserve as res_adm
+    from handlers.states import ShopAdmin
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    monkeypatch.setattr(shop_db, "_random_code_digits", lambda: 4821)
+    res = _run(shop_db.reserve(item, UID))
+    store, state = _state()
+    _run(res_adm.shop_code_start(_cb("shp_code", uid=STAFF), state))
+    state.set_state.assert_called_with(ShopAdmin.code)
+    for raw in ("4821", "Ю-4821"):
+        msg = SimpleNamespace(text=raw, answer=AsyncMock())
+        _run(res_adm.shop_code_input(msg, state))
+        kw = msg.answer.call_args.kwargs
+        assert f"shp_rgo:{res['id']}" in _datas(kw["reply_markup"])
+    msg = SimpleNamespace(text="1234", answer=AsyncMock())
+    _run(res_adm.shop_code_input(msg, state))
+    assert "Не нашёл действующую бронь" in msg.answer.call_args.args[0]
+
+
+def test_counter_issue_once_and_notify_once(tmp_path):
+    from handlers.game import admin_shop_reserve as res_adm
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    res = _run(shop_db.reserve(item, UID))
+    a, b = _cb(f"shp_rgo:{res['id']}", uid=STAFF), _cb(f"shp_rgo:{res['id']}", uid=STAFF)
+
+    async def both():
+        await asyncio.gather(res_adm.shop_res_issue(a), res_adm.shop_res_issue(b))
+
+    _run(both())
+    assert _run(shop_db.get_sale(res["id"]))["status"] == "issued"
+    assert a.bot.send_message.await_count + b.bot.send_message.await_count == 1
+    loser = a if not a.bot.send_message.await_count else b
+    assert "второй раз не выдаём" in _alert(loser)
+    winner = b if loser is a else a
+    assert winner.bot.send_message.call_args.args[0] == UID
+    assert res["code"] in winner.bot.send_message.call_args.args[1]
+
+
+def test_counter_cancels_someone_elses_reservation(tmp_path):
+    from handlers.game import admin_shop_reserve as res_adm
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    res = _run(shop_db.reserve(item, UID))
+    cb = _cb(f"shp_rcan:{res['id']}", uid=STAFF)
+    _run(res_adm.shop_res_cancel(cb))
+    text, kb = _shown(cb)
+    assert "Вернём делегату 150" in text and f"shp_rcango:{res['id']}" in _datas(kb)
+    cb = _cb(f"shp_rcango:{res['id']}", uid=STAFF)
+    _run(res_adm.shop_res_cancel_go(cb))
+    assert _run(db.get_balance(UID)) == 200
+    cb.bot.send_message.assert_awaited_once()
+    assert "отменили на стойке" in cb.bot.send_message.call_args.args[1]
+    cb = _cb(f"shp_rcango:{res['id']}", uid=STAFF)
+    _run(res_adm.shop_res_cancel_go(cb))
+    assert "уже выдана или отменена" in _alert(cb)
+
+
+def test_counter_callbacks_need_game_right():
+    from handlers.access.admin_caps import required_capability
+
+    for data in ("shp_resv", "shp_code", "shp_rc:1", "shp_rgo:1", "shp_rcan:1", "shp_rcango:1"):
+        assert required_capability(callback_data=data) == "moderate_game", data
+    assert required_capability(raw_state="ShopAdmin:code") == "moderate_game"
+
+
+def test_sales_list_and_csv_mark_reservations(tmp_path):
+    from handlers.game import admin_shop as adm
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    res = _run(shop_db.reserve(item, UID))
+    cb = _cb("shp_sales:0", uid=STAFF)
+    _run(adm.shop_sales(cb))
+    text, _ = _shown(cb)
+    assert f"🎫 бронь {res['code']}" in text
+    cb = _cb("shp_salescsv", uid=STAFF)
+    cb.message.answer_document = AsyncMock()
+    _run(adm.shop_sales_csv(cb))
+    doc = cb.message.answer_document.call_args.args[0]
+    body = doc.data.decode("utf-8-sig")
+    assert "Статус;Код" in body.splitlines()[0] and f"бронь;{res['code']}" in body
