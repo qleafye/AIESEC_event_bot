@@ -1858,9 +1858,13 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         # CR-05: подстановка в текст, который правит менеджер, — цепочкой `.replace`
         # (`game_labels.fill_template`), НЕ `.format()`: посторонний `{`/`}` в тексте
         # менеджера не должен ронять рассылку целиком (T-073-03-05).
-        template = i18n.tr(await get_setting_typed("wave_start_message_text"), lang, tr_map)
+        # Текст города ПОЛУЧАТЕЛЯ (у джобы нет контекста города), {chat} — ссылка на его чат.
+        from domain.cities import get_setting_typed_for_city
+        from services.game import city_texts
+        city = await city_texts.delegate_city(dict(user))
+        template = i18n.tr(await get_setting_typed_for_city("wave_start_message_text", city), lang, tr_map)
         text = game_labels.fill_template(
-            template, wave=wave["number"], ends=ends_txt, intro=intro_block, tasks=tasks_block,
+            await city_texts.fill_chat(template, city), wave=wave["number"], ends=ends_txt, intro=intro_block, tasks=tasks_block,
         )
         if not intro:
             text = text.replace("\n\n\n", "\n\n")
@@ -2060,7 +2064,10 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         else:
             recipients = await _task_out_of_wave_recipients(task)
 
-        template_raw = await get_setting_typed("wave_deadline_reminder_text")
+        # Шаблон — по городу ПОЛУЧАТЕЛЯ, один раз на город за прогон (кэш ниже).
+        from domain.cities import get_setting_typed_for_city
+        from services.game import city_texts
+        templates: dict = {}
         game_open = await _game_open_filter()
         from database.db import mark_task_deadline_reminded
         # Отметка ДО рассылки: лучше недослать одному при сбое, чем разослать всем дважды.
@@ -2072,12 +2079,16 @@ async def send_task_deadline_reminder(task_id: int) -> None:
             # CR-05: сбой у ОДНОГО получателя (например, кривой src в i18n) не должен
             # обрывать напоминание остальным несдавшим — тот же приём, что в `send_wave_results`.
             try:
-                if not game_open(await get_user(uid) or {}):
+                user_row = await get_user(uid) or {}
+                if not game_open(user_row):
                     continue  # задания ему закрыты (отклонён, ждёт решения, прошлый сезон)
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
+                city = await city_texts.delegate_city(dict(user_row))
+                if city not in templates:
+                    templates[city] = await get_setting_typed_for_city("wave_deadline_reminder_text", city)
                 lang, tr_map = await i18n.context(uid)
-                template = i18n.tr(template_raw, lang, tr_map)
+                template = await city_texts.fill_chat(i18n.tr(templates[city], lang, tr_map), city)
                 text = game_labels.fill_template(
                     template, task=html.escape(str(title)), coins=int(task["coins"]),
                     deadline=deadline_txt,
@@ -2237,9 +2248,21 @@ async def send_wave_results(wave_id: int) -> None:
             for w in winners
         ) or "—"
 
-        announce_raw = await get_setting_typed("wave_results_announce_text")
-        winner_raw = await get_setting_typed("wave_results_winner_text")
-        prize_raw = await get_setting_typed("wave_results_prize_text")
+        # Тексты — по городу ПОЛУЧАТЕЛЯ (у джобы нет контекста города), один раз на город.
+        from database.db import get_user
+        from domain.cities import get_setting_typed_for_city
+        from services.game import city_texts
+        texts_by_city: dict = {}
+
+        async def _raw(city):
+            if city not in texts_by_city:
+                texts_by_city[city] = [
+                    await get_setting_typed_for_city(k, city) for k in (
+                        "wave_results_announce_text", "wave_results_winner_text",
+                        "wave_results_prize_text",
+                    )
+                ]
+            return texts_by_city[city]
         wave_number = wave.get("number")
         now = _now_moscow_naive()
 
@@ -2255,9 +2278,11 @@ async def send_wave_results(wave_id: int) -> None:
                 ):
                     continue  # отметил параллельный тик той же джобы — не шлём вторично
 
+                city = await city_texts.delegate_city(dict(await get_user(user_id) or {}))
+                announce_raw, winner_raw, prize_raw = await _raw(city)
                 lang, tr_map = await i18n.context(user_id)
                 text = game_labels.fill_template(
-                    i18n.tr(announce_raw, lang, tr_map),
+                    await city_texts.fill_chat(i18n.tr(announce_raw, lang, tr_map), city),
                     wave=wave_number, winners=winners_txt, place=place, total=total, points=points,
                 )
 
@@ -2269,9 +2294,9 @@ async def send_wave_results(wave_id: int) -> None:
 
                 if user_id not in winner_ids:
                     continue
-                prize_text = i18n.tr(prize_raw, lang, tr_map)
+                prize_text = await city_texts.fill_chat(i18n.tr(prize_raw, lang, tr_map), city)
                 winner_text = game_labels.fill_template(
-                    i18n.tr(winner_raw, lang, tr_map),
+                    await city_texts.fill_chat(i18n.tr(winner_raw, lang, tr_map), city),
                     wave=wave_number, place=place, points=points, prize=prize_text,
                 )
 
