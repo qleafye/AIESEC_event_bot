@@ -202,3 +202,53 @@ def test_reconcile_row_stays_in_registry():
     from handlers.settings.admin_sections import section_rows
 
     assert ("screen", "admin_chat_reconcile", "🔄 Сверить состав чата") in section_rows("manage")
+
+
+# ── «СПбГЭУ» в справочнике вузов ───────────────────────────────────────────────────────
+
+SPBGEU = "Санкт-Петербургский государственный экономический университет"
+
+
+def _lookup_db(tmp_path):
+    from services.registration import lookup
+
+    _db(tmp_path, "acceptance_minor_lookup_261028.db")
+    lookup.invalidate_rank_cache()
+
+
+@pytest.mark.parametrize("q", ["СПбГЭУ", "спбгэу", "СПБГЭУ"])
+def test_spbgeu_found_by_abbreviation(tmp_path, q):
+    from services.registration.lookup import search_lookup
+
+    _lookup_db(tmp_path)
+    found = asyncio.run(search_lookup("university", q, limit=5))
+    assert found and found[0]["canonical"] == SPBGEU
+
+
+def test_spbgeu_alias_unique_in_snapshot():
+    from services.registration.lookup import normalize_alias
+
+    data = json.loads((REPO_ROOT / "data" / "lookup" / "universities_ru.json").read_text(encoding="utf-8"))
+    entries = data["items"]
+    owners = [e["canonical"] for e in entries
+              if "спбгэу" in {normalize_alias(a) for a in [e["canonical"], *e.get("aliases", [])]}]
+    assert owners == [SPBGEU]
+
+
+def test_spbgeu_alias_restored_on_restart(tmp_path):
+    from database.db import _connect, init_db
+
+    _lookup_db(tmp_path)
+
+    async def go():
+        async with _connect() as conn:
+            await conn.execute("DELETE FROM lookup_entries WHERE kind = 'university' AND alias_norm = 'спбгэу'")
+            await conn.commit()
+        await init_db()
+        async with _connect() as conn:
+            cur = await conn.execute(
+                "SELECT canonical FROM lookup_entries WHERE kind = 'university' AND alias_norm = 'спбгэу'"
+            )
+            return [r[0] for r in await cur.fetchall()]
+
+    assert asyncio.run(go()) == [SPBGEU]
