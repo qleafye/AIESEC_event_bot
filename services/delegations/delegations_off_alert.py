@@ -10,6 +10,9 @@
 включены ни для какой формы. Предупреждение: одно сообщение на все созревшие формы, глобально
 не чаще раза в сутки, по одной форме — однократно (до выхода из состояния), не в тихие часы,
 тумблер `delegation_off_alert`.
+
+Рассылка по праву (`notify_by_capability` из handlers/access/admin_caps.py) передаётся
+вызывающим (джоба в services/scheduler.py): нижний ярус не импортирует handlers.
 """
 from __future__ import annotations
 
@@ -19,7 +22,6 @@ from datetime import datetime, timedelta
 
 from database import ext_forms_db as ef
 from domain.settings.schema import get_setting_typed
-from handlers.access.admin_caps import notify_by_capability
 from services.comms.quiet_hours import is_quiet, window_for_city
 from services.delegations import delegations as dlg
 from services.infra.timeutil import msk_now
@@ -98,8 +100,9 @@ def _alert_text(titles: list[str]) -> str:
     )
 
 
-async def alert_off_delegations(bot) -> int:
-    """Один проход фоновой проверки; возвращает число отправленных сообщений (0 или 1)."""
+async def alert_off_delegations(bot, notify_by_capability) -> int:
+    """Один проход фоновой проверки; возвращает число отправленных сообщений (0 или 1).
+    `notify_by_capability(bot, cap, text, *, parse_mode)` — рассылка держателям права."""
     ctx = await _context()
     if not ctx["alert_on"]:
         return 0
