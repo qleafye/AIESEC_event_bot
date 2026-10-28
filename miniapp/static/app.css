@@ -1854,6 +1854,8 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 }
 .skeleton--person { width: 96px; height: 20px; }
 .skeleton--eyebrow { width: 72px; height: 11px; }
+/* Подпись менеджерской плитки, пока грузится счётчик (hub.js::managerFetcherFor). */
+.skeleton--meta { display: block; width: 64px; height: 11px; margin-top: 2px; }
 .skeleton--unit { width: 36px; height: 13px; }
 @keyframes skeleton-pulse {
   0%, 100% { opacity: .45; }

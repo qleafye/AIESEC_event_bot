@@ -109,7 +109,11 @@ def test_reg_manager_without_game_has_no_stats_tile():
 def test_manager_counters_are_quiet_and_cap_gated():
     text = HUB_JS.read_text(encoding="utf-8")
     body = text[text.index("async function renderManagerHub("):]
-    assert "me.caps.includes(fetcher.cap)" in body
+    # 28.10: проверка права — в одном предикате managerFetcherFor (им же решается скелетон).
+    pred = text[text.index("function managerFetcherFor("):]
+    pred = pred[:pred.index("\n}\n")]
+    assert "me.caps.includes(fetcher.cap)" in pred
+    assert "const fetcher = managerFetcherFor(item, me);" in body
     assert "api(fetcher.path, { quiet: true })" in body
 
 
