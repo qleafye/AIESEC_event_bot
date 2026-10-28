@@ -213,3 +213,166 @@ def test_settings_keys_and_synonyms():
     for key in ("ready_remind_enabled", "ready_remind_days"):
         assert len(SETTINGS_SYNONYMS[key]) >= 2
     assert not any(k.startswith("ready_skip") for k in SETTINGS_SCHEMA)
+
+
+# ══ корень /admin и экран ══════════════════════════════════════════════════════════════════
+
+class FakeUser:
+    def __init__(self, uid):
+        self.id = uid
+
+
+class FakeMessage:
+    def __init__(self):
+        self.text = None
+        self.markup = None
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text = text
+        self.markup = reply_markup
+
+
+class FakeCallback:
+    def __init__(self, data, user_id=ADMIN_ID):
+        self.data = data
+        self.from_user = FakeUser(user_id)
+        self.message = FakeMessage()
+        self.answers = []
+
+    async def answer(self, text=None, show_alert=False):
+        self.answers.append((text, show_alert))
+
+
+def _rows(kb):
+    return [[(b.text, b.callback_data) for b in row] for row in kb.inline_keyboard]
+
+
+def _flat(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def _grant(uid, role, caps):
+    _set(role_enabled_key(role), "on")
+    _set(role_caps_key(role), caps)
+    asyncio.run(db.add_staff(uid, role, ADMIN_ID))
+
+
+def _press(handler, data, user_id=ADMIN_ID):
+    cb = FakeCallback(data, user_id)
+    asyncio.run(handler(cb))
+    return cb
+
+
+def test_root_first_row_is_readiness_for_superadmin(tmp_path):
+    from handlers.settings.admin_core import build_admin_keyboard
+    _ready(tmp_path)
+    kb = asyncio.run(build_admin_keyboard(ADMIN_ID))
+    assert _rows(kb)[0] == [("⚠️ Не настроено: 1 — готовность к форуму", "ready_list")]
+    asyncio.run(rd.set_skipped("forum_date", None, True))
+    kb = asyncio.run(build_admin_keyboard(ADMIN_ID))
+    assert _rows(kb)[0] == [("✅ Готовность к форуму", "ready_list")]
+
+
+def test_root_without_settings_right_has_no_readiness(tmp_path):
+    from handlers.settings.admin_core import build_admin_keyboard
+    _ready(tmp_path)
+    _grant(MANAGER_ID, "reg_manager", "moderate_reg")
+    assert "ready_list" not in _flat(asyncio.run(build_admin_keyboard(MANAGER_ID)))
+    assert asyncio.run(build_admin_keyboard(OTHER_ADMIN)).inline_keyboard == []
+
+
+def test_root_parity_with_cities_off(tmp_path):
+    from handlers.settings.admin_core import admin_keyboard_for, build_admin_keyboard
+    _ready(tmp_path)
+    assert _rows(asyncio.run(admin_keyboard_for(ADMIN_ID))) == _rows(asyncio.run(build_admin_keyboard(ADMIN_ID)))
+
+
+def test_root_with_cities_puts_readiness_into_header_row(tmp_path):
+    from handlers.settings.admin_core import admin_keyboard_for
+    _ready(tmp_path)
+    _cities_on()
+    asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))  # худший случай: 9 разделов
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert [b.callback_data for b in kb.inline_keyboard[0]] == ["admin_city_switch", "ready_list"]
+    assert len(kb.inline_keyboard) <= 10
+
+
+def test_ready_list_screen(tmp_path):
+    from handlers.settings import admin_readiness as ar
+    _ready(tmp_path)
+    cb = _press(ar.ready_list, "ready_list")
+    assert "Готовность к форуму" in cb.message.text
+    assert "⚠️ Не настроено: 1" in cb.message.text
+    assert "⚠️ 🗓 Не задана дата начала форума" in cb.message.text
+    rows = _rows(cb.message.markup)
+    assert [("🛠 Дата форума", "settings_edit:forum_date"), ("🙈 Не нужно", "ready_skip:forum_date")] in rows
+    assert rows[-1] == [("← Назад", "admin_menu")]
+    assert [("📅 За сколько дней напоминать", "settings_edit:ready_remind_days")] in rows
+    assert cb.answers == [(None, False)]
+
+
+def test_fix_button_hidden_without_right(tmp_path):
+    from handlers.settings import admin_readiness as ar
+    _ready(tmp_path)
+    _grant(MANAGER_ID, "reg_manager", "settings")
+    asyncio.run(shop_db.set_open(True))
+    cb = _press(ar.ready_list, "ready_list", MANAGER_ID)
+    rows = _rows(cb.message.markup)
+    assert [("🙈 Не нужно", "ready_skip:shop")] in rows
+    assert not any(cbd == "admin_shop" for row in rows for _t, cbd in row)
+
+
+def test_skip_and_unskip_buttons(tmp_path):
+    from handlers.settings import admin_readiness as ar
+    _ready(tmp_path)
+    cb = _press(ar.ready_skip, "ready_skip:forum_date")
+    assert asyncio.run(db.get_setting("ready_skip__forum_date___")) == "1"
+    assert "➖ 🗓 Не задана дата начала форума — не нужно" in cb.message.text
+    assert [("↩️ Вернуть: Дата форума", "ready_unskip:forum_date")] in _rows(cb.message.markup)
+    assert "Всё настроено 👍" in cb.message.text
+    _press(ar.ready_unskip, "ready_unskip:forum_date")
+    assert _statuses(None)["forum_date"] == "todo"
+
+
+def test_skip_unknown_id_alerts(tmp_path):
+    from handlers.settings import admin_readiness as ar
+    _ready(tmp_path)
+    cb = _press(ar.ready_skip, "ready_skip:nope")
+    assert cb.answers == [("Пункт не найден.", True)]
+    assert cb.message.text is None
+    assert asyncio.run(db.get_setting("ready_skip__nope___")) is None
+
+
+def test_all_cities_screen(tmp_path):
+    from handlers.settings import admin_readiness as ar
+    _ready(tmp_path)
+    _cities_on()
+    assert asyncio.run(cities.set_admin_city(ADMIN_ID, cities.ALL_CITIES))
+    cb = _press(ar.ready_list, "ready_list")
+    assert "выберите город" in cb.message.text
+    flat = _flat(cb.message.markup)
+    for c in asyncio.run(cities.enabled_cities()):
+        assert f"ready_city:{c['code']}" in flat
+    cb = _press(ar.ready_skip, "ready_skip:reg_close")
+    assert cb.answers == [("Сначала выберите город.", True)]
+    cb = _press(ar.ready_city, "ready_city:zzz")
+    assert cb.answers == [("Город не найден.", True)]
+    cb = _press(ar.ready_city, "ready_city:spb")
+    assert asyncio.run(cities.admin_selected_city(ADMIN_ID)) == "spb"
+    assert "⚠️ Не настроено: 2" in cb.message.text
+    assert "spb" not in cb.message.text  # код города человеку не показываем
+
+
+def test_remind_toggle(tmp_path):
+    from handlers.settings import admin_readiness as ar
+    _ready(tmp_path)
+    cb = _press(ar.ready_remind_toggle, "ready_remind_toggle")
+    assert asyncio.run(db.get_setting("ready_remind_enabled")) == "off"
+    assert [("🔔 Напоминать за 3 дн.: выкл", "ready_remind_toggle")] in _rows(cb.message.markup)
+
+
+def test_ready_callbacks_need_settings():
+    from handlers.access.admin_caps import required_capability
+    import handlers.settings.admin_readiness  # noqa: F401
+    for data in ("ready_list", "ready_city:msk", "ready_skip:shop", "ready_unskip:shop", "ready_remind_toggle"):
+        assert required_capability(callback_data=data) == "settings", data

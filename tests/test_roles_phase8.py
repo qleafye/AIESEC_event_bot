@@ -715,11 +715,13 @@ def test_menu_admin_sees_all_sections(tmp_path):
 
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
     flat = _flat_callback_data(kb)
+    # 28.10 (готовность к форуму): первый ряд ready_list у держателя settings — не раздел.
+    assert flat[0] == "ready_list"
     # «🤝 Амбассадоры» — только при включённом модуле «🤝 Отбор амбассадоров» (по умолчанию выкл).
-    assert flat == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS if token != "amb"]
+    assert flat[1:] == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS if token != "amb"]
     asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
     kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
-    assert _flat_callback_data(kb) == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS]
+    assert _flat_callback_data(kb)[1:] == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS]
 
 
 def test_menu_reg_manager_sees_only_own_sections(tmp_path):

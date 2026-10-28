@@ -769,3 +769,7 @@ from handlers.applications import admin_reject_retro  # noqa: E402,F401
 # Форум-ночь п.4 (расписание форума в боте): шов «🗓 Программа форума» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_reports, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers.forum import admin_program  # noqa: E402,F401
+
+# «✅ Готовность к форуму»: шов чек-листа ненастроенного — импорт СРАЗУ ПОСЛЕ admin_program, тот же
+# хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers.settings import admin_readiness  # noqa: E402,F401
