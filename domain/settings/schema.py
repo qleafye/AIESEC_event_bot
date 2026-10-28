@@ -2576,17 +2576,24 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "pay", "label": "⏰ Текст напоминания об оплате",
         "prompt": (
             "Текст, который бот шлёт участнику за 3 дня и за 1 день до дедлайна оплаты."
-            "\n\nОставьте пустым — будет стандартный текст."
+            "\n\nЕсли очистить поле, вернётся текст по умолчанию."
         ),
-        "default": None,
+        "default": (
+            "⏰ Напоминание об оплате участия!\n\n"
+            "Срок оплаты истекает скоро. Загрузи чек оплаты через бота."
+        ),
     },
     "payment_overdue_text": {
         "type": "text", "group": "pay", "label": "⌛ Текст «оплата просрочена»",
         "prompt": (
             "Финальный пинг участнику, когда дедлайн оплаты прошёл, а чек так и не "
-            "загружен.\n\nОставьте пустым — будет стандартный текст."
+            "загружен.\n\nЕсли очистить поле, вернётся текст по умолчанию."
         ),
-        "default": None,
+        "default": (
+            "⚠️ Срок оплаты участия истёк.\n\n"
+            "Если ты ещё планируешь участвовать — загрузи чек через бота "
+            "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
+        ),
     },
     "penalty_schedule": {
         "type": "list", "group": "pay", "label": "⚠️ Штрафы за отмену",
@@ -9116,6 +9123,10 @@ del _W, _R
 from domain.settings.ui_text_fields import UI_TEXT_SCHEMA as _UI_TEXT_SCHEMA  # noqa: E402
 
 SETTINGS_SCHEMA.update(_UI_TEXT_SCHEMA)
+# Фразы и кнопки делегату из задач, оплаты, переноса, варианты анкеты — тот же приём.
+from domain.settings.delegate_text_fields import DELEGATE_TEXT_SCHEMA as _DELEGATE_TEXT_SCHEMA  # noqa: E402
+
+SETTINGS_SCHEMA.update(_DELEGATE_TEXT_SCHEMA)
 
 
 # ── Phase 25 (CITYQ-01): группа "reg_prompts" — тексты вопросов анкеты, переопределяемые по

@@ -22,12 +22,16 @@ AMB_FIELD_ORDER = [
     "wave_results_announce_text", "wave_results_winner_text", "wave_results_prize_text",
     "wave_rating_header_text", "wave_rating_own_line_text", "wave_rating_closed_text",
     "wave_rating_button_text",  # 10.10: кнопка «🏅 Рейтинг волны» под списком заданий
+    "wave_ended_note_text",
+    "wave_rating_not_eligible_text",
     # Ссылка и список приглашённых («Моя ссылка») — 09.10 переехали сюда из «🎮 Геймификации».
     "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",
     # Тексты амбассадорского блока и пути — делегатские.
     "ambassador_block_header_text",
     "ambassador_path_prompt_text", "ambassador_path_label_invite", "ambassador_path_label_content",
     "ambassador_path_label_none", "ambassador_leave_button_text", "ambassador_leave_confirm_text",
+    "ambassador_leave_confirm_yes_button_text",
+    "ambassador_leave_confirm_no_button_text",
     "ambassador_leave_done_text",
     # Менеджерский текст конца волны — НЕ переводится, см. i18n_sources._ADMIN_ONLY_GAME_KEYS.
     "wave_end_manager_text",
