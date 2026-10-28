@@ -182,6 +182,8 @@ async def certadm_tpls(callback: types.CallbackQuery, state: FSMContext):
 
 def _parse_tpl(data: str) -> tuple[str, str] | None:
     parts = data.split(":")
+    if parts[3:] == ["go"]:  # `certadm_tpldel:<вид>:<вариант>:go` — подтверждённое удаление
+        parts = parts[:3]
     if len(parts) != 3 or parts[1] not in KINDS:
         return None
     if parts[2] != VARIANT_ALL and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", parts[2]):
@@ -217,7 +219,18 @@ async def certadm_tpldel(callback: types.CallbackQuery, state: FSMContext):
     if parsed is None:
         await callback.answer("Не понял, какой шаблон — откройте список заново.", show_alert=True)
         return
-    await cdb.delete_template(*parsed)
+    kind, variant = parsed
+    if not callback.data.endswith(":go"):
+        await callback.message.answer(
+            f"Убрать шаблон «{certs.KIND_TITLES[kind]} · {certs.variant_label(variant)}»? Пока не загрузите "
+            "новый, этот сертификат не соберётся (версия на один день заменится на «все дни»). "
+            "Уже выданные файлы у людей останутся.",
+            reply_markup=_kb([[("🗑 Да, убрать", f"certadm_tpldel:{kind}:{variant}:go"),
+                               ("Отмена", f"certadm_tpl:{kind}:{variant}")]]),
+        )
+        await callback.answer()
+        return
+    await cdb.delete_template(kind, variant)
     await state.clear()
     await callback.answer("Шаблон убран")
     await _back_home(callback.message)

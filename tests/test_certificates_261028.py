@@ -142,7 +142,7 @@ def test_delegate_closed_then_sends_pdf(tmp_path):
     assert "Иванова Анна" in cb.message.answer.call_args.args[0]
 
     cb = _callback("cert_ok")
-    asyncio.run(h.certificate_send(cb, _Bot(_template())))
+    asyncio.run(h.certificate_send(cb, _Bot(_template()), state))
     doc = cb.message.answer_document.call_args.args[0]
     assert doc.filename == "Сертификат участника — Иванова Анна.pdf"
     assert asyncio.run(cdb.send_counts()) == {"participant": 1}
