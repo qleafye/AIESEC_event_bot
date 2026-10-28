@@ -407,3 +407,95 @@ def test_dashboard_default_matches_registry():
     from domain.settings.schema import SETTINGS_SCHEMA
 
     assert _SETTING_DEFAULTS["dashboard_block_polls"] == SETTINGS_SCHEMA["dashboard_block_polls"]["default"] == "on"
+
+
+# ── рендер страницы «/forum» ────────────────────────────────────────────────────────────────
+
+def _page_db(tmp_path, monkeypatch, name):
+    from config import config
+    from tests import test_dashboard_render as tdr
+
+    db_path = tdr._use_tmp_db(tmp_path, name)
+    monkeypatch.setattr(config, "ADMIN_IDS", [tdr.ADMIN_ID])
+    _run(db.set_setting("event_season", SEASON))
+    return tdr, db_path
+
+
+def test_forum_page_renders_polls_section(tmp_path, monkeypatch):
+    tdr, db_path = _page_db(tmp_path, monkeypatch, "polls_page.db")
+    for uid in (1, 2, 3):
+        _run(_user(uid))
+    pid = _run(_poll("Придёте на вечеринку?", ["Конечно приду", "Нет"]))
+    _run(_deliver(pid, [1, 2, 3]))
+    _run(_answer(pid, 1, [0]))
+    _run(_answer(pid, 2, [1]))
+    sid, q = _run(_survey("Анкета после форума"))
+    _run(_deliver(sid, [1]))
+    _run(_progress(sid, 1, "done"))
+    _run(sdb.upsert_survey_answer(sid, 1, q["text"], "", "Больше кофе на перерывах"))
+
+    html_text = tdr._stats_manager_client(db_path).get("/forum").text
+    assert html_text.count('id="polls"') == 1
+    assert html_text.count('href="#polls"') == 1
+    assert html_text.index('id="after"') < html_text.index('id="polls"')
+    assert "Ответили 2 из 3" in html_text
+    assert "Конечно приду" in html_text
+    assert "Больше кофе на перерывах" in html_text
+    assert "Анкета после форума" in html_text
+    assert "Тест 1" not in html_text and "Тест 2" not in html_text
+
+
+def test_forum_page_escapes_free_text(tmp_path, monkeypatch):
+    tdr, db_path = _page_db(tmp_path, monkeypatch, "polls_escape.db")
+    _run(_user(1))
+    sid, q = _run(_survey())
+    _run(_deliver(sid, [1]))
+    _run(_progress(sid, 1, "done"))
+    _run(sdb.upsert_survey_answer(sid, 1, q["text"], "", "<b>x</b>"))
+    html_text = tdr._stats_manager_client(db_path).get("/forum").text
+    assert "<b>x</b>" not in html_text
+    assert "&lt;b&gt;x&lt;/b&gt;" in html_text
+
+
+def test_forum_page_polls_toggle_off_hides_section(tmp_path, monkeypatch):
+    tdr, db_path = _page_db(tmp_path, monkeypatch, "polls_off.db")
+    _run(_user(1))
+    pid = _run(_poll("Опрос", ["А", "Б"]))
+    _run(_deliver(pid, [1]))
+    client = tdr._stats_manager_client(db_path, extra_settings={"dashboard_block_polls": "off"})
+    html_text = client.get("/forum").text
+    assert 'id="polls"' not in html_text
+    assert "#polls" not in html_text
+
+
+def test_forum_page_polls_empty_state(tmp_path, monkeypatch):
+    tdr, db_path = _page_db(tmp_path, monkeypatch, "polls_empty.db")
+    resp = tdr._stats_manager_client(db_path).get("/forum")
+    assert resp.status_code == 200
+    assert 'id="polls"' in resp.text
+    assert "ни один опрос ещё не уходил" in resp.text
+
+
+def test_forum_page_past_season_note(tmp_path, monkeypatch):
+    tdr, db_path = _page_db(tmp_path, monkeypatch, "polls_past.db")
+    _run(_user(1, season="YL'25"))
+    pid = _run(_poll("Опрос", ["А", "Б"]))
+    _run(_deliver(pid, [1]))
+    html_text = tdr._stats_manager_client(db_path).get("/forum?season=YL'25").text
+    assert "Опросы не привязаны к сезону" in html_text
+
+
+def test_forum_page_bound_city_manager_sees_only_own_city_polls(tmp_path, monkeypatch):
+    tdr, db_path = _page_db(tmp_path, monkeypatch, "polls_bound.db")
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(_seed_cities())
+    _run(_user(1, city="spb"))
+    _run(_user(2, city="msk"))
+    common = _run(_poll("Опрос для всех городов", ["А", "Б"]))
+    _run(_deliver(common, [1, 2]))
+    msk = _run(_poll("Опрос только для Москвы", ["А", "Б"], city="msk"))
+    _run(_deliver(msk, [2]))
+    html_text = tdr._stats_manager_client(db_path, city="spb").get("/forum").text
+    assert "Опрос для всех городов" in html_text
+    assert "Ответили 0 из 1" in html_text
+    assert "Опрос только для Москвы" not in html_text
