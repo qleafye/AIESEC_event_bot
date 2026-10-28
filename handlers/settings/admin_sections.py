@@ -287,6 +287,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # экраны «не в чате»); работает и при выключенном учёте — явное действие менеджера.
         ("screen", "admin_chat_reconcile", "🔄 Сверить состав чата"),
         ("group", "chat"),
+        # Тексты личных сообщений о сверке после привязки чата (domain/settings/chat_fields.py).
+        ("group", "chat_bind_texts"),
         ("group", "system"),
     ]),
 ]
