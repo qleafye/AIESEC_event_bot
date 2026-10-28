@@ -115,6 +115,9 @@ def _visible_menu_rows(caps: set) -> list[tuple[str, str]]:
     return rows
 
 
+READY_CALLBACK = "ready_list"  # экран «✅ Готовность к форуму» (handlers/settings/admin_readiness.py)
+
+
 async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """ROLE-01 (D-15): the panel built for THIS person — a fresh capability read
     (`resolve_capabilities`, D-05: no cache) followed by the pure row filter. Every caller
@@ -137,10 +140,18 @@ async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
         from services.amb.amb_status import selection_enabled  # раздел живёт только с модулем отбора
         if not await selection_enabled():
             sections = [(token, label) for token, label in sections if token != "amb"]
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=label, callback_data=f"admin_sec:{token}")]
-        for token, label in sections
-    ])
+    rows = [[InlineKeyboardButton(text=label, callback_data=f"admin_sec:{token}")]
+            for token, label in sections]
+    # «✅ Готовность к форуму» — первым рядом, только у держателя settings. Здесь, а не в
+    # admin_keyboard_for: при выключенном модуле городов оба пути обязаны совпадать. Счётчик —
+    # в подписи кнопки, а не строкой текста корня: текст «Панель администратора» собирается
+    # литералом в нескольких модулях, а клавиатура одна на все пути в корень.
+    if _holds(caps, "settings"):
+        from services.forum.readiness import pending_count_for_admin  # ленивый: сервис тянет БД
+        n = await pending_count_for_admin(user_id)
+        text = f"⚠️ Не настроено: {n} — готовность к форуму" if n else "✅ Готовность к форуму"
+        rows.insert(0, [InlineKeyboardButton(text=text, callback_data=READY_CALLBACK)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # Phase 07.2 (CITY-02): per-admin city switcher, rendered as a header row over the panel.
@@ -155,7 +166,12 @@ async def admin_keyboard_for(admin_id: int) -> InlineKeyboardMarkup:
     # the button text ITSELF is ALL_CITIES_LABEL, not the label glued after the usual prefix.
     label_text = ALL_CITIES_LABEL if code == ALL_CITIES else f"🏙 Город: {await city_label(code)}"
     header = [InlineKeyboardButton(text=label_text, callback_data="admin_city_switch")]
-    return InlineKeyboardMarkup(inline_keyboard=[header] + base.inline_keyboard)
+    rows = list(base.inline_keyboard)
+    # Кнопка готовности встаёт в ряд шапки города: корень — «шапка + не больше девяти разделов»
+    # (tests/test_admin_sections_ia20.py), отдельный ряд дал бы одиннадцатый.
+    if rows and rows[0][0].callback_data == READY_CALLBACK:
+        header = header + rows.pop(0)
+    return InlineKeyboardMarkup(inline_keyboard=[header] + rows)
 
 
 # Phase 07.2 (CITY-02): the ONE resolver both moderation queues (applications + receipts)

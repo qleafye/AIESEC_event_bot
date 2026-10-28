@@ -360,12 +360,14 @@ def test_admin_root_hides_amb_section_until_toggle_on(tmp_path):
     from handlers.settings.admin_sections import SECTIONS
     from tests.test_amb_candidates_34 import ADMIN_ID
     _admin_ready(tmp_path)
+    # 28.10 (готовность к форуму): первый ряд ready_list — не раздел, сравниваем без него.
     flat = _datas(_run(admin_core.build_admin_keyboard(ADMIN_ID)))
     assert "admin_sec:amb" not in flat
-    assert flat == [f"admin_sec:{t}" for t, _l, _r in SECTIONS if t != "amb"]
+    assert flat[0] == "ready_list"
+    assert flat[1:] == [f"admin_sec:{t}" for t, _l, _r in SECTIONS if t != "amb"]
     _run(db.set_setting(KEY, "on"))
     flat = _datas(_run(admin_core.build_admin_keyboard(ADMIN_ID)))
-    assert flat == [f"admin_sec:{t}" for t, _l, _r in SECTIONS]
+    assert flat[1:] == [f"admin_sec:{t}" for t, _l, _r in SECTIONS]
 
 
 def test_stale_section_buttons_explain_how_to_turn_on(tmp_path):

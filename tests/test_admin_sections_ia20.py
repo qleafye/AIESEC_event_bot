@@ -561,7 +561,9 @@ def test_root_shows_at_most_ten_rows(tmp_path):
     """Критерий успеха №1: шапка города + не больше девяти кнопок-разделов. До фазы 20 на
     корне было 22 строки, и менеджер искал нужную глазами. 30.09: девятый раздел
     «🤝 Амбассадоры» — у команды амбассадоров свой вход, лимит и списки, в «🎮 Геймификации»
-    они терялись среди заданий и монет."""
+    они терялись среди заданий и монет.
+    28.10/готовность: первый ряд ready_list — не раздел; он делит ряд с шапкой города, поэтому
+    число рядов не изменилось."""
     _roles_ready(tmp_path)
     _enable_cities()
     from handlers.settings.admin_core import admin_keyboard_for
@@ -577,14 +579,17 @@ def test_root_shows_at_most_ten_rows(tmp_path):
 
 def test_root_rows_are_only_sections(tmp_path):
     """Ни одной старой операции на корне не осталось: всё, кроме шапки города, — разделы,
-    и их порядок задаёт реестр (путь делегата), а не история появления фаз."""
+    и их порядок задаёт реестр (путь делегата), а не история появления фаз.
+    28.10/готовность: первый ряд ready_list — не раздел; при модуле городов он стоит в ряду
+    шапки, поэтому лимит «шапка + не больше девяти разделов» не тронут."""
     _roles_ready(tmp_path)
     _enable_cities()
     from handlers.settings.admin_core import admin_keyboard_for
 
     flat = _flat_callback_data(asyncio.run(admin_keyboard_for(ADMIN_ID)))
     assert flat[0] == "admin_city_switch"
-    assert flat[1:] == [f"admin_sec:{token}" for token, _label, _rows in sec.SECTIONS
+    assert flat[1] == "ready_list"
+    assert flat[2:] == [f"admin_sec:{token}" for token, _label, _rows in sec.SECTIONS
                         if token != "amb"]
 
 
@@ -871,7 +876,9 @@ def test_cancel_returns_to_the_screen_it_came_from(tmp_path):
     cb_empty = FakeCallback("settings_cancel")
     asyncio.run(st.cancel_edit_setting_callback(cb_empty, FakeState()))
     flat = _flat_callback_data(cb_empty.message.markup)
-    assert flat and all(cd.startswith("admin_sec:") for cd in flat), flat
+    # 28.10/готовность: первый ряд ready_list — не раздел.
+    assert flat and flat[0] == "ready_list", flat
+    assert all(cd.startswith("admin_sec:") for cd in flat[1:]), flat
 
 
 def test_photo_and_file_return_to_event_group(tmp_path):
