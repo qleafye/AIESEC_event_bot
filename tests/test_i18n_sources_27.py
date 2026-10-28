@@ -156,7 +156,9 @@ def test_corpus_empty_db_does_not_crash_and_is_in_expected_range(tmp_path):
     # 10.10: подписи кнопок фоновых сообщений стали настройками (дефолты с эмодзи) — 843,
     # потолок 860.
     # 14.10: три текста развилки «тест / сразу к записи» — 861, потолок 880.
-    assert 150 <= len(result) <= 880, len(result)
+    # 28.10: 18 текстов брони в магазине баллов (shop_*: «Взять», «Мои брони», уведомления со
+    # стойки) — 884, потолок 920.
+    assert 150 <= len(result) <= 920, len(result)
 
     texts = [text for _origin, text in result]
     assert len(texts) == len(set(texts)), "дедупликация по strip()-нутому тексту не сработала"

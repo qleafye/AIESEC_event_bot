@@ -137,6 +137,7 @@ HTML_SETTINGS = {
     "payment_option_picker_header_text", "payment_details_template_text",
     "payment_pay_later_text", "payment_pay_later_menu_hint_text",
     "payment_receipt_received_text",
+    "shop_reserved_text", "shop_my_reservations_header_text",  # бронь в магазине: сообщения с parse_mode=HTML
     "leaderboard_header_text", "leaderboard_rank_line_text",
     "balance_history_header_text", "referral_list_header_text",
     "game_wizard_preview_title",  # Phase 16 (16-03): заголовок превью финального шага визарда

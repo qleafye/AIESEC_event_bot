@@ -300,3 +300,152 @@ def test_scan_reservation_qr_issued_cancelled_unknown(tmp_path, monkeypatch):
     body = _scan(client, _run(shop_qr.reservation_payload({"code": "Ю-1111", "token": "nope"})))
     assert body["status"] == "not_found" and "Выдать бронь по коду" in body["reason_text"]
     assert sent == []
+
+
+# ── делегат: «Взять», «Мои брони», отмена ─────────────────────────────────────────────
+
+from types import SimpleNamespace  # noqa: E402
+from unittest.mock import AsyncMock  # noqa: E402
+
+
+def _state():
+    store = {}
+
+    async def get_data():
+        return dict(store)
+
+    async def update_data(**kw):
+        store.update(kw)
+
+    return store, SimpleNamespace(get_data=get_data, update_data=update_data, set_state=AsyncMock())
+
+
+def _cb(data, uid=UID):
+    msg = SimpleNamespace(edit_text=AsyncMock(), answer=AsyncMock(), answer_photo=AsyncMock(), chat=None)
+    return SimpleNamespace(data=data, from_user=SimpleNamespace(id=uid), message=msg, answer=AsyncMock(),
+                           bot=SimpleNamespace(send_message=AsyncMock()))
+
+
+def _datas(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def _shown(cb):
+    args, kw = cb.message.edit_text.call_args
+    return args[0], kw["reply_markup"]
+
+
+def _alert(cb):
+    args, kw = cb.answer.call_args
+    return args[0] if args else ""
+
+
+def test_showcase_without_reserve_is_unchanged(tmp_path):
+    from handlers.game import shop_delegate
+
+    _env(tmp_path, on=False)
+    _run(shop_db.add_item("Шоппер", 150, 3, None))
+    _run(shop_db.set_open(True))
+    cb = _cb("shopv")
+    _run(shop_delegate.shop_showcase(cb))
+    text, kb = _shown(cb)
+    assert _datas(kb) == ["gbal_back"] and "покажи свой QR" in text
+
+
+def test_showcase_take_buttons_only_for_affordable(tmp_path):
+    from handlers.game import shop_delegate
+
+    _env(tmp_path)
+    ok = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    pricey = _run(shop_db.add_item("Ужин", 600, None, None))
+    gone = _run(shop_db.add_item("Стикер", 10, 0, None))
+    cb = _cb("shopv")
+    _run(shop_delegate.shop_showcase(cb))
+    text, kb = _shown(cb)
+    datas = _datas(kb)
+    assert f"shopv_take:{ok}" in datas and f"shopv_take:{pricey}" not in datas and f"shopv_take:{gone}" not in datas
+    assert "Нажми «Взять»" in text
+
+
+def test_take_confirm_and_double_tap_reserves_once(tmp_path):
+    from handlers.game import shop_delegate
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    store, state = _state()
+    cb = _cb(f"shopv_take:{item}")
+    _run(shop_delegate.shop_take(cb, state))
+    text, kb = _shown(cb)
+    assert "Списать 150 баллов" in text and "Останется 50" in text
+    nonce = store["shopv_nonce"]
+    assert f"shopv_go:{nonce}" in _datas(kb)
+    a, b = _cb(f"shopv_go:{nonce}"), _cb(f"shopv_go:{nonce}")
+
+    async def both():
+        await asyncio.gather(shop_delegate.shop_take_go(a, state), shop_delegate.shop_take_go(b, state))
+
+    _run(both())
+    assert _run(db.get_balance(UID)) == 50
+    assert len(_run(shop_db.list_user_reservations(UID))) == 1
+    winner = a if a.message.edit_text.called else b
+    text, kb = _shown(winner)
+    assert re.search(r"Ю-\d{4}", text) and "shopv_my" in _datas(kb)
+    winner.message.answer_photo.assert_called_once()
+    loser = b if winner is a else a
+    assert "уже выдана или отменена" in _alert(loser)
+
+
+def test_my_reservations_button_survives_hidden_showcase(tmp_path):
+    from aiogram.types import InlineKeyboardMarkup
+
+    from handlers.game import shop_delegate
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    _run(shop_db.reserve(item, UID))
+    _run(shop_db.set_open(False))
+    kb = _run(shop_delegate.with_shop_button(InlineKeyboardMarkup(inline_keyboard=[]), UID))
+    assert _datas(kb) == ["shopv_my"]
+    kb = _run(shop_delegate.with_shop_button(InlineKeyboardMarkup(inline_keyboard=[]), UID2))
+    assert _datas(kb) == []
+
+
+def test_my_reservations_screen_and_cancel(tmp_path):
+    from handlers.game import shop_delegate
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    res = _run(shop_db.reserve(item, UID))
+    cb = _cb("shopv_my")
+    _run(shop_delegate.shop_my(cb))
+    text, kb = _shown(cb)
+    assert res["code"] in text and f"shopv_qr:{res['id']}" in _datas(kb) and f"shopv_cancel:{res['id']}" in _datas(kb)
+    cb = _cb(f"shopv_qr:{res['id']}")
+    _run(shop_delegate.shop_my_qr(cb))
+    cb.message.answer_photo.assert_called_once()
+    # чужая бронь — ни QR, ни отмены
+    for handler, data in ((shop_delegate.shop_my_qr, "shopv_qr"), (shop_delegate.shop_cancel, "shopv_cancel"),
+                          (shop_delegate.shop_cancel_go, "shopv_cgo")):
+        cb = _cb(f"{data}:{res['id']}", uid=UID2)
+        _run(handler(cb))
+        assert "уже выдана или отменена" in _alert(cb)
+        assert not cb.message.answer_photo.called and not cb.message.edit_text.called
+    assert _run(db.get_balance(UID)) == 50
+    cb = _cb(f"shopv_cancel:{res['id']}")
+    _run(shop_delegate.shop_cancel(cb))
+    text, kb = _shown(cb)
+    assert "Вернём 150 баллов" in text and f"shopv_cgo:{res['id']}" in _datas(kb)
+    cb = _cb(f"shopv_cgo:{res['id']}")
+    _run(shop_delegate.shop_cancel_go(cb))
+    text, _ = _shown(cb)
+    assert "отменена" in text and _run(db.get_balance(UID)) == 200
+    cb = _cb(f"shopv_cgo:{res['id']}")
+    _run(shop_delegate.shop_cancel_go(cb))
+    assert "уже выдана или отменена" in _alert(cb)
+
+
+def test_delegate_callbacks_are_not_admin():
+    from handlers.access.admin_caps import required_capability
+
+    for data in ("shopv_take:1", "shopv_go:ab", "shopv_my", "shopv_qr:1", "shopv_cancel:1", "shopv_cgo:1"):
+        assert required_capability(callback_data=data) is None, data
