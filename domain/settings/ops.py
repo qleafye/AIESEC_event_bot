@@ -1123,6 +1123,8 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "requisites": "Сбербанк, 2202 2000 0000 0000, Иван И.",
     "amount": "3500",
     "option": "Полная форма",
+    # Отказ резюме не того формата: список принимаемых форматов (reg_engine.resume_formats_label).
+    "formats": "PDF, DOCX",
     "penalties": "⚠️ Штрафы за отмену:\n• до 10.10.2026 — остаток 1000 ₽\n\n",
     "label": "Университет",
     "display": "МГУ",
