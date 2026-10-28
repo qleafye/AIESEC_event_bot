@@ -259,6 +259,8 @@ EXPECTED_ROUTES = {
     "#/scanner": "screens/scanner.js",
     # D-29: делегатский экран «📅 Программа».
     "#/program": "screens/program.js",
+    # Магазин баллов: делегатский экран «🛍 Магазин».
+    "#/shop": "screens/shop.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -291,7 +293,8 @@ def test_route_table_matches_phase_plan_exactly():
     # настроек открывает саму настройку, не начало раздела.
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
-    assert len(routes) == 24
+    # Магазин баллов: +1 маршрут "#/shop" (24 -> 25).
+    assert len(routes) == 25
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -421,6 +424,7 @@ EXPECTED_NAV = [
     {"hash": "#/tasks", "section": "tasks", "delegate": True},
     {"hash": "#/coins", "section": "coins", "delegate": True},
     {"hash": "#/leaderboard", "section": "leaderboard", "delegate": True},
+    {"hash": "#/shop", "section": "shop", "delegate": True},
     {"hash": "#/profile", "section": "profile", "delegate": True},
     {"hash": "#/form", "section": "form", "delegate": True},
     # Quick 260906-8uq (FAQ-05): делегатский раздел — рядом с form.
