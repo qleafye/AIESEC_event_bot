@@ -998,6 +998,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "admin_coins_transfer": "moderate_game",
     "cointr_*": "moderate_game",
     "state:CoinsTransfer:*": "moderate_game",
+    # Магазин баллов: витрина, стойка выдачи, рейтинг (handlers/game/admin_shop.py).
+    "admin_shop": "moderate_game", "shp_*": "moderate_game", "cmd:shop": "moderate_game",
+    "state:ShopAdmin:*": "moderate_game",
 
     # Phase 32 (32-10, D-06/D-09/D-10/D-11/D-13): экран «🌊 Волны» — список/создание/карточка/
     # правка/копия/активация/удаление (handlers/game/admin_game_waves.py). WARNING: та же ловушка

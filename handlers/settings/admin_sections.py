@@ -199,6 +199,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("game", "🎮 Геймификация", [
         ("op", "admin_game_tasks"),
         ("op", "admin_game_review"),
+        ("op", "admin_shop"),
         ("op", "admin_coins_manual"),
         ("op", "admin_coins_journal"),
         ("op", "admin_coins_transfer"),
