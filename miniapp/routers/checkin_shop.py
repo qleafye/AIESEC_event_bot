@@ -23,12 +23,17 @@ logger = logging.getLogger(__name__)
 
 SHOP_POINT = "shop"
 SHOP_CAP = "moderate_game"
+# Суперадмину точка видна и на входе: выбрав её по ошибке, волонтёр получал зелёную плашку на
+# любого делегата (даже неодобренного) и «пропускал» людей без отметки входа.
+NOT_ENTRY_NOTE = "🛍 Точка магазина: вход здесь не отмечается. На входе выберите «Вход»."
+NOT_ENTRY_HINT = "Вход не отмечен — это точка магазина."
 
 
 async def point_entry(caps) -> dict | None:
     if SHOP_CAP not in caps or not await shop_db.list_items(active_only=True):
         return None
-    return {"point": SHOP_POINT, "label": "🛍 Магазин", "live": None, "count": None, "capacity": None}
+    return {"point": SHOP_POINT, "label": "🛍 Магазин", "live": None, "count": None, "capacity": None,
+            "note": NOT_ENTRY_NOTE}
 
 
 async def scan(cfg, staff_id: int, caps, *, token: str | None = None, user: dict | None = None) -> dict:
@@ -43,7 +48,8 @@ async def scan(cfg, staff_id: int, caps, *, token: str | None = None, user: dict
     tid = int(user["telegram_id"])
     text, rows = await shop_card.card(tid)
     balance = await get_balance(tid)
-    base = {"full_name": user.get("full_name"), "city": user.get("event_city"), "telegram_id": tid}
+    base = {"full_name": user.get("full_name"), "city": user.get("event_city"), "telegram_id": tid,
+            "hint": NOT_ENTRY_HINT}
     try:
         await telegram_api.send_message(cfg, staff_id, text, reply_markup=shop_card.reply_markup(rows), parse_mode="HTML")
     except Exception as e:
