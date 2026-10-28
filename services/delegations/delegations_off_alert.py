@@ -5,8 +5,9 @@
 автоотказ. Теперь карточка формы показывает состояние делегаций, а менеджерам заявок через
 сутки «полувключённого» состояния приходит одно предупреждение.
 
-«Относится к делегациям» — форма выбрана как форма делегаций или среди её вопросов есть
-вопрос про вуз. «Полувключена» — форма активна, относится к делегациям, а делегации не
+«Относится к делегациям» — назначение формы «🏫 Делегации вузов» (`ext_forms_purpose.purpose_of`;
+у форм, подключённых до назначений, — прежнее правило: форма выбрана как форма делегаций или
+среди её вопросов есть вопрос про вуз). «Полувключена» — форма активна, относится к делегациям, а делегации не
 включены ни для какой формы. Предупреждение: одно сообщение на все созревшие формы, глобально
 не чаще раза в сутки, по одной форме — однократно (до выхода из состояния), не в тихие часы,
 тумблер `delegation_off_alert`.
@@ -22,6 +23,7 @@ from domain.settings.schema import get_setting_typed
 from handlers.access.admin_caps import notify_by_capability
 from services.comms.quiet_hours import is_quiet, window_for_city
 from services.delegations import delegations as dlg
+from services.ext_forms.ext_forms_purpose import purpose_of
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
@@ -48,16 +50,10 @@ async def _context() -> dict:
     }
 
 
-async def _has_university_question(form_id: int) -> bool:
-    cols = await ef.list_columns(form_id)
-    guess = dlg.guess_delegation_questions([(c["qkey"], c.get("label") or "") for c in cols])
-    return guess.get("university") is not None
-
-
 async def _state(form: dict, ctx: dict, now: datetime) -> dict:
     fid = form["id"]
     dfid, armed = ctx["dfid"], ctx["armed"]
-    relevant = (dfid is not None and fid == dfid) or await _has_university_question(fid)
+    relevant = await purpose_of(form) == "delegations"
     armed_here = armed and dfid == fid
     armed_other_title = None
     if armed and dfid != fid:
