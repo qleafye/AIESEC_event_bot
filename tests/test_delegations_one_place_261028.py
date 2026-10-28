@@ -63,11 +63,8 @@ def _state(fid) -> dict:
     return _run(A.form_delegation_state(_get(fid)))
 
 
-_SEND: dict = {}
-
-
 def _alert():
-    return _run(A.alert_off_delegations(object(), _SEND["fn"]))
+    return _run(A.alert_off_delegations(object()))
 
 
 def _patch_send(monkeypatch, *, quiet=False, fail=False):
@@ -82,7 +79,7 @@ def _patch_send(monkeypatch, *, quiet=False, fail=False):
     async def fake_window(city):
         return (None, None)
 
-    _SEND["fn"] = fake_notify
+    monkeypatch.setattr(A, "_sender", fake_notify)
     monkeypatch.setattr(A, "window_for_city", fake_window)
     monkeypatch.setattr(A, "is_quiet", lambda now, s, e: quiet)
     return calls
@@ -269,7 +266,24 @@ def test_alert_send_failure_retries_later(tmp_path, monkeypatch):
 
 def test_alert_runs_inside_ext_forms_notify_job():
     src = inspect.getsource(sched.ext_forms_notify_job)
-    assert "alert_off_delegations(_bot, notify_by_capability)" in src
+    assert "alert_off_delegations(_bot)" in src
+    assert "notify_by_capability" not in src
+
+
+def test_sender_registered_by_handlers_layer():
+    from handlers.access.admin_caps import notify_by_capability
+    import handlers.delegations.admin_delegations  # noqa: F401 — регистрирует отправителя
+    assert A._sender is notify_by_capability
+
+
+def test_alert_without_sender_sends_nothing(tmp_path, monkeypatch):
+    _db(tmp_path)
+    _patch_send(monkeypatch)
+    monkeypatch.setattr(A, "_sender", None)
+    fid = _form()
+    _run(ef.set_form_dlg_off(fid, _ago(30), None))
+    assert _alert() == 0
+    assert _get(fid)["dlg_off_alerted_at"] is None
 
 
 # ── карточка внешней формы ──

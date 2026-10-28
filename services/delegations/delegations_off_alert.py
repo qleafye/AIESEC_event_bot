@@ -12,8 +12,9 @@
 не чаще раза в сутки, по одной форме — однократно (до выхода из состояния), не в тихие часы,
 тумблер `delegation_off_alert`.
 
-Рассылка по праву (`notify_by_capability` из handlers/access/admin_caps.py) передаётся
-вызывающим (джоба в services/scheduler.py): нижний ярус не импортирует handlers.
+Рассылку по праву (`notify_by_capability` из handlers/access/admin_caps.py) регистрирует слой
+хендлеров через `set_sender` на импорте handlers/delegations/admin_delegations.py: нижний ярус
+не импортирует handlers. Отправитель не зарегистрирован — предупреждение не уходит.
 """
 from __future__ import annotations
 
@@ -32,6 +33,15 @@ logger = logging.getLogger(__name__)
 
 _FMT = "%Y-%m-%d %H:%M:%S"
 _DAY = timedelta(hours=24)
+
+# notify_by_capability(bot, cap, text, *, parse_mode) — ставит слой хендлеров.
+_sender = None
+
+
+def set_sender(fn) -> None:
+    """Регистрирует рассылку держателям права (вызывается из слоя хендлеров)."""
+    global _sender
+    _sender = fn
 
 
 def _parse(ts) -> datetime | None:
@@ -96,9 +106,8 @@ def _alert_text(titles: list[str]) -> str:
     )
 
 
-async def alert_off_delegations(bot, notify_by_capability) -> int:
-    """Один проход фоновой проверки; возвращает число отправленных сообщений (0 или 1).
-    `notify_by_capability(bot, cap, text, *, parse_mode)` — рассылка держателям права."""
+async def alert_off_delegations(bot) -> int:
+    """Один проход фоновой проверки; возвращает число отправленных сообщений (0 или 1)."""
     ctx = await _context()
     if not ctx["alert_on"]:
         return 0
@@ -131,9 +140,12 @@ async def alert_off_delegations(bot, notify_by_capability) -> int:
         return 0
     if await _in_quiet_hours(now):
         return 0
+    if _sender is None:
+        logger.debug("delegations off alert: отправитель не зарегистрирован — пропуск")
+        return 0
     titles = [f.get("title") or "без названия" for f in ripe]
     try:
-        await notify_by_capability(bot, "moderate_reg", _alert_text(titles), parse_mode="HTML")
+        await _sender(bot, "moderate_reg", _alert_text(titles), parse_mode="HTML")
     except Exception as e:
         logger.error(f"delegations off alert: предупреждение не отправлено: {e}")
         return 0
