@@ -2640,6 +2640,9 @@ async def init_db():
         # Сертификаты после форума: шаблоны, списки волонтёров/амбассадоров, выдачи.
         from database import certificates_db
         await certificates_db.ensure_schema(db)
+        # Магазин баллов: товары, выдачи на стойке, открыта ли витрина.
+        from database import shop_db
+        await shop_db.ensure_schema(db)
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)

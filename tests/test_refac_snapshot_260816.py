@@ -633,6 +633,10 @@ def _build_snapshot_lines():
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 4 вставки, 0 удалений, 0 реордеров.
 # admin.router: certadm_* (handlers/forum/admin_certificates.py, хвост admin.py) — 4 message + 9 callback_query;
 # user_actions.router: /certificate, ввод имени, cert_get/cert_edit/cert_ok — ПЕРЕД reg_handoff_idle_fallback.
+# Дрифт-нота (28.10, магазин баллов): +25 хендлеров, чистые вставки (1343 -> 1368), пересчитано
+# RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 3 вставки, 0 удалений, 0 реордеров.
+# admin.router: /shop + ввод (4 message) и shp_*/admin_shop (20 callback_query) из handlers/game/admin_shop.py, хвост admin.py;
+# user_actions.router: витрина shopv (handlers/game/shop_delegate.py) — ПЕРЕД reg_handoff_idle_fallback.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -878,6 +882,10 @@ admin|message|certadm_open_input|state:CertAdmin:*
 admin|message|certadm_tpl_file|state:CertAdmin:*
 admin|message|certadm_tpl_not_file|state:CertAdmin:*
 admin|message|certadm_ppl_input|state:CertAdmin:*
+admin|message|shop_command|cmd:shop
+admin|message|shop_find_input|state:ShopAdmin:*
+admin|message|shop_new_input|state:ShopAdmin:*
+admin|message|shop_edit_input|state:ShopAdmin:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1784,6 +1792,26 @@ admin|callback_query|certadm_ppl|certadm_ppl:*
 admin|callback_query|certadm_clr|certadm_clr:*
 admin|callback_query|certadm_clrgo|certadm_clrgo:*
 admin|callback_query|certadm_preview|certadm_preview
+admin|callback_query|shop_home|admin_shop
+admin|callback_query|shop_home_edit|shp_home
+admin|callback_query|shop_toggle_open|shp_open
+admin|callback_query|shop_sell_start|shp_sell
+admin|callback_query|shop_card|shp_u:*
+admin|callback_query|shop_pick|shp_p:*
+admin|callback_query|shop_go|shp_go:*
+admin|callback_query|shop_undo|shp_undo:*
+admin|callback_query|shop_undo_go|shp_undogo:*
+admin|callback_query|shop_items|shp_items
+admin|callback_query|shop_item|shp_it:*
+admin|callback_query|shop_item_toggle|shp_act:*
+admin|callback_query|shop_item_delete|shp_del:*
+admin|callback_query|shop_item_delete_go|shp_delgo:*
+admin|callback_query|shop_new|shp_new
+admin|callback_query|shop_edit|shp_ed:*
+admin|callback_query|shop_top|shp_top:*
+admin|callback_query|shop_top_csv|shp_topcsv
+admin|callback_query|shop_sales|shp_sales:*
+admin|callback_query|shop_sales_csv|shp_salescsv
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -1963,6 +1991,7 @@ user_actions|callback_query|sv_table|sv:t:*
 user_actions|callback_query|certificate_get|cert_get
 user_actions|callback_query|certificate_edit|cert_edit
 user_actions|callback_query|certificate_send|cert_ok
+user_actions|callback_query|shop_showcase|shopv
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2602,7 +2631,8 @@ def test_snapshot_total_handler_count_is_292():
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
     # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
-    assert len(GOLDEN_SNAPSHOT) == 1343
+    assert len(GOLDEN_SNAPSHOT) == 1368
+    # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
     # (callback_query toggle_reg_form_v2/chips/lookup_search/edu_card/repeatable/limit_counter/

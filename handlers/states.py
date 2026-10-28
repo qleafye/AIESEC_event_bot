@@ -701,3 +701,10 @@ class CertAdmin(StatesGroup):
     open_at = State()
     template = State()
     people = State()
+
+
+class ShopAdmin(StatesGroup):
+    """«🛍 Магазин баллов» (handlers/game/admin_shop.py): поиск делегата на стойке, товар."""
+    find = State()
+    new_item = State()
+    edit_item = State()
