@@ -637,6 +637,10 @@ def _build_snapshot_lines():
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 3 вставки, 0 удалений, 0 реордеров.
 # admin.router: /shop + ввод (4 message) и shp_*/admin_shop (20 callback_query) из handlers/game/admin_shop.py, хвост admin.py;
 # user_actions.router: витрина shopv (handlers/game/shop_delegate.py) — ПЕРЕД reg_handoff_idle_fallback.
+# Дрифт-нота (28.10, готовность к форуму): +5 хендлеров, чистые вставки (1368 -> 1373), пересчитано
+# RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 1 вставка, 0 удалений, 0 реордеров
+# (pure insert, zero reorders). admin.router: ready_list/ready_city/ready_skip/ready_unskip/ready_remind_toggle
+# (handlers/settings/admin_readiness.py) — хвост цепочки admin_sections.py, сразу после admin_program.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1077,6 +1081,11 @@ admin|callback_query|prog_copy_pick_day|prog_copysrc:*
 admin|callback_query|prog_copy_confirm|prog_copyday:*
 admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|prog_wretime|prog_wretime
+admin|callback_query|ready_list|ready_list
+admin|callback_query|ready_city|ready_city:*
+admin|callback_query|ready_skip|ready_skip:*
+admin|callback_query|ready_unskip|ready_unskip:*
+admin|callback_query|ready_remind_toggle|ready_remind_toggle
 admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
@@ -2631,7 +2640,8 @@ def test_snapshot_total_handler_count_is_292():
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
     # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
-    assert len(GOLDEN_SNAPSHOT) == 1368
+    assert len(GOLDEN_SNAPSHOT) == 1373
+    # 28.10 (готовность к форуму): +5 хендлеров ready_*, чистая вставка (1368 -> 1373).
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
