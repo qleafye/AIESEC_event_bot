@@ -66,7 +66,7 @@ OLD_LITERALS: dict[str, str] = {
     "faq_back_button_text": "← К вопросам",
     "ask_question_text_only_text": "Пожалуйста, отправь вопрос текстом.",
     "ask_question_send_failed_text": "Не удалось отправить вопрос, попробуйте позже.",
-    "ask_question_no_admins_text": "Администраторы не настроены.",
+    "ask_question_no_recipients_text": "Администраторы не настроены.",
     "important_today_empty_text": "Сегодня важных рассылок не было.",
     "important_today_no_text_text": "[рассылка без текста]",
     "important_today_header_text": "❗ Важные рассылки за сегодня:",
