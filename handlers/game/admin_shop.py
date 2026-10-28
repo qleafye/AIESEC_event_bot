@@ -59,11 +59,9 @@ async def shop_title() -> str:
 
 
 def _who(user: dict | None, tid: int) -> str:
-    if not user:
-        return f"id {tid}"
-    name = html.escape(user.get("full_name") or "—")
-    nick = (user.get("username") or "").lstrip("@")
-    return f"{name}" + (f" · @{html.escape(nick)}" if nick else "")
+    from services.game.shop_card import who
+
+    return who(user, tid)
 
 
 def _stock(item: dict) -> str:
@@ -189,23 +187,11 @@ async def shop_find_input(message: types.Message, state: FSMContext):
 
 
 async def card_text_kb(tid: int, state: FSMContext) -> tuple[str, InlineKeyboardMarkup]:
-    user = await get_user(tid)
-    balance = await get_balance(tid)
-    lines = [f"👤 <b>{_who(user, tid)}</b>", f"На счету: <b>{balance}</b> {points_word(balance)}", ""]
-    rows: list[list[tuple[str, str]]] = []
-    for item in await shop_db.list_items(active_only=True):
-        mark = ""
-        if item["stock_left"] is not None and item["stock_left"] <= 0:
-            mark = "✖ "
-        elif item["price"] > balance:
-            mark = "✖ "
-        elif item["per_person"] and await shop_db.count_bought(tid, item["id"]) >= item["per_person"]:
-            mark = "✖ "
-        rows.append([(f"{mark}{item['title']} · {item['price']}"[:60], f"shp_p:{tid}:{item['id']}")])
-    lines.append("Что выдаём? ✖ — сейчас нельзя: нажмите, бот скажет почему.")
-    rows.append([("🔎 Другой делегат", "shp_sell"), ("◀️ В магазин", "shp_home")])
+    from services.game.shop_card import card
+
     await state.update_data(shp_nonce=None)
-    return "\n".join(lines), _kb(rows)
+    text, rows = await card(tid)
+    return text, _kb(rows)
 
 
 @router.callback_query(F.data.startswith("shp_u:"))

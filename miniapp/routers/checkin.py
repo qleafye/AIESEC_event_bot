@@ -461,6 +461,9 @@ async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
         }
 
     token = parsed.get("token")
+    if point == "shop":  # магазин баллов: не отметка, карточка делегата волонтёру в чат
+        from miniapp.routers import checkin_shop
+        return await checkin_shop.scan(request.app.state.cfg, p.telegram_id, p.caps, token=token)
     user, denial_code = await resolve_scanned_user(token, point=point, source="miniapp")
     denial_code = refine_denial(denial_code, user)
     if denial_code is not None:
@@ -516,6 +519,9 @@ async def _manual(body: ManualBody, request: Request, p: Principal) -> dict:
     bound = await _bound_city(request, p)
     if point == checkin_training.TRAINING_POINT:
         return await _training_preview(p, bound, user=await get_user(body.telegram_id))
+    if point == "shop":
+        from miniapp.routers import checkin_shop
+        return await checkin_shop.scan(request.app.state.cfg, p.telegram_id, p.caps, user=await get_user(body.telegram_id))
     point_denial = await _point_city_denial(bound, point)
     if point_denial is not None:
         await _log_denial(p, bound, point_denial["status"], point=point, source="manual")
@@ -702,6 +708,9 @@ async def checkin_points(
     # Бэклог чек-ина №7 (D-28 «Вход всегда первым»): «🧪 Тренировка» — сразу за входом.
     lang, tr_map = await i18n.context(p.telegram_id)
     points.append(await checkin_training.training_point_entry(lang, tr_map))
+    from miniapp.routers import checkin_shop  # «🛍 Магазин» — только с правом магазина
+    if (shop := await checkin_shop.point_entry(p.caps)) is not None:
+        points.append(shop)
     if resolved is not None:
         for sp in await checkin_session_points(resolved):
             points.append({**sp, "count": await count_checkins_by_point(sp["point"])})

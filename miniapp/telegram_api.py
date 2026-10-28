@@ -119,10 +119,13 @@ async def send_document(cfg, chat_id: int, content: bytes, filename: str, conten
     )
 
 
-async def send_message(cfg, chat_id: int, text: str, reply_markup: dict | None = None) -> dict:
+async def send_message(cfg, chat_id: int, text: str, reply_markup: dict | None = None,
+                       parse_mode: str | None = None) -> dict:
     body: dict = {"chat_id": chat_id, "text": text}
     if reply_markup:
         body["reply_markup"] = reply_markup
+    if parse_mode:
+        body["parse_mode"] = parse_mode
     return await _call(cfg, "sendMessage", json_body=body)
 
 
