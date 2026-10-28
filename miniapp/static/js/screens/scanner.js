@@ -61,6 +61,7 @@ const STATUS_TONE = {
   onsite_off: "error",
   rejected: "error",
   undone: "warn",
+  shop: "success", // «🛍 Магазин»: делегат найден, карточка ушла в чат — плашка держится до «дальше»
   undo_refused: "error",
   // вход не в день форума делегата: ничего не записано, волонтёру — проверить (проба накануне,
   // делегат другого города у стойки без привязки)
@@ -76,6 +77,7 @@ const STATUS_HEADING = {
   onsite_off: "Не пропущен",
   rejected: "Не пропущен",
   not_forum_day: "Не отмечен",
+  shop: "Карточка в чате с ботом",
 };
 // Запасные подписи регистрации на месте — только если /checkin/net-texts не дошёл.
 const ONSITE_FALLBACK = {
