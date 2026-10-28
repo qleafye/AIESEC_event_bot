@@ -1135,10 +1135,8 @@ async def send_payment_reminder(user_id: int):
                 id=f"pay_reminder_{user_id}_quiet_hours_shift", replace_existing=True,
             )
             return
-        text = await get_setting("payment_reminder_text") or (
-            "⏰ Напоминание об оплате участия!\n\n"
-            "Срок оплаты истекает скоро. Загрузи чек оплаты через бота."
-        )
+        from domain.settings.ui_text_fields import ui_text  # пусто -> дефолт реестра
+        text = await ui_text("payment_reminder_text")
         await _safe_send(lambda cid: _bot.send_message(cid, text), user_id)
     except Exception as e:
         logger.error(f"send_payment_reminder({user_id}) failed: {e}")
@@ -1191,11 +1189,8 @@ async def sweep_payment_overdue():
         # status flip above always runs (feeds the «неоплатившие» broadcast segment); only
         # the ping respects the auto-reminders toggle.
         if overdue_ids and await get_setting_typed("payment_reminders_enabled") == "on":  # REG-02: registry-backed
-            text = await get_setting("payment_overdue_text") or (
-                "⚠️ Срок оплаты участия истёк.\n\n"
-                "Если ты ещё планируешь участвовать — загрузи чек через бота "
-                "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
-            )
+            from domain.settings.ui_text_fields import ui_text  # пусто -> дефолт реестра
+            text = await ui_text("payment_overdue_text")
             from services.comms import quiet_hours
             for tid in overdue_ids:
                 await quiet_hours.send_or_queue_text(
