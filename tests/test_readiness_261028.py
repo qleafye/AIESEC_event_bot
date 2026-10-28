@@ -376,3 +376,117 @@ def test_ready_callbacks_need_settings():
     import handlers.settings.admin_readiness  # noqa: F401
     for data in ("ready_list", "ready_city:msk", "ready_skip:shop", "ready_unskip:shop", "ready_remind_toggle"):
         assert required_capability(callback_data=data) == "settings", data
+
+
+# ══ напоминание ════════════════════════════════════════════════════════════════════════════
+
+class FakeBot:
+    def __init__(self, fail_for=()):
+        self.sent = []
+        self.fail_for = set(fail_for)
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None, **kw):
+        if chat_id in self.fail_for:
+            raise RuntimeError("chat not found")
+        self.sent.append((chat_id, text, reply_markup))
+
+
+def _bot(monkeypatch, **kw):
+    from services import scheduler as sched
+    bot = FakeBot(**kw)
+    monkeypatch.setattr(sched, "_bot", bot, raising=False)
+    return bot
+
+
+def _job():
+    return asyncio.run(rd.readiness_remind_job())
+
+
+def _shop_todo():
+    asyncio.run(shop_db.set_open(True))
+
+
+def test_reminder_sends_list_and_once_a_day(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    bot = _bot(monkeypatch)
+    _set("forum_date", _day(2))
+    _shop_todo()
+    assert _job() == 1
+    uid, text, kb = bot.sent[0]
+    assert uid == ADMIN_ID
+    assert "До форума 2 дн." in text
+    assert "Не настроено: 1" in text
+    assert "• 🛍 Магазин открыт, а товаров в нём нет" in text
+    assert _flat(kb) == ["ready_list"]
+    assert asyncio.run(db.get_setting("ready_reminded___")) == TODAY.isoformat()
+    assert _job() == 0  # второй раз за день — нет
+
+
+@pytest.mark.parametrize("offset,expected", [(5, 0), (0, 1), (-1, 0)])
+def test_reminder_window(tmp_path, monkeypatch, offset, expected):
+    _ready(tmp_path)
+    bot = _bot(monkeypatch)
+    _set("forum_date", _day(offset))
+    _shop_todo()
+    assert _job() == expected
+    if offset == 0:
+        assert "До форума сегодня" in bot.sent[0][1]
+
+
+def test_reminder_nothing_todo(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    bot = _bot(monkeypatch)
+    _set("forum_date", _day(1))
+    _shop_todo()
+    asyncio.run(rd.set_skipped("shop", None, True))
+    assert _job() == 0
+    assert bot.sent == []
+
+
+def test_reminder_switched_off(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _bot(monkeypatch)
+    _set("forum_date", _day(1))
+    _shop_todo()
+    _set("ready_remind_enabled", "off")
+    assert _job() == 0
+
+
+def test_reminder_per_city(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _cities_on()
+    bot = _bot(monkeypatch)
+    _set("forum_date__city__msk", _day(1))
+    assert _job() == 1  # у msk не задана дата закрытия регистрации
+    text, kb = bot.sent[0][1], bot.sent[0][2]
+    assert asyncio.run(cities.city_label("msk")) in text
+    assert "msk" not in text
+    assert _flat(kb) == ["ready_city:msk"]
+    assert asyncio.run(db.get_setting("ready_reminded__spb")) is None
+
+
+def test_reminder_broken_chat_does_not_block_others(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    config.ADMIN_IDS = [ADMIN_ID, OTHER_ADMIN]
+    bot = _bot(monkeypatch, fail_for={ADMIN_ID})
+    _set("forum_date", _day(1))
+    _shop_todo()
+    assert _job() == 1
+    assert [s[0] for s in bot.sent] == [OTHER_ADMIN]
+
+
+def test_reminder_no_forum_dates(tmp_path, monkeypatch):
+    _ready(tmp_path)
+    _cities_on()
+    bot = _bot(monkeypatch)
+    assert _job() == 0
+    assert bot.sent == []
+
+
+def test_init_scheduler_registers_readiness_job():
+    import inspect
+    from services import scheduler as sched
+    src = inspect.getsource(sched.init_scheduler)
+    assert "readiness_remind_job" in src
+    assert "_READY_JOB_ID" in src and rd.JOB_ID == "readiness_remind"
+    assert src.index("readiness_remind_job") < src.index("_scheduler.resume()")
