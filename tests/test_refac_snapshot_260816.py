@@ -89,6 +89,17 @@ message-хендлер `admin_reply_to_sos` в поток callback_query не п
 Дрифт-нота (2026-10-10, приёмка 09.10, свободный текст на сводке): +1 хендлер, чистая вставка —
 `process_confirm_other` (`handlers/reg/reg_flow.py`) сразу после `process_confirm_edit`: всё, кроме
 «Всё верно»/«Изменить», в состоянии сводки получает подсказку вместо тишины.
+
+Drift note (2026-10-28, делегации в одном месте): +1 хендлер `dlg_off_alert` (тумблер
+«🔔 Напоминать о выключенных делегациях» на экране «🏫 Делегации») вставлен после `dlg_game`;
+1368 -> 1369, re-captured by RUNNING `_build_snapshot_lines()`, pure insert, zero reorders.
+
+Drift note (2026-10-28, назначение внешней формы): +10 хендлеров — `extf_newp` (шаг «🎯 Для чего
+эта форма?» мастера подключения, handlers/ext_forms/admin_ext_forms_connect.py, после
+`extf_keys_ok`) и `extf_purpose`/`extf_purpose_set`/`extf_purpose_ok`/`extf_reg`/`extf_regq`/
+`extf_regqset`/`extf_regcity`/`extf_regcityset`/`extf_regappr` (новый шов
+handlers/ext_forms/admin_ext_forms_purpose.py, после хендлеров admin_ext_forms_push);
+1369 -> 1379, re-captured by RUNNING `_build_snapshot_lines()`, pure insert, zero reorders.
 """
 import asyncio
 import time
@@ -1639,10 +1650,20 @@ admin|callback_query|extf_gwarn_no|extf_gwarn_no
 admin|callback_query|extf_key|extf_key:u,extf_key:p
 admin|callback_query|extf_keyset|extf_keyset:*
 admin|callback_query|extf_keys_ok|extf_keys_ok
+admin|callback_query|extf_newp|extf_newp:*
 admin|callback_query|extf_import_start|extf_import:*
 admin|callback_query|extf_pkeys|extf_pkeys:*
 admin|callback_query|extf_pkey|extf_pkey:*
 admin|callback_query|extf_pkeyset|extf_pkeyset:*
+admin|callback_query|extf_purpose|extf_purpose:*
+admin|callback_query|extf_purpose_set|extf_purpose_set:*
+admin|callback_query|extf_purpose_ok|extf_purpose_ok:*
+admin|callback_query|extf_reg|extf_reg:*
+admin|callback_query|extf_regq|extf_regq:*
+admin|callback_query|extf_regqset|extf_regqset:*
+admin|callback_query|extf_regcity|extf_regcity:*
+admin|callback_query|extf_regcityset|extf_regcityset:*
+admin|callback_query|extf_regappr|extf_regappr:*
 admin|callback_query|admin_delegations|admin_delegations
 admin|callback_query|dlg_univ|dlg_univ:*
 admin|callback_query|dlg_form_pick|dlg_form_pick
@@ -1653,6 +1674,7 @@ admin|callback_query|dlg_keyset|dlg_keyset:*
 admin|callback_query|dlg_keys_ok|dlg_keys_ok
 admin|callback_query|dlg_cancel|dlg_cancel
 admin|callback_query|dlg_game|dlg_game
+admin|callback_query|dlg_off_alert|dlg_off_alert
 admin|callback_query|dlg_cutoff|dlg_cutoff
 admin|callback_query|dlg_courses|dlg_courses
 admin|callback_query|dlg_course|dlg_course:*
@@ -2631,7 +2653,10 @@ def test_snapshot_total_handler_count_is_292():
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
     # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
-    assert len(GOLDEN_SNAPSHOT) == 1368
+    assert len(GOLDEN_SNAPSHOT) == 1379
+    # 28.10 (назначение внешней формы): +10 admin extf_newp и девять extf_purpose*/extf_reg* (шов
+    # admin_ext_forms_purpose.py), чистые вставки (1369 -> 1379).
+    # 28.10 (делегации в одном месте): +1 admin dlg_off_alert после dlg_game, чистая вставка (1368 -> 1369).
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

@@ -191,7 +191,12 @@ def test_keys_ok_creates_form_and_backfills(monkeypatch, _env):
         return 7
     monkeypatch.setattr(wiz, "backfill_form", backfill)
     res, ev = dispatch_callback("extf_keys_ok", ADMIN_ID, state=st)
+    # «✅ Верно» больше не создаёт форму — сначала шаг «🎯 Для чего эта форма?».
+    assert "Для чего эта форма" in ev.message.text
+    assert _run(xdb.get_form_by_external("yandex", FID)) is None
+    res, ev = dispatch_callback("extf_newp:a", ADMIN_ID, state=st)
     form = _run(xdb.get_form_by_external("yandex", FID))
+    assert form["purpose"] == "answers"
     assert form["connection_id"] == cid and form["secret"] and len(form["secret"]) >= 32
     assert (form["key_username_q"], form["key_phone_q"]) == ("1", "2")
     assert "подтягиваю старые ответы" in ev.message.text.lower()
@@ -290,7 +295,8 @@ def test_google_single_tab_goes_to_keys_and_creates(monkeypatch):
     async def sync(form):
         return 3
     monkeypatch.setattr(wiz.gg, "sync_google_form", sync)
-    res, ev = dispatch_callback("extf_keys_ok", ADMIN_ID, state=st)
+    dispatch_callback("extf_keys_ok", ADMIN_ID, state=st)
+    res, ev = dispatch_callback("extf_newp:a", ADMIN_ID, state=st)
     form = _run(xdb.get_form_by_external("google", "1AbC_xyz", 0))
     assert form["secret"] is None and form["gsheet_gid"] == 0
     assert "подтянуто ответов: 3" in ev.message.text
