@@ -32,15 +32,20 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 import domain.regform.engine as reg_engine
 from database import delegations_db as ddb
 from database import ext_forms_db as ef
+from handlers.access.admin_caps import has_capability, notify_by_capability
 from handlers.admin import router
 from handlers.states import DelegationEdit
 from domain.regform.moderation_card import EMPTY_SENTINEL
-from services.delegations import delegations
+from services.delegations import delegations, delegations_off_alert
 from services.infra.background import spawn
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
+
+# Предупреждение «делегации выключены» шлёт сервис, которому нельзя импортировать handlers:
+# рассылку по праву он получает отсюда.
+delegations_off_alert.set_sender(notify_by_capability)
 
 SCREEN = "admin_delegations"
 PAGE = 8
@@ -59,17 +64,17 @@ _REQUIRED_KEYS = ("fullname", "university", "course")
 
 _NO_FORM_TEXT = (
     "🏫 <b>Делегации вузов</b>\n\n"
-    "Форма делегаций не выбрана. Нажмите «📝 Выбрать форму» — список подключённых форм из "
-    "«📝 Внешние формы».\n\n"
-    "Сначала подключите Яндекс Форму делегаций в «📊 Данные → 📝 Внешние формы»."
+    "Форма делегаций не выбрана. Нажмите «📝 Выбрать форму», если форма уже подключена, или "
+    "«➕ Подключить форму» — откроется экран внешних форм."
 )
+_NO_CONNECT_RIGHT = "Подключить форму может менеджер с правом «⚙️ Настройки»."
+_NO_FORMS_SCREEN = "📝 Ни одна форма ещё не подключена — подключите Яндекс Форму делегаций."
 _FORM_GONE_TEXT = (
     "🏫 <b>Делегации вузов</b>\n\n"
     "Форма отключена или удалена — выберите другую."
 )
 _NO_FORMS_ALERT = (
-    "Ни одна форма ещё не подключена. Сначала подключите Яндекс Форму в "
-    "«📊 Данные → 📝 Внешние формы»."
+    "Ни одна форма ещё не подключена. Подключить её может менеджер с правом «⚙️ Настройки»."
 )
 _FORM_NOT_FOUND = "Форма не найдена — обновите список."
 _STALE_QUESTIONS = "Список вопросов устарел — откройте выбор ещё раз"
@@ -156,6 +161,18 @@ def _form_title(form: dict) -> str:
 
 async def _game_on() -> bool:
     return await get_setting_typed("delegation_game_enabled") == "on"
+
+
+async def _off_alert_on() -> bool:
+    return await get_setting_typed("delegation_off_alert") == "on"
+
+
+async def _connect_rows(target) -> list[list[InlineKeyboardButton]]:
+    """«➕ Подключить форму» ведёт в «📝 Внешние формы» (право `settings`) — без права кнопку
+    не показываем, чтобы не вести в «Раздел недоступен»."""
+    if await has_capability(_admin_id(target), "settings"):
+        return [[_btn("➕ Подключить форму", "admin_ext_forms")]]
+    return []
 
 
 async def _cutoff_label() -> str:
@@ -245,6 +262,8 @@ async def _settings_rows() -> list[list[InlineKeyboardButton]]:
     courses = ", ".join(await _not_ta_courses()) or "нет"
     return [
         [_btn(f"🎮 Геймификация для делегатов: {game}", "dlg_game")],
+        [_btn("🔔 Напоминать о выключенных делегациях: "
+              + ("✅" if await _off_alert_on() else "☐"), "dlg_off_alert")],
         [_btn(f"📅 Отсечка ЦА: {await _cutoff_label()}", "dlg_cutoff")],
         [_btn(f"🎓 Курсы не ЦА: {courses}", "dlg_courses")],
         [_btn("✏️ Тексты делегату", "dlg_text")],
@@ -261,8 +280,11 @@ async def render_screen(target, *, edit: bool = True) -> None:
         return
     if form is None:
         text = _NO_FORM_TEXT if fid is None else _FORM_GONE_TEXT
-        await _show(target, text, _kb([[_btn("📝 Выбрать форму", "dlg_form_pick")], [_back()]]),
-                    edit=edit)
+        connect = await _connect_rows(target)
+        if not connect:
+            text += "\n\n" + _NO_CONNECT_RIGHT
+        rows = [[_btn("📝 Выбрать форму", "dlg_form_pick")], *connect, [_back()]]
+        await _show(target, text, _kb(rows), edit=edit)
         return
     keys = await delegations.field_keys()
     c = await _counters(fid)
@@ -336,10 +358,16 @@ async def dlg_form_pick(callback: types.CallbackQuery):
     if await deny_locked(callback):
         return
     forms = await ef.list_forms()
+    connect = await _connect_rows(callback)
     if not forms:
-        await callback.answer(_NO_FORMS_ALERT, show_alert=True)
+        if not connect:
+            await callback.answer(_NO_FORMS_ALERT, show_alert=True)
+            return
+        await _show(callback, _NO_FORMS_SCREEN, _kb([*connect, [_to_screen()]]))
+        await callback.answer()
         return
     rows = [[_btn(_cut(f"📝 {_form_title(f)}"), f"dlg_form:{f['id']}")] for f in forms]
+    rows.extend(connect)
     rows.append([_to_screen()])
     await _show(callback, "📝 Какая форма — список делегаций вузов?", _kb(rows))
     await callback.answer()
@@ -550,6 +578,19 @@ async def dlg_game(callback: types.CallbackQuery):
     await set_setting_by_admin(_admin_id(callback), "delegation_game_enabled", new_val)
     await callback.answer("Геймификация для делегатов: "
                           + ("включена" if new_val == "on" else "выключена"))
+    await render_screen(callback)
+
+
+# тумблер напоминания «форма с вопросом про вуз подключена, а делегации выключены»
+
+@router.callback_query(F.data == "dlg_off_alert")
+async def dlg_off_alert(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
+    new_val = "off" if await _off_alert_on() else "on"
+    await set_setting_by_admin(_admin_id(callback), "delegation_off_alert", new_val)
+    await callback.answer("Напоминание о выключенных делегациях: "
+                          + ("включено" if new_val == "on" else "выключено"))
     await render_screen(callback)
 
 

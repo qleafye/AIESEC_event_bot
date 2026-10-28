@@ -1380,6 +1380,13 @@ async def ext_forms_notify_job():
         await alert_reauth(_bot)
     except Exception as e:
         logger.error(f"ext_forms_notify_job failed: {e}")
+    # Отдельным блоком: сбой уведомлений о новых ответах не должен глушить предупреждение
+    # о форме с вопросом про вуз при выключенных делегациях (и наоборот).
+    try:
+        from services.delegations.delegations_off_alert import alert_off_delegations
+        await alert_off_delegations(_bot)
+    except Exception as e:
+        logger.error(f"ext_forms_notify_job: alert_off_delegations failed: {e}")
 
 
 async def translation_drain_job():
