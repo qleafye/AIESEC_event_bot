@@ -2073,9 +2073,12 @@ async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command
         logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
 
     # Делегации вузов: человек из формы, нажавший /start раньше синка, — одобряем сразу,
-    # после funnel-лога и до гейтов подписки/предотбора. Вся логика — в services/delegations/delegations.py.
+    # после funnel-лога и до гейтов подписки/предотбора. Вся логика — в services/delegations/delegations.py; форма «Регистрация» — ext_forms_registration.
     from services.delegations.delegations import try_delegate_start
     if await try_delegate_start(message, state, bot):
+        return
+    from services.ext_forms.ext_forms_registration import try_registration_start
+    if await try_registration_start(message, state, bot):
         return
 
     # QW-02: observe-only subscription check — never blocks the user (D-04), never crashes /start (D-07).
