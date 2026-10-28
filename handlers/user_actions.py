@@ -330,7 +330,7 @@ async def _balance_screen(
         [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_top_button_text"), lang, tr_map), callback_data="gbal_top")],
     ])
     from handlers.game.shop_delegate import with_shop_button  # витрина магазина баллов, если открыта
-    return text, await with_shop_button(kb)
+    return text, await with_shop_button(kb, user_id, lang, tr_map)
 
 
 async def _balance_history_screen(
