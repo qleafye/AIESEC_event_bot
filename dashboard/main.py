@@ -47,6 +47,7 @@ from dashboard.config import DashboardConfig, load_config
 from dashboard.db import read_conn
 from dashboard.files import FILE_ID_RE, fetch_theme_asset, is_theme_asset
 from dashboard.notify import notify_access_request
+from dashboard.polls_block import polls_block
 from dashboard.registry import multi_mode
 from dashboard.timeutil import msk_now
 
@@ -620,6 +621,7 @@ def build_forum_context(
 
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
+    polls_enabled = flags.get("dashboard_block_polls") == "on"
 
     return {
         "event_name": flags.get("event_name"),
@@ -643,6 +645,8 @@ def build_forum_context(
         "noshow_poll": queries.noshow_poll_block(conn, scope),
         "regional_move": queries.regional_move_block(conn, scope),
         "stats_card": queries.stats_card_block(conn, scope),
+        "polls_enabled": polls_enabled,
+        "polls": polls_block(conn, scope) if polls_enabled else None,
         "bot_username": cfg.bot_username,
     }
 

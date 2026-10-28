@@ -59,6 +59,7 @@
     <a class="switch-link" href="#sessions">Сессии</a>
     <a class="switch-link" href="#enroll">Запись на сессии</a>
     <a class="switch-link" href="#after">После форума</a>
+    {% if polls_enabled %}<a class="switch-link" href="#polls">Опросы</a>{% endif %}
     <a class="switch-link" href="#sos">SOS</a>
     <a class="switch-link" href="#decisions">Решения по заявкам</a>
   </nav>
@@ -371,6 +372,95 @@
     </section>
     {% endif %}
   </section>
+
+  {# ═══ Опросы и анкеты из «📊 Опросы» бота: N из M, варианты, свободные ответы без имён ═══ #}
+  {% if polls_enabled %}
+  <section class="page-section" id="polls" aria-labelledby="polls-title">
+    <h2 class="section-title" id="polls-title">Опросы</h2>
+    {% if polls and polls.past_season %}
+    <section class="block"><div class="card"><p class="empty-note">Опросы не привязаны к сезону — они показываются только для текущего сезона.</p></div></section>
+    {% elif not polls %}
+    <section class="block"><div class="card"><p class="empty-note">Нет данных — ни один опрос ещё не уходил. Создать: в боте /admin → «📊 Опросы» → «➕ Новый опрос».</p></div></section>
+    {% else %}
+    {% for p in polls["items"] %}
+    <section class="block">
+      <h2 class="block-title">{{ p.title }}</h2>
+      <div class="card">
+        <p class="poll-note">{{ p.kind_label }} · {{ p.status_label }}{% if p.created %} · {{ p.created }}{% endif %}</p>
+        <p class="cut-title">Ответили {{ p.answered | thousands }} из {{ p.sent | thousands }}</p>
+        {% if p.anonymous %}<p class="poll-note">анонимный — итоги Telegram, без имён</p>{% endif %}
+        {% if p.started_not_done %}<p class="poll-note">Начали и не закончили: {{ p.started_not_done | thousands }}</p>{% endif %}
+        {% if p.options %}
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Вариант</th><th class="num">Ответов</th><th class="num">%</th></tr></thead>
+          <tbody>
+            {% for o in p.options %}
+            <tr><td data-label="Вариант">{{ o.label }}</td><td class="num" data-label="Ответов">{{ o.count | thousands }}</td><td class="num" data-label="%">{{ o.pct }}%</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+        {% for q in p.questions %}
+        <h3 class="cut-title">{{ loop.index }}. {{ q.text }}</h3>
+        {% if q.type in ("single", "multi") %}
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Вариант</th><th class="num">Ответов</th><th class="num">%</th></tr></thead>
+          <tbody>
+            {% for o in q.options %}
+            <tr><td data-label="Вариант">{{ o.label }}</td><td class="num" data-label="Ответов">{{ o.count | thousands }}</td><td class="num" data-label="%">{{ o.pct }}%</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% elif q.type == "scale" %}
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Оценка</th><th class="num">Ответов</th><th class="num">%</th></tr></thead>
+          <tbody>
+            {% for o in q.dist %}
+            <tr><td data-label="Оценка">{{ o.label }}</td><td class="num" data-label="Ответов">{{ o.count | thousands }}</td><td class="num" data-label="%">{{ o.pct }}%</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        <p class="poll-note">Среднее: {{ q.avg_label }} · оценок: {{ q.respondents | thousands }}</p>
+        {% elif q.type == "table" %}
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead><tr><th>Строка</th><th class="num">Среднее</th><th class="num">Оценок</th></tr></thead>
+          <tbody>
+            {% for r in q.rows %}
+            <tr><td data-label="Строка">{{ r.label }}</td><td class="num" data-label="Среднее">{{ r.avg_label }}</td><td class="num" data-label="Оценок">{{ r.n | thousands }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="poll-note">Ответили: {{ q.respondents | thousands }}</p>
+        {% endif %}
+        {% if q.texts %}
+        <ul class="poll-texts">
+          {% for t in q.texts %}
+          <li>{{ t.text }}{% if t.note %} <span class="poll-note">({{ t.note }})</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% if q.total_texts > q.texts | length %}
+        <p class="poll-note">Всего свободных ответов: {{ q.total_texts | thousands }}; все — в боте: «📊 Опросы» → карточка → «📊 Итоги по вопросам»</p>
+        {% endif %}
+        {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+    {% if polls.total > polls.shown %}
+    <section class="block"><div class="card"><p class="empty-note">Показаны {{ polls.shown }} из {{ polls.total | thousands }}. Все опросы — в боте: /admin → «📊 Опросы» → «📁 Закрытые опросы»</p></div></section>
+    {% endif %}
+    {% endif %}
+  </section>
+  {% endif %}
 
   {# ═══ SOS: только счётчики, без текстов и имён (D-17) ═══ #}
   <section class="page-section" id="sos" aria-labelledby="sos-title">
