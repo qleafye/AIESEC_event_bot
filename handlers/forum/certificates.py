@@ -99,7 +99,8 @@ async def certificate_name_input(message: types.Message, state: FSMContext):
 
 
 @router.callback_query(F.data == "cert_ok")
-async def certificate_send(callback: types.CallbackQuery, bot):
+async def certificate_send(callback: types.CallbackQuery, bot, state: FSMContext):
+    await state.clear()  # «✏️ Исправить», а потом «✅ Да» на старом сообщении — имя больше не ждём
     user = callback.from_user
     if not await certs.is_open():
         await callback.answer()

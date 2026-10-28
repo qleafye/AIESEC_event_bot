@@ -72,7 +72,12 @@ def render_certificate(template_pdf: bytes, name: str) -> bytes:
     reader = PdfReader(io.BytesIO(template_pdf))
     writer = PdfWriter()
     page = writer.add_page(reader.pages[0])
-    left, bottom, right, top = (float(v) for v in page.mediabox)
+    # Альбомный лист часто приходит книжным MediaBox с /Rotate 90: поворот переносим в
+    # содержимое, иначе доли NAME_BOX считались бы от неповёрнутой страницы и имя легло бы боком.
+    if int(page.get("/Rotate", 0) or 0) % 360:
+        page.transfer_rotation_to_content()
+    # Доли — от видимой области (CropBox; без него pypdf отдаёт MediaBox).
+    left, bottom, right, top = (float(v) for v in page.cropbox)
     page_w, page_h = right - left, top - bottom
 
     cx, cy_top, wf, hf = NAME_BOX
