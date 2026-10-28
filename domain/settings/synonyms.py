@@ -1054,7 +1054,7 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "not_registered_text": ["не зарегистрирован", "сначала зарегистрируйся"],
     "ask_question_text_only_text": ["вопрос текстом", "прислали фото вместо вопроса"],
     "ask_question_send_failed_text": ["вопрос не отправился", "ошибка отправки вопроса"],
-    "ask_question_no_admins_text": ["нет организаторов для вопросов", "администраторы не настроены"],
+    "ask_question_no_recipients_text": ["нет организаторов для вопросов", "администраторы не настроены"],
     "action_cancelled_text": ["действие отменено", "ответ на отмену"],
     "faq_question_not_found_text": ["частый вопрос не найден", "faq нет вопроса"],
     "faq_question_gone_text": ["частый вопрос скрыт", "faq вопрос недоступен"],

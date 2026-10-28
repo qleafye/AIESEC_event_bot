@@ -29,7 +29,7 @@ DELEGATE_TEXT_SCHEMA: dict[str, dict] = {
         "event", "❓ Задать вопрос: не удалось отправить",
         "Ответ, если вопрос не дошёл ни до одного организатора.",
         "Не удалось отправить вопрос, попробуйте позже."),
-    "ask_question_no_admins_text": _text(
+    "ask_question_no_recipients_text": _text(
         "event", "❓ Задать вопрос: некому отправить",
         "Ответ, если в боте ещё не назначен ни один организатор, принимающий вопросы.",
         "Администраторы не настроены."),
@@ -298,7 +298,7 @@ DELEGATE_TEXT_SCHEMA.update({
 # Экран «🎪 Событие».
 EVENT_FIELD_ORDER = [
     "not_registered_text", "ask_question_text_only_text", "ask_question_send_failed_text",
-    "ask_question_no_admins_text", "action_cancelled_text", "faq_question_not_found_text",
+    "ask_question_no_recipients_text", "action_cancelled_text", "faq_question_not_found_text",
     "faq_question_gone_text", "faq_back_button_text", "important_today_empty_text",
     "important_today_no_text_text", "important_today_header_text",
 ]
