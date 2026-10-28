@@ -282,3 +282,176 @@ def test_dlg_form_pick_alert_when_no_delegation_purpose(tmp_path):
     _run(mod.dlg_form(cb))
     assert cb.answer_calls[-1] == (mod._NO_DLG_PURPOSE_ALERT, True)
     assert not _run(get_setting_typed("delegation_form_id"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Форма «📝 Регистрация»: ответ → заявка
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+REG_ITEMS = [
+    {"q": "f", "label": "Фамилия и имя", "value": "Анна Тестова"},
+    {"q": "p", "label": "Телефон", "value": " +7 900 000-00-00 "},
+    {"q": "u", "label": "Ник в Telegram", "value": "@AnnaTest"},
+]
+
+
+def _reg_form(*, approve="queue", city=None, username_q="u", title="Отбор <МГУ>") -> int:
+    fid = _form(title, purpose="registration", username_q=username_q, phone_q="p",
+                reg_q_fullname="f")
+    _run(ef.set_form_reg_approve(fid, approve))
+    if city:
+        _run(ef.set_form_reg_city(fid, city))
+    return fid
+
+
+def _patch_notify(monkeypatch) -> list:
+    calls = []
+
+    async def fake_notify(bot, **kw):
+        calls.append(kw)
+    import services.reg_digest as rd
+    monkeypatch.setattr(rd, "notify_application", fake_notify)
+    return calls
+
+
+def _insert_user(tid, username, status="approved", source="Сарафан"):
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("INSERT INTO users (telegram_id, username, full_name, status, source, season, "
+                 "event_city) VALUES (?, ?, 'Старое Имя', ?, ?, ?, 'msk')",
+                 (tid, username, status, source, SEASON))
+    conn.commit()
+    conn.close()
+
+
+def _answer_row(fid, aid):
+    return _run(ef.get_answer(fid, aid))
+
+
+def test_registration_answer_creates_pending_application(tmp_path, monkeypatch):
+    bot = _env(tmp_path)
+    calls = _patch_notify(monkeypatch)
+    fid = _reg_form(city="msk")
+    _run(db.mark_reg_started(601, "AnnaTest"))
+    _answer(fid, "x1", REG_ITEMS)
+    res = _run(reg.on_answer_available(fid, "x1"))
+    assert res["state"] == "created"
+    user = _run(db.get_user(601))
+    assert user["status"] == "pending"
+    assert user["full_name"] == "Анна Тестова" and user["phone"] == "+7 900 000-00-00"
+    assert user["event_city"] == "msk"
+    label = "Внешняя форма «Отбор <МГУ>»"
+    assert user["source"] == label and user["source_from_tag"] == 1
+    conn = sqlite3.connect(config.DB_PATH)
+    ev = conn.execute("SELECT event, source_tag FROM reg_events WHERE telegram_id = 601").fetchall()
+    conn.close()
+    assert ("form_completed", "ext_form") in ev
+    row = _answer_row(fid, "x1")
+    assert row["reg_state"] == "created" and row["matched_telegram_id"] == 601
+    assert len(calls) == 1 and "&lt;МГУ&gt;" in calls[0]["admin_text"]
+    assert "<МГУ>" not in calls[0]["admin_text"]
+    assert [s[0] for s in bot.sent] == [601] and "пришла из формы" in bot.sent[0][1]
+    assert (label, 1) in [tuple(r) for r in _run(db.get_source_stats())]
+    assert label in _run(db.get_distinct_filter_values("source"))
+    # Повтор — без второй заявки и второго сообщения.
+    assert _run(reg.on_answer_available(fid, "x1")) == {"already": True}
+    assert len(bot.sent) == 1 and len(calls) == 1
+
+
+def test_registration_auto_approve(tmp_path, monkeypatch):
+    _env(tmp_path)
+    _patch_notify(monkeypatch)
+    approved = []
+
+    async def fake_approve(bot, tid, *, auto_approved=False):
+        approved.append((tid, auto_approved))
+        return None
+    import handlers.reg.reg_schema as rs
+    monkeypatch.setattr(rs, "approve_user", fake_approve)
+    fid = _reg_form(approve="auto")
+    _run(db.mark_reg_started(602, "AnnaTest"))
+    _answer(fid, "x1", REG_ITEMS)
+    _run(reg.on_answer_available(fid, "x1"))
+    assert _run(db.get_user(602))["status"] == "approved"
+    assert approved == [(602, True)]
+    conn = sqlite3.connect(config.DB_PATH)
+    j = conn.execute("SELECT decision FROM application_decisions WHERE telegram_id = 602").fetchall()
+    conn.close()
+    assert j == [("approved",)]
+
+
+def test_registration_links_existing_user_without_duplicate(tmp_path, monkeypatch):
+    bot = _env(tmp_path)
+    calls = _patch_notify(monkeypatch)
+    _insert_user(603, "AnnaTest")
+    fid = _reg_form()
+    _answer(fid, "x1", REG_ITEMS)
+    assert _run(reg.on_answer_available(fid, "x1"))["state"] == "linked"
+    assert _users() == [(603, "approved", None, "Сарафан")]
+    row = _answer_row(fid, "x1")
+    assert row["reg_state"] == "linked" and row["matched_telegram_id"] == 603
+    assert bot.sent == [] and calls == []
+
+
+def test_registration_waits_for_start(tmp_path, monkeypatch):
+    bot = _env(tmp_path)
+    _patch_notify(monkeypatch)
+    fid = _reg_form()
+    _answer(fid, "x1", REG_ITEMS)
+    assert _run(reg.on_answer_available(fid, "x1")) == {"state": "waiting"}
+    assert _answer_row(fid, "x1")["reg_state"] == "waiting"
+    # Чужой ник — ничего.
+    assert _run(reg.try_registration_start(_Msg(user_id=700, username="Other"), None, bot)) is False
+    assert _users() == [] and _answer_row(fid, "x1")["reg_state"] == "waiting"
+    # Владелец ника — заявка.
+    assert _run(reg.try_registration_start(_Msg(user_id=604, username="annatest"), None, bot))
+    user = _run(db.get_user(604))
+    assert user["status"] == "pending" and user["username"] == db.store_username("@annatest")
+    assert _answer_row(fid, "x1")["reg_state"] == "created"
+
+
+def test_registration_start_with_existing_user_links(tmp_path, monkeypatch):
+    bot = _env(tmp_path)
+    _patch_notify(monkeypatch)
+    fid = _reg_form()
+    _answer(fid, "x1", REG_ITEMS)
+    _run(reg.on_answer_available(fid, "x1"))
+    _insert_user(605, "AnnaTest", status="pending")
+    assert _run(reg.try_registration_start(_Msg(user_id=605, username="AnnaTest"), None, bot)) is False
+    assert _answer_row(fid, "x1")["reg_state"] == "linked"
+    assert _users() == [(605, "pending", None, "Сарафан")]
+
+
+def test_registration_no_nick_and_ambiguous(tmp_path, monkeypatch):
+    _env(tmp_path)
+    _patch_notify(monkeypatch)
+    no_q = _reg_form(username_q=None, title="Без ника")
+    _answer(no_q, "x1", REG_ITEMS)
+    assert _run(reg.on_answer_available(no_q, "x1")) == {"state": "no_nick"}
+    fid = _reg_form(title="Двое")
+    _insert_user(606, "AnnaTest")
+    _insert_user(607, "AnnaTest")
+    _answer(fid, "x1", REG_ITEMS)
+    assert _run(reg.on_answer_available(fid, "x1")) == {"state": "ambiguous"}
+    assert len(_users()) == 2
+
+
+def test_registration_hook_ignores_other_purposes_and_old_answers(tmp_path, monkeypatch):
+    _env(tmp_path)
+    _patch_notify(monkeypatch)
+    for purpose in ("answers", "delegations"):
+        fid = _form(f"F-{purpose}", purpose=purpose, username_q="u")
+        _answer(fid, "x1", REG_ITEMS)
+        assert _run(reg.on_answer_available(fid, "x1")) == {"skipped": "not_registration_form"}
+    fid = _reg_form(title="Сменили")
+    _run(ef.set_form_purpose(fid, "registration", "2026-10-05 00:00:00"))
+    _answer(fid, "old", REG_ITEMS, received_at="2026-10-04 10:00:00")
+    assert _run(reg.on_answer_available(fid, "old")) == {"skipped": "before_purpose"}
+
+
+def test_ext_reg_pending_text_registered():
+    from domain.settings.schema import SETTINGS_SCHEMA
+    from domain.settings.synonyms import SETTINGS_SYNONYMS as SYNONYMS
+    from services.i18n.i18n_form_manual import FORM_DEFAULT_EN
+    spec = SETTINGS_SCHEMA["ext_reg_pending_text"]
+    assert spec["group"] == "reg" and spec["default"] in FORM_DEFAULT_EN
+    assert len(SYNONYMS["ext_reg_pending_text"]) >= 2
