@@ -127,7 +127,8 @@ async def certificate_send(callback: types.CallbackQuery, bot, state: FSMContext
             logger.error(f"certificate_send: нет шаблона {kind}/{variant} для {user.id}")
             continue
         try:
-            pdf = await certs.build_pdf(bot, file_id, name)
+            percents = await certs.competency_percents(user.id) if kind == cdb.KIND_COMPETENCY else None
+            pdf = await certs.build_pdf(bot, file_id, name, kind, percents)
             await callback.message.answer_document(
                 BufferedInputFile(pdf, filename=certs.file_name(kind, name)),
                 caption=f"🎓 {certs.KIND_TITLES[kind]}",

@@ -64,7 +64,8 @@ async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
     tpl_lines = []
     for kind in KINDS:
         marks = ", ".join(
-            f"{certs.variant_label(v)} {'✅' if (kind, v) in templates else '—'}" for v in variants
+            f"{certs.variant_label(v)} {'✅' if (kind, v) in templates else '—'}"
+            for v in certs.kind_variants(kind, variants)
         )
         tpl_lines.append(f"• {certs.KIND_SHORT[kind]}: {marks}")
 
@@ -77,12 +78,13 @@ async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
         f"Выдача: {status} (время московское)\n\n"
         "<b>Кому</b>\n"
         f"• Участник — все, кого отметили на входе: сейчас {checked_in}\n"
+        "• Компетенции — отмеченные на входе, кто прошёл тест компетенций: шкалы — их проценты\n"
         f"• Волонтёр — по списку @ников: {len(volunteers)}\n"
         f"• Амбассадор — по списку @ников: {len(ambassadors)}\n"
         "Кто в нескольких ролях — получит все свои сертификаты.\n\n"
         "<b>Шаблоны</b>\n" + "\n".join(tpl_lines) + "\n"
         "<i>Если версии на один день нет — человеку, который был один день, уйдёт «все дни».</i>\n\n"
-        f"<b>Выдано</b>: участник {sends.get('participant', 0)}, волонтёр {sends.get('volunteer', 0)}, "
+        f"<b>Выдано</b>: участник {sends.get('participant', 0)}, компетенции {sends.get('competency', 0)}, волонтёр {sends.get('volunteer', 0)}, "
         f"амбассадор {sends.get('ambassador', 0)}. Сообщение «готов» получили: {await cdb.announce_count()}.\n\n"
         "Когда выдача откроется, бот сам напишет каждому, кому положен сертификат, с кнопкой "
         "«🎓 Получить сертификат». Перед отправкой человек проверяет, как написано имя. "
@@ -163,7 +165,7 @@ async def certadm_tpls(callback: types.CallbackQuery, state: FSMContext):
     templates = await cdb.list_templates()
     rows = []
     for kind in KINDS:
-        for variant in await _variants():
+        for variant in certs.kind_variants(kind, await _variants()):
             mark = "✅" if (kind, variant) in templates else "➕"
             rows.append([(
                 f"{mark} {certs.KIND_SHORT[kind]} · {certs.variant_label(variant)}",
@@ -174,7 +176,9 @@ async def certadm_tpls(callback: types.CallbackQuery, state: FSMContext):
         "📄 <b>Шаблоны сертификатов</b>\n\n"
         "Нажмите на строку и пришлите PDF от дизайнера. «все дни» — основной шаблон, он нужен "
         "обязательно. Версии на один день — по желанию: их получат участники, которых отметили "
-        "только в этот день.\n\nИмя бот впишет в белую полосу под «Настоящий сертификат подтверждает, что».",
+        "только в этот день.\n\nИмя бот впишет в белую полосу под «Настоящий сертификат подтверждает, что». "
+        "В сертификате компетенций ещё и заполнит пять шкал процентами из теста компетенций — "
+        "шаблон нужен с пустыми шкалами «0%».",
         parse_mode="HTML", reply_markup=_kb(rows),
     )
     await callback.answer()
@@ -250,7 +254,7 @@ async def certadm_tpl_file(message: types.Message, state: FSMContext, bot):
         return
     name = await certs.default_name(message.from_user.id, message.from_user.full_name) or _EXAMPLE_NAME
     try:
-        pdf = await certs.build_pdf(bot, doc.file_id, name)
+        pdf = await certs.build_pdf(bot, doc.file_id, name, kind, await certs.competency_percents(message.from_user.id))
     except Exception as e:
         logger.error(f"certadm_tpl_file: шаблон не читается: {e}")
         await message.answer("Не получилось открыть этот PDF. Пересохраните его из редактора и пришлите ещё раз.")
@@ -377,7 +381,7 @@ async def certadm_preview(callback: types.CallbackQuery, bot):
     name = await certs.default_name(callback.from_user.id, callback.from_user.full_name) or _EXAMPLE_NAME
     for (kind, variant), file_id in sorted(templates.items()):
         try:
-            pdf = await certs.build_pdf(bot, file_id, name)
+            pdf = await certs.build_pdf(bot, file_id, name, kind, await certs.competency_percents(callback.from_user.id))
         except Exception as e:
             logger.error(f"certadm_preview {kind}/{variant}: {e}")
             await callback.message.answer(f"❌ {certs.KIND_TITLES[kind]} · {certs.variant_label(variant)}: не собрался.")
