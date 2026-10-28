@@ -225,6 +225,27 @@ _MISC = {
     # D-29: подпись вычисляемого раздела «📅 Программа» (miniapp/routers/page.py::
     # COMPUTED_SECTION_LABELS) — не в реестре, машинная очередь её не видит.
     "📅 Программа": "📅 Schedule",
+    # Магазин баллов: подпись вычисляемого раздела «🛍 Магазин» (page.py::COMPUTED_SECTION_LABELS)
+    # и тексты экрана (ключи miniapp_shop_*, miniapp/routers/shop.py).
+    "🛍 Магазин": "🛍 Shop",
+    "Магазин сейчас закрыт — загляни позже.": "The shop is closed right now — check back later.",
+    "Товаров пока нет — загляни позже.": "No items yet — check back later.",
+    "На счету: {balance} баллов": "Balance: {balance} points",
+    "{price} баллов": "{price} points",
+    "Осталось {n}": "{n} left",
+    "Закончился": "Sold out",
+    "Ты уже взял(а) максимум — {n} в одни руки": "You've already taken the maximum — {n} per person",
+    "Не хватает {n}": "{n} short",
+    "Взять": "Take",
+    "Да, списать": "Yes, deduct",
+    "Не надо": "No, thanks",
+    "Взять товар здесь пока нельзя — подходи к стойке магазина на форуме и покажи свой QR.": "You can't take items here yet — come to the shop desk at the forum and show your QR.",
+    "Забронировано: «{title}». Код выдачи — {code}. Покажи QR или назови код на стойке магазина.": "Reserved: «{title}». Pickup code — {code}. Show the QR or tell the code at the shop desk.",
+    "Мои брони": "My reservations",
+    "Код выдачи: {code}": "Pickup code: {code}",
+    "Показать QR": "Show QR",
+    "Отменить бронь": "Cancel reservation",
+    "Да, отменить бронь": "Yes, cancel the reservation",
     # miniapp/routers/program.py::_RETRY_TEXT — сбой чтения города делегата (503 retry).
     "Не удалось загрузить программу. Обновите экран через минуту.": (
         "Couldn't load the schedule. Refresh the screen in a minute."
