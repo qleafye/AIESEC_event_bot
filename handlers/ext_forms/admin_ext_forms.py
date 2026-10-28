@@ -17,7 +17,9 @@ from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import ext_forms_db as xdb
+from handlers.access.admin_caps import has_capability
 from handlers.admin import router
+from services.delegations.delegations_off_alert import form_delegation_state
 from services.infra.timeutil import msk_now
 
 FORMS_PAGE = 8
@@ -137,7 +139,7 @@ async def _form_with_stats(form_id: int) -> dict | None:
     return None
 
 
-def _card_text(f: dict) -> str:
+def _card_text(f: dict, dlg_lines: list[str] | None = None) -> str:
     status = _STATUS_WORDS.get(f.get("status"), "—")
     lines = [
         f"📝 <b>{_e(f['title'])}</b>",
@@ -163,10 +165,11 @@ def _card_text(f: dict) -> str:
     if f.get("mirror_error"):
         lines.append(f"⚠️ Вкладка: {_e(f['mirror_error'])}")
     lines.append("Уведомления о новых ответах: " + ("включены" if f.get("notify") else "выключены"))
+    lines.extend(dlg_lines or ())
     return "\n".join(lines)
 
 
-def _card_kb(f: dict) -> InlineKeyboardMarkup:
+def _card_kb(f: dict, dlg_button: InlineKeyboardButton | None = None) -> InlineKeyboardMarkup:
     fid = f["id"]
     rows: list[list[InlineKeyboardButton]] = []
     if f["status"] == "active":
@@ -181,6 +184,8 @@ def _card_kb(f: dict) -> InlineKeyboardMarkup:
     rows.append([_btn("📋 Вкладка таблицы", f"extf_tab:{fid}")])
     if f["platform"] == "yandex":
         rows.append([_btn("🔗 Адрес и инструкция", f"extf_hook:{fid}")])
+    if dlg_button is not None:
+        rows.append([dlg_button])
     if f["status"] != "disabled":
         rows.append([_btn("⛔ Отключить", f"extf_disable:{fid}")])
     if f["total"] > 0:
@@ -194,8 +199,38 @@ async def render_form_card(message_or_callback, form_id: int, *, edit: bool = Tr
     f = await _form_with_stats(form_id)
     if f is None:
         return False
-    await _show(message_or_callback, _card_text(f), _card_kb(f), edit=edit)
+    uid = getattr(getattr(message_or_callback, "from_user", None), "id", None)
+    dlg_lines, dlg_button = await _delegations_block(f, uid)
+    await _show(message_or_callback, _card_text(f, dlg_lines), _card_kb(f, dlg_button), edit=edit)
     return True
+
+
+async def _delegations_block(f: dict, uid: int | None) -> tuple[list[str], InlineKeyboardButton | None]:
+    """Строка «🏫 Делегации: …» и кнопка перехода к настройке — только у формы, относящейся к
+    делегациям: подключение формы делегации не включает, и без этой строки менеджер считал их
+    работающими. Кнопку видит только держатель `moderate_reg` (экран делегаций под ним)."""
+    st = await form_delegation_state(f)
+    if not st["relevant"]:
+        return [], None
+    if st["armed_here"]:
+        line = "🏫 Делегации: включены"
+    elif st["armed_other_title"] is not None:
+        line = f"🏫 Делегации: включены для формы «{_e(st['armed_other_title'])}»"
+    else:
+        line = "🏫 Делегации: выключены"
+    button = None
+    if uid is not None and await has_capability(uid, "moderate_reg"):
+        from handlers.delegations.admin_delegations import delegations_locked  # ленивый: порядок регистрации
+        from services.delegations.delegations import delegation_form_id
+        free = await delegation_form_id() is None and not await delegations_locked(uid)
+        button = _btn("🏫 Настроить делегации", f"dlg_form:{f['id']}" if free else "admin_delegations")
+    else:
+        line += " — настраивает менеджер с правом «📋 Модерация заявок»: «📋 Заявки → 🏫 Делегации»"
+    lines = [line]
+    if st["stale_off"]:
+        lines.append("⚠️ В форме есть вопрос про вуз, а делегации выключены больше суток — "
+                     "бот не одобряет делегатов из этой формы.")
+    return lines, button
 
 
 async def _open_card(callback: types.CallbackQuery, answer_text: str | None = None) -> int | None:
