@@ -569,9 +569,9 @@ def get_education_status_kb(options: list[str] | None = None) -> ReplyKeyboardMa
     kb.adjust(1)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
-def get_local_committee_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    for lc in LOCAL_COMMITTEE_OPTIONS:
+def get_local_committee_kb(options: list[str] | None = None) -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()  # options — список из реестра (reg_engine.options), None — стандартный
+    for lc in (options if options is not None else LOCAL_COMMITTEE_OPTIONS):
         kb.button(text=lc)
     kb.button(text="Другое")
     kb.adjust(2)
@@ -580,27 +580,27 @@ def get_local_committee_kb() -> ReplyKeyboardMarkup:
 
 # --- Conference (RusCo) reg-flow keyboards ---
 
-def get_department_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    for d in DEPARTMENT_OPTIONS:
+def get_department_kb(options: list[str] | None = None) -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()  # options — список из реестра (reg_engine.options), None — стандартный
+    for d in (options if options is not None else DEPARTMENT_OPTIONS):
         kb.button(text=d)
     kb.button(text="Другое")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def get_aiesec_role_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    for r in AIESEC_ROLE_OPTIONS:
+def get_aiesec_role_kb(options: list[str] | None = None) -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()  # options — список из реестра (reg_engine.options), None — стандартный
+    for r in (options if options is not None else AIESEC_ROLE_OPTIONS):
         kb.button(text=r)
     kb.button(text="Другое")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def get_english_level_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    for lvl in ENGLISH_LEVEL_OPTIONS:
+def get_english_level_kb(options: list[str] | None = None) -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()  # options — список из реестра (reg_engine.options), None — стандартный
+    for lvl in (options if options is not None else ENGLISH_LEVEL_OPTIONS):
         kb.button(text=lvl)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
@@ -614,16 +614,16 @@ def get_arrival_kb() -> ReplyKeyboardMarkup:
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
 
-def get_housing_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    for h in HOUSING_OPTIONS:
+def get_housing_kb(options: list[str] | None = None) -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()  # options — список из реестра (reg_engine.options), None — стандартный
+    for h in (options if options is not None else HOUSING_OPTIONS):
         kb.button(text=h)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
-def get_position_kb() -> ReplyKeyboardMarkup:
-    kb = ReplyKeyboardBuilder()
-    for pos in POSITION_OPTIONS:
+def get_position_kb(options: list[str] | None = None) -> ReplyKeyboardMarkup:
+    kb = ReplyKeyboardBuilder()  # options — список из реестра (reg_engine.options), None — стандартный
+    for pos in (options if options is not None else POSITION_OPTIONS):
         kb.button(text=pos)
     kb.button(text="Другое")
     kb.adjust(2)

@@ -386,6 +386,20 @@ _LITERAL_OPTIONS = {
 }
 
 
+# Списки без логики по значению — менеджер правит их в «📝 Регистрация» (ключ реестра, пусто =
+# стандартный список). Шаги остаются и в _LITERAL_OPTIONS: по нему _ui_type_for выбирает
+# кнопки-чипы, а дефолт и ключи ручного EN-слоя — константы domain/regform/options.py.
+_EDITABLE_LITERAL_OPTIONS = {
+    "local_committee": ("local_committee_options", _opts.LOCAL_COMMITTEE_OPTIONS),
+    "position": ("position_options", _opts.POSITION_OPTIONS),
+    "department": ("department_options", _opts.DEPARTMENT_OPTIONS),
+    "aiesec_role": ("aiesec_role_options", _opts.AIESEC_ROLE_OPTIONS),
+    "english_level": ("english_level_options", _opts.ENGLISH_LEVEL_OPTIONS),
+    "housing": ("housing_options", _opts.HOUSING_OPTIONS),
+    "transport": ("transport_options", _opts.TRANSPORT_OPTIONS),
+}
+
+
 async def options(step_key: str) -> list[str]:
     """Плоский список подписей кнопок для `step_key` — единая точка правды для клавиатур
     бота (через `keyboards/builders.py` -> reg_options) и Mini App (`step_spec()` ниже).
@@ -413,6 +427,8 @@ async def options(step_key: str) -> list[str]:
         if uni_opts and uni_opts.strip():
             return [line.strip() for line in uni_opts.splitlines() if line.strip()]
         return []  # пусто = свободный ввод, питерский список не подставляем
+    if step_key in _EDITABLE_LITERAL_OPTIONS:
+        return await option_list_for(*_EDITABLE_LITERAL_OPTIONS[step_key])
     return list(_LITERAL_OPTIONS.get(step_key, []))
 
 
@@ -1231,7 +1247,17 @@ async def resolve_track(candidate: str | None, city_code: str | None = None) -> 
 async def party_track_options() -> list[dict]:
     """Варианты пикера формата участия — тот же список и те же подписи, что у кнопок
     `_party_fork_kb` бота (`reg_options.PARTY_TRACK_OPTIONS`)."""
-    return [{"code": code, "label": label} for code, label in _opts.PARTY_TRACK_OPTIONS]
+    from domain.settings.ui_text_fields import ui_text  # подписи кнопок — «🎉 Вечеринка»
+
+    return [{"code": code, "label": await ui_text(PARTY_TRACK_LABEL_KEYS[code])} for code, _ in _opts.PARTY_TRACK_OPTIONS]
+
+
+# Код трека -> ключ реестра с подписью кнопки развилки (дефолт — подпись из PARTY_TRACK_OPTIONS).
+PARTY_TRACK_LABEL_KEYS = {
+    "full": "party_track_full_label_text",
+    "party_overnight": "party_track_overnight_label_text",
+    "party_noovernight": "party_track_noovernight_label_text",
+}
 
 
 async def city_fork_options() -> list[dict]:
