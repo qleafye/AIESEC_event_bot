@@ -2051,9 +2051,9 @@ async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
     # Phase 09.3 (06, CITY-09): WR-05 — single header read for this handler, passed into the
     # shared render helper so it never re-resolves the header itself.
     header_code = await admin_selected_city(admin_id)
-    if key == "forum_date" and header_code == ALL_CITIES:  # общая дата молча досталась бы Москве
-        from handlers.forum.admin_forum_date import show_forum_date_city_picker
-        return await show_forum_date_city_picker(callback, state)
+    from handlers.forum.admin_forum_date import CITY_PICK_KEYS, show_forum_date_city_picker
+    if key in CITY_PICK_KEYS and header_code == ALL_CITIES:  # общее значение молча досталось бы Москве
+        return await show_forum_date_city_picker(callback, state, key)
     text, cancel_kb = await _settings_edit_screen(key, header_code)
     denied = not (header_code and header_code != ALL_CITIES and is_per_city(key)) and await gscope.common_write_denied(admin_id, key)
     if (all_cities := await gscope.is_global_in_city_context(key, header_code)) or denied:  # общая настройка
