@@ -99,6 +99,8 @@ def test_ready_city_is_green(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "GOOGLE_SHEET_ID", "sheet")
     monkeypatch.setattr(config, "GOOGLE_CREDENTIALS_FILE", "creds.json")
     monkeypatch.setattr(sheets, "_write_state", {"ok": time.time() - 120, "fail": None})
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://yl26.example.com")
+    _run(db.set_setting("event_name", "Юлид"))
 
     text, kb = _run(afr.render_ready(ADMIN_ID, "msk", _Bot()))
     assert "🔴" not in text and "🟡" not in text, text
@@ -178,7 +180,7 @@ def test_one_failing_row_turns_gray_and_screen_still_renders(tmp_path, monkeypat
     assert "⚪ Программа: не удалось проверить" in text
     assert "🔴 Дата форума не задана" in text
     assert "🟡 Чат делегатов не привязан" in text
-    assert text.count("\n🔴 ") + text.count("\n🟡 ") + text.count("\n🟢 ") + text.count("\n⚪ ") == 7
+    assert text.count("\n🔴 ") + text.count("\n🟡 ") + text.count("\n🟢 ") + text.count("\n⚪ ") == 9
     assert "forum_ready_re:msk" in _cbs(kb)
 
 
