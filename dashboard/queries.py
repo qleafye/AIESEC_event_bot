@@ -50,6 +50,7 @@ _SETTING_DEFAULTS = {
     "dashboard_block_game": "off",
     "dashboard_block_referrals": "on",
     "dashboard_block_delegations": "off",
+    "dashboard_block_polls": "on",
     # Phase 32 (32-09, D-33/D-34): срез амбассадоров и волн — по умолчанию выключен, как и
     # dashboard_block_game, чтобы прод любого события, ещё не дошедшего до этой фазы, не
     # менялся ни на бит.
