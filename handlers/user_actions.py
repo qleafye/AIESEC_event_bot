@@ -329,7 +329,8 @@ async def _balance_screen(
         [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_history_button_text"), lang, tr_map), callback_data="gbal_history:0")],
         [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_top_button_text"), lang, tr_map), callback_data="gbal_top")],
     ])
-    return text, kb
+    from handlers.game.shop_delegate import with_shop_button  # витрина магазина баллов, если открыта
+    return text, await with_shop_button(kb)
 
 
 async def _balance_history_screen(
@@ -1793,6 +1794,7 @@ from handlers.reg import menu_edit_anketa  # noqa: E402,F401  -- «✏️ Изм
 from handlers.reg import menu_tap_escape  # noqa: E402,F401  -- кнопка меню посреди ответа делегата
 from handlers.comms import survey_delegate  # noqa: E402,F401  -- анкета: sv:* и ответ текстом, до фолбэка
 from handlers.forum import certificates as certificate_handlers  # noqa: E402,F401  -- cert_*, /certificate, до фолбэка
+from handlers.game import shop_delegate  # noqa: E402,F401  -- витрина магазина баллов (shopv), до фолбэка
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
