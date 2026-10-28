@@ -124,6 +124,7 @@ def test_registry_new_keys_on_event_screen():
 
 
 from domain.settings.ui_text_fields import BOT_COMMAND_FIELD_ORDER, INFO_SCREEN_FIELD_ORDER  # noqa: E402
+from domain.settings.delegate_text_fields import EVENT_FIELD_ORDER as DELEGATE_EVENT_FIELD_ORDER  # noqa: E402
 
 
 def test_registry_event_order_unchanged_for_old_keys():
@@ -160,6 +161,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         "start_text_rejected",
         # 10.10: подписи команд кнопки «Меню» и тексты экранов информации/контактов — хвост.
         *BOT_COMMAND_FIELD_ORDER, *INFO_SCREEN_FIELD_ORDER,
+        # 28.10: литералы делегату перенесены в реестр — хвост экрана «Событие».
+        *DELEGATE_EVENT_FIELD_ORDER,
     }
     filtered = [k for k in admin_settings._EVENT_FIELD_ORDER if k not in new_keys]
     assert filtered == old_order_literal
