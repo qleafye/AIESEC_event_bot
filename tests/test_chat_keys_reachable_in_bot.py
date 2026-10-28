@@ -7,9 +7,16 @@
 
 «Читает код чата» определяется статически, по AST: вызов чтения настройки, у которого ключ —
 строковый литерал (`READERS`: сами `get_setting*` и обёртки над ними с тем же смыслом), в
-`handlers/`, `services/`, `keyboards/` (не `miniapp/` — это код приложения). Чтение через
-переменную или собранный f-строкой ключ сюда не попадает: сторож ловит то, что видно глазами в
-коде, без догадок, поэтому и ложных тревог не даёт.
+`handlers/`, `services/`, `keyboards/` (не `miniapp/` — это код приложения). Ключ может прийти и
+через имя, если оно связано литералом ключа реестра (`_resolver`): присваивание в том же модуле
+(`KEY = "…"`, `KEY: str = "…"`, `key, default = "…", "…"`), `from <модуль чата> import KEY [as X]`
+и `mod.KEY`, где `mod` — импортированный модуль чата. Имя, не связанное литералом, пропускается;
+ключ, собранный f-строкой, — через `FSTRING_FAMILIES`. Сторож ловит то, что видно глазами в коде,
+без догадок, поэтому и ложных тревог не даёт.
+
+Тексты, которые в чат шлёт сам код приложения (`miniapp/`: копии файлов, итог анкеты), объявлены
+в `APP_CHAT_SENDERS`: функция-отправитель -> ключи её текстов. Новый отправитель без записи,
+устаревшая запись и ключ записи без экрана бота роняют свои тесты.
 
 «Достижим из экрана бота» — одно из:
   1. ключ в группе настроек бота (`admin_settings.SETTINGS_GROUPS` + «📦 Прочие») или фото/файл
@@ -17,7 +24,8 @@
   2. в коде есть кнопка `settings_edit:<ключ>` / `settings_edit_city:<ключ>`;
   3. ключ кнопки главного меню (`keyboards.builders.MENU_BUTTONS`, экран «🔘 Кнопки меню»);
   4. ключ из таблицы своего экрана (`SCREEN_TABLES` ниже — экран строит кнопки циклом по ней);
-  5. ключ-литерал в аргументах записи настройки в `handlers/` (`WRITERS`: тумблеры и т.п.);
+  5. ключ в аргументах записи настройки в `handlers/` (`WRITERS`: тумблеры и т.п.) — литералом
+     или через имя по тем же правилам, что у чтения;
   6. `OWN_SCREENS` — свой экран пишет ключ через переменную; для каждого назван модуль, и
      сторож проверяет, что ключ в нём действительно есть.
 Остальное — `EXCEPTIONS`, с причиной для каждого ключа.
@@ -66,29 +74,10 @@ WRITERS = {
 OWN_SCREENS = {
     "session_remind_text": "handlers/forum/admin_session_remind.py",
     "session_morning_head": "handlers/forum/admin_session_remind.py",
-    "checkin_qr_broadcast_enabled": "handlers/forum/admin_checkin.py",
     "checkin_qr_broadcast_time": "handlers/forum/admin_checkin.py",
     "checkin_qr_morning_repeat_time": "handlers/forum/admin_checkin.py",
     "checkin_qr_morning_catchup_until": "handlers/forum/admin_checkin.py",
-    "checkin_volunteer_guide_broadcast_enabled": "handlers/forum/admin_forum_functions.py",
-    "checkin_volunteer_guide_broadcast_time": "handlers/forum/admin_forum_functions.py",
-    "forum_day_menu_enabled": "handlers/forum/admin_forum_functions.py",
-    "forum_day_menu_start_time": "handlers/forum/admin_forum_functions.py",
-    "forum_day_report_enabled": "handlers/forum/admin_forum_functions.py",
-    "forum_day_report_time": "handlers/forum/admin_forum_functions.py",
-    "forum_noshow_poll_enabled": "handlers/forum/admin_forum_functions.py",
-    "forum_noshow_poll_time": "handlers/forum/admin_forum_functions.py",
-    "forum_welcome_enabled": "handlers/forum/admin_forum_functions.py",
-    "regional_noshow_offer_enabled": "handlers/forum/admin_forum_functions.py",
-    "regional_noshow_offer_time": "handlers/forum/admin_forum_functions.py",
-    "regional_noshow_target_city": "handlers/forum/admin_forum_functions.py",
-    "regional_noshow_move_status": "handlers/forum/admin_forum_functions.py",
-    "forum_stats_card_enabled": "handlers/forum/admin_forum_stats_card.py",
-    "lost_found_enabled": "handlers/forum/admin_lost_found.py",
-    "city_tz_offset": "handlers/forum/admin_forum_tz.py",
     "miniapp_theme_pattern": "handlers/settings/admin_miniapp_theme.py",
-    "onsite_reg_enabled": "handlers/forum/admin_onsite_reg.py",
-    "volunteer_invite_enabled": "handlers/forum/admin_volunteer_invite.py",
 }
 
 # Читается в чате, но в экран бота не выводится — и почему.
@@ -116,6 +105,40 @@ EXCEPTIONS = {
     # Начало имён вкладок бота в Google-таблице (settings_ops.bot_tab_prefix): в чате не
     # показывается, а смена переименовывает все вкладки бота разом — операция владельца бота.
     "sheet_tab_bot_prefix": "имя вкладок таблицы, смена переименовывает все вкладки бота",
+    # id/название привязанного чата делегатов и чата SOS (services/chat_tracking.py,
+    # services/sos.py) пишет сама привязка чата — вводить их руками незачем (как на экране «💬 Чат»).
+    "delegate_chat_id": "id/название привязанного чата пишет сама привязка чата, руками не вводится",
+    "delegate_chat_title": "id/название привязанного чата пишет сама привязка чата, руками не вводится",
+    "sos_chat_id": "id/название привязанного чата пишет сама привязка чата, руками не вводится",
+    "sos_chat_title": "id/название привязанного чата пишет сама привязка чата, руками не вводится",
+}
+
+# Тексты, которые в чат шлёт код приложения: «miniapp/<путь>.py::<функция>» -> ключи реестра,
+# текст которых функция отправляет. Функция-отправитель — любая функция в miniapp/, где есть
+# вызов из SEND_PRIMITIVES; новая такая функция без записи здесь роняет
+# test_every_app_chat_sender_is_declared — решение принимает человек.
+APP_CHAT_SENDERS = {
+    # Итог подачи анкеты в чат: отказ по правилу автоотказа, «Заявка принята», правка/повторная
+    # подача (resolve_delegate_text из services/registration/reg_finalize.py — её ключи видит
+    # сторож чата).
+    "miniapp/routers/form.py::draft_submit": (
+        "reject_text", "reg_form_complete_heading_text", "reg_form_complete_body_text",
+    ),
+    "miniapp/routers/submissions.py::_upload_resume": ("miniapp_upload_caption_resume",),
+    "miniapp/routers/submissions.py::_upload_part": (
+        "miniapp_upload_caption_delegate", "miniapp_upload_caption_staff", "miniapp_upload_caption_settings",
+    ),
+    # Карточку товара собирает код бота (services/game/shop_card.py) — её ключи видит сторож чата.
+    "miniapp/routers/checkin_shop.py::scan": (),
+    # Ответ организатора: текст пишет человек, заголовок — org_reply_title из кода бота.
+    "miniapp/routers/questions.py::questions_answer": (),
+    # Текст уведомления приходит аргументом от вызывающего кода.
+    "miniapp/routers/review.py::_notify_delegate": (),
+    "miniapp/routers/review.py::_sender": (),
+}
+SEND_PRIMITIVES = {
+    "send_message", "send_document", "send_photo", "send_media_group",
+    "send_or_queue_text", "send_or_queue_text_due",
 }
 
 def _form_v2_toggle_keys():
@@ -199,6 +222,100 @@ def _tree(path: Path) -> ast.AST:
         return ast.parse(path.read_text(encoding="utf-8"))
 
 
+def _schema_const(node) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value in SETTINGS_SCHEMA:
+        return node.value
+    return None
+
+
+@functools.lru_cache(maxsize=None)
+def _bindings(path: Path) -> dict[str, frozenset[str]]:
+    """Имя -> ключи реестра, которыми оно связано литералом в модуле (на любом уровне
+    вложенности): `NAME = "key"`, `NAME: str = "key"`, `a, b = "key", "default"`."""
+    found: dict[str, set[str]] = defaultdict(set)
+
+    def bind(target, value):
+        if isinstance(target, ast.Name):
+            key = _schema_const(value)
+            if key:
+                found[target.id].add(key)
+        elif isinstance(target, (ast.Tuple, ast.List)) and isinstance(value, (ast.Tuple, ast.List)):
+            if len(target.elts) == len(value.elts):
+                for t, v in zip(target.elts, value.elts):
+                    bind(t, v)
+
+    for node in ast.walk(_tree(path)):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                bind(target, node.value)
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            bind(node.target, node.value)
+    return {name: frozenset(keys) for name, keys in found.items()}
+
+
+@functools.lru_cache(maxsize=None)
+def _chat_file_set() -> frozenset[Path]:
+    return frozenset(_chat_files())
+
+
+def _module_file(dotted: str) -> Path | None:
+    """Файл модуля чата по точечному имени (`pkg/mod.py` или `pkg/mod/__init__.py`)."""
+    base = ROOT.joinpath(*dotted.split("."))
+    for candidate in (base.with_suffix(".py"), base / "__init__.py"):
+        if candidate in _chat_file_set():
+            return candidate
+    return None
+
+
+def _absolute(path: Path, node: ast.ImportFrom) -> str:
+    if not node.level:
+        return node.module or ""
+    package = path.relative_to(ROOT).parent.parts
+    package = package[: len(package) - (node.level - 1)] if node.level > 1 else package
+    return ".".join([*package, *([node.module] if node.module else [])])
+
+
+@functools.lru_cache(maxsize=None)
+def _resolver(path: Path):
+    """Функция node -> ключи реестра: литерал — сам ключ; имя — связывание в модуле или
+    `from <модуль чата> import NAME [as X]`; `mod.NAME` — связывание NAME в импортированном
+    модуле чата. Остальное — пусто (без догадок)."""
+    names: dict[str, set[str]] = defaultdict(set)
+    for name, keys in _bindings(path).items():
+        names[name] |= keys
+    modules: dict[str, Path] = {}
+    for node in ast.walk(_tree(path)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    target = _module_file(alias.name)
+                    if target is not None:
+                        modules[alias.asname] = target
+        elif isinstance(node, ast.ImportFrom):
+            base = _absolute(path, node)
+            for alias in node.names:
+                local = alias.asname or alias.name
+                submodule = _module_file(f"{base}.{alias.name}" if base else alias.name)
+                if submodule is not None:
+                    modules[local] = submodule
+                    continue
+                source = _module_file(base) if base else None
+                if source is not None:
+                    names[local] |= _bindings(source).get(alias.name, frozenset())
+
+    def resolve(node) -> set[str]:
+        key = _schema_const(node)
+        if key:
+            return {key}
+        if isinstance(node, ast.Name):
+            return set(names.get(node.id, ()))
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in modules:
+            return set(_bindings(modules[node.value.id]).get(node.attr, ()))
+        return set()
+
+    return resolve
+
+
 @functools.lru_cache(maxsize=None)
 def _scan():
     """(читатели ключа, ключи из аргументов записи, ключи кнопок settings_edit)."""
@@ -210,13 +327,15 @@ def _scan():
         src = path.read_text(encoding="utf-8")
         edit_buttons |= set(_EDIT_CB.findall(src))
         rel = path.relative_to(ROOT).as_posix()
+        res = _resolver(path)
         for node in _calls_outside_app_only(path):
             name = _fname(node.func)
             for pos, arg in enumerate(node.args):
                 if (name, pos) not in READERS:
                     continue
-                if isinstance(arg, ast.Constant) and arg.value in SETTINGS_SCHEMA:
-                    reads[arg.value].append(f"{rel}:{node.lineno}")
+                via = "" if isinstance(arg, ast.Constant) else f" (через {ast.unparse(arg)})"
+                for key in sorted(res(arg)):
+                    reads[key].append(f"{rel}:{node.lineno}{via}")
                 prefix = _fstring_prefix(arg)
                 if prefix is not None:
                     fstring_prefixes.add(prefix)
@@ -225,8 +344,7 @@ def _scan():
             if name in WRITERS and rel.startswith("handlers/"):
                 for arg in node.args:
                     for sub in ast.walk(arg):
-                        if isinstance(sub, ast.Constant) and sub.value in SETTINGS_SCHEMA:
-                            writes.add(sub.value)
+                        writes |= res(sub)
     return reads, writes, edit_buttons, frozenset(fstring_prefixes)
 
 
@@ -271,14 +389,19 @@ def _module_mentions(module: str) -> set[str]:
     return {n.value for n in ast.walk(tree) if isinstance(n, ast.Constant) and n.value in SETTINGS_SCHEMA}
 
 
+_FIX_HINT = (
+    "выведите ключ в группу domain/settings/chat_fields.py (строка (\"group\", токен) в "
+    "handlers/settings/admin_sections.SECTIONS) или запишите в EXCEPTIONS с причиной"
+)
+
+
 def test_every_chat_read_key_is_reachable_from_a_bot_screen():
     reads, writes, edit_buttons, _prefixes = _scan()
     reachable = _computed_reachable(writes, edit_buttons) | set(OWN_SCREENS) | set(EXCEPTIONS)
     missing = sorted(k for k in reads if k not in reachable)
     assert not missing, (
-        "ключ читает код чата, а в боте его не поправить — выведите его в экран бота (группа в "
-        "handlers/settings/admin_settings.py или domain/settings/chat_fields.py) или запишите в EXCEPTIONS "
-        "с причиной:\n" + "\n".join(f"  {k}  ({', '.join(reads[k][:2])})" for k in missing)
+        "ключ читает код чата, а в боте его не поправить — " + _FIX_HINT + ":\n"
+        + "\n".join(f"  {k}  ({', '.join(reads[k][:2])})" for k in missing)
     )
 
 
@@ -293,8 +416,9 @@ def test_lists_hold_only_what_the_computation_cannot_see():
     reads, writes, edit_buttons, _prefixes = _scan()
     computed = _computed_reachable(writes, edit_buttons)
     assert not set(OWN_SCREENS) & set(EXCEPTIONS)
+    app_keys = {k for keys in APP_CHAT_SENDERS.values() for k in keys}
     for name, listed in (("OWN_SCREENS", OWN_SCREENS), ("EXCEPTIONS", EXCEPTIONS)):
-        not_read = sorted(k for k in listed if k not in reads)
+        not_read = sorted(k for k in listed if k not in reads and k not in app_keys)
         assert not not_read, f"{name}: код чата их больше не читает — уберите: {not_read}"
         already = sorted(k for k in listed if k in computed)
         assert not already, f"{name}: уже достижимы из экрана бота — уберите: {already}"
@@ -335,4 +459,76 @@ def test_every_fstring_read_is_declared():
     assert set(prefixes) == set(FSTRING_FAMILIES), (
         f"не описаны: {sorted(set(prefixes) - set(FSTRING_FAMILIES))}; "
         f"больше не встречаются: {sorted(set(FSTRING_FAMILIES) - set(prefixes))}"
+    )
+
+
+def _app_function_calls(func):
+    """Вызовы тела функции без вложенных функций (у тех своя запись; лямбды — часть тела)."""
+    stack = list(func.body)
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if isinstance(node, ast.Call):
+            yield node
+        stack.extend(ast.iter_child_nodes(node))
+
+
+@functools.lru_cache(maxsize=None)
+def _app_functions() -> dict[str, tuple[Path, ast.AST]]:
+    """«miniapp/<путь>.py::<функция>» -> (файл, узел) для всех функций приложения."""
+    found = {}
+    for path in sorted((ROOT / "miniapp").rglob("*.py")):
+        for node in ast.walk(_tree(path)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                found[f"{_rel(path)}::{node.name}"] = (path, node)
+    return found
+
+
+def _app_senders() -> set[str]:
+    return {
+        ref for ref, (_path, func) in _app_functions().items()
+        if any(_fname(call.func) in SEND_PRIMITIVES for call in _app_function_calls(func))
+    }
+
+
+def test_every_app_chat_sender_is_declared():
+    """Функция приложения, которая шлёт в чат, объявлена в APP_CHAT_SENDERS, и наоборот."""
+    senders = _app_senders()
+    undeclared = sorted(senders - set(APP_CHAT_SENDERS))
+    stale = sorted(set(APP_CHAT_SENDERS) - senders)
+    assert not undeclared, (
+        "функция приложения шлёт в чат, а в APP_CHAT_SENDERS её нет — допишите запись "
+        f"«путь::функция» -> ключи реестра её текстов (пустой кортеж — с причиной): {undeclared}"
+    )
+    assert not stale, f"APP_CHAT_SENDERS: функции нет или она больше не шлёт в чат — уберите: {stale}"
+
+
+def test_app_chat_sender_keys_are_mentioned():
+    """Запись не устаревает молча: каждый объявленный ключ есть в теле своей функции —
+    литералом или через имя, связанное литералом."""
+    functions = _app_functions()
+    stale = []
+    for ref, keys in APP_CHAT_SENDERS.items():
+        if ref not in functions:
+            continue  # отсутствующую функцию называет test_every_app_chat_sender_is_declared
+        path, func = functions[ref]
+        res = _resolver(path)
+        mentioned = set()
+        for node in ast.walk(func):
+            mentioned |= res(node)
+        stale += [f"{ref}: {key}" for key in keys if key not in mentioned]
+    assert not stale, f"ключа нет в теле функции — поправьте APP_CHAT_SENDERS: {stale}"
+
+
+def test_app_chat_sender_keys_are_reachable_from_a_bot_screen():
+    """Текст, который в чат шлёт приложение, правится и из бота (событие без приложения)."""
+    _reads, writes, edit_buttons, _prefixes = _scan()
+    reachable = _computed_reachable(writes, edit_buttons) | set(OWN_SCREENS) | set(EXCEPTIONS)
+    missing = sorted(
+        f"{key}  ({ref})" for ref, keys in APP_CHAT_SENDERS.items() for key in keys if key not in reachable
+    )
+    assert not missing, (
+        "приложение шлёт этот текст в чат, а в боте его не поправить — " + _FIX_HINT + ":\n  "
+        + "\n  ".join(missing)
     )
