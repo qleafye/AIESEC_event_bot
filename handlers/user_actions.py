@@ -1589,7 +1589,7 @@ async def process_question(message: types.Message, state: FSMContext, bot: Bot):
         await reg_i18n.say(message, await ui_text("ask_question_send_failed_text"), reply_markup=await get_main_menu_kb(message.from_user.id))
     else:
         logger.warning("No admins configured to receive questions")
-        await reg_i18n.say(message, await ui_text("ask_question_no_admins_text"), reply_markup=await get_main_menu_kb(message.from_user.id))
+        await reg_i18n.say(message, await ui_text("ask_question_no_recipients_text"), reply_markup=await get_main_menu_kb(message.from_user.id))
 
     await state.clear()
 
