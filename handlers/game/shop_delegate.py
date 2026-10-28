@@ -58,7 +58,7 @@ async def showcase_text(telegram_id: int) -> str:
     mine = await shop_db.list_user_sales(telegram_id)
     if mine:
         lines += ["", "<b>Ты уже получил(а)</b>"] + [f"✓ {html.escape(s['title'])}" for s in mine]
-    lines += ["", "Подходи к стойке магазина на форуме и назови свой @ник — баллы спишут на месте."]
+    lines += ["", "Подходи к стойке магазина на форуме и покажи свой QR из «🎟 Мой QR» — баллы спишут на месте. Нет QR — назови свой @ник."]
     return "\n".join(lines)
 
 
