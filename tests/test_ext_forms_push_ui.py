@@ -97,13 +97,18 @@ def test_push_button_asks_title_then_text_creates_form(monkeypatch):
         raise AssertionError("backfill не нужен")
     monkeypatch.setattr(wiz, "backfill_form", no_api)
     res, ev = dispatch_message("  Отбор волонтёров  ", ADMIN_ID, raw_state=TITLE_STATE, state=st)
+    # Название принято — дальше шаг «🎯 Для чего эта форма?», форма ещё не создана.
+    assert "Для чего эта форма" in _all_text(ev)
+    assert _run(xdb.get_form_by_external("yandex", FID)) is None
+    res, ev = dispatch_callback("extf_newp:a", ADMIN_ID, state=st)
     form = _run(xdb.get_form_by_external("yandex", FID))
+    assert form["purpose"] == "answers"
     assert form["title"] == "Отбор волонтёров"
     assert form["ingest_mode"] == "push" and form["connection_id"] is None
     assert form["secret"] and len(form["secret"]) >= 32
     assert form["key_username_q"] is None and form["key_phone_q"] is None
-    assert "✅ Форма подключена" in _all_text(ev)
-    d = _datas(ev.answers[-1][2])
+    assert "✅ Форма подключена" in ev.message.text
+    d = _datas(ev.message.markup)
     assert {f"extf_hook:{form['id']}", f"extf_import:{form['id']}", f"extf_tab:{form['id']}",
             f"extf_card:{form['id']}"} <= set(d)
     assert _run(st.get_state()) is None
@@ -115,9 +120,10 @@ def test_default_title_button(monkeypatch):
     st = _link_state()
     dispatch_message(LINK, ADMIN_ID, raw_state=LINK_STATE, state=st)
     dispatch_callback("extf_push", ADMIN_ID, state=st)
-    res, ev = dispatch_callback("extf_push_title_default", ADMIN_ID, state=st)
+    dispatch_callback("extf_push_title_default", ADMIN_ID, state=st)
+    res, ev = dispatch_callback("extf_newp:a", ADMIN_ID, state=st)
     assert _run(xdb.get_form_by_external("yandex", FID))["title"] == "Яндекс Форма"
-    assert "✅ Форма подключена" in " ".join(a[0] for a in ev.message.answers)
+    assert "✅ Форма подключена" in ev.message.text
 
 
 def test_empty_title_falls_back_and_long_is_cut(monkeypatch):
@@ -125,6 +131,7 @@ def test_empty_title_falls_back_and_long_is_cut(monkeypatch):
     _run(st.set_state(ExtFormConnect.push_title))
     _run(st.update_data(platform="yandex", external_id=FID))
     dispatch_message("Я" * 300, ADMIN_ID, raw_state=TITLE_STATE, state=st)
+    dispatch_callback("extf_newp:a", ADMIN_ID, state=st)
     assert len(_run(xdb.get_form_by_external("yandex", FID))["title"]) == 100
 
 
@@ -144,8 +151,9 @@ def test_double_tap_does_not_duplicate(monkeypatch):
     _run(st.set_state(ExtFormConnect.push_title))
     _run(st.update_data(platform="yandex", external_id=FID))
     dispatch_callback("extf_push_title_default", ADMIN_ID, state=st)
-    res, ev = dispatch_callback("extf_push_title_default", ADMIN_ID, state=st)
-    assert "начните подключение заново" in " ".join(a[0] for a in ev.message.answers)
+    dispatch_callback("extf_newp:a", ADMIN_ID, state=st)
+    res, ev = dispatch_callback("extf_newp:a", ADMIN_ID, state=st)
+    assert "начните подключение заново" in ev.message.text
     assert len([f for f in _run(xdb.list_forms()) if f["external_id"] == FID]) == 1
 
 

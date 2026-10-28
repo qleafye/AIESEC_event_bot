@@ -455,3 +455,189 @@ def test_ext_reg_pending_text_registered():
     spec = SETTINGS_SCHEMA["ext_reg_pending_text"]
     assert spec["group"] == "reg" and spec["default"] in FORM_DEFAULT_EN
     assert len(SYNONYMS["ext_reg_pending_text"]) >= 2
+
+
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# Экраны: шаг назначения мастера, карточка, смена назначения, настройки регистрации
+# ══════════════════════════════════════════════════════════════════════════════════════════
+
+def _fsm():
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    return FSMContext(storage=MemoryStorage(),
+                      key=StorageKey(bot_id=1, chat_id=ADMIN, user_id=ADMIN))
+
+
+def _google_draft(st):
+    questions = [["Фамилия и имя", "Фамилия и имя"], ["Ваш вуз", "Ваш вуз"],
+                 ["Ник в Telegram", "Ник в Telegram"]]
+    _run(st.update_data(platform="google", external_id="sheet-1", gid=0, title="Анкета <МГУ>",
+                        questions=questions, uq="Ник в Telegram", pq=None))
+
+
+def test_connect_asks_purpose_then_creates_registration_form(tmp_path, monkeypatch):
+    from handlers.ext_forms import admin_ext_forms_connect as wiz
+    _env(tmp_path)
+
+    async def sync(form):
+        return 0
+    monkeypatch.setattr(wiz.gg, "sync_google_form", sync)
+    st = _fsm()
+    _google_draft(st)
+    cb = _Cb("extf_keys_ok")
+    _run(wiz.extf_keys_ok(cb, st))
+    text, kb = _last(cb)
+    assert "Для чего эта форма" in text and "есть вопрос про вуз" in text
+    assert _cbs(kb) == ["extf_newp:d", "extf_newp:r", "extf_newp:a"]
+    assert _run(ef.list_forms()) == []
+    cb = _Cb("extf_newp:r")
+    _run(wiz.extf_newp(cb, st))
+    form = _run(ef.get_form_by_external("google", "sheet-1", 0))
+    assert form["purpose"] == "registration" and form["reg_q_fullname"] == "Фамилия и имя"
+    assert form["purpose_since"] is None
+    assert f"extf_reg:{form['id']}" in _cbs(_last(cb)[1])
+    # Второй тап — «начните заново», дубля нет.
+    cb = _Cb("extf_newp:r")
+    _run(wiz.extf_newp(cb, st))
+    assert "начните подключение заново" in _last(cb)[0]
+    assert len(_run(ef.list_forms())) == 1
+
+
+def test_card_shows_purpose_line_and_button(tmp_path):
+    from handlers.ext_forms import admin_ext_forms as card
+    _env(tmp_path)
+    a = _form("Отзывы <МГУ>", purpose="answers")
+    cb = _Cb(f"extf_card:{a}")
+    _run(card.render_form_card(cb, a))
+    text, kb = _last(cb)
+    assert "🎯 Назначение: 📄 Только ответы" in text and "&lt;МГУ&gt;" in text
+    assert _cbs(kb)[0] == f"extf_purpose:{a}"
+    r = _reg_form()
+    cb = _Cb(f"extf_card:{r}")
+    _run(card.render_form_card(cb, r))
+    text, kb = _last(cb)
+    assert "📝 Заявок из формы: 0 · ждут /start по нику: 0" in text
+    assert _cbs(kb)[:2] == [f"extf_purpose:{r}", f"extf_reg:{r}"]
+
+
+def test_purpose_screen_marks_current_and_escapes(tmp_path):
+    from handlers.ext_forms import admin_ext_forms_purpose as mod
+    _env(tmp_path)
+    fid = _form("Форма <МГУ>", purpose="answers")
+    cb = _Cb(f"extf_purpose:{fid}")
+    _run(mod.extf_purpose(cb))
+    text, kb = _last(cb)
+    assert "&lt;МГУ&gt;" in text and "<МГУ>" not in text
+    assert "✅ 📄 Только ответы" in _texts(kb)
+    assert _cbs(kb)[-1] == f"extf_card:{fid}"
+
+
+def test_purpose_change_without_answers_is_immediate(tmp_path):
+    from handlers.ext_forms import admin_ext_forms_purpose as mod
+    _env(tmp_path)
+    fid = _form("Пустая", purpose="answers")
+    cb = _Cb(f"extf_purpose_set:{fid}:a")
+    _run(mod.extf_purpose_set(cb))
+    assert cb.answer_calls[-1][0] == "Это назначение уже выбрано"
+    cb = _Cb(f"extf_purpose_set:{fid}:r")
+    _run(mod.extf_purpose_set(cb))
+    assert _purpose_in_db(fid) == "registration"
+    assert cb.answer_calls[-1][0] == "Назначение: 📝 Регистрация"
+
+
+def test_purpose_change_with_answers_confirms(tmp_path):
+    from handlers.ext_forms import admin_ext_forms_purpose as mod
+    _env(tmp_path)
+    fid = _form("С ответами", purpose="answers")
+    _answer(fid, "x1", REG_ITEMS)
+    cb = _Cb(f"extf_purpose_set:{fid}:r")
+    _run(mod.extf_purpose_set(cb))
+    text, kb = _last(cb)
+    assert "Уже полученные ответы (1) не пересчитываются" in text
+    assert "станет заявкой участника" in text
+    assert _cbs(kb) == [f"extf_purpose_ok:{fid}:r", f"extf_card:{fid}"]
+    assert _purpose_in_db(fid) == "answers"
+    _run(mod.extf_purpose_ok(_Cb(f"extf_purpose_ok:{fid}:r")))
+    form = _run(ef.get_form(fid))
+    assert form["purpose"] == "registration" and form["purpose_since"]
+    assert form["reg_q_fullname"] == "f"  # угадан по «Фамилия и имя»
+    # Ответ до смены регистрация не трогает.
+    assert _run(reg.on_answer_available(fid, "x1")) == {"skipped": "before_purpose"}
+
+
+def test_leaving_delegations_turns_them_off(tmp_path):
+    from handlers.ext_forms import admin_ext_forms_purpose as mod
+    _env(tmp_path)
+    fid = _form("Делегации <МГУ>", purpose="delegations")
+    _select_delegations(fid)
+    _run(ef.set_form_mirror(fid, "UR REGS", None))
+    _run(ef.set_form_mirror_mode(fid, "yandex_export"))
+    cb = _Cb(f"extf_purpose_set:{fid}:a")
+    _run(mod.extf_purpose_set(cb))
+    text = _last(cb)[0]
+    assert "Делегации выключатся" in text and "Бот перестанет оценивать" in text
+    assert "Копия ответов во вкладку «UR REGS» остановится" in text
+    _run(mod.extf_purpose_ok(_Cb(f"extf_purpose_ok:{fid}:a")))
+    assert _run(get_setting_typed("delegation_form_id")) in ("", None)
+    assert _run(get_setting_typed("delegation_armed_form_id")) in ("", None)
+    form = _run(ef.get_form(fid))
+    assert form["mirror_tab"] is None and form["mirror_mode"] == "bot"
+    assert form["purpose"] == "answers"
+
+
+def test_registration_settings_screen(tmp_path):
+    import domain.cities as cities
+    from handlers.ext_forms import admin_ext_forms_purpose as mod
+    _env(tmp_path)
+    saved = cities.all_cities()
+    cities.set_cities_for_test([
+        {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+        {"code": "spb", "label": "Санкт-Петербург", "tab_base": "СПб", "enabled": 1,
+         "sort_order": 1},
+    ])
+    try:
+        _run(set_setting_by_admin(None, "event_city_enabled", "on"))
+        fid = _form("Рег <МГУ>", purpose="registration", username_q=None)
+        _answer(fid, "x1", REG_ITEMS)
+        cb = _Cb(f"extf_reg:{fid}")
+        _run(mod.extf_reg(cb))
+        text, kb = _last(cb)
+        assert "&lt;МГУ&gt;" in text and "Без вопроса про ник" in text
+        assert "Одобрение: в очередь заявок" in text
+        assert f"extf_regcity:{fid}" in _cbs(kb)
+        # Вопросы кнопками.
+        cb = _Cb(f"extf_regq:{fid}:f")
+        _run(mod.extf_regq(cb))
+        assert f"extf_regqset:{fid}:f:0" in _cbs(_last(cb)[1])
+        _run(mod.extf_regqset(_Cb(f"extf_regqset:{fid}:f:0")))
+        _run(mod.extf_regqset(_Cb(f"extf_regqset:{fid}:u:2")))
+        form = _run(ef.get_form(fid))
+        assert form["reg_q_fullname"] == "f" and form["key_username_q"] == "u"
+        cb = _Cb(f"extf_regqset:{fid}:u:9")
+        _run(mod.extf_regqset(cb))
+        assert cb.answer_calls[-1] == (mod._STALE, True)
+        # Одобрение.
+        cb = _Cb(f"extf_regappr:{fid}")
+        _run(mod.extf_regappr(cb))
+        assert _run(ef.get_form(fid))["reg_approve"] == "auto"
+        assert cb.answer_calls[-1][0] == "Одобрение: сразу одобрять"
+        # Город — подписью, не кодом.
+        cb = _Cb(f"extf_regcity:{fid}")
+        _run(mod.extf_regcity(cb))
+        assert _texts(_last(cb)[1])[:2] == ["Москва", "Санкт-Петербург"]
+        cb = _Cb(f"extf_regcityset:{fid}:1")
+        _run(mod.extf_regcityset(cb))
+        assert _run(ef.get_form(fid))["reg_city"] == "spb"
+        text = _last(cb)[0]
+        assert "Город: Санкт-Петербург" in text and "spb" not in text
+    finally:
+        cities.set_cities_for_test(saved)
+
+
+def test_registration_settings_need_registration_purpose(tmp_path):
+    from handlers.ext_forms import admin_ext_forms_purpose as mod
+    _env(tmp_path)
+    fid = _form("Ответы", purpose="answers")
+    cb = _Cb(f"extf_reg:{fid}")
+    _run(mod.extf_reg(cb))
+    assert cb.answer_calls[-1] == (mod._NOT_REG, True)

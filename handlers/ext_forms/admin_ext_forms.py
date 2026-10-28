@@ -20,6 +20,7 @@ from database import ext_forms_db as xdb
 from handlers.access.admin_caps import has_capability
 from handlers.admin import router
 from services.delegations.delegations_off_alert import form_delegation_state
+from services.ext_forms.ext_forms_purpose import PURPOSE_LABELS, purpose_of
 from services.infra.timeutil import msk_now
 
 FORMS_PAGE = 8
@@ -139,11 +140,18 @@ async def _form_with_stats(form_id: int) -> dict | None:
     return None
 
 
-def _card_text(f: dict, dlg_lines: list[str] | None = None) -> str:
+def _card_text(f: dict, dlg_lines: list[str] | None = None, purpose: str | None = None) -> str:
     status = _STATUS_WORDS.get(f.get("status"), "—")
     lines = [
         f"📝 <b>{_e(f['title'])}</b>",
         _PLATFORM_LABEL.get(f["platform"], "Форма"),
+    ]
+    if purpose in PURPOSE_LABELS:
+        lines.append(f"🎯 Назначение: {PURPOSE_LABELS[purpose]}")
+    if purpose == "registration":
+        lines.append(f"📝 Заявок из формы: {f.get('reg_done') or 0} · ждут /start по нику: "
+                     f"{f.get('reg_waiting') or 0}")
+    lines += [
         f"Состояние: {status}",
         f"Ответов: {f['total']}",
         f"Не сопоставлено с делегатом: {f['unmatched']}",
@@ -169,9 +177,14 @@ def _card_text(f: dict, dlg_lines: list[str] | None = None) -> str:
     return "\n".join(lines)
 
 
-def _card_kb(f: dict, dlg_button: InlineKeyboardButton | None = None) -> InlineKeyboardMarkup:
+def _card_kb(f: dict, dlg_button: InlineKeyboardButton | None = None,
+             purpose: str | None = None) -> InlineKeyboardMarkup:
     fid = f["id"]
     rows: list[list[InlineKeyboardButton]] = []
+    if purpose in PURPOSE_LABELS:
+        rows.append([_btn(f"🎯 Назначение: {PURPOSE_LABELS[purpose]}", f"extf_purpose:{fid}")])
+    if purpose == "registration":
+        rows.append([_btn("📝 Настройки регистрации", f"extf_reg:{fid}")])
     if f["status"] == "active":
         rows.append([_btn("⏸ Поставить на паузу", f"extf_pause:{fid}")])
     elif f["status"] == "paused":
@@ -201,7 +214,9 @@ async def render_form_card(message_or_callback, form_id: int, *, edit: bool = Tr
         return False
     uid = getattr(getattr(message_or_callback, "from_user", None), "id", None)
     dlg_lines, dlg_button = await _delegations_block(f, uid)
-    await _show(message_or_callback, _card_text(f, dlg_lines), _card_kb(f, dlg_button), edit=edit)
+    purpose = await purpose_of(f)
+    await _show(message_or_callback, _card_text(f, dlg_lines, purpose),
+                _card_kb(f, dlg_button, purpose), edit=edit)
     return True
 
 
@@ -412,3 +427,4 @@ from handlers.ext_forms import admin_ext_forms_oauth  # noqa: E402,F401
 from handlers.ext_forms import admin_ext_forms_setup  # noqa: E402,F401
 from handlers.ext_forms import admin_ext_forms_connect  # noqa: E402,F401
 from handlers.ext_forms import admin_ext_forms_push  # noqa: E402,F401
+from handlers.ext_forms import admin_ext_forms_purpose  # noqa: E402,F401
