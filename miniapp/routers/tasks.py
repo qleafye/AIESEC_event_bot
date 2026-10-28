@@ -41,6 +41,7 @@ from domain.game.labels import (
     visible_tasks_for,
 )
 from services.i18n import i18n
+from services.game.city_texts import city_text  # тексты геймы и волн города делегата + {chat}
 from services.amb.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
 from domain.settings.schema import get_setting_typed
 
@@ -201,7 +202,7 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
         "limit": lim,
         "offset": off,
         "empty_text": (
-            await i18n.tr_setting("game_task_list_empty", lang, tr_map) if not all_tasks else None
+            await city_text("game_task_list_empty", p.telegram_id, lang=lang, tr_map=tr_map) if not all_tasks else None
         ),
     }
 
