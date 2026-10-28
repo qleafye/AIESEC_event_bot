@@ -176,7 +176,8 @@ def test_no_form_screen_explains_what_to_do(tmp_path):
     text, mode, kb = _last_edit(cb)
     assert mode == "HTML"
     assert "Форма делегаций не выбрана" in text
-    assert "📊 Данные → 📝 Внешние формы" in text
+    assert "📊 Данные → 📝 Внешние формы" not in text  # отсылку текстом заменила кнопка
+    assert "Подключить форму" in text
     assert "📝 Выбрать форму" in _button_texts(kb)
     assert "admin_sec:apps" in _callbacks(kb)
     assert "settings_group:apps" not in _callbacks(kb)
