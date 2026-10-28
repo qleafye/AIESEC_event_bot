@@ -4,7 +4,7 @@
 в handlers/access/admin_caps.py: все `extf_*` и состояние ExtFormConnect — `settings`.
 
 Шаги: ссылка -> проверка доступа -> ключевые вопросы (по ним ответ привязывается к делегату) ->
-создание формы -> вкладка и адрес приёмника (экраны handlers/ext_forms/admin_ext_forms_setup.py) ->
+«🎯 Для чего эта форма?» (назначение, `extf_newp`) -> создание формы -> вкладка и адрес приёмника (экраны handlers/ext_forms/admin_ext_forms_setup.py) ->
 старые ответы. Из ссылки берётся только id формы / таблицы (+ gid), хосты запросов фиксированы.
 Ход мастера лежит в FSM; после рестарта бота нажатие «✅ Верно» честно просит начать заново."""
 import logging
@@ -25,7 +25,9 @@ from services.ext_forms import ext_forms_google as gg
 from services.ext_forms import ext_forms_yandex as yx
 from services.infra.background import spawn
 from services.ext_forms.ext_forms_match import guess_key_questions
+from services.delegations.delegations import guess_delegation_questions
 from services.ext_forms.ext_forms_parse import parse_yandex_questions
+from services.ext_forms.ext_forms_purpose import CODES as PURPOSE_CODES, PURPOSE_HELP
 from services.ext_forms.ext_forms_yandex_sync import backfill_form, ensure_fresh_token
 
 logger = logging.getLogger(__name__)
@@ -136,8 +138,9 @@ async def extf_connect_link(message: types.Message, state: FSMContext):
         await message.answer(_RESTART, reply_markup=_kb([_to_list()]))
 
 
-async def _open_existing(target, form: dict, state: FSMContext) -> None:
-    await state.clear()
+async def _open_existing(target, form: dict, state: FSMContext | None) -> None:
+    if state is not None:
+        await state.clear()
     msg = getattr(target, "message", None) or target
     await msg.answer("Эта форма уже подключена — вот её карточка.",
                      reply_markup=ReplyKeyboardRemove())
@@ -219,41 +222,47 @@ async def extf_push_title_default(callback: types.CallbackQuery, state: FSMConte
 
 
 async def _create_push_form(target, state: FSMContext, title: str, by: int) -> None:
+    """Название личной формы принято — дальше шаг «🎯 Для чего эта форма?» (форма создаётся
+    по выбору назначения, `extf_newp`)."""
     d = await state.get_data()
-    external_id = d.get("external_id")
-    if d.get("platform") != "yandex" or not external_id:
+    if d.get("platform") != "yandex" or not d.get("external_id"):
         await state.clear()
         await _reply(target, _RESTART, _kb([_to_list()]))
         return
-    # Состояние чистим ДО проверки и вставки: второй быстрый тап увидит пустое состояние
-    # и получит «начните заново», а не создаст дубль формы.
-    await state.clear()
+    await state.set_state(None)
+    await state.update_data(title=title, ingest_mode="push")
+    await _reply(target, "Название принято.", ReplyKeyboardRemove())
+    await _ask_purpose(target, state, edit=False)
+
+
+async def _push_form_from_draft(target, d: dict, by: int, purpose: str) -> None:
+    external_id = d["external_id"]
     existing = await xdb.get_form_by_external("yandex", external_id)
     if existing:
-        await _open_existing(target, existing, state)
+        await _open_existing(target, existing, None)
         return
     try:
         form_id = await xdb.create_form(
-            platform="yandex", connection_id=None, external_id=external_id, title=title,
-            secret=secrets.token_urlsafe(24), ingest_mode="push", created_by=by)
+            platform="yandex", connection_id=None, external_id=external_id, title=d["title"],
+            secret=secrets.token_urlsafe(24), ingest_mode="push", created_by=by, purpose=purpose)
     except sqlite3.IntegrityError:
         existing = await xdb.get_form_by_external("yandex", external_id)
         if existing is None:
             raise
-        await _open_existing(target, existing, state)
+        await _open_existing(target, existing, None)
         return
-    await _reply(target, "Название принято.", ReplyKeyboardRemove())
-    await _reply(
+    rows = [[_btn("🔗 Адрес и инструкция", f"extf_hook:{form_id}")],
+            [_btn("📥 Загрузить старые ответы", f"extf_import:{form_id}")],
+            [_btn("📋 Выбрать вкладку", f"extf_tab:{form_id}")]]
+    rows += _purpose_rows(form_id, purpose)
+    await _show(
         target,
         "✅ Форма подключена. Ответы будут приходить через интеграцию формы.\n\nОсталось:\n"
         "1) «🔗 Адрес и инструкция» — вставить адрес и параметры в Интеграции;\n"
         "2) «📥 Загрузить старые ответы» — файл выгрузки;\n"
         "3) выбрать вкладку для копии.\n"
         "Вопросы ника и телефона выберете в карточке, когда придут первые ответы.",
-        _kb([[_btn("🔗 Адрес и инструкция", f"extf_hook:{form_id}")],
-             [_btn("📥 Загрузить старые ответы", f"extf_import:{form_id}")],
-             [_btn("📋 Выбрать вкладку", f"extf_tab:{form_id}")],
-             [_btn("📄 Карточка формы", f"extf_card:{form_id}")]]))
+        _kb(rows), edit=True)
 
 
 # ---------- Google ----------
@@ -446,25 +455,27 @@ async def extf_keyset(callback: types.CallbackQuery, state: FSMContext):
 
 # ---------- создание формы ----------
 
-def _next_steps_rows(form_id: int, *, yandex: bool) -> list[list[InlineKeyboardButton]]:
+def _next_steps_rows(form_id: int, *, yandex: bool,
+                     purpose: str = "answers") -> list[list[InlineKeyboardButton]]:
     rows = [[_btn("📋 Выбрать вкладку", f"extf_tab:{form_id}")]]
     if yandex:
         rows.append([_btn("🔗 Адрес и инструкция", f"extf_hook:{form_id}")])
-    rows.append([_btn("📄 Карточка формы", f"extf_card:{form_id}")])
-    return rows
+    return rows + _purpose_rows(form_id, purpose)
 
 
-async def _create_form_from_draft(platform: str, d: dict, by: int) -> int:
+async def _create_form_from_draft(platform: str, d: dict, by: int, purpose: str | None = None,
+                                  fullname_q: str | None = None) -> int:
     if platform == "yandex":
         conn = await xdb.get_yandex_connection()
         return await xdb.create_form(
             platform="yandex", connection_id=conn["id"] if conn else None,
             external_id=d["external_id"], title=d["title"], secret=secrets.token_urlsafe(24),
-            key_username_q=d.get("uq"), key_phone_q=d.get("pq"), created_by=by)
+            key_username_q=d.get("uq"), key_phone_q=d.get("pq"), created_by=by,
+            purpose=purpose, reg_q_fullname=fullname_q)
     return await xdb.create_form(
         platform="google", external_id=d["external_id"], gsheet_gid=d.get("gid"),
         title=d["title"], secret=None, key_username_q=d.get("uq"),
-        key_phone_q=d.get("pq"), created_by=by)
+        key_phone_q=d.get("pq"), created_by=by, purpose=purpose, reg_q_fullname=fullname_q)
 
 
 @router.callback_query(F.data == "extf_keys_ok")
@@ -476,23 +487,68 @@ async def extf_keys_ok(callback: types.CallbackQuery, state: FSMContext):
         await _show(callback, _RESTART, _kb([_to_list()]), edit=True)
         await callback.answer()
         return
-    # Состояние чистим ДО проверки и вставки: второй быстрый тап «Верно» увидит пустое
-    # состояние и получит «начните заново», а не создаст дубль формы.
+    # Форма создаётся только после выбора назначения: подтянутые старые ответы сразу идут
+    # по выбранной логике.
+    await _ask_purpose(callback, state, edit=True)
+    await callback.answer()
+
+
+# ---------- назначение формы ----------
+
+async def _ask_purpose(target, state: FSMContext, *, edit: bool) -> None:
+    d = await state.get_data()
+    questions = [tuple(q) for q in d.get("questions") or []]
+    text = f"🎯 <b>Для чего эта форма?</b>\n\n{PURPOSE_HELP}"
+    if guess_delegation_questions(questions).get("university") is not None:
+        text += "\n\nПохоже на форму делегаций: в ней есть вопрос про вуз."
+    rows = [[_btn("🏫 Делегации вузов", "extf_newp:d")],
+            [_btn("📝 Регистрация участников", "extf_newp:r")],
+            [_btn("📄 Только ответы", "extf_newp:a")]]
+    await _show(target, text, _kb(rows), edit=edit)
+
+
+def _purpose_rows(form_id: int, purpose: str) -> list[list[InlineKeyboardButton]]:
+    if purpose != "registration":
+        return [[_btn("📄 Карточка формы", f"extf_card:{form_id}")]]
+    return [[_btn("📝 Настройки регистрации", f"extf_reg:{form_id}")],
+            [_btn("📄 Карточка формы", f"extf_card:{form_id}")]]
+
+
+@router.callback_query(F.data.startswith("extf_newp:"))
+async def extf_newp(callback: types.CallbackQuery, state: FSMContext):
+    d = await state.get_data()
+    purpose = PURPOSE_CODES.get(callback.data.split(":", 1)[1])
+    platform = d.get("platform")
+    # Состояние чистим ДО проверки и вставки: второй быстрый тап увидит пустое состояние
+    # и получит «начните заново», а не создаст дубль формы.
     await state.clear()
-    existing = await xdb.get_form_by_external(platform, d["external_id"], d.get("gid"))
-    if existing:
-        await _open_existing(callback, existing, state)
+    if (purpose is None or not d.get("external_id") or not d.get("title")
+            or platform not in ("yandex", "google")):
+        await _show(callback, _RESTART, _kb([_to_list()]), edit=True)
         await callback.answer()
         return
     by = callback.from_user.id
+    if d.get("ingest_mode") == "push":
+        await _push_form_from_draft(callback, d, by, purpose)
+        await callback.answer()
+        return
+    existing = await xdb.get_form_by_external(platform, d["external_id"], d.get("gid"))
+    if existing:
+        await _open_existing(callback, existing, None)
+        await callback.answer()
+        return
+    fullname_q = None
+    if purpose == "registration":
+        fullname_q = guess_delegation_questions(
+            [tuple(q) for q in d.get("questions") or []]).get("fullname")
     try:
-        form_id = await _create_form_from_draft(platform, d, by)
+        form_id = await _create_form_from_draft(platform, d, by, purpose, fullname_q)
     except sqlite3.IntegrityError:
         # Гонка с другим нажатием: форма уже создана — показываем её карточку.
         existing = await xdb.get_form_by_external(platform, d["external_id"], d.get("gid"))
         if existing is None:
             raise
-        await _open_existing(callback, existing, state)
+        await _open_existing(callback, existing, None)
         await callback.answer()
         return
     if platform == "yandex":
@@ -501,7 +557,7 @@ async def extf_keys_ok(callback: types.CallbackQuery, state: FSMContext):
                     "минут, я напишу, сколько нашлось.\n\nОсталось два шага:\n"
                     "1) выберите вкладку для копии ответов;\n"
                     "2) вставьте адрес в «Интеграции» Яндекс Форм.",
-                    _kb(_next_steps_rows(form_id, yandex=True)), edit=True)
+                    _kb(_next_steps_rows(form_id, yandex=True, purpose=purpose)), edit=True)
         spawn(_backfill_and_report(callback.message, form_id))
     else:
         form = await xdb.get_form(form_id)
@@ -512,7 +568,7 @@ async def extf_keys_ok(callback: types.CallbackQuery, state: FSMContext):
             logger.warning("ext_forms: первая синхронизация формы %s: %s", form_id, type(e).__name__)
             tail = "старые ответы подтянутся при следующей сверке"
         await _show(callback, f"✅ Форма подключена, {tail}.\nОсталось выбрать вкладку для копии.",
-                    _kb(_next_steps_rows(form_id, yandex=False)), edit=True)
+                    _kb(_next_steps_rows(form_id, yandex=False, purpose=purpose)), edit=True)
     await callback.answer()
 
 
