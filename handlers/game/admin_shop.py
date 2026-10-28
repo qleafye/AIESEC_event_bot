@@ -345,12 +345,18 @@ async def item_text_kb(item: dict) -> tuple[str, InlineKeyboardMarkup]:
         f"Цена: {item['price']} {points_word(item['price'])}\n"
         f"Количество: {_stock(item)}\n"
         f"Лимит: {limit}\n"
-        f"На витрине: {'✅ да' if item['active'] else '🙈 снят'}"
+        f"На витрине: {'✅ да' if item['active'] else '🙈 снят'}\n"
+        f"Фото: {'✅ есть' if item.get('photo_file_id') else 'нет'}"
     )
     iid = item["id"]
+    photo_row = (
+        [("🖼 Заменить фото", f"shp_ph:{iid}"), ("🗑 Убрать фото", f"shp_phdel:{iid}")]
+        if item.get("photo_file_id") else [("🖼 Загрузить фото", f"shp_ph:{iid}")]
+    )
     kb = _kb([
         [("✏️ Название", f"shp_ed:{iid}:title"), ("💰 Цена", f"shp_ed:{iid}:price")],
         [("📦 Количество", f"shp_ed:{iid}:stock"), ("👤 Лимит в одни руки", f"shp_ed:{iid}:per_person")],
+        photo_row,
         [("🙈 Снять с витрины" if item["active"] else "👁 Вернуть на витрину", f"shp_act:{iid}")],
         [("🗑 Удалить", f"shp_del:{iid}")],
         [("◀️ К товарам", "shp_items")],
@@ -577,3 +583,5 @@ async def shop_sales_csv(callback: types.CallbackQuery):
 
 # Брони делегатов на стойке (тумблер, выдача по коду, отмена) — отдельный шов, импорт хвостом.
 from handlers.game import admin_shop_reserve  # noqa: E402,F401
+# Фото товара (загрузить / заменить / убрать) — отдельный шов, импорт хвостом.
+from handlers.game import admin_shop_photo  # noqa: E402,F401

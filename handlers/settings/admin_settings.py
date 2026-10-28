@@ -336,6 +336,7 @@ _GAME_FIELD_ORDER = [
     "shop_cancel_keep_button_text", "shop_cancelled_text",
     "shop_reservation_gone_text", "shop_reservation_qr_footer_text",
     "shop_issued_notify_text", "shop_cancelled_by_staff_notify_text",
+    "shop_photos_button_text", "shop_photo_caption_text", "shop_photos_failed_text",
     "balance_history_header_text",
     # Штраф за просрочку и тексты заданий про срок — про задания, не про команду амбассадоров.
     "game_late_penalty_percent", "game_task_no_deadline_text", "game_task_penalty_hint_text",
