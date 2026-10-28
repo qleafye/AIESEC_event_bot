@@ -7,10 +7,15 @@
 Цвета — из `refs/BRAND.md` (YouLead'26), шрифты — те же woff2 Mini App, что у учебного листа
 (`checkin_training.sheet_font`), лого — `dashboard/static/brand/aisek-logo-ru.png`, перекрашенное
 в белый (вариант «белый на синем» по BlueBook). Макета от дизайнеров нет — когда пришлют,
-менять только этот модуль."""
+менять только этот модуль.
+
+Оформление под событие (цвета, картинка фона, своё лого, вкл/выкл элементов) — из админки,
+ключи `qr_card_*`, разбор в `services/forum/qr_card_theme.py` (`CardTheme`). Без темы или с
+темой по умолчанию рисуется ровно прежняя карточка, байт-в-байт."""
 from __future__ import annotations
 
 import io
+import logging
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -27,6 +32,8 @@ _ORANGE = (244, 137, 36)
 _TEXT = (28, 28, 28)
 _MUTED = (82, 86, 94)
 _WHITE = (255, 255, 255)
+
+logger = logging.getLogger(__name__)
 
 _PAD = 72          # поле от краёв холста
 _CARD_PAD = 56     # поле внутри белой карточки
@@ -127,12 +134,68 @@ def _white_logo(height: int):
     return white.resize((int(white.width * ratio), height), Image.LANCZOS)
 
 
+def _custom_logo(data: bytes, height: int):
+    """Своё лого менеджера — как есть, без перекраски: высота `height`, ширина не шире поля."""
+    from PIL import Image
+
+    logo = Image.open(io.BytesIO(data)).convert("RGBA")
+    ratio = height / logo.height
+    width = int(logo.width * ratio)
+    max_w = _W - 2 * _PAD
+    if width > max_w:
+        width, height = max_w, max(1, int(logo.height * max_w / logo.width))
+    return logo.resize((max(1, width), height), Image.LANCZOS)
+
+
+def _cover(data: bytes):
+    """Картинка фона на весь холст: масштаб «cover», лишнее обрезается по центру."""
+    from PIL import Image, ImageOps
+
+    src = Image.open(io.BytesIO(data)).convert("RGBA")
+    return ImageOps.fit(src, (_W, _H), method=Image.LANCZOS, centering=(0.5, 0.5))
+
+
+def _themed_background(title: str, watermark: str, theme):
+    """Фон по теме из админки. Картинка фона или лого не открылись — цвет фона / белое лого
+    АЙСЕК и warning: карточка должна собраться в любом случае."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGBA", (_W, _H), theme.bg + (255,))
+    if theme.bg_image:
+        try:
+            img.alpha_composite(_cover(theme.bg_image))
+        except Exception as e:
+            logger.warning(f"qr_card: картинка фона не открылась, фон цветом: {e}")
+    if theme.show_watermark:
+        _watermark(img, watermark)
+    draw = ImageDraw.Draw(img)
+    y = _PAD
+    if theme.show_logo:
+        logo = None
+        if theme.logo:
+            try:
+                logo = _custom_logo(theme.logo, 64)
+            except Exception as e:
+                logger.warning(f"qr_card: своё лого не открылось, ставим лого АЙСЕК: {e}")
+        if logo is None:
+            logo = _white_logo(64)
+        img.alpha_composite(logo, (_PAD, _PAD))
+        y = _PAD + logo.height + 40
+    f_title = _fit(draw, title, "raleway-800italic.woff2", 76, _W - 2 * _PAD, min_size=48)
+    draw.text((_PAD, y), _ellipsize(draw, title, f_title, _W - 2 * _PAD), font=f_title, fill=theme.text)
+    return img, y + f_title.size + 44
+
+
 @lru_cache(maxsize=4)
-def _background(title: str, watermark: str):
+def _background(title: str, watermark: str, theme=None):
     """Фон с паттерном, лого и заголовком — одинаковый у всех делегатов события, поэтому
     собирается один раз: утренняя рассылка QR идёт на всю базу, и поворот паттерна на каждого
-    человека добавлял бы почти секунду. Возвращает `(картинка, y под заголовком)`."""
+    человека добавлял бы почти секунду. Возвращает `(картинка, y под заголовком)`.
+    `theme` — `CardTheme` (неизменяемая, годится в ключ кэша); `None` — прежний фон."""
     from PIL import Image, ImageDraw
+
+    if theme is not None:
+        return _themed_background(title, watermark, theme)
 
     img = Image.new("RGBA", (_W, _H), _BLUE + (255,))
     _watermark(img, watermark)
@@ -145,12 +208,33 @@ def _background(title: str, watermark: str):
     return img, y + f_title.size + 44
 
 
-def render_qr_card(payload: str, name: str, city: str, title: str, footer: str, watermark: str) -> bytes:
+def _chip_text_color(accent: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Надпись плашки: белая, как была; на светлой плашке (жёлтый, белый) — тёмная, иначе её
+    не видно. Оранжевый по умолчанию светлым не считается — дефолт не меняется."""
+    r, g, b = accent
+    return _TEXT if (0.299 * r + 0.587 * g + 0.114 * b) > 186 else _WHITE
+
+
+def render_qr_card(
+    payload: str, name: str, city: str, title: str, footer: str, watermark: str, *, theme=None,
+) -> bytes:
     """PNG 1080×1440: лого и заголовок на синем, белая карточка с QR, имя и город под кодом,
-    оранжевая плашка с подсказкой внизу. Бросает ImportError без Pillow, OSError без шрифтов."""
+    оранжевая плашка с подсказкой внизу. Бросает ImportError без Pillow, OSError без шрифтов.
+
+    `theme` — `services.forum.qr_card_theme.CardTheme`; `None` или тема по умолчанию — ровно
+    прежняя карточка (те же вызовы и константы, тот же PNG)."""
     from PIL import Image, ImageDraw
 
-    background, y = _background(title, watermark)
+    from services.forum.qr_card_theme import DEFAULT_THEME  # ленивый: тема импортирует этот модуль
+
+    if theme == DEFAULT_THEME:
+        theme = None
+    accent = theme.accent if theme is not None else _ORANGE
+    show_footer = theme is None or theme.show_footer
+    if theme is not None and not theme.show_city:
+        city = ""
+
+    background, y = _background(title, watermark, theme) if theme is not None else _background(title, watermark)
     img = background.copy()
     draw = ImageDraw.Draw(img)
 
@@ -185,17 +269,26 @@ def render_qr_card(payload: str, name: str, city: str, title: str, footer: str, 
         ty += 4
         draw.text((_W // 2, ty), city, font=f_city, fill=_MUTED, anchor="ma")
 
-    f_footer = _fit(draw, footer, "lato-700.woff2", 40, _W - 2 * _PAD - 80, min_size=28)
-    chip_w = int(draw.textlength(footer, font=f_footer)) + 80
-    chip_h = f_footer.size + 44
-    chip_top = min(card_top + card_h + 48, _H - _PAD - chip_h)
-    chip_left = (_W - chip_w) // 2
-    draw.rounded_rectangle(
-        (chip_left, chip_top, chip_left + chip_w, chip_top + chip_h), radius=chip_h // 2, fill=_ORANGE,
-    )
-    draw.text((_W // 2, chip_top + chip_h // 2), footer, font=f_footer, fill=_WHITE, anchor="mm")
+    if show_footer:
+        f_footer = _fit(draw, footer, "lato-700.woff2", 40, _W - 2 * _PAD - 80, min_size=28)
+        chip_w = int(draw.textlength(footer, font=f_footer)) + 80
+        chip_h = f_footer.size + 44
+        chip_top = min(card_top + card_h + 48, _H - _PAD - chip_h)
+        chip_left = (_W - chip_w) // 2
+        draw.rounded_rectangle(
+            (chip_left, chip_top, chip_left + chip_w, chip_top + chip_h), radius=chip_h // 2, fill=accent,
+        )
+        draw.text(
+            (_W // 2, chip_top + chip_h // 2), footer, font=f_footer,
+            fill=_chip_text_color(accent) if theme is not None else _WHITE, anchor="mm",
+        )
 
     out = io.BytesIO()
+    if theme is not None and (theme.bg_image or theme.logo):
+        # Фото фона или цветное лого в 16 цветов постеризуются — здесь полноцветный PNG. Карточка
+        # тяжелее, но это выбор менеджера; плоские цвета (путь ниже) остаются лёгкими.
+        img.convert("RGB").save(out, format="PNG")
+        return out.getvalue()
     # Палитра из 16 цветов: карточка ~55 КБ вместо ~165 КБ. Вечерняя рассылка QR — это фото
     # каждому одобренному (на Юлиде ~2400), и все уникальны: в 3 раза меньше трафика через
     # прокси. Цвета карточки плоские, QR чёрно-белый — проверено декодером, в т.ч. после JPEG

@@ -32,6 +32,14 @@ import shared.chat_score as chat_score
 from database.db import get_setting, DEFAULT_CONSENT_VERSION
 from domain.regform.labels import REG_LABELS
 
+# Палитра карточки QR (ключи qr_card_*_color): код -> подпись кнопки. HEX — в
+# services/forum/qr_card_theme.py::PALETTE (те же коды, сторож tests/test_qr_card_theme_261028.py).
+_QR_CARD_PALETTE_LABELS = {
+    "blue": "Синий АЙСЕК", "orange": "Оранжевый", "red": "Красный", "yellow": "Жёлтый",
+    "teal": "Бирюзовый", "green": "Зелёный", "purple": "Фиолетовый", "dark": "Тёмный",
+    "white": "Белый",
+}
+
 # REG-01: event-group entries — labels/prompts copied byte-for-byte from the pre-migration
 # literal SETTINGS_FIELDS/PHOTO_FIELDS/FILE_FIELDS tables (handlers/admin.py) so the render
 # snapshot test proves zero drift. Order of the text/enum keys matches the pre-migration
@@ -6067,6 +6075,59 @@ SETTINGS_SCHEMA = {
             "оформления: «Юлид» — фирменный, «АЙСЕК — классика» — без паттерна."
         ),
         "default": None,
+    },
+    # Оформление карточки QR делегата (services/forum/qr_card_theme.py, экран «🎨 Оформление» →
+    # «🎟 Карточка QR»). Общие на событие, не по городам. Дефолты = карточка «как была»: синий фон,
+    # белый заголовок, оранжевая плашка, встроенное лого АЙСЕК, все элементы включены.
+    # Палитра одна на три цветовых ключа, порядок кнопок = порядок options.
+    "qr_card_bg_color": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: фон",
+        "options": list(_QR_CARD_PALETTE_LABELS), "option_labels": dict(_QR_CARD_PALETTE_LABELS),
+        "prompt": None, "default": "blue",
+    },
+    "qr_card_text_color": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: цвет заголовка",
+        "options": list(_QR_CARD_PALETTE_LABELS), "option_labels": dict(_QR_CARD_PALETTE_LABELS),
+        "prompt": None, "default": "white",
+    },
+    "qr_card_accent_color": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: цвет плашки",
+        "options": list(_QR_CARD_PALETTE_LABELS), "option_labels": dict(_QR_CARD_PALETTE_LABELS),
+        "prompt": None, "default": "orange",
+    },
+    "qr_card_bg_image": {
+        "type": "photo", "group": "miniapp", "label": "🎟 Карточка QR: картинка фона",
+        "prompt": (
+            "Отправьте картинку фона карточки QR — фото или файлом PNG/JPEG. Она растянется на "
+            "всю карточку за белым блоком с кодом, лишнее по краям обрежется. Без неё фон — "
+            "выбранный цвет."
+        ),
+        "default": None,
+    },
+    "qr_card_logo": {
+        "type": "photo", "group": "miniapp", "label": "🎟 Карточка QR: своё лого",
+        "prompt": (
+            "Отправьте лого для карточки QR — оно встанет в левый верхний угол над заголовком. "
+            "Лого с прозрачным фоном присылайте файлом PNG (фото Telegram прозрачность "
+            "теряет). Без своего лого — белое лого АЙСЕК."
+        ),
+        "default": None,
+    },
+    "qr_card_show_watermark": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: надписи на фоне",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "qr_card_show_logo": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: лого",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "qr_card_show_city": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: город под именем",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "qr_card_show_footer": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: плашка-подсказка",
+        "options": ["on", "off"], "prompt": None, "default": "on",
     },
     "miniapp_logo_dark": {
         "type": "photo", "group": "miniapp", "label": "🌙 Лого для тёмной темы",
