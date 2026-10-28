@@ -1383,8 +1383,9 @@ async def ext_forms_notify_job():
     # Отдельным блоком: сбой уведомлений о новых ответах не должен глушить предупреждение
     # о форме с вопросом про вуз при выключенных делегациях (и наоборот).
     try:
+        from handlers.access.admin_caps import notify_by_capability
         from services.delegations.delegations_off_alert import alert_off_delegations
-        await alert_off_delegations(_bot)
+        await alert_off_delegations(_bot, notify_by_capability)
     except Exception as e:
         logger.error(f"ext_forms_notify_job: alert_off_delegations failed: {e}")
 

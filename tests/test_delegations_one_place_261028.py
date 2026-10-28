@@ -63,6 +63,13 @@ def _state(fid) -> dict:
     return _run(A.form_delegation_state(_get(fid)))
 
 
+_SEND: dict = {}
+
+
+def _alert():
+    return _run(A.alert_off_delegations(object(), _SEND["fn"]))
+
+
 def _patch_send(monkeypatch, *, quiet=False, fail=False):
     calls = []
 
@@ -75,7 +82,7 @@ def _patch_send(monkeypatch, *, quiet=False, fail=False):
     async def fake_window(city):
         return (None, None)
 
-    monkeypatch.setattr(A, "notify_by_capability", fake_notify)
+    _SEND["fn"] = fake_notify
     monkeypatch.setattr(A, "window_for_city", fake_window)
     monkeypatch.setattr(A, "is_quiet", lambda now, s, e: quiet)
     return calls
@@ -165,11 +172,11 @@ def test_alert_first_pass_marks_then_sends_once(tmp_path, monkeypatch):
     _db(tmp_path)
     calls = _patch_send(monkeypatch)
     fid = _form("<МГУ>")
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     assert calls == []
     assert _get(fid)["dlg_off_seen_at"]
     _run(ef.set_form_dlg_off(fid, _ago(25), None))
-    assert _run(A.alert_off_delegations(object())) == 1
+    assert _alert() == 1
     assert len(calls) == 1
     cap, text, kw = calls[0]
     assert cap == "moderate_reg"
@@ -179,7 +186,7 @@ def test_alert_first_pass_marks_then_sends_once(tmp_path, monkeypatch):
     assert "<МГУ>" not in text
     assert "delegation" not in text
     assert _get(fid)["dlg_off_alerted_at"]
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     assert len(calls) == 1
 
 
@@ -189,7 +196,7 @@ def test_alert_two_forms_one_message(tmp_path, monkeypatch):
     a, b = _form("А"), _form("Б")
     for fid in (a, b):
         _run(ef.set_form_dlg_off(fid, _ago(30), None))
-    assert _run(A.alert_off_delegations(object())) == 1
+    assert _alert() == 1
     assert len(calls) == 1
     text = calls[0][1]
     assert "Формы «А», «Б» подключены, в них есть вопрос про вуз" in text
@@ -201,7 +208,7 @@ def test_alert_toggle_off_touches_nothing(tmp_path, monkeypatch):
     calls = _patch_send(monkeypatch)
     fid = _form()
     _set("delegation_off_alert", "off")
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     assert calls == []
     assert _get(fid)["dlg_off_seen_at"] is None
 
@@ -213,7 +220,7 @@ def test_alert_armed_resets_columns(tmp_path, monkeypatch):
     _run(ef.set_form_dlg_off(fid, _ago(30), _ago(28)))
     _set("delegation_form_id", str(fid))
     _set("delegation_armed_form_id", str(fid))
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     got = _get(fid)
     assert (got["dlg_off_seen_at"], got["dlg_off_alerted_at"]) == (None, None)
     assert calls == []
@@ -224,7 +231,7 @@ def test_alert_paused_form_not_half_on(tmp_path, monkeypatch):
     calls = _patch_send(monkeypatch)
     fid = _form(status="paused")
     _run(ef.set_form_dlg_off(fid, _ago(30), None))
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     got = _get(fid)
     assert (got["dlg_off_seen_at"], got["dlg_off_alerted_at"]) == (None, None)
     assert calls == []
@@ -235,7 +242,7 @@ def test_alert_quiet_hours_waits(tmp_path, monkeypatch):
     calls = _patch_send(monkeypatch, quiet=True)
     fid = _form()
     _run(ef.set_form_dlg_off(fid, _ago(30), None))
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     assert calls == []
     assert _get(fid)["dlg_off_alerted_at"] is None
 
@@ -246,7 +253,7 @@ def test_alert_not_more_than_once_a_day(tmp_path, monkeypatch):
     a, b = _form("А"), _form("Б")
     _run(ef.set_form_dlg_off(a, _ago(40), _ago(2)))
     _run(ef.set_form_dlg_off(b, _ago(30), None))
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     assert calls == []
     assert _get(b)["dlg_off_alerted_at"] is None
 
@@ -256,13 +263,13 @@ def test_alert_send_failure_retries_later(tmp_path, monkeypatch):
     _patch_send(monkeypatch, fail=True)
     fid = _form()
     _run(ef.set_form_dlg_off(fid, _ago(30), None))
-    assert _run(A.alert_off_delegations(object())) == 0
+    assert _alert() == 0
     assert _get(fid)["dlg_off_alerted_at"] is None
 
 
 def test_alert_runs_inside_ext_forms_notify_job():
     src = inspect.getsource(sched.ext_forms_notify_job)
-    assert "alert_off_delegations" in src
+    assert "alert_off_delegations(_bot, notify_by_capability)" in src
 
 
 # ── карточка внешней формы ──
