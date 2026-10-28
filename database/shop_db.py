@@ -228,11 +228,15 @@ async def undo_sale(sale_id: int, by: int) -> dict | None:
                 (sale["telegram_id"], sale["price"], f"Магазин: отмена «{sale['title']}»", by, stamp, SOURCE_SHOP),
             )
             await db.execute(
-                "UPDATE shop_items SET stock_left = stock_left + 1 WHERE id = ? AND stock_left IS NOT NULL",
-                (sale["item_id"],),
-            )
-            await db.execute(
                 "UPDATE shop_sales SET undone_at = ?, undone_by = ? WHERE id = ?", (stamp, by, sale_id),
+            )
+            # Остаток — от «сколько всего» минус действующие выдачи, а не +1: после урезанного
+            # `set_stock` (выдали 3, «всего» стало 2) +1 дал бы выдать сверх «всего».
+            await db.execute(
+                "UPDATE shop_items SET stock_left = MAX(stock_total - (SELECT COUNT(*) FROM shop_sales "
+                "WHERE item_id = shop_items.id AND undone_at IS NULL), 0) "
+                "WHERE id = ? AND stock_left IS NOT NULL AND stock_total IS NOT NULL",
+                (sale["item_id"],),
             )
             await db.commit()
         except BaseException:
