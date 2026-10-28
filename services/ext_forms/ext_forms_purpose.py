@@ -27,6 +27,15 @@ PURPOSE_LABELS = {
     "registration": "📝 Регистрация",
     "answers": "📄 Только ответы",
 }
+# Пояснение трёх вариантов — шаг мастера подключения и экран «🎯 Назначение» карточки.
+PURPOSE_HELP = (
+    "🏫 <b>Делегации вузов</b> — бот оценивает ответы как делегации и одобряет делегатов "
+    "(настраивается в «📋 Заявки → 🏫 Делегации»).\n"
+    "📝 <b>Регистрация</b> — каждый ответ становится заявкой участника, анкету в боте "
+    "заполнять не нужно.\n"
+    "📄 <b>Только ответы</b> — ответы сохраняются и копируются в таблицу, бот с ними больше "
+    "ничего не делает."
+)
 # Короткие коды в callback_data кнопок.
 CODES = {"d": "delegations", "r": "registration", "a": "answers"}
 CODE_OF = {v: k for k, v in CODES.items()}
@@ -35,7 +44,7 @@ SOURCE_TAG = "ext_form"
 _SOURCE_MAX = 60
 
 
-async def _raw_delegation_form_id() -> int | None:
+async def raw_delegation_form_id() -> int | None:
     """Сырое значение настройки без гейта назначения — иначе legacy_purpose зациклился бы
     через delegations.delegation_form_id()."""
     try:
@@ -51,7 +60,7 @@ async def legacy_purpose(form: dict) -> str:
     """Назначение формы, подключённой до назначений: правило фазы делегаций «одно место»."""
     from services.delegations.delegations import guess_delegation_questions  # лениво: цикл
 
-    if await _raw_delegation_form_id() == int(form["id"]):
+    if await raw_delegation_form_id() == int(form["id"]):
         return "delegations"
     cols = await ef.list_columns(int(form["id"]))
     guess = guess_delegation_questions([(c["qkey"], c.get("label") or "") for c in cols])
@@ -107,7 +116,7 @@ async def change_effects(form: dict, new: str) -> list[str]:
     if old == "delegations" and new != "delegations":
         lines.append("🏫 Бот перестанет оценивать новые ответы как делегации; уже одобренные "
                      "делегаты остаются в боте.")
-    if new != "delegations" and await _raw_delegation_form_id() == int(form["id"]):
+    if new != "delegations" and await raw_delegation_form_id() == int(form["id"]):
         lines.append("Делегации выключатся: форма перестанет быть формой делегаций в "
                      "«📋 Заявки → 🏫 Делегации».")
     if form.get("mirror_mode") == "yandex_export":
