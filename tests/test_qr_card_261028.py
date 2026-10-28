@@ -46,3 +46,14 @@ def test_build_checkin_qr_falls_back_to_plain_qr(tmp_path, monkeypatch):
     }))
     width, height = Image.open(io.BytesIO(png)).size
     assert width == height and width != 1080
+
+
+def test_card_png_is_small_palette():
+    """Рассылка QR уходит фото каждому одобренному — карточка должна быть лёгкой (палитра)."""
+    png = render_qr_card(
+        "YL26·Иванова Анна·Москва·" + "x" * 22, "Иванова Анна", "Москва",
+        "Пропуск на Юлид", "Покажи этот QR на входе", "ЮЛИД",
+    )
+    img = Image.open(io.BytesIO(png))
+    assert img.mode == "P"
+    assert len(png) < 90_000
