@@ -484,3 +484,82 @@ def test_off_alert_toggle_locked(tmp_path, monkeypatch):
     _run(D.dlg_off_alert(cb))
     assert cb.answer_calls == [(CITY_LOCKED_TEXT, True)]
     assert _run(get_setting_typed("delegation_off_alert")) == "on"
+
+
+# ── ошибки Google при сверке листа делегаций ──
+
+import logging  # noqa: E402
+
+import gspread  # noqa: E402
+
+from handlers.delegations import admin_delegations_sheet as S  # noqa: E402
+from services.delegations import delegations_sheet_errors as E  # noqa: E402
+from tests.test_delegations_admin import _FakeCallback, _callbacks, _form as _dform, _last_edit, _select  # noqa: E402
+from tests.test_delegations_admin_sheet import _pick, sheet  # noqa: E402,F401
+
+
+class _Resp:
+    def __init__(self, code):
+        self.status_code = code
+        self.text = "x"
+
+    def json(self):
+        return {"error": {"code": self.status_code, "message": "x", "status": "S"}}
+
+
+def _api(code):
+    return gspread.exceptions.APIError(_Resp(code))
+
+
+def test_google_status():
+    assert E.google_status(_api(403)) == 403
+    assert E.google_status(RuntimeError()) is None
+
+    class _NoResp(gspread.exceptions.APIError):
+        def __init__(self):
+            pass
+
+    assert E.google_status(_NoResp()) is None
+
+
+def test_explain_codes(monkeypatch):
+    monkeypatch.setattr(E, "service_account_email", lambda: "bot@x.iam.gserviceaccount.com")
+    t = E.explain(_api(403), "UR REGS")
+    assert "Нет доступа к таблице" in t and "«UR REGS»" in t
+    assert "bot@x.iam.gserviceaccount.com" in t and "роль «Редактор»" in t
+    monkeypatch.setattr(E, "service_account_email", lambda: None)
+    assert "сервисному аккаунту бота" in E.explain(_api(403), "UR REGS")
+    assert "Подождите минуту" in E.explain(_api(429), "UR REGS")
+    assert "Таблица не найдена" in E.explain(_api(404), "UR REGS")
+    assert "(код 500)" in E.explain(_api(500), "UR REGS")
+    assert "&lt;x&gt;" in E.explain(_api(500), "<x>")
+    assert E.explain(RuntimeError("quota"), "UR REGS") is None
+
+
+def test_dlg_check_403_explained_and_logged(tmp_path, sheet, monkeypatch, caplog):
+    monkeypatch.setattr(E, "service_account_email", lambda: "bot@x.iam.gserviceaccount.com")
+    _db(tmp_path)
+    fid = _dform()
+    _select(fid)
+    _, st = _pick(fid)
+    sheet["raise"] = _api(403)
+    cb = _FakeCallback("dlg_check")
+    with caplog.at_level(logging.WARNING):
+        _run(S.dlg_check(cb, st))
+    text, _, kb = _last_edit(cb)
+    assert "Нет доступа к таблице" in text and "bot@x.iam.gserviceaccount.com" in text
+    assert {"dlg_check", "dlg_sheet", "admin_delegations"} <= set(_callbacks(kb))
+    assert "код Google 403" in caplog.text
+
+
+def test_dlg_check_other_error_keeps_old_text(tmp_path, sheet, caplog):
+    _db(tmp_path)
+    fid = _dform()
+    _select(fid)
+    _, st = _pick(fid)
+    sheet["raise"] = RuntimeError("quota")
+    cb = _FakeCallback("dlg_check")
+    with caplog.at_level(logging.WARNING):
+        _run(S.dlg_check(cb, st))
+    assert "Не получилось прочитать лист «UR REGS»" in _last_edit(cb)[0]
+    assert "код Google None" in caplog.text
