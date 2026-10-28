@@ -13,6 +13,14 @@ from database.db import get_balance, get_user
 from services.infra.ru_plural import points_word
 
 
+async def shop_title() -> str:
+    """Название магазина: «<событие>-шоп» или «Магазин баллов». Общее для бота, QR брони и Mini App."""
+    from domain.settings.schema import get_setting_typed
+
+    event = (await get_setting_typed("event_name") or "").strip()
+    return f"{event}-шоп" if event else "Магазин баллов"
+
+
 def who(user: dict | None, tid: int) -> str:
     if not user:
         return f"id {tid}"
