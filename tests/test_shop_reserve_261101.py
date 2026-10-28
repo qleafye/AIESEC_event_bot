@@ -219,3 +219,84 @@ def test_qr_png_and_fallback(tmp_path, monkeypatch):
 
     monkeypatch.setattr(qr_card, "render_qr_card", boom)
     assert _run(shop_qr.build_reservation_qr(sale)).startswith(b"\x89PNG")
+
+
+# ── карточка брони и стойка в Mini App ────────────────────────────────────────────────
+
+def test_reservation_card_and_delegate_card(tmp_path):
+    from services.game import shop_card
+
+    _env(tmp_path)
+    item = _run(shop_db.add_item("Шоппер", 150, 3, None))
+    text, rows = _run(shop_card.card(UID))
+    assert rows[0][0][1] == f"shp_p:{UID}:{item}"  # без броней — как раньше
+    res = _run(shop_db.reserve(item, UID))
+    sale = _run(shop_db.find_by_code(res["code"]))
+    text, rows = shop_card.reservation_card(sale)
+    assert res["code"] in text and "Шоппер" in text and "Иванова Анна" in text
+    flat = [b for row in rows for b in row]
+    assert ("✅ Выдать бронь", f"shp_rgo:{res['id']}") in flat and ("✖ Отменить бронь", f"shp_rcan:{res['id']}") in flat
+    text, rows = _run(shop_card.card(UID))
+    assert rows[0][0] == (f"🎫 Выдать бронь {res['code']}: Шоппер", f"shp_rc:{res['id']}")
+    assert "Брони ждут выдачи: 1" in text
+
+
+def _scan_env(tmp_path, monkeypatch):
+    from miniapp import telegram_api
+    from tests.test_miniapp_checkin_260924 import _grant_checkin_to_game_manager, _insert_user, client_with
+
+    client = client_with(tmp_path)
+    _grant_checkin_to_game_manager()
+    uid = 950911
+    _run(_insert_user(uid, full_name="Петров Пётр", city="spb"))
+    _run(db.add_coins(uid, 200, reason="задания", changed_by=1, source="manual"))
+    item = _run(shop_db.add_item("Шоппер", 150, 10, None))
+    _run(shop_db.set_open(True))
+    _run(shop_db.set_reserve(True))
+    sent = []
+
+    async def fake_send(cfg, chat_id, text, reply_markup=None, parse_mode=None):
+        sent.append((chat_id, text, reply_markup, parse_mode))
+        return {}
+
+    monkeypatch.setattr(telegram_api, "send_message", fake_send)
+    return client, uid, item, sent
+
+
+def _scan(client, payload):
+    from tests.test_miniapp_checkin_260924 import BASE, GAME_MANAGER_ID, _hdr
+
+    return client.post(f"{BASE}/scan", json={"payload": payload, "point": "shop"}, headers=_hdr(GAME_MANAGER_ID)).json()
+
+
+def test_scan_reservation_qr_sends_card(tmp_path, monkeypatch):
+    from tests.test_miniapp_checkin_260924 import GAME_MANAGER_ID
+
+    client, uid, item, sent = _scan_env(tmp_path, monkeypatch)
+    res = _run(shop_db.reserve(item, uid))
+    payload = _run(shop_qr.reservation_payload(res))
+    body = _scan(client, payload)
+    assert body["status"] == "shop" and res["code"] in body["reason_text"]
+    assert body["full_name"] == "Петров Пётр" and body["telegram_id"] == uid
+    chat_id, text, markup, mode = sent[0]
+    assert chat_id == GAME_MANAGER_ID and mode == "HTML" and res["code"] in text
+    datas = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
+    assert f"shp_rgo:{res['id']}" in datas
+    assert _run(db.list_checkins_for_user(uid)) == []
+
+
+def test_scan_reservation_qr_issued_cancelled_unknown(tmp_path, monkeypatch):
+    client, uid, item, sent = _scan_env(tmp_path, monkeypatch)
+    res = _run(shop_db.reserve(item, uid))
+    payload = _run(shop_qr.reservation_payload(res))
+    _run(shop_db.issue_reservation(res["id"], 1))
+    body = _scan(client, payload)
+    assert body["status"] == "denied" and "уже выдана" in body["reason_text"]
+    _run(db.add_coins(uid, 200, reason="задания", changed_by=1, source="manual"))
+    res2 = _run(shop_db.reserve(item, uid))
+    _run(shop_db.cancel_reservation(res2["id"], uid))
+    body = _scan(client, _run(shop_qr.reservation_payload(res2)))
+    assert body["status"] == "denied" and "отменена" in body["reason_text"]
+    body = _scan(client, _run(shop_qr.reservation_payload({"code": "Ю-1111", "token": "nope"})))
+    assert body["status"] == "not_found" and "Выдать бронь по коду" in body["reason_text"]
+    assert sent == []
