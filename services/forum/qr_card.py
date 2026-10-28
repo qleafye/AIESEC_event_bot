@@ -196,5 +196,11 @@ def render_qr_card(payload: str, name: str, city: str, title: str, footer: str, 
     draw.text((_W // 2, chip_top + chip_h // 2), footer, font=f_footer, fill=_WHITE, anchor="mm")
 
     out = io.BytesIO()
-    img.convert("RGB").save(out, format="PNG", optimize=True)
+    # Палитра из 16 цветов: карточка ~55 КБ вместо ~165 КБ. Вечерняя рассылка QR — это фото
+    # каждому одобренному (на Юлиде ~2400), и все уникальны: в 3 раза меньше трафика через
+    # прокси. Цвета карточки плоские, QR чёрно-белый — проверено декодером, в т.ч. после JPEG
+    # Telegram и уменьшения втрое.
+    img.convert("RGB").quantize(colors=16, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(
+        out, format="PNG", optimize=True,
+    )
     return out.getvalue()
