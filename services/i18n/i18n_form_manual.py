@@ -1200,6 +1200,9 @@ _NEUTRAL_DEFAULTS_EN: dict[str, str] = {
         "You're no longer on the ambassador team. Thank you for your help! Your invite link keeps working, and your points stay with you.",
     "Спасибо, что откликнулся! Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём — следи за новостями.":
         "Thank you for responding! All spots on the ambassador team are already taken, but we're still really looking forward to seeing you — stay tuned for news.",
+    # Внешняя форма «📝 Регистрация» (ext_reg_pending_text), дефолт реестра байт-в-байт.
+    "Привет! Твоя заявка на {event} пришла из формы 🙌\n\nАнкету в боте заполнять не нужно. Как только заявку рассмотрят, я напишу сюда.":
+        "Hi! Your application for {event} came in from the form 🙌\n\nNo need to fill in the questionnaire in the bot. As soon as your application is reviewed, I'll write here.",
     "Привет! Ты в списке делегации {university} на {event} 🎉\n\nАнкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет QR на вход и все новости мероприятия.":
         "Hi! You're on the {university} delegation list for {event} 🎉\n\nNo need to fill in the questionnaire — your application is already approved. Below is the participant menu: your entry QR and all event news will be there.",
     "Задания и монеты для делегаций вузов здесь выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.":
