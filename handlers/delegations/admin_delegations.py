@@ -37,6 +37,7 @@ from handlers.admin import router
 from handlers.states import DelegationEdit
 from domain.regform.moderation_card import EMPTY_SENTINEL
 from services.delegations import delegations
+from services.ext_forms.ext_forms_purpose import delegation_forms, purpose_of
 from services.infra.background import spawn
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
@@ -73,6 +74,10 @@ _NO_FORMS_ALERT = (
     "Ни одна форма ещё не подключена. Подключить её может менеджер с правом «⚙️ Настройки»."
 )
 _FORM_NOT_FOUND = "Форма не найдена — обновите список."
+_NO_DLG_PURPOSE_ALERT = (
+    "Нет формы с назначением «🏫 Делегации вузов». Откройте форму в «📊 Данные → 📝 Внешние "
+    "формы» → «🎯 Назначение» и выберите «🏫 Делегации вузов»."
+)
 _STALE_QUESTIONS = "Список вопросов устарел — откройте выбор ещё раз"
 _KEYS_MISSING = "Без вопросов ФИО, вуз и курс бот не сможет узнать делегата — выберите их."
 _KEYS_SAVED = "Вопросы сохранены"
@@ -362,6 +367,10 @@ async def dlg_form_pick(callback: types.CallbackQuery):
         await _show(callback, _NO_FORMS_SCREEN, _kb([*connect, [_to_screen()]]))
         await callback.answer()
         return
+    forms = await delegation_forms()  # только формы с назначением «Делегации»
+    if not forms:
+        await callback.answer(_NO_DLG_PURPOSE_ALERT, show_alert=True)
+        return
     rows = [[_btn(_cut(f"📝 {_form_title(f)}"), f"dlg_form:{f['id']}")] for f in forms]
     rows.extend(connect)
     rows.append([_to_screen()])
@@ -390,6 +399,9 @@ async def dlg_form(callback: types.CallbackQuery):
     form = await ef.get_form(fid) if fid is not None else None
     if form is None:
         await callback.answer(_FORM_NOT_FOUND, show_alert=True)
+        return
+    if await purpose_of(form) != "delegations":
+        await callback.answer(_NO_DLG_PURPOSE_ALERT, show_alert=True)
         return
     admin = _admin_id(callback)
     prev_id = await delegations.delegation_form_id()

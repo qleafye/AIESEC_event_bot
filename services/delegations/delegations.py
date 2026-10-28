@@ -101,14 +101,24 @@ def init(bot, storage) -> None:
 # ---------- настройки модуля ----------
 
 async def delegation_form_id() -> int | None:
-    """id подключённой формы делегаций из реестра; не выбрана или мусор — None."""
+    """id подключённой формы делегаций из реестра; не выбрана или мусор — None.
+
+    Гейт назначения формы: выбранная форма с назначением не «Делегации» — тоже None. Через эту
+    функцию идут оценка и одобрение, /start, sweep, лист UR REGS и экраны делегаций, поэтому
+    `users.delegation` ставится только из форм с назначением «Делегации»."""
     try:
         raw = await get_setting_typed("delegation_form_id")
         if raw is None or str(raw).strip() == "":
             return None
-        return int(str(raw).strip())
+        fid = int(str(raw).strip())
     except (TypeError, ValueError):
         return None
+    form = await ef.get_form(fid)
+    if form is not None:
+        from services.ext_forms.ext_forms_purpose import purpose_of  # лениво: цикл импорта
+        if await purpose_of(form) != "delegations":
+            return None
+    return fid
 
 
 async def armed_form_id() -> int | None:
@@ -503,6 +513,10 @@ async def on_answer_available(form_id: int, answer_id: str, *, reason: str = "in
     answer = await ef.get_answer(int(form_id), str(answer_id))
     if not form or not answer:
         return {"skipped": "no_answer"}
+    from services.ext_forms.ext_forms_purpose import before_purpose
+    if before_purpose(form, answer):
+        # Назначение сменили позже: прежние ответы по логике делегаций не пересчитываются.
+        return {"skipped": "before_purpose"}
 
     before = await ddb.get_by_answer(int(form_id), str(answer_id))
     row, fields, ta = await evaluate(answer, form, await field_keys())
@@ -630,13 +644,14 @@ async def preview_reevaluate() -> int:
     form = await ef.get_form(dfid)
     if not form:
         return 0
+    from services.ext_forms.ext_forms_purpose import before_purpose
     keys = await field_keys()
     cutoff = cutoff_dt(await get_setting_typed("delegation_ta_cutoff"))
     not_ta = await get_setting_typed("delegation_not_ta_courses") or []
     would = 0
     for aid in sorted(await ef.known_answer_ids(dfid)):
         answer = await ef.get_answer(dfid, aid)
-        if not answer:
+        if not answer or before_purpose(form, answer):
             continue
         row = await ddb.get_by_answer(dfid, aid)
         if row is not None and row.get("linked_telegram_id") is not None:
