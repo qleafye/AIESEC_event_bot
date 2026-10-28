@@ -196,7 +196,7 @@ async def list_forms() -> list[dict]:
         "SELECT f.id, f.platform, f.connection_id, f.external_id, f.gsheet_gid, f.title, "
         "f.secret, f.key_username_q, f.key_phone_q, f.mirror_tab, f.mirror_error, f.status, "
         "f.notify, f.notified_at, f.last_sync_at, f.sync_error, f.created_at, f.created_by, "
-        "f.ingest_mode, f.push_warning, "
+        "f.ingest_mode, f.push_warning, f.dlg_off_seen_at, f.dlg_off_alerted_at, "
         "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id) AS total, "
         "(SELECT COUNT(*) FROM external_form_answers a WHERE a.form_id = f.id "
         "   AND a.matched_telegram_id IS NULL) AS unmatched, "
@@ -295,6 +295,14 @@ async def set_form_sync(form_id: int, *, last_sync_at, sync_error) -> None:
 
 async def set_form_notified(form_id: int, ts: str) -> None:
     await _exec("UPDATE external_forms SET notified_at = ? WHERE id = ?", (ts, form_id))
+
+
+async def set_form_dlg_off(form_id: int, seen_at: str | None, alerted_at: str | None) -> None:
+    """Отметки предупреждения о выключенных делегациях; (None, None) — форма вышла из состояния."""
+    await _exec(
+        "UPDATE external_forms SET dlg_off_seen_at = ?, dlg_off_alerted_at = ? WHERE id = ?",
+        (seen_at, alerted_at, form_id),
+    )
 
 
 # ---------- очередь дочитывания ----------
