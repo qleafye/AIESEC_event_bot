@@ -28,7 +28,7 @@ from database.survey_db import (
     move_survey_question,
     publish_survey_draft,
 )
-from services.comms.polls import audience_label
+from services.comms.polls import audience_label, results_hint_line
 from services.comms.surveys import (
     QTYPE_LABELS,
     SURVEY_MAX_QUESTIONS,
@@ -490,10 +490,13 @@ async def survey_audience_pick(callback: types.CallbackQuery, state: FSMContext)
     )
     for chunk in chunks:
         await callback.message.answer(chunk, parse_mode="HTML")
+    hint = await results_hint_line()
+    hint_line = f"{hint}\n" if hint else ""
     await callback.message.answer(
         f"Выше — вся анкета, как её увидит делегат.\n\n"
         f"Кому: <b>{_esc(audience_label(spec))}</b> — {len(ids)} чел.\n"
         f"{await _quiet_hours_warning()}"
+        f"{hint_line}"
         "Отправить сейчас или запланировать?",
         parse_mode="HTML", reply_markup=kb,
     )
@@ -573,7 +576,8 @@ async def survey_schedule_when(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
         f"✅ Анкета #{pid} запланирована на {when.strftime('%d.%m.%Y %H:%M')} "
-        f"({audience_label(data.get('audience'))}).\nОтменить можно в карточке опроса: «📊 Опросы».",
+        f"({audience_label(data.get('audience'))}).\nОтменить можно в карточке опроса: «📊 Опросы»."
+        + (f"\n{hint}" if (hint := await results_hint_line()) else ""),
         reply_markup=ReplyKeyboardRemove(),
     )
 
