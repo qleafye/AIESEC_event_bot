@@ -17,7 +17,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import get_setting, get_user, update_payment_status, set_payment_due
 from domain.payment import parse_options as _parse_options  # квик-фикс 260913: см. ниже
-from domain.settings.schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed  # REG-02 (06-06): payment_enabled gate
+from domain.settings.ui_text_fields import ui_text  # фразы и подписи экрана оплаты — из реестра
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 from handlers.access.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
@@ -74,7 +75,7 @@ async def _resolve_requisites(telegram_id: int) -> str | None:
     return await get_setting("payment_requisites")
 
 
-def _format_requisites_block(requisites: str | None, lang: str = "ru", tr_map: dict | None = None) -> str:
+def _format_requisites_block(requisites: str | None, lang: str = "ru", tr_map: dict | None = None, label: str | None = None) -> str:
     """WR-05: single source of truth for the requisites block — resolve/escape/format was
     duplicated across 3 call sites (picker, defer, details), risking CR-01-class drift.
     admin-entered requisites often contain & or < (e.g. "Сбербанк & Тинькофф"); without
@@ -88,22 +89,17 @@ def _format_requisites_block(requisites: str | None, lang: str = "ru", tr_map: d
     if not requisites or not requisites.strip():
         return ""
     tr_map = tr_map or {}
-    label = reg_i18n.tr_text("Реквизиты", lang, tr_map)
+    # label — прочитанный вызывающим ключ реестра; None — его дефолт (функция синхронная).
+    label = reg_i18n.tr_text(label or SETTINGS_SCHEMA["payment_requisites_label_text"]["default"], lang, tr_map)
     return f"📋 {label}:\n{html.escape(reg_i18n.tr_text(requisites, lang, tr_map))}"
 
 
-# Inline "pay later" escape shown on the option picker and the requisites message.
-_PAY_LATER_BTN = InlineKeyboardButton(text="⏭ Оплачу позже", callback_data="pay_later")
-
-
-def _pay_later_btn(lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardButton:
-    """Квик 260917-en: `_PAY_LATER_BTN` — общая константа трёх экранов (пикер/детали оплаты),
-    перевод на лету через `reg_i18n.tr_text` (тот же объект при lang="ru", см. докстринг
-    `handlers/i18n/reg_i18n.py`), без пересборки самой константы."""
-    new_text = reg_i18n.tr_text(_PAY_LATER_BTN.text, lang, tr_map or {})
-    if new_text is _PAY_LATER_BTN.text:
-        return _PAY_LATER_BTN
-    return _PAY_LATER_BTN.model_copy(update={"text": new_text})
+def _pay_later_btn(lang: str = "ru", tr_map: dict | None = None, label: str | None = None) -> InlineKeyboardButton:
+    """Кнопка «Оплачу позже» под выбором варианта и реквизитами. `label` — прочитанный
+    вызывающим `payment_pay_later_button_text`; None — его дефолт из реестра. Перевод на лету
+    через `reg_i18n.tr_text`."""
+    text = label or SETTINGS_SCHEMA["payment_pay_later_button_text"]["default"]
+    return InlineKeyboardButton(text=reg_i18n.tr_text(text, lang, tr_map or {}), callback_data="pay_later")
 
 
 async def should_offer_receipt_upload(telegram_id: int) -> bool:
@@ -214,10 +210,10 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
                     text=f"{reg_i18n.tr_text(label, lang, tr_map)} — {price} ₽", callback_data=f"pay_option:{i}",
                 )]
                 for i, label, price in visible
-            ] + [[_pay_later_btn(lang, tr_map)]])
+            ] + [[_pay_later_btn(lang, tr_map, label=await ui_text("payment_pay_later_button_text"))]])
             # Phase 17.1 (17.1-02): заголовок — из реестра; блок реквизитов клеит бот.
             text = reg_i18n.tr_text(await get_setting_typed("payment_option_picker_header_text"), lang, tr_map)
-            block = _format_requisites_block(await _resolve_requisites(telegram_id), lang, tr_map)
+            block = _format_requisites_block(await _resolve_requisites(telegram_id), lang, tr_map, label=await ui_text("payment_requisites_label_text"))
             if block:
                 text += f"\n\n{block}"
             await bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb)
@@ -262,10 +258,10 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     try:
         idx = int(callback.data.split(":", 1)[1])
     except ValueError:
-        await callback.answer(reg_i18n.tr_text("Некорректный вариант.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("payment_option_invalid_text"), lang, tr_map), show_alert=True)
         return
     if not (0 <= idx < len(options)):
-        await callback.answer(reg_i18n.tr_text("Вариант больше не доступен.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("payment_option_gone_text"), lang, tr_map), show_alert=True)
         return
     label, price, tracks = options[idx]
     # T-05-05-03: re-check eligibility server-side. Filtering only the rendered keyboard
@@ -283,7 +279,7 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
         user = None
     current_track = (user or {}).get("participant_type") or "full"
     if tracks is not None and current_track not in tracks:
-        await callback.answer(reg_i18n.tr_text("Этот вариант недоступен для твоего трека.", lang, tr_map), show_alert=True)
+        await callback.answer(reg_i18n.tr_text(await ui_text("payment_option_wrong_track_text"), lang, tr_map), show_alert=True)
         return
     # WR-01: fail-soft like start_payment_step, and guarantee callback.answer() via finally so
     # a mid-flow error never leaves the tapped button spinning.
@@ -313,7 +309,7 @@ async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
         # Phase 17.1 (17.1-02): обе реплики — из реестра; блок реквизитов между ними по-прежнему
         # собирает бот, склейка через "\n\n" прежняя.
         parts = [reg_i18n.tr_text(await get_setting_typed("payment_pay_later_text"), lang, tr_map)]
-        block = _format_requisites_block(await _resolve_requisites(callback.from_user.id), lang, tr_map)
+        block = _format_requisites_block(await _resolve_requisites(callback.from_user.id), lang, tr_map, label=await ui_text("payment_requisites_label_text"))
         if block:
             parts.append(block)
         parts.append(reg_i18n.tr_text(await get_setting_typed("payment_pay_later_menu_hint_text"), lang, tr_map))
@@ -353,9 +349,9 @@ async def _show_payment_details(
     # пустой строкой, если блока нет. Так дефолт шаблона рендерится байт-в-байт как прежний
     # "\n".join(parts). Подстановка цепочкой .replace, не .format (посторонние {} в тексте
     # менеджера не должны ронять экран оплаты).
-    block = _format_requisites_block(requisites, lang, tr_map)  # WR-05: shared resolve/escape/format
+    block = _format_requisites_block(requisites, lang, tr_map, label=await ui_text("payment_requisites_label_text"))  # WR-05: shared resolve/escape/format
     requisites_block = f"{block}\n\n" if block else ""
-    deadline_label = reg_i18n.tr_text("📅 Дедлайн", lang, tr_map)
+    deadline_label = reg_i18n.tr_text(await ui_text("payment_deadline_label_text"), lang, tr_map)
     deadline_block = f"{deadline_label}: {html.escape(deadline)}\n\n" if deadline else ""
     penalties_block = ""
     if penalties and penalties.strip():
@@ -370,7 +366,7 @@ async def _show_payment_details(
                 # CR-01: escape the admin-entered penalty fields too.
                 lines.append(f"• {until_word} {html.escape(date_part.strip())} — {remaining_word} {html.escape(amount.strip())} ₽")
         if lines:
-            penalties_label = reg_i18n.tr_text("Штрафы за отмену", lang, tr_map)
+            penalties_label = reg_i18n.tr_text(await ui_text("payment_penalties_label_text"), lang, tr_map)
             penalties_block = f"⚠️ {penalties_label}:\n" + "\n".join(lines) + "\n\n"
     tpl = await get_setting_typed("payment_details_template_text")
     # Квик 260917-en: перевод ШАБЛОНА до подстановки — тот же порядок, что reg_i18n.tr_fmt
@@ -392,7 +388,7 @@ async def _show_payment_details(
     await state.set_state(Registration.receipt_upload)
     await bot.send_message(
         telegram_id, text, parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_pay_later_btn(lang, tr_map)]]),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_pay_later_btn(lang, tr_map, label=await ui_text("payment_pay_later_button_text"))]]),
     )
     # User now owes payment — schedule deadline reminders up front (not at receipt upload).
     await _schedule_deadline_reminders(telegram_id)
@@ -427,16 +423,13 @@ def _receipt_rate_limited(user_id: int) -> bool:
 @router.message(Registration.receipt_upload, F.document)
 async def process_receipt_document(message: types.Message, state: FSMContext):  # IN-03: bot param was unused
     if message.document.mime_type not in _RECEIPT_DOC_MIME_ALLOWLIST:
-        await reg_i18n.say(
-            message,
-            "❌ Принимается только PDF-документ. Для скриншота используй функцию отправки фото.",
-        )
+        await reg_i18n.say(message, await ui_text("payment_receipt_bad_type_text"))
         return
     if _receipt_too_large(message.document.file_size):
-        await reg_i18n.say(message, "❌ Файл слишком большой (максимум 10 МБ). Пришли чек меньшего размера.")
+        await reg_i18n.say(message, await ui_text("payment_receipt_doc_too_large_text"))
         return
     if _receipt_rate_limited(message.from_user.id):
-        await reg_i18n.say(message, "⏳ Слишком часто. Подожди пару секунд и попробуй снова.")
+        await reg_i18n.say(message, await ui_text("payment_receipt_rate_limited_text"))
         return
     await _finalize_receipt(message, state, message.document.file_id)
 
@@ -444,10 +437,10 @@ async def process_receipt_document(message: types.Message, state: FSMContext):  
 @router.message(Registration.receipt_upload, F.photo)
 async def process_receipt_photo(message: types.Message, state: FSMContext):  # IN-03: bot param was unused
     if _receipt_too_large(message.photo[-1].file_size):
-        await reg_i18n.say(message, "❌ Изображение слишком большое (максимум 10 МБ). Пришли чек меньшего размера.")
+        await reg_i18n.say(message, await ui_text("payment_receipt_photo_too_large_text"))
         return
     if _receipt_rate_limited(message.from_user.id):
-        await reg_i18n.say(message, "⏳ Слишком часто. Подожди пару секунд и попробуй снова.")
+        await reg_i18n.say(message, await ui_text("payment_receipt_rate_limited_text"))
         return
     await _finalize_receipt(message, state, message.photo[-1].file_id)  # highest-res
 
@@ -457,11 +450,7 @@ async def process_receipt_photo(message: types.Message, state: FSMContext):  # I
 # catch-all swallowed /start and stranded the user in the payment window with no escape.
 @router.message(Registration.receipt_upload, ~F.text.startswith("/"))
 async def process_receipt_invalid(message: types.Message, state: FSMContext):
-    await reg_i18n.say(
-        message,
-        "❌ Отправь чек оплаты (PDF-документ или фото).\n"
-        "Или /start — вернуться в меню (загрузить чек можно будет позже).",
-    )
+    await reg_i18n.say(message, await ui_text("payment_receipt_invalid_text"))
 
 
 async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: str):
