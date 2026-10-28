@@ -462,6 +462,14 @@ const MANAGER_FETCHERS = {
   "#/settings": { cap: "settings", path: "/admin/settings" },
 };
 
+// Один предикат «будет ли запрос счётчика»: им пользуются и отрисовка скелетона, и цикл
+// запросов — иначе скелетон мог бы повиснуть на плитке, для которой запроса нет.
+function managerFetcherFor(item, me) {
+  const fetcher = MANAGER_FETCHERS[item.hash];
+  if (!fetcher) return null;
+  return Array.isArray(me && me.caps) && me.caps.includes(fetcher.cap) ? fetcher : null;
+}
+
 // Плитка «📊 Дашборд» (quick 260903): открывает веб-дашборд во внешнем браузере — НЕ раздел
 // NAV (нет hash/секции), поэтому не строится через tile()/visibleNav(). Адрес и подпись
 // приходят с сервера (`/app/api/me` -> dashboard_url/dashboard_tile_label): адрес — деплойный
@@ -624,8 +632,11 @@ async function renderManagerHub(root, ctx, opts = {}) {
         // D-04: плитка уже несёт Lucide-иконку слева — labelText снимает ведущий эмодзи
         // подписи реестра, не дублируя его рядом с иконкой (тот же приём, что выше по файлу).
         label: labelText(labels[item.section] || item.section),
-        meta: "…",
+        // Приёмка 10.10: «…» висел навсегда у плиток без загрузчика и при ошибке запроса.
+        // Подпись — скелетон на время реального запроса или ничего.
+        meta: "",
       });
+      if (managerFetcherFor(item, me)) el.querySelector("small").classList.add("skeleton", "skeleton--meta");
       tileEls[item.hash] = el;
       tiles.append(el);
     }
@@ -635,14 +646,19 @@ async function renderManagerHub(root, ctx, opts = {}) {
   }
 
   await Promise.all(items.map(async (item) => {
-    const fetcher = MANAGER_FETCHERS[item.hash];
-    if (!fetcher || !(Array.isArray(me && me.caps) && me.caps.includes(fetcher.cap))) return;
+    const fetcher = managerFetcherFor(item, me);
+    if (!fetcher) return;
+    const small = tileEls[item.hash] && tileEls[item.hash].querySelector("small");
     try {
       const data = await api(fetcher.path, { quiet: true });
+      if (small) small.classList.remove("skeleton", "skeleton--meta");
       applyManagerTileData(item.hash, data, tileEls[item.hash], hero);
     } catch (_) {
       // Плитка без цифры, экран не падает (T-19.1-16) — сервер по-прежнему проверял право
       // на каждом из этих же маршрутов, отказ здесь — сетевой/403, не утечка данных.
+      if (small) small.textContent = "";
+    } finally {
+      if (small) small.classList.remove("skeleton", "skeleton--meta");
     }
   }));
 }

@@ -16,7 +16,7 @@
 // (screens/applications.js, screens/task_edit.js) не переписывались.
 
 import { icon } from "./icons.js";
-import { flatRow, errorText } from "./ui.js";
+import { flatRow, errorText, labelText } from "./ui.js";
 import { buildV2Control } from "./form_types.js";
 
 export { errorText };
@@ -589,9 +589,11 @@ function resumeForkControl(h, spec, value, onChange) {
   const box = h("div", { class: "choice-stack", role: "group", "aria-label": spec.label });
   for (const opt of spec.fork_options || []) {
     box.append(h("button", {
-      class: "btn secondary", type: "button", "aria-label": opt.label,
+      class: "btn secondary", type: "button", "aria-label": labelText(opt.label),
       onClick: () => onChange(opt.code),
-    }, icon(opt.icon), h("span", { text: opt.label })));
+      // Lucide-иконка уже стоит слева — ведущий эмодзи подписи реестра не дублируем (в чате
+      // подпись остаётся с эмодзи).
+    }, icon(opt.icon), h("span", { text: labelText(opt.label) })));
   }
   return { control: box };
 }
