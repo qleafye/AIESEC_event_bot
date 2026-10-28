@@ -22,7 +22,7 @@ from tests.test_miniapp_upload_photo_fallback_260927 import _reject, api  # noqa
 LOGGER = "miniapp.routers.submissions"
 LINE_RE = re.compile(
     r"^uploads: target=(?P<target>\S+) content_type=(?P<ctype>\S+) ext=(?P<ext>\S+) size=(?P<size>\S+) "
-    r"kind=(?P<kind>\S+) status=(?P<status>\d+) read_ms=(?P<read>\S+) telegram_ms=(?P<tg>\S+) total_ms=(?P<total>\d+)$"
+    r"kind=(?P<kind>\S+) status=(?P<status>\d+) read_ms=(?P<read>\S+) telegram_ms=(?P<tg>\S+) total_ms=(?P<total>\d+) ref=(?P<ref>[0-9a-f]{12})$"
 )
 
 
