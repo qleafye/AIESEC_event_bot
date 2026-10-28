@@ -1,6 +1,6 @@
 """Сертификаты участникам после форума: шаблоны, списки по @никам, имена, выдачи.
 
-- `certificate_templates` — PDF-шаблон каждого вида (участник/волонтёр/амбассадор) и варианта
+- `certificate_templates` — PDF-шаблон каждого вида (участник/компетенции/волонтёр/амбассадор) и варианта
   дат (`all` — «оба дня», `YYYY-MM-DD` — версия на один день). Хранится `file_id` Telegram:
   менеджер загрузил файл в бот, сам файл с подписью и печатью в репозиторий не попадает.
 - `certificate_people` — волонтёры и амбассадоры @никами (участник определяется отметкой входа).
@@ -22,7 +22,8 @@ from services.infra.timeutil import msk_now
 KIND_PARTICIPANT = "participant"
 KIND_VOLUNTEER = "volunteer"
 KIND_AMBASSADOR = "ambassador"
-KINDS = (KIND_PARTICIPANT, KIND_VOLUNTEER, KIND_AMBASSADOR)
+KIND_COMPETENCY = "competency"  # шкалы по тесту компетенций, только вариант «все дни»
+KINDS = (KIND_PARTICIPANT, KIND_COMPETENCY, KIND_VOLUNTEER, KIND_AMBASSADOR)
 VARIANT_ALL = "all"
 
 
