@@ -319,7 +319,8 @@ async def reserve(item_id: int, telegram_id: int) -> dict:
 
 
 _SALE_WITH_USER = (
-    "SELECT s.*, u.full_name, u.username FROM shop_sales s LEFT JOIN users u ON u.telegram_id = s.telegram_id "
+    "SELECT s.*, u.full_name, u.username, u.event_city FROM shop_sales s "
+    "LEFT JOIN users u ON u.telegram_id = s.telegram_id "
 )
 
 
