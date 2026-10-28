@@ -339,7 +339,7 @@ def test_card_off_shows_state_and_pick_button(tmp_path, monkeypatch):
     fid = _form()
     text, buttons = _card(fid)
     assert "🏫 Делегации: выключены" in text
-    assert text.index("Уведомления о новых ответах") < text.index("🏫 Делегации")
+    assert text.index("Уведомления о новых ответах") < text.index("🏫 Делегации:")
     datas = [d for _, d in buttons]
     assert ("🏫 Настроить делегации", f"dlg_form:{fid}") in buttons
     assert datas.index(f"dlg_form:{fid}") + 1 == datas.index(f"extf_disable:{fid}")
@@ -384,8 +384,9 @@ def test_card_unrelated_form_unchanged(tmp_path, monkeypatch):
     assert "🏫 Делегации" not in text
     assert all("Настроить делегации" not in t for t, _ in buttons)
     f = _run(X._form_with_stats(fid))
-    assert _buttons(X._card_kb(f)) == buttons
-    assert X._card_text(f) == text
+    # Карточка без строк делегаций; от назначения — только строка и кнопка «🎯 Назначение».
+    assert _buttons(X._card_kb(f, None, "answers")) == buttons
+    assert X._card_text(f, None, "answers") == text
 
 
 def test_card_without_moderate_right_explains_who(tmp_path, monkeypatch):
