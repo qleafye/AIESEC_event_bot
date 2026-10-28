@@ -57,6 +57,7 @@ from domain.regform.engine import CITY_CHOICE_INVALID_TEXT, CITY_CLOSED_TEXT, PA
 # Phase 25 (CITYQ-02): режим приёма резюме («файл или текст» / «только текст») по городу
 # делегата — общий резолвер движка, гейт на входе в шаг документа.
 from domain.regform.engine import resume_mode
+from domain.regform.engine import resume_formats_label
 # Phase 28 (28-03, SU-02, A-06): лимит мультивыбора — читает движок, текст ошибки из реестра
 # (не второй литерал рядом с reg_multi_limit_error_text).
 from domain.regform.engine import multi_max
@@ -405,7 +406,14 @@ async def process_resume(message: types.Message, state: FSMContext, bot: Bot):
         await reg_i18n.say(message, await get_setting_typed("reg_form_resume_text_only_text"))
         return
     if not _is_allowed_resume(message.document.file_name):
-        await reg_i18n.say(message, "Принимаются только PDF или DOCX. Прикрепи файл ещё раз.")
+        # Тот же ключ реестра, что у Mini App; `{formats}` — после перевода (tr_fmt), say()
+        # повторно переводит уже готовую строку — она вернётся как есть.
+        lang, tr_map = await reg_i18n.ctx_for(message)
+        text = reg_i18n.tr_fmt(
+            await get_setting_typed("reg_form_resume_wrong_type_text") or "", lang, tr_map,
+            formats=resume_formats_label(),
+        )
+        await reg_i18n.say(message, text)
         return
     if _resume_too_large(message.document.file_size):
         await reg_i18n.say(message, "❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера.")
