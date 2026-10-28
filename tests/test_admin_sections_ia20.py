@@ -188,7 +188,8 @@ def test_coverage_frozen_before_is_fully_reachable(tmp_path):
 def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
     """Допустимые добавления сверх старого набора групп — «📋 Заявки» и (квик 260927)
     «💬 Чат делегатов» с весами рейтинга чата, «🤝 Амбассадоры» (настройки амбассадорки), раздел «🔧 Управление»,
-    «✏️ Подписи кнопок меню» (09.10) в «🎪 Событие»."""
+    «✏️ Подписи кнопок меню» (09.10) в «🎪 Событие», группы текстов чата
+    (domain/settings/chat_fields.py)."""
     after = _after_callbacks(tmp_path)
     groups_after = {cb for cb in after if cb.startswith("settings_group:")}
     assert groups_after == _GROUPS_BEFORE | {
@@ -196,6 +197,8 @@ def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
         # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
+        # Сообщения менеджеру о сверке после привязки чата — в «🔧 Управление».
+        "settings_group:chat_bind_texts",
     }
 
 
