@@ -326,6 +326,19 @@ EXPECTED_PER_CITY_KEYS = {
     "chat_rating_post_enabled", "chat_rating_post_weekday", "chat_rating_post_time",
     "chat_rating_post_top", "chat_rating_post_cumulative", "chat_rating_post_title_rules",
     "chat_rating_post_title_formula", "chat_rating_post_total_title", "chat_rating_post_footer",
+    # Тексты геймы и волн, которые делегат получает целым сообщением, — по городу, с {chat}
+    # (ссылка на чат города делегата), и сама ссылка (domain/settings/city_chat.py).
+    "delegate_chat_link",
+    "wave_start_message_text", "wave_deadline_reminder_text", "wave_results_announce_text",
+    "wave_results_winner_text", "wave_results_prize_text", "wave_rating_closed_text",
+    "amb_candidate_ack_text", "amb_status_candidate_text", "amb_status_pack_text",
+    "amb_status_no_pack_text", "amb_slots_full_text", "amb_taken_text", "amb_removed_text",
+    "amb_decline_all_text",
+    "amb_tier1_text", "amb_tier2_granted_text", "amb_tier3_text", "amb_tier4_text",
+    "amb_tier5_text", "amb_tier1_waitlist_text", "amb_tier2_waitlist_text",
+    "amb_tier3_waitlist_text", "amb_tier4_waitlist_text", "amb_tier5_waitlist_text",
+    "referral_link_prompt_text", "ambassador_leave_done_text",
+    "game_submit_accepted_text", "game_task_list_empty", "coins_manual_notify_text",
 }
 
 

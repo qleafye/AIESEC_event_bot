@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass, field
 
 from domain.cities import split_per_city_key
+from domain.settings.city_chat import CHAT_LINK_KEY, CITY_CHAT_TEXT_KEYS
 from domain.settings.schema import SETTINGS_SCHEMA
 
 TOKEN_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
@@ -23,6 +24,7 @@ TOKEN_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 PLACEHOLDER_LABELS: dict[str, str] = {
     "absent": "число отсутствующих", "amount": "сумма", "balance": "баланс",
     "breakdown": "разбивка по заданиям", "cities": "список городов", "city": "город",
+    "chat": "ссылка на чат города (строка «💬 Ссылка на чат города» в «🤝 Амбассадоры»)",
     "claim_status": "статус обращения", "competencies": "компетенции сессии", "coins": "число коинов", "competency": "название компетенции",
     "consequence": "последствие изменения", "count": "количество", "date": "дата",
     "dates": "даты", "day": "день форума", "days": "число дней", "deadline": "дата закрытия записи",
@@ -79,6 +81,8 @@ def expected_placeholders(key: str) -> dict[str, str]:
                     names.setdefault(n, "")
         for n in PROMPT_ONLY_PLACEHOLDERS.get(base, ()):
             names.setdefault(n, "")
+    if base in CITY_CHAT_TEXT_KEYS or base == CHAT_LINK_KEY:
+        names.setdefault("chat", "")  # {chat} — ссылка на чат города делегата (city_chat.py)
     return {n: lbl or PLACEHOLDER_LABELS.get(n, "") for n, lbl in names.items()}
 
 

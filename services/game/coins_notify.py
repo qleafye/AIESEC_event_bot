@@ -23,7 +23,7 @@ import html as html_module
 import logging
 
 from services.infra.ru_plural import agree_placeholder
-from domain.settings.schema import get_setting_typed, SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,12 @@ async def notify_manual_coins(bot, user_id: int, delta: int, reason: str, balanc
     notification, just not right now), False on any failure (delegate blocked the bot,
     etc.) -- logged, never raised. The ledger write already happened before this is called
     (T-14-20): a failed notification must never be the reason an operation looks undone."""
-    template = await get_setting_typed("coins_manual_notify_text")
+    # Текст города получателя, {chat} — ссылка на его чат (services/game/city_texts.py).
+    from services.game import city_texts
+    template, city = await city_texts.city_template("coins_manual_notify_text", user_id)
     if not template:
         template = SETTINGS_SCHEMA["coins_manual_notify_text"]["default"]
+    template = await city_texts.fill_chat(template, city)
     # «{delta} баллов» согласуется с числом: «+1 балл», «−3 балла».
     text = (
         agree_placeholder(str(template), "delta", delta)

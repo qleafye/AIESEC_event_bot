@@ -23,6 +23,7 @@ from database.db import get_user
 from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link
 from services.amb import amb_progress, amb_screen
+from services.game import city_texts
 from services.i18n import i18n as i18n_service
 from domain.settings.schema import get_setting_typed
 
@@ -53,22 +54,27 @@ def _fmt(template: str, **subs) -> str:
         return template
 
 
-async def _tr_line(key: str, lang: str, tr_map: dict) -> str:
+async def _tr_line(key: str, lang: str, tr_map: dict, who=None) -> str:
     """Строка статуса с эмодзи в начале: `reg_i18n.tr_text` отрезает ведущий символ и ищет перевод
-    по остатку, а ручной перевод лежит по хешу ПОЛНОЙ строки — сначала ищем по полной."""
-    text = await get_setting_typed(key)
+    по остатку, а ручной перевод лежит по хешу ПОЛНОЙ строки — сначала ищем по полной.
+    `who` (строка users) — строка статуса города делегата со ссылкой на его чат (`{chat}`)."""
+    city = None
+    if who is not None:
+        text, city = await city_texts.city_template(key, who)
+    else:
+        text = await get_setting_typed(key)
     if lang != "ru" and isinstance(text, str) and text:
         full = i18n_service.tr(text, lang, tr_map)
         if full != text:
-            return full
-    return reg_i18n.tr_text(text, lang, tr_map)
+            return await city_texts.fill_chat(full, city)
+    return await city_texts.fill_chat(reg_i18n.tr_text(text, lang, tr_map), city)
 
 
-async def _lines(view: dict, lang: str, tr_map: dict) -> tuple[str | None, str | None, str | None]:
-    """Строки статуса, баллов и места в волне — тексты из реестра, с переводом."""
+async def _lines(view: dict, lang: str, tr_map: dict, user=None) -> tuple[str | None, str | None, str | None]:
+    """Строки статуса, баллов и места в волне — тексты из реестра, с переводом; статус — города делегата."""
     status = None
     if view["status_key"]:
-        status = await _tr_line(view["status_key"], lang, tr_map) or None
+        status = await _tr_line(view["status_key"], lang, tr_map, who=dict(user or {})) or None
     points = None
     if view["referral_points"] is not None:
         points = _fmt(await _tr_line("amb_referral_points_text", lang, tr_map),
@@ -89,12 +95,12 @@ async def referral_screen(
     user = await get_user(user_id)
     bot_user = await bot.get_me()
     referral_link = build_referral_link(bot_user.username, user_id)
-    tpl = await get_setting_typed("referral_link_prompt_text")
-    text = reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link)
+    tpl, city = await city_texts.city_template("referral_link_prompt_text", dict(user or {}))
+    text = await city_texts.fill_chat(reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link), city)
 
     buttons: list[list[InlineKeyboardButton]] = []
     view = await amb_screen.delegate_view(user_id)
-    status, points, place = await _lines(view, lang, tr_map)
+    status, points, place = await _lines(view, lang, tr_map, user)
     if user and user.get("is_ambassador"):
         if status:
             text += "\n\n" + status

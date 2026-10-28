@@ -4141,6 +4141,7 @@ SETTINGS_SCHEMA = {
         "default": "Сначала пришли хотя бы одну часть — фото, файл, текст или ссылку.",
     },
     "game_submit_accepted_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "game", "label": "🎮 Текст «Принято!»",
         "prompt": "Что увидит делегат сразу после успешной финализации сдачи.",
         "default": "Принято! Менеджер проверит и начислит баллы.",
@@ -4254,6 +4255,7 @@ SETTINGS_SCHEMA = {
         "default": "Особое",
     },
     "game_task_list_empty": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "game", "label": "🎮 Список заданий: пусто",
         "prompt": "Что видит делегат в «🎯 Задания», если активных заданий сейчас нет.",
         "default": "Активных заданий сейчас нет. Загляни попозже!",
@@ -4384,6 +4386,7 @@ SETTINGS_SCHEMA = {
         "default": "📜 <b>История баллов</b>",
     },
     "referral_link_prompt_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🔗 Реферальная ссылка: текст",
         "prompt": (
             "Что видит делегат по кнопке «🔗 Моя реферальная ссылка».\n\n"
@@ -4418,6 +4421,7 @@ SETTINGS_SCHEMA = {
     # (кнопочный визард «🪙 Монеты вручную» и /coins). Нейтрален к знаку -- тем же текстом
     # сообщается и о списании. `.replace` подстановка (не `.format`) -- см. _notify_manual_coins.
     "coins_manual_notify_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "game", "label": "🪙 Сообщение делегату о ручных баллах",
         "prompt": (
             "Что получит делегат сразу после того, как менеджер вручную начислит или спишет "
@@ -4591,6 +4595,7 @@ SETTINGS_SCHEMA = {
         "default": "",
     },
     "amb_tier1_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 1",
         "prompt": (
             "Сообщение амбассадору, когда набрано нужное число прошедших отбор для первой ступени.\n\n"
@@ -4604,6 +4609,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier2_granted_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 2, награда есть",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до второй ступени и награда ему досталась.\n\n"
@@ -4615,6 +4621,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier2_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 2, лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до второй ступени, но награды уже "
@@ -4626,6 +4633,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier3_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 3",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до третьей ступени.\n\n"
@@ -4776,6 +4784,7 @@ SETTINGS_SCHEMA = {
         "default": 15,
     },
     "amb_tier1_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 1, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 1, но награды уже разобрали.\n\n"
@@ -4787,6 +4796,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier3_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 3, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 3, но награды уже разобрали.\n\n"
@@ -4798,6 +4808,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier4_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 4, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 4, но награды уже разобрали.\n\n"
@@ -4809,6 +4820,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier5_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 5, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 5, но награды уже разобрали.\n\n"
@@ -4820,6 +4832,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier4_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 4",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 4.\n\nПоддерживается HTML."
@@ -4830,6 +4843,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_tier5_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 5",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 5.\n\nПоддерживается HTML."
@@ -5007,6 +5021,7 @@ SETTINGS_SCHEMA = {
         "default": 0,
     },
     "amb_candidate_ack_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🗳 Текст: заявка в амбассадоры принята",
         "prompt": (
             "Ответ делегату в режиме отбора, когда он попросился в команду амбассадоров "
@@ -5018,11 +5033,13 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_status_candidate_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🗳 Текст: статус кандидата на «Моя ссылка»",
         "prompt": "Строка на экране «Моя ссылка» у делегата, чья заявка в амбассадоры ещё рассматривается.",
         "default": "🕓 Твоя заявка в команду амбассадоров рассматривается.",
     },
     "amb_slots_full_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎁 Текст: места в команде заняты",
         "prompt": (
             "Ответ делегату, если он попросился в команду, когда все места уже заняты, и строка "
@@ -5034,6 +5051,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_status_pack_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎁 Текст: «пакет за тобой» на «Моя ссылка»",
         "prompt": (
             "Строка на экране «Моя ссылка» у амбассадора, за которым закреплён пакет. "
@@ -5042,6 +5060,7 @@ SETTINGS_SCHEMA = {
         "default": "🎁 Ты в команде амбассадоров — пакет амбассадора за тобой.",
     },
     "amb_status_no_pack_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎁 Текст: «без пакета» на «Моя ссылка»",
         "prompt": (
             "Строка на экране «Моя ссылка» у амбассадора, за которым пакета пока нет. "
@@ -5071,6 +5090,7 @@ SETTINGS_SCHEMA = {
         "default": "🌊 {wave}: ты на {place} месте из {total}",
     },
     "amb_taken_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎉 Текст: тебя взяли в амбассадоры",
         "prompt": (
             "Сообщение делегату, которого вы взяли в команду кнопкой «Взять».\n\n"
@@ -5082,6 +5102,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_removed_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "👋 Текст: выведен из команды амбассадоров",
         "prompt": "Сообщение человеку, которого вы вывели из команды амбассадоров.",
         "default": (
@@ -5090,6 +5111,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "amb_decline_all_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🙏 Текст: вежливый отказ кандидатам",
         "prompt": (
             "Сообщение всем кандидатам, которых не взяли, — уходит по кнопке «Вежливо отказать "
@@ -5106,6 +5128,7 @@ SETTINGS_SCHEMA = {
     # `game` целиком входит в `DELEGATE_GROUPS` (services/i18n/i18n_sources.py) — переводятся
     # автоматически, кроме `wave_end_manager_text` ниже (явно исключён в _ADMIN_ONLY_GAME_KEYS).
     "wave_start_message_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Старт волны: текст",
         "prompt": (
             "ЛС каждому амбассадору при старте волны.\n\nПодставляются:\n{wave} — номер "
@@ -5125,6 +5148,7 @@ SETTINGS_SCHEMA = {
         "default": "Открыть задания",
     },
     "wave_deadline_reminder_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Напоминание о дедлайне",
         "prompt": (
             "Уходит перед дедлайном (за сколько — «🌊 Напоминание о дедлайне: за сколько часов», "
@@ -5136,6 +5160,18 @@ SETTINGS_SCHEMA = {
             "Скоро дедлайн ({deadline}), а у тебя ещё не сдано: «{task}» ({coins} баллов). "
             "Успей сдать до дедлайна, чтобы получить баллы."
         ),
+    },
+    # Ссылка на чат города для подстановки {chat} в тексты геймы и волн (domain/settings/city_chat.py).
+    # Бот ссылку на чат не хранит (chat_tracking знает только id и название) — её задаёт менеджер.
+    "delegate_chat_link": {
+        "type": "text", "group": "amb", "per_city": True, "format": "tg_link",
+        "label": "💬 Ссылка на чат города",
+        "prompt": (
+            "Ссылка-приглашение в чат делегатов города — бот вставит её вместо {chat} в сообщения "
+            "геймы и волн. Пришлите ссылку вида https://t.me/+AbCdEf123 или @yulid_msk. «нет» — "
+            "убрать ссылку. Ссылка своя у каждого города — выберите город в шапке админки."
+        ),
+        "default": "",
     },
     # Ночь 10.10 (бэклог «🛠», P1): срок напоминания был зашит — 24 ч. Новое значение
     # переставляет уже стоящие напоминания сразу (services/scheduler.py::on_setting_written).
@@ -5149,6 +5185,7 @@ SETTINGS_SCHEMA = {
         "default": 24, "min": 1, "max": 168,
     },
     "wave_results_announce_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Итоги волны: объявление всем",
         "prompt": (
             "Уходит всем амбассадорам волны после объявления итогов.\n\nПодставляются:\n"
@@ -5164,6 +5201,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "wave_results_winner_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Итоги волны: поздравление призёру",
         "prompt": (
             "Отдельное ЛС только призёрам (по числу призовых мест волны — при равенстве "
@@ -5182,6 +5220,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "wave_results_prize_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Приз: текст в итогах",
         "prompt": (
             "Сам текст приза, который подставляется в сообщение призёру (вместо {prize} "
@@ -5209,6 +5248,7 @@ SETTINGS_SCHEMA = {
         "default": "Ты {rank}-й из {total}. До призового места ({place}-е) — {gap} баллов.",
     },
     "wave_rating_closed_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Рейтинг волны: волна не идёт",
         "prompt": "Что видит амбассадор на экране рейтинга волны, пока активной волны нет.",
         "default": "Сейчас нет активной волны амбассадоров — рейтинг появится, когда волна начнётся.",
@@ -5273,6 +5313,7 @@ SETTINGS_SCHEMA = {
         ),
     },
     "ambassador_leave_done_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🤝 Выход из амбассадоров: готово",
         "prompt": "Что видит делегат сразу после подтверждённого выхода из амбассадоров.",
         "default": "Готово — ты больше не амбассадор. Спасибо за работу!",
