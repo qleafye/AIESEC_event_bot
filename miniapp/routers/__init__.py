@@ -280,6 +280,22 @@
                                        end_time}]}]}], empty_text|null}
                                        view/фото резолвятся services.forum.program (общая точка
                                        правды с чат-кнопкой и гейтом кнопки меню бота)
+  Делегат (магазин баллов — плитка «🛍 Магазин», вычисляемая: me.sections.shop, пока витрина
+  открыта и на ней есть товары; `game_gate` + section coins, как у монет; `shop.py`):
+  GET  /app/api/shop               -> {title, balance, balance_text, reserve_on, items[{id,title,
+                                       price,price_text,stock_left|null,stock_text|null,
+                                       photo_file_id|null,status:ok|sold_out|limit|short,note|null,
+                                       can_take,confirm_text|null}], reservations[{id,code,title,
+                                       price,code_text,cancel_confirm_text}], texts{}, empty_text?}
+                                       404 {"reason":"shop_closed","text"} — витрина скрыта
+  POST /app/api/shop/reserve {item_id, request_id} -> {reservation{id,code,title,price}, balance,
+                                       text}; тот же request_id — тот же ответ (двойной тап)
+                                       400 bad_request; 404 shop_closed; 409 {"reason":
+                                       "reserve_off"|"sale_error","text"}
+  POST /app/api/shop/reservations/{id}/cancel -> {balance, text}; 409 {"reason":"gone","text"}
+                                       (чужая, уже выдана или отменена)
+  GET  /app/api/shop/reservations/{id}/qr -> {code, qr: "data:image/png;base64,…"};
+                                       404 {"reason":"gone","text"}
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -313,6 +329,7 @@ from miniapp.routers import (
     profile,
     program,
     questions,
+    shop,
     review,
     settings,
     stats,
@@ -340,6 +357,7 @@ ALL_ROUTERS = [
     checkin.router,
     checkin_enroll.router,
     program.router,
+    shop.router,
     hooks.router,
 ]
 

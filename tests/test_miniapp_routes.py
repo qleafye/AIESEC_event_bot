@@ -312,9 +312,12 @@ def test_me_delegate_via_initdata(tmp_path):
         "checkin",
         # D-29: вычисляемый раздел «📅 Программа» — без чекбокса; программы в сиде нет -> False.
         "program",
+        # Магазин баллов: вычисляемый раздел «🛍 Магазин» — витрина в сиде закрыта -> False.
+        "shop",
     }
-    assert all(v for k, v in body["sections"].items() if k != "program")
+    assert all(v for k, v in body["sections"].items() if k not in ("program", "shop"))
     assert body["sections"]["program"] is False
+    assert body["sections"]["shop"] is False
     assert body["accent"] == "#037EF3"
     assert body["event_name"] == "форума YouLead"
     assert body["logo_file_id"] is None

@@ -326,6 +326,17 @@ _GAME_FIELD_ORDER = [
     "game_proof_type_label_text", "game_proof_type_label_link",
     "game_proof_type_unspecified_text", "game_task_overdue_hint_text",
     "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
+    # Магазин баллов: тексты брони делегатом (витрина, «🎫 Мои брони», уведомления со стойки).
+    "shop_take_button_text", "shop_reserve_hint_text",
+    "shop_take_confirm_text", "shop_take_confirm_button_text",
+    "shop_reserved_text", "shop_my_reservations_button_text",
+    "shop_my_reservations_header_text", "shop_my_reservations_empty_text",
+    "shop_reservation_qr_button_text", "shop_reservation_cancel_button_text",
+    "shop_cancel_confirm_text", "shop_cancel_confirm_button_text",
+    "shop_cancel_keep_button_text", "shop_cancelled_text",
+    "shop_reservation_gone_text", "shop_reservation_qr_footer_text",
+    "shop_issued_notify_text", "shop_cancelled_by_staff_notify_text",
+    "shop_photos_button_text", "shop_photo_caption_text", "shop_photos_failed_text",
     "balance_history_header_text",
     # Штраф за просрочку и тексты заданий про срок — про задания, не про команду амбассадоров.
     "game_late_penalty_percent", "game_task_no_deadline_text", "game_task_penalty_hint_text",

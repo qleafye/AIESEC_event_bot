@@ -704,7 +704,10 @@ class CertAdmin(StatesGroup):
 
 
 class ShopAdmin(StatesGroup):
-    """«🛍 Магазин баллов» (handlers/game/admin_shop.py): поиск делегата на стойке, товар."""
+    """«🛍 Магазин баллов» (handlers/game/admin_shop.py): поиск делегата на стойке, товар, ввод кода брони,
+    фото товара (handlers/game/admin_shop_photo.py)."""
     find = State()
     new_item = State()
     edit_item = State()
+    code = State()
+    photo = State()
