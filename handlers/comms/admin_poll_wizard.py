@@ -26,6 +26,7 @@ from services.comms.polls import (
     POLL_OPTIONS_MAX,
     deliver_poll,
     audience_label,
+    results_hint_line,
 )
 from services.scheduler import (
     _parse_schedule_dt,
@@ -354,10 +355,13 @@ async def poll_audience_pick(callback: types.CallbackQuery, state: FSMContext, b
     if count is None:
         from database.db import get_all_users_ids
         count = len(await get_all_users_ids())
+    hint = await results_hint_line()
+    hint_line = f"{hint}\n" if hint else ""
     await callback.message.answer(
         f"{_step(5)}Выше — как опрос увидит делегат (превью закрыто, голосовать нельзя).\n\n"
         f"Кому: <b>{html_module.escape(audience_label(spec))}</b> — {count} чел.\n"
         f"{await _quiet_hours_warning()}"
+        f"{hint_line}"
         "Отправить сейчас или запланировать?",
         parse_mode="HTML", reply_markup=_confirm_kb(),
     )
@@ -383,7 +387,7 @@ async def _deliver_and_report(bot, poll_id: int, admin_id: int):
         )
         if stats.get("queued"):
             text += f"🌙 Ждут конца тихих часов: {stats['queued']}\n"
-        text += "Итоги — в «📊 Опросы»."
+        text = f"{text}{await results_hint_line()}".rstrip("\n")
     try:
         await bot.send_message(admin_id, text)
     except Exception as e:
@@ -434,7 +438,8 @@ async def poll_schedule_when(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(
         f"✅ Опрос #{pid} запланирован на {when.strftime('%d.%m.%Y %H:%M')} "
-        f"({audience_label(data.get('audience'))}).\nОтменить можно в карточке опроса: «📊 Опросы».",
+        f"({audience_label(data.get('audience'))}).\nОтменить можно в карточке опроса: «📊 Опросы»."
+        + (f"\n{hint}" if (hint := await results_hint_line()) else ""),
         reply_markup=ReplyKeyboardRemove(),
     )
 
