@@ -141,6 +141,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         "ask_question_prompt_text", "ask_question_sent_text",
         # Опросы (22.08): вступительный текст перед опросом -- в группе «событие».
         "poll_intro_text",
+        # 28.10: подсказка менеджеру «где итоги опроса» — сразу за poll_intro_text.
+        "poll_results_admin_hint_text",
         # Quick 260906-8uq (FAQ-01..06): экран «❓ Частые вопросы» перед формой «Задать
         # вопрос» -- три текста в той же группе «событие».
         "faq_intro_text", "faq_empty_text", "faq_ask_button_text",
