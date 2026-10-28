@@ -2667,14 +2667,22 @@ def parse_age(raw: int | str | None) -> int | None:
 # P0 audit T-dw1-01: resume size guard. Перенос дословный из handlers/registration.py.
 RESUME_MAX_BYTES = 10 * 1024 * 1024
 
+# Принимаемые расширения резюме — одна константа и для проверки, и для текста отказа
+# (`{formats}` в `reg_form_resume_wrong_type_text`). `.doc` не принимается — вопрос владельцу.
+RESUME_ALLOWED_EXTS = (".pdf", ".docx")
+
 
 def is_allowed_resume(file_name: str | None) -> bool:
     """QW-03: accept only PDF/DOCX by extension (case-insensitive). Перенос дословный из
     handlers/registration.py::_is_allowed_resume."""
     if not file_name:
         return False
-    name = file_name.lower()
-    return name.endswith(".pdf") or name.endswith(".docx")
+    return file_name.lower().endswith(RESUME_ALLOWED_EXTS)
+
+
+def resume_formats_label() -> str:
+    """«PDF, DOCX» — для подстановки `{formats}` в текст отказа по формату резюме."""
+    return ", ".join(ext.lstrip(".").upper() for ext in RESUME_ALLOWED_EXTS)
 
 
 def resume_too_large(file_size) -> bool:
