@@ -265,7 +265,7 @@ async def shop_go(callback: types.CallbackQuery, state: FSMContext):
     try:
         await callback.bot.send_message(
             tid,
-            f"🛍 {await shop_title()}: «{sale['title']}» — списано {sale['price']} {points_word(sale['price'])}.\n"
+            f"🛍 {html.escape(await shop_title())}: «{html.escape(sale['title'])}» — списано {sale['price']} {points_word(sale['price'])}.\n"
             f"На счету: {sale['balance']}.",
         )
     except Exception as e:
@@ -314,7 +314,7 @@ async def shop_undo_go(callback: types.CallbackQuery):
     try:
         await callback.bot.send_message(
             sale["telegram_id"],
-            f"🛍 {await shop_title()}: выдачу «{sale['title']}» отменили, {sale['price']} {points_word(sale['price'])} вернулись. На счету: {balance}.",
+            f"🛍 {html.escape(await shop_title())}: выдачу «{html.escape(sale['title'])}» отменили, {sale['price']} {points_word(sale['price'])} вернулись. На счету: {balance}.",
         )
     except Exception as e:
         logger.info(f"shop_undo: сообщение делегату не ушло: {type(e).__name__}")
