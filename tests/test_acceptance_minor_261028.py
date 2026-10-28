@@ -167,3 +167,38 @@ def test_multi_continue_blank_legacy_ignored(tmp_path):
     _db(tmp_path)
     asyncio.run(set_setting("reg_form_continue_button_text", "   "))
     assert _continue_button() == "Дальше"
+
+
+# ── «🔄 Сверить состав чата» только при подключённом чате ──────────────────────────────
+
+
+def _manage_callbacks():
+    from handlers.settings.admin_sections import build_section_keyboard
+    from tests.test_chat_refresh_admin_260914 import ADMIN_ID
+
+    kb = asyncio.run(build_section_keyboard("manage", ADMIN_ID))
+    return {b.callback_data: b.text for row in kb.inline_keyboard for b in row if b.callback_data}
+
+
+def test_reconcile_hidden_without_bound_chat(tmp_path):
+    from tests.test_chat_refresh_admin_260914 import _ready
+
+    _ready(tmp_path)
+    cbs = _manage_callbacks()
+    assert "admin_chat_reconcile" not in cbs
+    assert "admin_chat_cleanup" in cbs and "admin_chat_rating" in cbs
+
+
+def test_reconcile_shown_with_bound_chat(tmp_path):
+    from services import chat_tracking
+    from tests.test_chat_refresh_admin_260914 import _ready
+
+    _ready(tmp_path)
+    asyncio.run(chat_tracking.bind_chat(None, -1004489658418, "Чат", None))
+    assert _manage_callbacks().get("admin_chat_reconcile") == "🔄 Сверить состав чата"
+
+
+def test_reconcile_row_stays_in_registry():
+    from handlers.settings.admin_sections import section_rows
+
+    assert ("screen", "admin_chat_reconcile", "🔄 Сверить состав чата") in section_rows("manage")
