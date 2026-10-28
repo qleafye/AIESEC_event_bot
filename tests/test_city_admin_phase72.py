@@ -123,14 +123,16 @@ def test_admin_keyboard_for_module_on_has_city_header_row(tmp_path):
     asyncio.run(db.set_setting("event_city_enabled", "on"))
     kb = asyncio.run(admin_mod.admin_keyboard_for(ADMIN_ID))
     plain = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
-    assert len(kb.inline_keyboard) == len(plain.inline_keyboard) + 1
+    # 28.10 (готовность к форуму): первый ряд build_admin_keyboard — ready_list; при модуле
+    # городов он встаёт в ряд шапки, а не отдельным рядом (корень — не больше десяти рядов).
+    assert plain.inline_keyboard[0][0].callback_data == "ready_list"
+    assert len(kb.inline_keyboard) == len(plain.inline_keyboard)
     header_row = kb.inline_keyboard[0]
-    assert len(header_row) == 1
-    assert header_row[0].callback_data == "admin_city_switch"
+    assert [b.callback_data for b in header_row] == ["admin_city_switch", "ready_list"]
     assert "🏙 Город:" in header_row[0].text
     # remaining rows unchanged
     assert [ [b.callback_data for b in row] for row in kb.inline_keyboard[1:] ] == \
-           [ [b.callback_data for b in row] for row in plain.inline_keyboard ]
+           [ [b.callback_data for b in row] for row in plain.inline_keyboard[1:] ]
 
 
 def test_admin_city_switch_screen_lists_all_cities_and_is_capability_guarded(tmp_path):
