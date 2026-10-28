@@ -251,3 +251,214 @@ def test_sample_preview_is_a_card(tmp_path):
     _use_tmp_db(tmp_path)
     png = asyncio.run(theme_mod.sample_preview(CardTheme(bg=PALETTE["teal"])))
     assert Image.open(io.BytesIO(png)).size == (1080, 1440)
+
+
+# ── экран «🎟 Карточка QR» в админке ───────────────────────────────────────────────────
+
+import re  # noqa: E402
+
+from handlers.access.admin_caps import required_capability  # noqa: E402
+from handlers.settings import admin_miniapp  # noqa: E402
+from handlers.settings import admin_qr_card_theme as screen  # noqa: E402
+from handlers.states import QrCardTheme  # noqa: E402
+from tests.test_admin_sections_ia20 import (  # noqa: E402
+    FakeAnswerMessage, FakeCallback, FakeDocument, FakePhoto, FakeState,
+)
+from tests.test_roles_phase8 import _flat_callback_data, _roles_ready  # noqa: E402
+
+
+class _PhotoMessage:
+    """callback.message с answer_photo (превью) — у общего FakeMessage его нет."""
+
+    def __init__(self):
+        self.text = None
+        self.markup = None
+        self.sent: list[tuple] = []
+        self.photos: list[dict] = []
+
+    async def edit_text(self, text, parse_mode=None, reply_markup=None):
+        self.text, self.markup = text, reply_markup
+
+    async def answer(self, text=None, parse_mode=None, reply_markup=None, **kwargs):
+        self.sent.append((text, reply_markup))
+
+    async def answer_photo(self, photo, caption=None, reply_markup=None, **kwargs):
+        self.photos.append({"photo": photo, "caption": caption, "markup": reply_markup})
+
+
+def _cb(data, bot=None):
+    cb = FakeCallback(data)
+    cb.message = _PhotoMessage()
+    cb.bot = bot or _FakeBot()
+    return cb
+
+
+def _stored(key):
+    return asyncio.run(db.get_setting(key))
+
+
+def _all_buttons(kb):
+    return [btn for row in kb.inline_keyboard for btn in row]
+
+
+def test_keyboard_shows_human_labels_not_codes(tmp_path):
+    _roles_ready(tmp_path)
+    kb = asyncio.run(screen.build_qr_card_theme_keyboard({}))
+    texts = " ".join(btn.text for btn in _all_buttons(kb))
+    assert "Фон: Синий АЙСЕК" in texts and "Плашка: Оранжевый" in texts
+    assert not re.search(r"#[0-9A-Fa-f]{6}", texts)
+    assert "qr_card_" not in texts and "blue" not in texts
+    text = asyncio.run(screen.render_qr_card_theme_text({}))
+    assert "qr_card_" not in text and not re.search(r"#[0-9A-Fa-f]{6}", text)
+    assert "несохранённые" not in text
+
+
+def test_every_screen_callback_is_covered_by_caps(tmp_path):
+    _roles_ready(tmp_path)
+    datas = set(_flat_callback_data(asyncio.run(screen.build_qr_card_theme_keyboard({"qr_card_logo": "X", "qr_card_bg_image": "Y"}))))
+    datas |= {"qrct_pick:bg", "qrct_set:bg:red", "qrct_save_go", "qrct_reset_go", "qrct_cancel_edit"}
+    for data in datas:
+        assert required_capability(callback_data=data) == "settings", data
+    assert required_capability(raw_state="QrCardTheme:logo") == "settings"
+
+
+def test_entry_button_on_design_screen(tmp_path):
+    _roles_ready(tmp_path)
+    kb = asyncio.run(admin_miniapp.build_miniapp_settings_keyboard())
+    assert "qrct_open" in _flat_callback_data(kb)
+
+
+def test_palette_screen_marks_current_and_set_goes_to_draft_only(tmp_path):
+    _roles_ready(tmp_path)
+    state = FakeState()
+    cb = _cb("qrct_pick:bg")
+    asyncio.run(screen.qrct_pick(cb, state))
+    labels = [btn.text for btn in _all_buttons(cb.message.markup)]
+    assert "✅ Синий АЙСЕК" in labels and len(labels) == 10
+    cb = _cb("qrct_set:bg:purple")
+    asyncio.run(screen.qrct_set(cb, state))
+    assert state._data[screen.DRAFT_KEY] == {"qr_card_bg_color": "purple"}
+    assert _stored("qr_card_bg_color") is None
+    assert "Есть несохранённые изменения" in cb.message.text
+    assert "Фон: Фиолетовый" in cb.message.text
+
+
+def test_forged_callback_rejected(tmp_path):
+    _roles_ready(tmp_path)
+    state = FakeState()
+    for data, handler in (("qrct_set:bg:rainbow", screen.qrct_set), ("qrct_set:qr:red", screen.qrct_set),
+                          ("qrct_toggle:everything", screen.qrct_toggle)):
+        cb = _cb(data)
+        asyncio.run(handler(cb, state))
+        assert cb.answers and cb.answers[-1][1] is True
+    assert not state._data.get(screen.DRAFT_KEY)
+
+
+def test_toggle_and_low_contrast_warning(tmp_path):
+    _roles_ready(tmp_path)
+    state = FakeState()
+    asyncio.run(screen.qrct_toggle(_cb("qrct_toggle:city"), state))
+    assert state._data[screen.DRAFT_KEY] == {"qr_card_show_city": "off"}
+    cb = _cb("qrct_set:text:blue")
+    asyncio.run(screen.qrct_set(cb, state))
+    assert "Текст плохо виден" in cb.message.text
+
+
+def test_save_sends_preview_without_writing_then_save_go_writes(tmp_path):
+    _roles_ready(tmp_path)
+    state = FakeState({screen.DRAFT_KEY: {"qr_card_bg_color": "green", "qr_card_show_footer": "off"}})
+    cb = _cb("qrct_save")
+    asyncio.run(screen.qrct_save(cb, state))
+    assert len(cb.message.photos) == 1
+    sent = cb.message.photos[0]
+    assert "Сохранить?" in sent["caption"]
+    assert "qrct_save_go" in _flat_callback_data(sent["markup"])
+    assert _stored("qr_card_bg_color") is None
+
+    cb = _cb("qrct_save_go")
+    asyncio.run(screen.qrct_save_go(cb, state))
+    assert _stored("qr_card_bg_color") == "green"
+    assert _stored("qr_card_show_footer") == "off"
+    assert state._data[screen.DRAFT_KEY] == {}
+    assert any("сохранено" in (text or "") for text, _ in cb.message.sent)
+
+
+def test_preview_failure_keeps_draft(tmp_path, monkeypatch):
+    _roles_ready(tmp_path)
+    draft = {"qr_card_bg_color": "red"}
+    state = FakeState({screen.DRAFT_KEY: dict(draft)})
+
+    async def broken(theme):
+        raise OSError("битая картинка")
+
+    monkeypatch.setattr(screen, "sample_preview", broken)
+    cb = _cb("qrct_preview")
+    asyncio.run(screen.qrct_preview(cb, state))
+    assert not cb.message.photos
+    assert "Не получилось собрать превью" in cb.message.sent[-1][0]
+    assert state._data[screen.DRAFT_KEY] == draft
+
+
+def test_remove_image_and_discard(tmp_path):
+    _roles_ready(tmp_path)
+    asyncio.run(db.set_setting("qr_card_logo", "OLD_LOGO"))
+    state = FakeState()
+    asyncio.run(screen.qrct_remove(_cb("qrct_remove:logo"), state))
+    assert state._data[screen.DRAFT_KEY] == {"qr_card_logo": None}
+    assert _stored("qr_card_logo") == "OLD_LOGO"
+    cb = _cb("qrct_discard")
+    asyncio.run(screen.qrct_discard(cb, state))
+    assert state._data[screen.DRAFT_KEY] == {}
+    assert "Лого: своё" in cb.message.text
+
+
+def test_reset_asks_then_deletes_all_keys(tmp_path):
+    _roles_ready(tmp_path)
+    for key, value in (("qr_card_bg_color", "red"), ("qr_card_logo", "L"), ("qr_card_show_city", "off")):
+        asyncio.run(db.set_setting(key, value))
+    cb = _cb("qrct_reset")
+    asyncio.run(screen.qrct_reset(cb))
+    assert "Пропадут" in cb.message.text
+    assert "qrct_reset_go" in _flat_callback_data(cb.message.markup)
+    assert _stored("qr_card_bg_color") == "red"
+    state = FakeState({screen.DRAFT_KEY: {"qr_card_text_color": "dark"}})
+    asyncio.run(screen.qrct_reset_go(_cb("qrct_reset_go"), state))
+    for key in CARD_THEME_KEYS.values():
+        assert _stored(key) is None
+    assert state._data[screen.DRAFT_KEY] == {}
+
+
+def test_photo_in_logo_state_goes_to_draft(tmp_path):
+    _roles_ready(tmp_path)
+    state = FakeState({screen.DRAFT_KEY: {"qr_card_bg_color": "dark"}}, state=QrCardTheme.logo)
+    msg = FakeAnswerMessage(photo=[FakePhoto("small"), FakePhoto("BIG_LOGO")])
+    asyncio.run(screen.qrct_photo_step(msg, state))
+    assert state._data[screen.DRAFT_KEY] == {"qr_card_bg_color": "dark", "qr_card_logo": "BIG_LOGO"}
+    assert state.state is None
+    assert _stored("qr_card_logo") is None
+
+
+def test_png_document_accepted_text_document_explained(tmp_path):
+    _roles_ready(tmp_path)
+    state = FakeState(state=QrCardTheme.bg_image)
+    msg = FakeAnswerMessage(document=FakeDocument("TXT", "text/plain"))
+    asyncio.run(screen.qrct_document_step(msg, state))
+    assert "Не понял — пришлите картинку" in msg.sent[-1][0]
+    assert not state._data.get(screen.DRAFT_KEY)
+
+    msg = FakeAnswerMessage(document=FakeDocument("PNG_BG", "image/png"))
+    asyncio.run(screen.qrct_document_step(msg, state))
+    assert state._data[screen.DRAFT_KEY] == {"qr_card_bg_image": "PNG_BG"}
+
+
+def test_preview_uses_draft_images_via_callback_bot(tmp_path):
+    _roles_ready(tmp_path)
+    theme_mod._image_cache.clear()
+    bot = _FakeBot({"BG_FILE": _png((40, 40), (10, 200, 10))})
+    state = FakeState({screen.DRAFT_KEY: {"qr_card_bg_image": "BG_FILE"}})
+    cb = _cb("qrct_preview", bot=bot)
+    asyncio.run(screen.qrct_preview(cb, state))
+    assert bot.downloads == ["BG_FILE"]
+    photo = cb.message.photos[0]["photo"]
+    assert _near(_rgb_at(photo.data, (5, 1435)), (10, 200, 10), tol=40)
+    theme_mod._image_cache.clear()
