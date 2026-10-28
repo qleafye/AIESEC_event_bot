@@ -52,10 +52,9 @@ def _kb(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
 
 
 async def shop_title() -> str:
-    from domain.settings.schema import get_setting_typed
+    from services.game.shop_card import shop_title as _title
 
-    event = (await get_setting_typed("event_name") or "").strip()
-    return f"{event}-шоп" if event else "Магазин баллов"
+    return await _title()
 
 
 def _who(user: dict | None, tid: int) -> str:
