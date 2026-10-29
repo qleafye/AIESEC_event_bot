@@ -1359,6 +1359,7 @@ admin|callback_query|survey_question_down|psv_qdn:*
 admin|callback_query|survey_question_delete_ask|psv_qdel:*
 admin|callback_query|survey_question_delete_go|psv_qdelgo:*
 admin|callback_query|survey_preview|psv_prev:*
+admin|callback_query|survey_link_qr|psv_link:*
 admin|callback_query|survey_go|psv_go:*
 admin|callback_query|survey_audience_pick|poll_aud:*
 admin|callback_query|survey_send_now|psv_send:*
@@ -2631,7 +2632,9 @@ def test_snapshot_total_handler_count_is_292():
     # 14.10 (вкладки записи на сессии): +2 admin prog_enrsh/prog_enrshgo; чистая вставка (1259 -> 1261).
     # 15.10 (запись на общие сессии): +1 admin prog_enrco, +2 user_actions se:g/se:g:*; чистая вставка (1261 -> 1264).
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
-    assert len(GOLDEN_SNAPSHOT) == 1368
+    # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
+    # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
+    assert len(GOLDEN_SNAPSHOT) == 1369
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
