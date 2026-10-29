@@ -377,3 +377,157 @@ def test_double_tap_single_transition(tmp_path):
 def test_sv_prefixes_not_capability_gated():
     for data in ("sv:s:1", "sv:c:1", "sv:o:1:0", "sv:d:1", "sv:k:1", "sv:n:1:3", "sv:t:1:0"):
         assert required_capability(callback_data=data) is None
+
+
+def test_survey_link_opens_that_survey_and_qr_matches(tmp_path):
+    """Ссылка конкретного опроса, старт по ней открывает его (черновик не мешает), QR — та же ссылка."""
+    import io
+
+    import segno
+    from aiogram.fsm.context import FSMContext
+    from aiogram.fsm.storage.base import StorageKey
+    from aiogram.fsm.storage.memory import MemoryStorage
+
+    from handlers.comms import admin_survey_builder as sb
+    from handlers.comms.admin_survey_results import render_survey_card
+    from handlers.forum import forum_deeplinks
+    from handlers.states import SurveyBuild
+    from services.comms import surveys
+
+    _ready(tmp_path)
+    scanner = 920099
+
+    class _StartMsg:
+        def __init__(self, uid):
+            self.from_user = SimpleNamespace(id=uid)
+            self.answers = []
+
+        async def answer(self, text, reply_markup=None, parse_mode=None):
+            self.answers.append((text, reply_markup))
+
+    class _Bot:
+        def __init__(self, username="YouLeadBot", boom=False):
+            self.username = username
+            self.boom = boom
+
+        async def me(self):
+            if self.boom:
+                raise RuntimeError("down")
+            return SimpleNamespace(username=self.username)
+
+    class _PhotoMsg:
+        def __init__(self):
+            self.photos = []
+
+        async def answer_photo(self, photo, caption=None, parse_mode=None):
+            self.photos.append((photo, caption, parse_mode))
+
+    class _AdminCb:
+        def __init__(self, data):
+            self.data = data
+            self.from_user = SimpleNamespace(id=ADMIN_ID)
+            self.message = _PhotoMsg()
+            self.alerts = []
+
+        async def answer(self, text=None, show_alert=False):
+            self.alerts.append((text, show_alert))
+
+    async def go():
+        alpha = await survey_db.create_survey_draft("Первый день", ADMIN_ID)
+        beta = await survey_db.create_survey_draft("Второй день", ADMIN_ID)
+        empty = await survey_db.create_survey_draft("Пустой", ADMIN_ID)
+        q_alpha = await survey_db.add_survey_question(
+            alpha, "single", "Q-ALPHA-LINK",
+            options=[{"t": "Да", "more": None}, {"t": "Нет", "more": None}],
+        )
+        await survey_db.add_survey_question(
+            beta, "single", "Q-BETA-OTHER",
+            options=[{"t": "Раз", "more": None}, {"t": "Два", "more": None}],
+        )
+        link = surveys.survey_link("YouLeadBot", alpha)
+        assert link == f"https://t.me/YouLeadBot?start=survey_{alpha}"
+        assert surveys.survey_link("@YouLeadBot", alpha) == link
+        assert surveys.survey_link("", alpha) is None
+        other = surveys.survey_link("YouLeadBot", beta)
+        assert other != link and other.endswith(f"survey_{beta}")
+        assert set(forum_deeplinks.DEEPLINKS) == {"sessions", "quiz"}
+        assert surveys.parse_survey_start("sessions") is None
+        assert surveys.parse_survey_start("quiz") is None
+        assert surveys.parse_survey_start("survey_01") is None
+        assert surveys.parse_survey_start(None) is None
+        payload = link.split("start=", 1)[1]
+        assert surveys.parse_survey_start(payload) == alpha
+
+        state = FSMContext(
+            storage=MemoryStorage(),
+            key=StorageKey(bot_id=1, chat_id=scanner, user_id=scanner),
+        )
+        await state.set_state(SurveyBuild.intro)
+        await state.update_data(pid=alpha)
+        msg = _StartMsg(scanner)
+        assert await forum_deeplinks.try_forum_deeplink(msg, state, payload) is True
+        assert await state.get_state() is None
+        shown, kb = msg.answers[-1]
+        assert "Q-ALPHA-LINK" in shown and "Q-BETA-OTHER" not in shown
+        assert f"sv:o:{q_alpha}:0" in [b.callback_data for row in kb.inline_keyboard for b in row]
+        assert await db.get_user(scanner) is None
+        assert (await survey_db.get_survey_progress(alpha, scanner))["current_qid"] == q_alpha
+        assert await survey_db.get_survey_progress(beta, scanner) is None
+        assert (await db.get_poll(alpha))["status"] == "draft"
+        assert await db.list_poll_messages(alpha) == []
+
+        tap = FakeCb(f"sv:o:{q_alpha}:0", scanner)
+        await sd.sv_option(tap)
+        assert not any(flag for _, flag in tap.alerts)
+        assert (await survey_db.get_survey_progress(alpha, scanner))["state"] == "done"
+        assert (await db.get_poll(alpha))["status"] == "draft"
+        assert await db.list_poll_messages(alpha) == []
+
+        missing = _StartMsg(scanner)
+        assert await forum_deeplinks.try_forum_deeplink(missing, state, "survey_999999") is True
+        assert "новую" in missing.answers[-1][0]
+        blank = _StartMsg(scanner)
+        assert await forum_deeplinks.try_forum_deeplink(blank, state, f"survey_{empty}") is True
+        assert "вопрос" in blank.answers[-1][0].lower()
+        assert "менеджер" in blank.answers[-1][0].lower()
+
+        text, kb = await sb.render_survey_draft(alpha)
+        labels = [b.text for row in kb.inline_keyboard for b in row]
+        assert surveys.SURVEY_LINK_BUTTON in labels
+        assert surveys.SURVEY_LINK_BUTTON in text
+        for label in labels:
+            assert "psv_" not in label and "survey_" not in label
+        _, card_kb = await render_survey_card(await db.get_poll(alpha))
+        card_labels = [b.text for row in card_kb.inline_keyboard for b in row]
+        assert surveys.SURVEY_LINK_BUTTON in card_labels
+        assert required_capability(callback_data=f"psv_link:{alpha}") == "broadcast"
+
+        admin_cb = _AdminCb(f"psv_link:{alpha}")
+        await sb.survey_link_qr(admin_cb, _Bot())
+        photo, caption, mode = admin_cb.message.photos[0]
+        assert mode is None and link in caption and "psv_" not in caption
+        buf = io.BytesIO()
+        segno.make(link).save(buf, kind="png", scale=6, border=2)
+        assert photo.data == buf.getvalue()
+        assert (await db.get_poll(alpha))["status"] == "draft"
+        assert await db.list_poll_messages(alpha) == []
+
+        no_name = _AdminCb(f"psv_link:{alpha}")
+        await sb.survey_link_qr(no_name, _Bot(username=None))
+        assert no_name.message.photos == []
+        assert no_name.alerts[-1][1] is True and "имя бота" in no_name.alerts[-1][0]
+        assert "Ссылка и QR" in no_name.alerts[-1][0]
+        boom = _AdminCb(f"psv_link:{alpha}")
+        await sb.survey_link_qr(boom, _Bot(boom=True))
+        assert boom.message.photos == [] and "имя бота" in boom.alerts[-1][0]
+        no_q = _AdminCb(f"psv_link:{empty}")
+        await sb.survey_link_qr(no_q, _Bot())
+        assert no_q.message.photos == [] and "Добавить вопрос" in no_q.alerts[-1][0]
+
+        await db.set_poll_status(alpha, "closed")
+        closed = _StartMsg(scanner)
+        assert await forum_deeplinks.try_forum_deeplink(closed, state, payload) is True
+        assert "закрыт" in closed.answers[-1][0] and "менеджер" in closed.answers[-1][0].lower()
+        assert await db.list_poll_messages(alpha) == []
+
+    _run(go())

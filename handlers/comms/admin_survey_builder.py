@@ -15,7 +15,12 @@ import logging
 from aiogram import F, types, Bot
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from aiogram.types import (
+    BufferedInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    ReplyKeyboardRemove,
+)
 
 from database.db import get_poll, count_and_list_filtered
 from database.survey_db import (
@@ -31,12 +36,15 @@ from database.survey_db import (
 from services.comms.polls import audience_label
 from services.comms.surveys import (
     QTYPE_LABELS,
+    SURVEY_LINK_BUTTON,
     SURVEY_MAX_QUESTIONS,
     DEFAULT_OUTRO,
     QUESTION_MAX,
+    survey_link,
     validate_question_text,
     render_survey_preview,
 )
+from services.forum.onsite_reg import walkin_qr_png
 from services.scheduler import (
     _parse_schedule_dt,
     _fmt_dt,
@@ -93,7 +101,9 @@ async def render_survey_draft(poll_id: int):
         f"Приглашение: {intro}\n"
         f"Финальный текст: {outro}\n\n"
         "Нажмите на вопрос, чтобы изменить его, удалить или переставить. "
-        "Когда всё готово — «➡️ Аудитория и отправка»."
+        "Когда всё готово — «➡️ Аудитория и отправка». "
+        f"Чтобы раздать опрос в зале, нажмите «{SURVEY_LINK_BUTTON}»: "
+        "человек сразу попадёт в опрос, рассылка не начнётся."
     )
     rows = []
     for k, q in enumerate(questions, start=1):
@@ -104,6 +114,7 @@ async def render_survey_draft(poll_id: int):
     rows.append([_btn("📝 Приглашение", f"psv_intro:{poll_id}"),
                  _btn("🏁 Финальный текст", f"psv_outro:{poll_id}")])
     rows.append([_btn("✏️ Название", f"psv_title:{poll_id}"), _btn("👁 Превью", f"psv_prev:{poll_id}")])
+    rows.append([_btn(SURVEY_LINK_BUTTON, f"psv_link:{poll_id}")])
     rows.append([_btn("➡️ Аудитория и отправка", f"psv_go:{poll_id}")])
     rows.append([_btn("⬅️ К списку опросов", "admin_polls")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
@@ -433,6 +444,74 @@ async def survey_preview(callback: types.CallbackQuery):
         return
     await callback.answer()
     await _send_preview(callback, poll, _back_kb(poll["id"]))
+
+
+# ── ссылка и QR (рассылку не запускает) ─────────────────────────────────────────────────────
+
+_NO_BOT_NAME = (
+    f"Не получилось узнать имя бота. Откройте этот опрос ещё раз и нажмите «{SURVEY_LINK_BUTTON}»."
+)
+_NO_QUESTIONS_LINK = (
+    "Сначала добавьте хотя бы один вопрос — кнопка «➕ Добавить вопрос». "
+    "Без вопроса человеку по ссылке нечего отвечать."
+)
+_LINK_CAPTION = (
+    "Ссылка на этот опрос\n\n{link}\n\n"
+    "Откройте ссылку или отсканируйте код — человек сразу попадёт в опрос. "
+    "Рассылать опрос для этого не нужно."
+)
+
+
+async def _survey_for_link(callback: types.CallbackQuery, pid: int | None):
+    """Анкета своего города или None. Черновик тоже подходит: ссылка не требует рассылки."""
+    poll = await get_poll(pid) if pid is not None else None
+    if poll is None or poll.get("kind") != "survey":
+        await callback.answer(
+            "Анкета не найдена — откройте «📊 Опросы» и выберите её снова.",
+            show_alert=True,
+        )
+        return None
+    if await _poll_out_of_scope(callback.from_user.id, poll):
+        await callback.answer(
+            "Эта анкета адресована другому городу — переключите город в шапке.",
+            show_alert=True,
+        )
+        return None
+    return poll
+
+
+@router.callback_query(F.data.startswith("psv_link:"))
+async def survey_link_qr(callback: types.CallbackQuery, bot: Bot):
+    pid = _parse_id(callback.data)
+    poll = await _survey_for_link(callback, pid)
+    if poll is None:
+        return
+    if not await list_survey_questions(poll["id"]):
+        await callback.answer(_NO_QUESTIONS_LINK, show_alert=True)
+        return
+    try:
+        me = await bot.me()
+        username = getattr(me, "username", None)
+    except Exception:
+        logger.warning("survey link: не удалось получить имя бота", exc_info=True)
+        username = None
+    link = survey_link(username, poll["id"])
+    if not link:
+        await callback.answer(_NO_BOT_NAME, show_alert=True)
+        return
+    photo = BufferedInputFile(walkin_qr_png(link), filename="survey_qr.png")
+    try:
+        await callback.message.answer_photo(
+            photo, caption=_LINK_CAPTION.format(link=link), parse_mode=None,
+        )
+    except Exception:
+        logger.exception("survey link: не удалось отправить QR")
+        await callback.answer(
+            f"Не получилось отправить картинку. Нажмите «{SURVEY_LINK_BUTTON}» ещё раз.",
+            show_alert=True,
+        )
+        return
+    await callback.answer()
 
 
 # ── аудитория и отправка ────────────────────────────────────────────────────────────────────

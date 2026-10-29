@@ -18,6 +18,7 @@ from handlers.comms.admin_polls import _OUT_OF_SCOPE, _fmt_dt, _poll_out_of_scop
 from handlers.comms.admin_survey_builder import render_survey_draft
 from services.comms import survey_report
 from services.comms.polls import audience_label
+from services.comms.surveys import SURVEY_LINK_BUTTON
 
 _GONE = "Анкета уже удалена."
 
@@ -56,7 +57,7 @@ async def render_survey_card(poll: dict) -> tuple[str, InlineKeyboardMarkup]:
     else:
         lines.append(f"Доставлено: {ok} · недоступно: {failed}")
         lines.append(f"Начали: {started} · Закончили: {finished}")
-    rows = []
+    rows = [[_btn(SURVEY_LINK_BUTTON, f"psv_link:{pid}")]]
     if poll["status"] in ("open", "closed"):
         rows.append([_btn("📊 Итоги по вопросам", f"psv_res:{pid}:0")])
         rows.append([_btn("📄 В таблицу", f"poll_export:{pid}")])

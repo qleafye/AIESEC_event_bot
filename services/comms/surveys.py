@@ -24,8 +24,41 @@ LABEL_MAX = 60
 BUTTON_LABEL_MAX = 28
 DEFAULT_NA_LABEL = "Не могу оценить"
 DEFAULT_OUTRO = "Спасибо за ответы! 🧡"
+SURVEY_LINK_BUTTON = "🔗 Ссылка и QR"
+_START_PREFIX = "survey_"
 
 TG_MESSAGE_MAX = 4096
+
+
+def survey_start_payload(poll_id: int) -> str | None:
+    if isinstance(poll_id, bool) or not isinstance(poll_id, int) or poll_id < 1:
+        return None
+    return f"{_START_PREFIX}{poll_id}"
+
+
+def survey_link(bot_username: str | None, poll_id: int) -> str | None:
+    """Ссылка t.me, которая открывает именно этот опрос. Нет имени бота — None:
+    вызывающий говорит менеджеру, что сделать."""
+    name = (bot_username or "").strip().lstrip("@")
+    payload = survey_start_payload(poll_id)
+    if not name or payload is None:
+        return None
+    return f"https://t.me/{name}?start={payload}"
+
+
+def parse_survey_start(args: str | None) -> int | None:
+    """Аргумент /start → id опроса. «survey_12» → 12. quiz, sessions, walkin и прочий текст → None."""
+    raw = (args or "").strip()
+    if not raw.startswith(_START_PREFIX):
+        return None
+    rest = raw[len(_START_PREFIX):]
+    if not rest.isdigit() or rest != str(int(rest)):
+        return None
+    poll_id = int(rest)
+    if poll_id < 1:
+        return None
+    return poll_id
+
 
 QTYPE_LABELS: dict[str, str] = {
     "single": "Один вариант",

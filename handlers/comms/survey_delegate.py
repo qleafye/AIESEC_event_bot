@@ -13,6 +13,9 @@ FSM-состояния: команды, кнопки меню и регистр�
 в самом конце иначе проглотил бы текст ответа. Импортировать его до `handlers.user_actions` нельзя
 по той же причине — порядок хендлеров определяется порядком регистрации.
 
+Вход по ссылке `?start=survey_<id>` — `open_from_deeplink` (зовёт handlers/forum/forum_deeplinks.py).
+Черновик анкеты и незакрытый шаг диалога ссылке не мешают: человек сразу видит вопрос, не меню.
+
 Callback'и делегата (CapabilityMiddleware их не режет — префикса `sv:` нет в ADMIN_CAPS):
 sv:s:<poll> старт, sv:c:<poll> продолжить, sv:o:<q>:<i> вариант, sv:d:<q> «Готово»,
 sv:k:<q> пропуск, sv:n:<q>:<1-5> шкала, sv:t:<q>:<0-5> строка таблицы.
@@ -45,7 +48,9 @@ from services.comms import surveys
 
 logger = logging.getLogger(__name__)
 
-_LIVE_STATUSES = ("open", "sending")
+# Черновик и запланированная анкета тоже открываются по ссылке — рассылка для этого не нужна.
+# Закрытая анкета ответы не принимает.
+_ANSWERABLE_STATUSES = ("draft", "scheduled", "open", "sending")
 
 
 # ── вывод: правка текущего сообщения или новое ──────────────────────────────────────────────
@@ -91,6 +96,64 @@ async def _present(put, poll: dict, uid: int, q: dict) -> None:
         return
     text, kb = await _render(poll, progress, q)
     await put(text, kb)
+
+
+async def open_from_deeplink(message, state, poll_id: int) -> bool:
+    """`/start survey_<id>`: сразу этот опрос. True даже при ошибке — не главное меню.
+
+    Сбрасывает шаг диалога (черновик регистрации, мастер админки): иначе ответ текстом
+    съедает активное FSM-состояние. Статус черновика ссылке не мешает и рассылку не включает.
+    """
+    try:
+        await state.clear()
+    except Exception:
+        logger.exception("survey deeplink: не удалось сбросить шаг диалога")
+    try:
+        await _enter_from_link(message, int(poll_id))
+    except Exception:
+        logger.exception("survey deeplink %s", poll_id)
+        await message.answer(
+            "Не получилось открыть опрос. Нажмите ссылку ещё раз. "
+            "Если снова не выйдет — напишите менеджеру."
+        )
+    return True
+
+
+async def _enter_from_link(message, poll_id: int) -> None:
+    uid = message.from_user.id
+    poll = await get_poll(poll_id)
+    if poll is None or poll.get("kind") != "survey":
+        await message.answer(
+            "Эта ссылка больше не ведёт на опрос. Попросите менеджера прислать новую."
+        )
+        return
+    if poll.get("status") not in _ANSWERABLE_STATUSES:
+        await message.answer(
+            "Этот опрос уже закрыт — ответить по ссылке нельзя. "
+            "Напишите менеджеру, если его нужно открыть снова."
+        )
+        return
+    questions = await list_survey_questions(poll["id"])
+    if not questions:
+        await message.answer(
+            "В этом опросе пока нет вопросов. Напишите менеджеру — "
+            "ответить можно будет, когда вопросы добавят."
+        )
+        return
+    progress = await get_survey_progress(poll["id"], uid)
+    if progress is not None and progress.get("state") == "done":
+        outro = (poll.get("outro_text") or "").strip() or surveys.DEFAULT_OUTRO
+        await message.answer(html_module.escape(outro), parse_mode="HTML")
+        return
+    if progress is None:
+        progress = await start_survey_progress(poll["id"], uid, questions[0]["id"])
+    question = await get_survey_question(progress["current_qid"]) if progress.get("current_qid") else None
+    if question is None:
+        await message.answer(
+            "Не получилось открыть вопрос. Нажмите ссылку ещё раз или напишите менеджеру."
+        )
+        return
+    await _present(_new_put(message), poll, uid, question)
 
 
 async def _ask_more(put, poll: dict, uid: int, q: dict, queue: list[int]) -> None:
@@ -158,7 +221,7 @@ async def _load(callback: types.CallbackQuery, *, poll_id: int | None = None, qi
     if poll is None or poll.get("kind") != "survey":
         await _bad(callback, "Этот опрос не найден.")
         return None
-    if poll.get("status") not in _LIVE_STATUSES:
+    if poll.get("status") not in _ANSWERABLE_STATUSES:
         await _bad(callback, "Опрос закрыт")
         return None
     progress = await get_survey_progress(poll["id"], uid)
