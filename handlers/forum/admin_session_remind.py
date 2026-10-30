@@ -73,8 +73,9 @@ async def render_remind_screen(code: str) -> tuple[str, InlineKeyboardMarkup]:
     morning_at = await sr.morning_time(code)
     lines = [
         f"⏰ <b>Напоминания о сессиях</b> — {html_module.escape(await city_label(code))}", "",
-        "Приходят личным сообщением тем, кто записался на сессию (одобренным делегатам города). "
-        "Тем, кто отписался, не приходят.", "",
+        "Напоминание за N минут приходит личным сообщением всем одобренным делегатам города. "
+        "Записываться на сессию для этого не нужно. "
+        "Утренняя программа — тем, у кого в этот день есть своё расписание.", "",
         f"Напоминать за {minutes} мин до сессии: {_onoff(remind_on)}",
         f"Утром — программа на день: {_onoff(morning_on)}, в {morning_at} по времени города",
         "", await _status_line(code),
