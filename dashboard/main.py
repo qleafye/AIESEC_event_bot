@@ -13,9 +13,10 @@ docker-сети `edge`. Самый внешний слой приложения 
 НИКОГДА от `request.url` — так они остаются `https://`, даже если middleware по какой-то
 причине не сработал.
 
-Маршрут `/app` НЕ занят (D-02, зарезервирован под Mini App Phase 19). Маршрутов
-экспорта/CSV нет вовсе (D-17). `/docs`/`/openapi.json` отключены — дашборд смотрит на базу
-с ПД, автодокументация FastAPI не должна быть публичной.
+Маршрут `/app` НЕ занят (D-02, зарезервирован под Mini App Phase 19). Публичного `/export`
+нет (D-17). Выгрузка опросов — `/feedback.csv` за той же сессией, что страница.
+`/docs`/`/openapi.json` отключены — дашборд смотрит на базу с ПД, автодокументация FastAPI
+не должна быть публичной.
 """
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -667,6 +668,9 @@ def build_feedback_context(
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
     block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
+    q = urlencode({k: v for k, v in (("city", scope.city), ("season", scope.season)) if v})
+    csv_summary_href = "/feedback.csv" + (f"?{q}" if q else "")
+    csv_answers_href = "/feedback.csv?part=answers" + (f"&{q}" if q else "")
     return {
         "event_name": flags.get("event_name"),
         "event_season": scope.season or flags.get("event_season"),
@@ -679,6 +683,8 @@ def build_feedback_context(
         "bound_city_label": _city_label(conn, bound_city_code),
         "season_options": queries.season_options(conn),
         "poll_seconds": 12,
+        "csv_summary_href": csv_summary_href,
+        "csv_answers_href": csv_answers_href,
         **block,
     }
 
@@ -1229,6 +1235,41 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
             block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
         return block
+
+    @app.get("/feedback.csv")
+    def feedback_csv(
+        request: Request,
+        city: Optional[str] = None,
+        season: Optional[str] = None,
+        part: Optional[str] = None,
+    ):
+        """Сводка форм или детализация ответов. Та же сессия, что у `/feedback`, не публичный
+        `/export`. `part=answers` — распределение и открытые ответы без ФИО со страницы."""
+        if multi_mode(cfg.events):
+            return JSONResponse({"error": "not_found"}, status_code=404)
+
+        telegram_id = request.session.get("telegram_id")
+        if telegram_id is None:
+            return JSONResponse({"error": "login"}, status_code=401)
+
+        kind = "answers" if (part or "") == "answers" else "summary"
+        with read_conn(cfg.db_path) as conn:
+            if not has_stats(conn, telegram_id, cfg.admin_ids):
+                return JSONResponse({"error": "no_access"}, status_code=403)
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            data, filename = queries.feedback_csv(conn, scope, part=kind)
+        ascii_name = "feedback-answers.csv" if kind == "answers" else "feedback.csv"
+        return Response(
+            data,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f"attachment; filename=\"{ascii_name}\"; "
+                    f"filename*=UTF-8''{quote(filename)}"
+                ),
+                "Cache-Control": "no-store",
+            },
+        )
 
     return app
 
