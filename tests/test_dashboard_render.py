@@ -1203,11 +1203,19 @@ def test_now_tiles_show_auto_reject_lines_only_with_reject_rules(tmp_path):
     """Под «Всего заявок» две строки — автоотказы и реги-автоотказы — только при
     включённом автоотказе. Подписи «реальных» на плитках нет."""
     db_path = _use_tmp_db(tmp_path)
-    _seed(users=[
-        {"telegram_id": 1, "status": "pending", "auto_reject_rule_ids": None},
-        {"telegram_id": 2, "status": "rejected", "auto_reject_rule_ids": "[1]"},
-        {"telegram_id": 3, "status": "approved", "auto_reject_rule_ids": "[1]"},
-    ])
+    _seed(
+        users=[
+            {"telegram_id": 1, "status": "pending", "auto_reject_rule_ids": None},
+            {"telegram_id": 2, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+            {"telegram_id": 3, "status": "approved", "auto_reject_rule_ids": None},
+        ],
+        auto_reject_log=[
+            {"telegram_id": 2, "rule_ids": "[1]", "reject_texts": "[]", "attempt_count": 1,
+             "first_triggered_at": "2026-01-01 00:00:00", "last_triggered_at": "2026-01-01 00:00:00"},
+            {"telegram_id": 3, "rule_ids": "[1]", "reject_texts": "[]", "attempt_count": 1,
+             "first_triggered_at": "2026-01-01 00:00:00", "last_triggered_at": "2026-01-01 00:00:00"},
+        ],
+    )
     client = _stats_manager_client(db_path)
     resp_off = client.get("/")
     assert "автоотказов" not in resp_off.text
@@ -1216,8 +1224,8 @@ def test_now_tiles_show_auto_reject_lines_only_with_reject_rules(tmp_path):
 
     _seed(settings={"reject_rules_enabled": "on"})
     resp_on = client.get("/")
-    assert "автоотказов 1" in resp_on.text
-    assert "реги-автоотказы 2" in resp_on.text
+    assert "автоотказов 2" in resp_on.text
+    assert "реги-автоотказы 1" in resp_on.text
     assert "реальных" not in resp_on.text
 
 
