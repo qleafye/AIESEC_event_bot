@@ -637,6 +637,36 @@ tr:last-child td { border-bottom: none; }
   .button:hover { background: var(--accent-text); border-color: var(--accent-text); }
 }
 
+.download-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--gap);
+}
+
+.q-block { margin-top: var(--gap); }
+.q-block + .q-block {
+  padding-top: var(--gap);
+  border-top: 1px solid var(--border);
+}
+.q-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 var(--sp-2);
+}
+.q-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  margin-bottom: var(--sp-2);
+}
+.q-row-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin: var(--sp-3) 0 var(--sp-1);
+}
+
 /* ── Login / no-access screens ─────────────────────────────────────────────────────── */
 
 .centered-card {

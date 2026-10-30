@@ -16,6 +16,8 @@
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 import re
@@ -2968,6 +2970,13 @@ _FORM_TYPE_POLL = "голосование"
 _FORM_TYPE_SESSION = "фидбек сессии"
 _FORM_TYPE_EXTERNAL = "внешняя форма"
 _REG_FORM_HINTS = ("фио", "университет", "вуз", "персональных данных", "согласие")
+_QTYPE_LABELS = {
+    "single": "Один вариант",
+    "multi": "Несколько вариантов",
+    "scale": "Шкала 1–5",
+    "text": "Свободный ответ",
+    "table": "Таблица",
+}
 
 
 def _table_exists(conn, name: str) -> bool:
@@ -3063,6 +3072,7 @@ def _looks_like_registration_form(conn, form_id: int) -> bool:
 
 
 def _session_feedback_on(conn, city: str | None) -> bool:
+    """Явный ключ в bot_settings. Нет ключа → выключено, как дефолт схемы (`off`)."""
     keys = []
     if city:
         keys.append(f"session_feedback_enabled__city__{city}")
@@ -3074,9 +3084,372 @@ def _session_feedback_on(conn, city: str | None) -> bool:
     return False
 
 
+def _json_val(raw, default=None):
+    if raw is None or raw == "":
+        return default
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _opt_label(opt) -> str:
+    if isinstance(opt, dict):
+        return str(opt.get("t") or "")
+    return str(opt or "")
+
+
+def _choice_options(counts: list[int], options: list) -> list[dict]:
+    total = sum(counts)
+    out = []
+    for i, n in enumerate(counts):
+        label = _opt_label(options[i]) if i < len(options) else f"Вариант {i + 1}"
+        out.append({"label": label, "count": int(n), "pct": _pct(n, total)})
+    return out
+
+
+def _scale_options(dist: list[int]) -> list[dict]:
+    total = sum(dist)
+    return [
+        {"label": str(i), "count": dist[i - 1], "pct": _pct(dist[i - 1], total)}
+        for i in range(1, 6)
+    ]
+
+
+def _fill_fields(should, done, started) -> dict:
+    should_n = int(should or 0)
+    done_n = int(done or 0)
+    not_started = None
+    abandoned = None
+    if started is not None:
+        started_n = int(started)
+        not_started = max(should_n - started_n, 0)
+        abandoned = max(started_n - done_n, 0)
+    return {
+        "should": should_n,
+        "done": done_n,
+        "started": started,
+        "not_started": not_started,
+        "abandoned": abandoned,
+        "pct": _pct(done_n, should_n),
+    }
+
+
+def _survey_question_stats(conn, poll_id: int) -> tuple[list[dict], list[dict]]:
+    """Итоги анкеты как в админке опросов: счётчики вариантов, без сырого текста ответов."""
+    if not _table_exists(conn, "survey_questions"):
+        return [], []
+    questions = conn.execute(
+        "SELECT id, position, qtype, text, options_json, rows_json "
+        "FROM survey_questions WHERE poll_id = ? ORDER BY position, id",
+        (poll_id,),
+    ).fetchall()
+    grouped: dict[int, list] = {}
+    if _table_exists(conn, "survey_answers"):
+        for a in conn.execute(
+            "SELECT question_id, user_id, sub, value_json FROM survey_answers WHERE poll_id = ?",
+            (poll_id,),
+        ):
+            grouped.setdefault(int(a["question_id"]), []).append(a)
+    stuck: dict[int, int] = {}
+    if _table_exists(conn, "survey_progress"):
+        for row in conn.execute(
+            "SELECT current_qid, COUNT(*) AS n FROM survey_progress "
+            "WHERE poll_id = ? AND state != 'done' AND current_qid IS NOT NULL "
+            "GROUP BY current_qid",
+            (poll_id,),
+        ):
+            stuck[int(row["current_qid"])] = int(row["n"])
+    q_out: list[dict] = []
+    funnel: list[dict] = []
+    for q in questions:
+        qid = int(q["id"])
+        qt = q["qtype"] or "text"
+        opts = _json_val(q["options_json"], []) or []
+        rows_def = _json_val(q["rows_json"], []) or []
+        rows_a = grouped.get(qid, [])
+        item: dict = {
+            "id": qid,
+            "n": int(q["position"] or 0),
+            "text": q["text"] or "",
+            "type": qt,
+            "type_label": _QTYPE_LABELS.get(qt, qt),
+            "respondents": 0,
+            "options": [],
+            "rows": [],
+            "avg": None,
+            "texts": 0,
+        }
+        if qt in ("single", "multi"):
+            counts = [0] * len(opts)
+            people: set[int] = set()
+            for a in rows_a:
+                if a["sub"] != "":
+                    continue
+                v = _json_val(a["value_json"], None)
+                for i in (v if isinstance(v, list) else [v]):
+                    if isinstance(i, int) and 0 <= i < len(counts):
+                        counts[i] += 1
+                        people.add(int(a["user_id"]))
+            item["respondents"] = len(people)
+            item["options"] = _choice_options(counts, opts)
+        elif qt == "scale":
+            dist = [0] * 5
+            for a in rows_a:
+                if a["sub"] != "":
+                    continue
+                v = _json_val(a["value_json"], None)
+                if isinstance(v, int) and 1 <= v <= 5:
+                    dist[v - 1] += 1
+            n = sum(dist)
+            item["respondents"] = n
+            item["avg"] = round(sum((i + 1) * c for i, c in enumerate(dist)) / n, 1) if n else None
+            item["options"] = _scale_options(dist)
+        elif qt == "table":
+            people = set()
+            per_row = []
+            for k, name in enumerate(rows_def):
+                dist = [0] * 5
+                vals: list[int] = []
+                na = 0
+                for a in rows_a:
+                    if a["sub"] != f"r{k}":
+                        continue
+                    people.add(int(a["user_id"]))
+                    v = _json_val(a["value_json"], None)
+                    if isinstance(v, int) and 1 <= v <= 5:
+                        dist[v - 1] += 1
+                        vals.append(v)
+                    elif v == 0:
+                        na += 1
+                n = len(vals)
+                per_row.append({
+                    "name": str(name),
+                    "n": n,
+                    "na": na,
+                    "avg": round(sum(vals) / n, 1) if n else None,
+                    "options": _scale_options(dist),
+                })
+            item["respondents"] = len(people)
+            item["rows"] = per_row
+        else:
+            people = {int(a["user_id"]) for a in rows_a if a["sub"] == ""}
+            item["respondents"] = len(people)
+            item["texts"] = len(people)
+        q_out.append(item)
+        funnel.append({
+            "id": qid,
+            "n": item["n"],
+            "text": item["text"],
+            "answered": item["respondents"],
+            "stuck": stuck.get(qid, 0),
+        })
+    return q_out, funnel
+
+
+def _poll_question_stats(conn, poll_id: int, question: str, options_json) -> list[dict]:
+    options = _json_val(options_json, []) or []
+    if not isinstance(options, list):
+        options = []
+    counts = [0] * len(options)
+    respondents = 0
+    if _table_exists(conn, "poll_answers"):
+        for a in conn.execute(
+            "SELECT option_ids_json FROM poll_answers WHERE poll_id = ?", (poll_id,)
+        ):
+            ids = _json_val(a["option_ids_json"], []) or []
+            if not isinstance(ids, list):
+                continue
+            respondents += 1
+            for i in ids:
+                if isinstance(i, int) and 0 <= i < len(counts):
+                    counts[i] += 1
+    return [{
+        "id": poll_id,
+        "n": 1,
+        "text": question or "",
+        "type": "single",
+        "type_label": "Голосование",
+        "respondents": respondents,
+        "options": _choice_options(counts, options),
+        "rows": [],
+        "avg": None,
+        "texts": 0,
+    }]
+
+
+def _session_rating_question(dist: list[int], avg, comments: int) -> list[dict]:
+    n = sum(dist)
+    return [
+        {
+            "id": 0,
+            "n": 1,
+            "text": "Оценка сессии",
+            "type": "scale",
+            "type_label": "Шкала 1–5",
+            "respondents": n,
+            "options": _scale_options(dist),
+            "rows": [],
+            "avg": avg,
+            "texts": 0,
+        },
+        {
+            "id": 1,
+            "n": 2,
+            "text": "Комментарий",
+            "type": "text",
+            "type_label": "Свободный ответ",
+            "respondents": comments,
+            "options": [],
+            "rows": [],
+            "avg": None,
+            "texts": comments,
+        },
+    ]
+
+
+def _empty_form_extras() -> dict:
+    return {
+        "hall": "",
+        "avg": None,
+        "comments": 0,
+        "prompted": 0,
+        "questions": [],
+        "funnel": [],
+    }
+
+
+def _session_forms_for_day(conn, scope: Scope, day: str, notes: list[str], hourly_by_key: dict):
+    """Сессии дня — всегда, даже если тумблер выключен и оценок 0: факт заполнения, не настройка."""
+    if not _table_exists(conn, "program_sessions"):
+        return []
+    has_fb = _table_exists(conn, "session_feedback")
+    has_halls = _table_exists(conn, "program_halls")
+    has_checkins = _table_exists(conn, "checkins")
+    hall_join = "LEFT JOIN program_halls h ON h.id = s.hall_id" if has_halls else ""
+    hall_col = "h.name AS hall" if has_halls else "NULL AS hall"
+    marked_sql = (
+        "(SELECT COUNT(*) FROM checkins c WHERE c.point = 'session:' || s.id)"
+        if has_checkins else "0"
+    )
+    sql = (
+        f"SELECT s.id, s.title, s.city, s.start_time, s.end_time, {hall_col}, "
+        f"{marked_sql} AS marked FROM program_sessions s {hall_join} WHERE s.day = ?"
+    )
+    params: list = [day]
+    if scope.city is not None:
+        sql += " AND s.city = ?"
+        params.append(scope.city)
+    sql += " ORDER BY s.start_time, s.id"
+    session_rows = conn.execute(sql, params).fetchall()
+    enabled = _session_feedback_on(conn, scope.city)
+    stats: dict[int, dict] = {}
+    hours_by_sid: dict[int, dict[str, int]] = {}
+    if has_fb and session_rows:
+        ids = [int(s["id"]) for s in session_rows]
+        placeholders = ",".join("?" for _ in ids)
+        for row in conn.execute(
+            "SELECT session_id, "
+            "COUNT(*) AS prompted, "
+            "COUNT(rating) AS rated, "
+            "AVG(rating) AS avg_rating, "
+            "SUM(CASE WHEN comment IS NOT NULL AND TRIM(comment) != '' THEN 1 ELSE 0 END) AS comments "
+            f"FROM session_feedback WHERE session_id IN ({placeholders}) GROUP BY session_id",
+            ids,
+        ):
+            stats[int(row["session_id"])] = {
+                "prompted": int(row["prompted"] or 0),
+                "rated": int(row["rated"] or 0),
+                "avg": round(row["avg_rating"], 1) if row["avg_rating"] is not None else None,
+                "comments": int(row["comments"] or 0),
+                "dist": [0, 0, 0, 0, 0],
+            }
+        for row in conn.execute(
+            "SELECT session_id, rating, COUNT(*) AS n FROM session_feedback "
+            f"WHERE session_id IN ({placeholders}) AND rating BETWEEN 1 AND 5 "
+            "GROUP BY session_id, rating",
+            ids,
+        ):
+            bucket = stats.setdefault(int(row["session_id"]), {
+                "prompted": 0, "rated": 0, "avg": None, "comments": 0, "dist": [0, 0, 0, 0, 0],
+            })
+            rating = int(row["rating"])
+            bucket["dist"][rating - 1] = int(row["n"])
+        for hr in conn.execute(
+            "SELECT session_id, substr(rated_at, 12, 2) AS hour, COUNT(*) AS n "
+            f"FROM session_feedback WHERE session_id IN ({placeholders}) "
+            "AND rating IS NOT NULL AND rated_at LIKE ? GROUP BY session_id, hour",
+            [*ids, f"{day}%"],
+        ):
+            if hr["hour"]:
+                hours_by_sid.setdefault(int(hr["session_id"]), {})[hr["hour"]] = int(hr["n"])
+    forms = []
+    prompted_total = 0
+    rated_total = 0
+    comments_total = 0
+    rating_sum = 0.0
+    rating_n = 0
+    for s in session_rows:
+        sid = int(s["id"])
+        st = stats.get(sid, {
+            "prompted": 0, "rated": 0, "avg": None, "comments": 0, "dist": [0, 0, 0, 0, 0],
+        })
+        prompted = int(st["prompted"])
+        rated = int(st["rated"])
+        comments = int(st["comments"])
+        prompted_total += prompted
+        rated_total += rated
+        comments_total += comments
+        if st["avg"] is not None and rated:
+            rating_sum += st["avg"] * rated
+            rating_n += rated
+        should = int(s["marked"] or 0)
+        fill = _fill_fields(should, rated, prompted)
+        key = f"session-{sid}"
+        forms.append({
+            "key": key,
+            "id": sid,
+            "name": s["title"] or f"Сессия {sid}",
+            "type": _FORM_TYPE_SESSION,
+            "kind": "session",
+            **fill,
+            "city": s["city"] or "",
+            "ref": f"session:{sid}",
+            "hall": (s["hall"] or "") if "hall" in s.keys() else "",
+            "avg": st["avg"],
+            "comments": comments,
+            "prompted": prompted,
+            "start": s["start_time"] or "",
+            "end": s["end_time"] or "",
+            "questions": _session_rating_question(st["dist"], st["avg"], comments),
+            "funnel": [],
+        })
+        hourly_by_key[key] = hours_by_sid.get(sid, {})
+    avg_all = round(rating_sum / rating_n, 1) if rating_n else None
+    if not enabled:
+        notes.append(
+            f"Фидбек сессий: тумблер выключен, приглашений {prompted_total}, "
+            f"оценок {rated_total} — бот форму оценки после сессии не слал."
+        )
+    elif prompted_total == 0:
+        notes.append(
+            f"Фидбек сессий: тумблер включён, но приглашений сегодня 0, оценок {rated_total}."
+        )
+    return forms, {
+        "sessions": len(forms),
+        "marked": sum(f["should"] for f in forms),
+        "prompted": prompted_total,
+        "rated": rated_total,
+        "comments": comments_total,
+        "avg": avg_all,
+        "enabled": enabled,
+    }
+
+
 def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
     """Опросы бота, голосования дня, фидбек сессий и внешние формы за `day` (МСК).
-    Без ПД: только счётчики. `day=None` → сегодня по Москве."""
+    Без ПД на странице: счётчики, распределение закрытых вопросов, не сырой текст.
+    Сессии дня показываются всегда — даже если тумблер выключен: факт строк, не настройка."""
     day = day or msk_now().strftime("%Y-%m-%d")
     now = msk_now()
     try:
@@ -3097,7 +3470,7 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
             city_params.append(scope.city)
         rows = conn.execute(
             f"SELECT id, question, city, audience_json, status, scheduled_at, sending_since, "
-            f"{kind_sql} AS kind FROM polls "
+            f"options_json, {kind_sql} AS kind FROM polls "
             f"WHERE status IN ('sending', 'open') AND {city_sql} ORDER BY id",
             city_params,
         ).fetchall()
@@ -3119,12 +3492,9 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
             spec = []
             raw = row["audience_json"]
             if raw:
-                try:
-                    loaded = json.loads(raw)
-                    if isinstance(loaded, list):
-                        spec = loaded
-                except (TypeError, ValueError):
-                    spec = []
+                loaded = _json_val(raw, [])
+                if isinstance(loaded, list):
+                    spec = loaded
             should = _audience_count(conn, spec)
             delivered = 0
             if has_messages:
@@ -3138,18 +3508,18 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
             started = None
             done = 0
             hours: dict[str, int] = {}
+            questions: list[dict] = []
+            funnel: list[dict] = []
             if kind == "survey" and has_progress:
                 started = int(_scalar(
                     conn,
-                    "SELECT COUNT(*) FROM survey_progress WHERE poll_id = ? "
-                    "AND started_at LIKE ?",
-                    (row["id"], f"{day}%"),
+                    "SELECT COUNT(*) FROM survey_progress WHERE poll_id = ?",
+                    (row["id"],),
                 ) or 0)
                 done = int(_scalar(
                     conn,
-                    "SELECT COUNT(*) FROM survey_progress WHERE poll_id = ? "
-                    "AND state = 'done' AND finished_at LIKE ?",
-                    (row["id"], f"{day}%"),
+                    "SELECT COUNT(*) FROM survey_progress WHERE poll_id = ? AND state = 'done'",
+                    (row["id"],),
                 ) or 0)
                 for hr in conn.execute(
                     "SELECT substr(finished_at, 12, 2) AS hour, COUNT(*) AS n "
@@ -3159,12 +3529,12 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
                 ):
                     if hr["hour"]:
                         hours[hr["hour"]] = int(hr["n"])
+                questions, funnel = _survey_question_stats(conn, row["id"])
             elif kind == "poll" and has_answers:
                 done = int(_scalar(
                     conn,
-                    "SELECT COUNT(*) FROM poll_answers WHERE poll_id = ? "
-                    "AND answered_at LIKE ?",
-                    (row["id"], f"{day}%"),
+                    "SELECT COUNT(*) FROM poll_answers WHERE poll_id = ?",
+                    (row["id"],),
                 ) or 0)
                 for hr in conn.execute(
                     "SELECT substr(answered_at, 12, 2) AS hour, COUNT(*) AS n "
@@ -3174,67 +3544,34 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
                 ):
                     if hr["hour"]:
                         hours[hr["hour"]] = int(hr["n"])
+                questions = _poll_question_stats(
+                    conn, row["id"], row["question"] or "", row["options_json"],
+                )
             key = f"{kind}-{row['id']}"
+            fill = _fill_fields(should, done, started)
             forms.append({
                 "key": key,
                 "id": row["id"],
                 "name": row["question"] or f"Опрос {row['id']}",
                 "type": form_type,
                 "kind": kind,
-                "should": should,
-                "done": done,
-                "started": started,
-                "pct": _pct(done, should),
+                **fill,
                 "city": row["city"] or "",
                 "ref": f"{kind}:{row['id']}",
+                **_empty_form_extras(),
+                "questions": questions,
+                "funnel": funnel,
             })
             hourly_by_key[key] = hours
 
-    if _table_exists(conn, "session_feedback") and _table_exists(conn, "program_sessions"):
-        enabled = _session_feedback_on(conn, scope.city)
-        session_sql = (
-            "SELECT s.id, s.title, s.city, s.start_time, s.end_time, "
-            "(SELECT COUNT(*) FROM checkins c WHERE c.point = 'session:' || s.id) AS marked, "
-            "(SELECT COUNT(*) FROM session_feedback f WHERE f.session_id = s.id "
-            " AND f.rating IS NOT NULL AND f.rated_at LIKE ?) AS done "
-            "FROM program_sessions s WHERE s.day = ?"
+    session_forms, sessions_totals = [], {
+        "sessions": 0, "marked": 0, "prompted": 0, "rated": 0,
+        "comments": 0, "avg": None, "enabled": False,
+    }
+    if _table_exists(conn, "program_sessions"):
+        session_forms, sessions_totals = _session_forms_for_day(
+            conn, scope, day, notes, hourly_by_key,
         )
-        session_params: list = [f"{day}%", day]
-        if scope.city is not None:
-            session_sql += " AND s.city = ?"
-            session_params.append(scope.city)
-        session_sql += " ORDER BY s.start_time, s.id"
-        session_rows = conn.execute(session_sql, session_params).fetchall()
-        prompted = int(_scalar(
-            conn,
-            "SELECT COUNT(*) FROM session_feedback f "
-            "JOIN program_sessions s ON s.id = f.session_id "
-            "WHERE s.day = ?" + (" AND s.city = ?" if scope.city else ""),
-            (day, scope.city) if scope.city else (day,),
-        ) or 0)
-        if not enabled and prompted == 0:
-            notes.append("Фидбек сессий выключен, приглашений за сегодня нет.")
-        else:
-            for s in session_rows:
-                should = int(s["marked"] or 0)
-                done = int(s["done"] or 0)
-                if should == 0 and done == 0 and not enabled:
-                    continue
-                key = f"session-{s['id']}"
-                forms.append({
-                    "key": key,
-                    "id": s["id"],
-                    "name": s["title"] or f"Сессия {s['id']}",
-                    "type": _FORM_TYPE_SESSION,
-                    "kind": "session",
-                    "should": should,
-                    "done": done,
-                    "started": None,
-                    "pct": _pct(done, should),
-                    "city": s["city"] or "",
-                    "ref": f"session:{s['id']}",
-                })
-                hourly_by_key[key] = {}
 
     if _table_exists(conn, "external_forms") and _table_exists(conn, "external_form_answers"):
         ext_rows = conn.execute(
@@ -3268,18 +3605,17 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
             ):
                 if hr["hour"]:
                     hours[hr["hour"]] = int(hr["n"])
+            fill = _fill_fields(should, n_today, None)
             forms.append({
                 "key": key,
                 "id": form["id"],
                 "name": form["title"] or f"Форма {form['id']}",
                 "type": _FORM_TYPE_EXTERNAL,
                 "kind": "external",
-                "should": should,
-                "done": n_today,
-                "started": None,
-                "pct": _pct(n_today, should),
+                **fill,
                 "city": scope.city or "",
                 "ref": f"ext:{form['id']}:{form['platform']}",
+                **_empty_form_extras(),
             })
             hourly_by_key[key] = hours
         if ext_today == 0 and ext_rows:
@@ -3296,7 +3632,8 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
         hour_labels = []
     hourly_series = []
     totals_by_hour = [0] * len(hour_labels)
-    for form in forms:
+    visible_forms = forms + session_forms
+    for form in visible_forms:
         hours = hourly_by_key.get(form["key"], {})
         data = [hours.get(h, 0) for h in hour_labels]
         if any(data):
@@ -3309,6 +3646,8 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
     should_sum = sum(f["should"] for f in forms)
     done_sum = sum(f["done"] for f in forms)
     started_sum = sum(f["started"] or 0 for f in forms)
+    not_started_sum = sum(f["not_started"] or 0 for f in forms)
+    abandoned_sum = sum(f["abandoned"] or 0 for f in forms)
     arrived = _arrived_on_day(conn, scope, day)
     return {
         "day": day,
@@ -3316,16 +3655,158 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
         "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
         "arrived": arrived,
         "forms": forms,
+        "sessions": session_forms,
         "totals": {
             "forms": len(forms),
             "should": should_sum,
             "done": done_sum,
             "started": started_sum,
+            "not_started": not_started_sum,
+            "abandoned": abandoned_sum,
             "pct": _pct(done_sum, should_sum),
         },
+        "sessions_totals": sessions_totals,
         "hourly": {
             "hours": [f"{h}:00" for h in hour_labels],
             "series": hourly_series,
         },
         "notes": notes,
     }
+
+
+def _csv_write(rows: list[list]) -> bytes:
+    out = io.StringIO()
+    writer = csv.writer(out, delimiter=";", quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+    for row in rows:
+        writer.writerow([
+            arrival_stats._sheet_safe(v) if isinstance(v, str) else v for v in row
+        ])
+    return b"\xef\xbb\xbf" + out.getvalue().encode("utf-8")
+
+
+def _csv_summary_rows(block: dict) -> list[list]:
+    rows = [
+        ["Сводка форм", block.get("day_label") or block.get("day") or ""],
+        [],
+        ["Форма", "Тип", "Город", "Зал", "Должны", "Начали", "Завершили",
+         "Не начинали", "Бросили", "Процент", "Средняя оценка", "Комментариев"],
+    ]
+    for f in list(block.get("forms") or []) + list(block.get("sessions") or []):
+        avg = f.get("avg")
+        rows.append([
+            f.get("name") or "",
+            f.get("type") or "",
+            f.get("city") or "",
+            f.get("hall") or "",
+            f.get("should") or 0,
+            "" if f.get("started") is None else f.get("started"),
+            f.get("done") or 0,
+            "" if f.get("not_started") is None else f.get("not_started"),
+            "" if f.get("abandoned") is None else f.get("abandoned"),
+            str(f.get("pct") if f.get("pct") is not None else 0).replace(".", ","),
+            "" if avg is None else str(avg).replace(".", ","),
+            f.get("comments") or 0,
+        ])
+    totals = block.get("totals") or {}
+    rows.append([
+        "Итого опросы", f"{totals.get('forms') or 0} форм", "", "",
+        totals.get("should") or 0, totals.get("started") or 0, totals.get("done") or 0,
+        totals.get("not_started") or 0, totals.get("abandoned") or 0,
+        str(totals.get("pct") or 0).replace(".", ","), "", "",
+    ])
+    st = block.get("sessions_totals") or {}
+    rows.append([
+        "Итого сессии", f"{st.get('sessions') or 0} сессий", "", "",
+        st.get("marked") or 0, st.get("prompted") or 0, st.get("rated") or 0,
+        "", "", "",
+        "" if st.get("avg") is None else str(st.get("avg")).replace(".", ","),
+        st.get("comments") or 0,
+    ])
+    return rows
+
+
+def _append_question_csv_rows(rows: list[list], form_name: str, questions: list[dict]) -> None:
+    for q in questions or []:
+        qname = q.get("text") or ""
+        qtype = q.get("type_label") or q.get("type") or ""
+        if q.get("rows"):
+            for sub in q["rows"]:
+                label = f"{qname} — {sub.get('name') or ''}"
+                for opt in sub.get("options") or []:
+                    rows.append([
+                        form_name, label, qtype, opt.get("label") or "",
+                        opt.get("count") or 0,
+                        str(opt.get("pct") or 0).replace(".", ","),
+                        sub.get("n") or 0,
+                    ])
+            continue
+        if q.get("options"):
+            for opt in q["options"]:
+                rows.append([
+                    form_name, qname, qtype, opt.get("label") or "",
+                    opt.get("count") or 0,
+                    str(opt.get("pct") or 0).replace(".", ","),
+                    q.get("respondents") or 0,
+                ])
+            continue
+        rows.append([
+            form_name, qname, qtype, "ответили",
+            q.get("respondents") or q.get("texts") or 0, "",
+            q.get("respondents") or 0,
+        ])
+
+
+def _open_text_rows(conn, block: dict) -> list[list]:
+    """Открытые ответы — как выгрузка админки опросов, без ФИО/телефона со страницы."""
+    rows: list[list] = []
+    if _table_exists(conn, "survey_answers") and _table_exists(conn, "survey_questions"):
+        for form in block.get("forms") or []:
+            if form.get("kind") != "survey":
+                continue
+            for a in conn.execute(
+                "SELECT q.text, q.qtype, a.sub, a.value_json "
+                "FROM survey_answers a JOIN survey_questions q ON q.id = a.question_id "
+                "WHERE a.poll_id = ? ORDER BY q.position, a.sub",
+                (form["id"],),
+            ):
+                qt = a["qtype"]
+                is_text = qt == "text" or str(a["sub"] or "").startswith("m")
+                if not is_text:
+                    continue
+                val = _json_val(a["value_json"], "")
+                if not isinstance(val, str) or not val.strip():
+                    continue
+                qname = a["text"] or ""
+                rows.append([form.get("name") or "", qname, val.strip()])
+    if _table_exists(conn, "session_feedback"):
+        for form in block.get("sessions") or []:
+            for a in conn.execute(
+                "SELECT comment FROM session_feedback "
+                "WHERE session_id = ? AND comment IS NOT NULL AND TRIM(comment) != '' "
+                "ORDER BY commented_at, id",
+                (form["id"],),
+            ):
+                rows.append([form.get("name") or "", "Комментарий", a["comment"]])
+    return rows
+
+
+def feedback_csv(conn, scope: Scope, *, part: str = "summary", day: str | None = None) -> tuple[bytes, str]:
+    """Два файла: сводка форм и детализация ответов по вопросам. UTF-8 BOM, `;`."""
+    block = feedback_day(conn, scope, day=day)
+    day_s = block.get("day") or "day"
+    if part == "answers":
+        rows = [
+            ["Ответы по вопросам", block.get("day_label") or day_s],
+            [],
+            ["Форма", "Вопрос", "Тип", "Вариант", "Число", "Процент", "Ответили"],
+        ]
+        for form in list(block.get("forms") or []) + list(block.get("sessions") or []):
+            _append_question_csv_rows(rows, form.get("name") or "", form.get("questions") or [])
+        texts = _open_text_rows(conn, block)
+        if texts:
+            rows.append([])
+            rows.append(["Открытые ответы"])
+            rows.append(["Форма", "Вопрос", "Ответ"])
+            rows.extend(texts)
+        return _csv_write(rows), f"опросы-ответы-{day_s}.csv"
+    return _csv_write(_csv_summary_rows(block)), f"опросы-{day_s}.csv"
