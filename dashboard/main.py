@@ -28,7 +28,7 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -647,6 +647,42 @@ def build_forum_context(
     }
 
 
+def _with_survey_links(block: dict, bot_username: str | None) -> dict:
+    """Deep-link на анкету бота. Имя бота — из конфига дашборда, не из БД."""
+    name = (bot_username or "").strip().lstrip("@")
+    for form in block.get("forms") or []:
+        if form.get("kind") == "survey" and name:
+            form["link"] = f"https://t.me/{name}?start=survey_{form['id']}"
+        else:
+            form["link"] = form.get("ref") or str(form.get("id") or "")
+    return block
+
+
+def build_feedback_context(
+    conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict,
+) -> dict:
+    """Страница «Опросы и фидбек» — KPI + таблица форм за сегодня (МСК), те же цифры,
+    что `/feedback.json` для автообновления."""
+    flags = queries.dashboard_flags(conn)
+    city_options = queries.city_options(conn)
+    bound_city_code = viewer.get("bound_city")
+    block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
+    return {
+        "event_name": flags.get("event_name"),
+        "event_season": scope.season or flags.get("event_season"),
+        "event_logo_url": _event_logo_url(conn),
+        "favicon_url": _favicon_url(conn),
+        "viewer": viewer,
+        "scope": scope,
+        "city_options": city_options,
+        "show_city_switcher": bool(city_options) and not bound_city_code,
+        "bound_city_label": _city_label(conn, bound_city_code),
+        "season_options": queries.season_options(conn),
+        "poll_seconds": 12,
+        **block,
+    }
+
+
 # Группа фильтра, которую переключает клик по легенде/заголовку колонки данной разбивки.
 _SOURCES_GROUP_OF_BY = {"answer": "src", "tag": "tag", "status": "status"}
 _SOURCES_BY_OF_GROUP = {v: k for k, v in _SOURCES_GROUP_OF_BY.items()}
@@ -1133,6 +1169,66 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             context = build_sources_context(conn, cfg, scope, viewer, q)
 
         return templates.TemplateResponse(request, "sources.html", context)
+
+    @app.get("/feedback", response_class=HTMLResponse)
+    def feedback_page(
+        request: Request,
+        city: Optional[str] = None,
+        season: Optional[str] = None,
+    ):
+        """Заполнение опросов и фидбека за сегодня. Периметр — копия `/` (редирект
+        супердашборда, сессия/логин, пересверка `stats` на каждый запрос)."""
+        if multi_mode(cfg.events):
+            return RedirectResponse(url="/compare", status_code=302)
+
+        telegram_id = request.session.get("telegram_id")
+        if telegram_id is None:
+            return RedirectResponse(url="/login", status_code=302)
+
+        with read_conn(cfg.db_path) as conn:
+            if not has_stats(conn, telegram_id, cfg.admin_ids):
+                notify_access_request(
+                    cfg,
+                    telegram_id=telegram_id,
+                    username=request.session.get("username"),
+                    first_name=request.session.get("first_name"),
+                )
+                return templates.TemplateResponse(
+                    request,
+                    "no_access.html",
+                    {"bot_username": cfg.bot_username},
+                    status_code=403,
+                )
+
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            viewer = {
+                "telegram_id": telegram_id,
+                "bound_city": staff_city(conn, telegram_id),
+            }
+            context = build_feedback_context(conn, cfg, scope, viewer)
+
+        return templates.TemplateResponse(request, "feedback.html", context)
+
+    @app.get("/feedback.json")
+    def feedback_json(
+        request: Request,
+        city: Optional[str] = None,
+        season: Optional[str] = None,
+    ):
+        """Тот же агрегат, что HTML-страница — для polling без перезагрузки."""
+        if multi_mode(cfg.events):
+            return JSONResponse({"error": "not_found"}, status_code=404)
+
+        telegram_id = request.session.get("telegram_id")
+        if telegram_id is None:
+            return JSONResponse({"error": "login"}, status_code=401)
+
+        with read_conn(cfg.db_path) as conn:
+            if not has_stats(conn, telegram_id, cfg.admin_ids):
+                return JSONResponse({"error": "no_access"}, status_code=403)
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
+        return block
 
     return app
 
