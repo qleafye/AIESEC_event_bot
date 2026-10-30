@@ -1,4 +1,4 @@
-"""Напоминания о сессиях: за N минут до начала (записанным) и утренняя «программа на день».
+"""Напоминания о сессиях: за N минут до начала (всем одобренным города) и утренняя «программа на день».
 
 pytest-asyncio нет — корутины через `asyncio.run`, БД — шаблонная копия `fast_init_db`
 (`tests/_enroll38.py`), планирование — реальный `AsyncIOScheduler` на временном jobstore (приём
@@ -100,7 +100,7 @@ def test_parse_hhmm_and_clamp():
 
 # ── Получатели ───────────────────────────────────────────────────────────────────────────────
 
-def test_remind_recipients_enrolled_approved_same_city_only(tmp_path):
+def test_remind_recipients_are_approved_delegates_of_the_city(tmp_path):
     ready(tmp_path)
 
     async def go():
@@ -108,7 +108,7 @@ def test_remind_recipients_enrolled_approved_same_city_only(tmp_path):
         await add_user(101)                       # записан, одобрен
         await add_user(102)                       # записался и отписался
         await add_user(103, status="pending")     # не одобрен
-        await add_user(104)                       # не записан
+        await add_user(104)                       # не записан, но зарегистрирован
         await add_user(105, city="spb")           # другой город
         for tid in (101, 102, 103, 105):
             await edb.enroll_tx(tid, ids["A"])
@@ -116,7 +116,7 @@ def test_remind_recipients_enrolled_approved_same_city_only(tmp_path):
         session = await db.get_program_session(ids["A"])
         return [u["telegram_id"] for u in await sr.remind_recipients(session)]
 
-    assert run(go()) == [101]
+    assert run(go()) == [101, 102, 104]
 
 
 # ── Тексты ───────────────────────────────────────────────────────────────────────────────────
@@ -184,19 +184,19 @@ def test_deliver_reminders_once_and_idempotent(tmp_path, monkeypatch):
         ids = await seed_msk_program()
         await _on("session_remind_enabled")
         await add_user(101)
-        await add_user(102)
+        await add_user(102)  # на сессию не записан — напоминание всё равно уходит
         await edb.enroll_tx(101, ids["A"])
         first = await sr.deliver_session_reminders(ids["A"])
         second = await sr.deliver_session_reminders(ids["A"])
         return first, second
 
     first, second = run(go())
-    assert first["sent"] == 1 and second["sent"] == 0
-    assert [chat for chat, _ in bot.sent] == [101]
+    assert first["sent"] == 2 and second["sent"] == 0
+    assert [chat for chat, _ in bot.sent] == [101, 102]
     assert "Сессия A" in bot.sent[0][1]
 
 
-def test_deliver_reminders_unenrolled_between_schedule_and_fire_gets_nothing(tmp_path, monkeypatch):
+def test_deliver_reminders_still_go_after_unenroll(tmp_path, monkeypatch):
     ready(tmp_path)
     bot = _setup(monkeypatch, NOW_09_45)
 
@@ -208,8 +208,8 @@ def test_deliver_reminders_unenrolled_between_schedule_and_fire_gets_nothing(tmp
         await edb.unenroll(101, ids["A"])
         return await sr.deliver_session_reminders(ids["A"])
 
-    assert run(go())["sent"] == 0
-    assert bot.sent == []
+    assert run(go())["sent"] == 1
+    assert [chat for chat, _ in bot.sent] == [101]
 
 
 def test_deliver_reminders_switched_off_sends_nothing(tmp_path, monkeypatch):
