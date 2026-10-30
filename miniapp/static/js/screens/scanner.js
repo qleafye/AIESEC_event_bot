@@ -139,7 +139,7 @@ export async function render(root, params, ctx) {
   const searchInput = h("input", { class: "input", type: "text", placeholder: "Фамилия делегата" });
   const searchResults = h("div", { class: "flat-list" });
   const fallbackNote = h("p", { class: "muted hidden", text: NO_SCANNER_TEXT });
-  const citySelect = h("select", { class: "input hidden" });
+  const citySelect = h("select", { class: "input" });
   const cityField = h("div", { class: "field hidden" }, h("label", { text: "Город" }), citySelect);
   const pointChips = h("div", { class: "flat-list" }, h("span", { class: "muted", text: "Загрузка…" }));
   const pointCounter = h("div", { class: "muted checkin-point-counter" });
