@@ -255,7 +255,9 @@ def test_no_app_route_and_no_export_or_csv_route(tmp_path):
     app = create_app(cfg=_cfg(db_path))
     paths = [getattr(route, "path", "") for route in app.fastapi_app.routes]
     assert not any(path.startswith("/app") for path in paths)
-    assert not any("export" in path.lower() or "csv" in path.lower() for path in paths)
+    # Публичного /export нет. Выгрузка опросов — /feedback.csv за той же сессией, что страница.
+    assert not any("export" in path.lower() for path in paths)
+    assert [p for p in paths if "csv" in p.lower()] == ["/feedback.csv"]
 
 
 def test_security_headers_present_on_open_route(tmp_path):

@@ -55,6 +55,10 @@
     <div class="updated-note" id="updated-note">
       Данные на {{ updated_at }} (Москва). Страница сама обновляет цифры каждые {{ poll_seconds }} сек, перезагружать не нужно.
     </div>
+    <div class="download-row">
+      <a class="button" href="{{ csv_summary_href }}">Скачать сводку CSV</a>
+      <a class="button" href="{{ csv_answers_href }}">Скачать ответы CSV</a>
+    </div>
   </header>
 
   <section class="page-section" id="overview" aria-labelledby="overview-title">
@@ -64,15 +68,15 @@
         <div class="kpi-grid">
           <div class="kpi primary">
             <div class="num" data-kpi="pct">{{ totals.pct }}%</div>
-            <div class="lbl">Заполнение (сумма по формам)</div>
+            <div class="lbl">Заполнение опросов</div>
           </div>
           <div class="kpi">
             <div class="num" data-kpi="done">{{ totals.done | thousands }}</div>
-            <div class="lbl">Сдали</div>
+            <div class="lbl">Завершили</div>
           </div>
           <div class="kpi">
-            <div class="num" data-kpi="should">{{ totals.should | thousands }}</div>
-            <div class="lbl">Должны (сумма по формам)</div>
+            <div class="num" data-kpi="started">{{ totals.started | thousands }}</div>
+            <div class="lbl">Начали</div>
           </div>
           <div class="kpi">
             <div class="num" data-kpi="arrived">{{ arrived | thousands }}</div>
@@ -81,23 +85,31 @@
         </div>
         <div class="kpi-grid secondary" style="margin-top: var(--gap);">
           <div class="kpi">
-            <div class="num" data-kpi="forms">{{ totals.forms | thousands }}</div>
-            <div class="lbl">Форм</div>
+            <div class="num" data-kpi="should">{{ totals.should | thousands }}</div>
+            <div class="lbl">Должны (опросы)</div>
           </div>
           <div class="kpi">
-            <div class="num" data-kpi="started">{{ totals.started | thousands }}</div>
-            <div class="lbl">Начали (многошаговые)</div>
+            <div class="num" data-kpi="not-started">{{ totals.not_started | thousands }}</div>
+            <div class="lbl">Не начинали</div>
+          </div>
+          <div class="kpi">
+            <div class="num" data-kpi="abandoned">{{ totals.abandoned | thousands }}</div>
+            <div class="lbl">Бросили</div>
+          </div>
+          <div class="kpi">
+            <div class="num" data-kpi="session-rated">{{ sessions_totals.rated | thousands }}</div>
+            <div class="lbl">Оценок сессий{% if sessions_totals.avg is not none %} · ср. {{ sessions_totals.avg }}{% endif %}</div>
           </div>
         </div>
-        <p class="empty-note">«Должны» — аудитория формы в боте (для опросов дня: пришедшие сегодня, город формы). Один человек может быть в нескольких формах, поэтому сумма больше, чем приход.</p>
+        <p class="empty-note">«Должны» — аудитория опроса в боте. Оценка после сессии — отдельный блок ниже: приглашение ⭐, не путать с вечерней анкетой.</p>
       </div>
     </section>
   </section>
 
   <section class="page-section" id="forms" aria-labelledby="forms-title">
-    <h2 class="section-title" id="forms-title">Формы</h2>
+    <h2 class="section-title" id="forms-title">Опросы бота</h2>
     {% if not forms %}
-    <section class="block"><div class="card"><p class="empty-note" id="forms-empty">Сегодня открытых опросов и фидбек-форм нет.</p></div></section>
+    <section class="block"><div class="card"><p class="empty-note" id="forms-empty">Сегодня открытых опросов нет.</p></div></section>
     {% else %}
     <section class="block">
       <div class="card">
@@ -107,12 +119,12 @@
             <tr>
               <th>Форма</th>
               <th>Тип</th>
-              <th>Город</th>
               <th class="num">Должны</th>
-              <th class="num">Сдали</th>
-              <th class="num">%</th>
               <th class="num">Начали</th>
-              <th>Ссылка / id</th>
+              <th class="num">Завершили</th>
+              <th class="num">Не начинали</th>
+              <th class="num">Бросили</th>
+              <th class="num">%</th>
             </tr>
           </thead>
           <tbody>
@@ -120,47 +132,188 @@
             <tr data-key="{{ f.key }}">
               <td data-label="Форма" data-col="name">{{ f.name }}</td>
               <td data-label="Тип" data-col="type">{{ f.type }}</td>
-              <td data-label="Город" data-col="city">{{ f.city or "—" }}</td>
               <td class="num" data-label="Должны" data-col="should">{{ f.should | thousands }}</td>
-              <td class="num" data-label="Сдали" data-col="done">{{ f.done | thousands }}</td>
-              <td class="num" data-label="%" data-col="pct">{{ f.pct }}%</td>
               <td class="num" data-label="Начали" data-col="started">{% if f.started is not none %}{{ f.started | thousands }}{% else %}—{% endif %}</td>
-              <td data-label="Ссылка / id" data-col="link">{% if f.link and f.link.startswith("http") %}<a href="{{ f.link }}">{{ f.ref }}</a>{% else %}{{ f.ref }}{% endif %}</td>
+              <td class="num" data-label="Завершили" data-col="done">{{ f.done | thousands }}</td>
+              <td class="num" data-label="Не начинали" data-col="not_started">{% if f.not_started is not none %}{{ f.not_started | thousands }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Бросили" data-col="abandoned">{% if f.abandoned is not none %}{{ f.abandoned | thousands }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="%" data-col="pct">{{ f.pct }}%</td>
             </tr>
             {% endfor %}
-            <tr data-key="total">
-              <td data-label="Форма"><strong>Итого за день</strong></td>
-              <td data-label="Тип">{{ totals.forms }} форм</td>
-              <td data-label="Город">—</td>
-              <td class="num" data-label="Должны" data-col="should">{{ totals.should | thousands }}</td>
-              <td class="num" data-label="Сдали" data-col="done">{{ totals.done | thousands }}</td>
-              <td class="num" data-label="%" data-col="pct">{{ totals.pct }}%</td>
-              <td class="num" data-label="Начали" data-col="started">{{ totals.started | thousands }}</td>
-              <td data-label="Ссылка / id">—</td>
-            </tr>
           </tbody>
         </table>
         </div>
       </div>
     </section>
+
+    {% for f in forms %}
+    <section class="block" data-form="{{ f.key }}">
+      <h2 class="block-title">{{ f.name }}</h2>
+      <div class="card">
+        <p class="empty-note">{{ f.type }}{% if f.city %} · {{ f.city }}{% endif %}
+          · должны {{ f.should | thousands }} · начали {% if f.started is not none %}{{ f.started | thousands }}{% else %}—{% endif %}
+          · завершили {{ f.done | thousands }}
+          {% if f.link and f.link.startswith("http") %} · <a href="{{ f.link }}">ссылка</a>{% endif %}
+        </p>
+        {% for step in f.funnel if step.stuck %}
+        {% if loop.first %}<h3 class="q-title">Где бросили</h3>{% endif %}
+        <div class="bar-row" data-funnel="{{ f.key }}" data-qid="{{ step.id }}">
+          <span class="label" title="{{ step.text }}">{{ step.n }}. {{ step.text }}</span>
+          <span class="track"><span class="fill" style="width: {% if f.started %}{{ (step.stuck / f.started * 100) | round(1) }}{% else %}0{% endif %}%;"></span></span>
+          <span class="val">{{ step.stuck | thousands }}</span>
+        </div>
+        {% endfor %}
+        {% if f.questions %}
+        {% for q in f.questions %}
+        <div class="q-block" data-qid="{{ q.id }}">
+          <h3 class="q-title">{{ q.n }}. {{ q.text }}</h3>
+          <div class="q-meta">{{ q.type_label }} · ответили {{ q.respondents | thousands }}{% if q.avg is not none %} · среднее {{ q.avg }}{% endif %}</div>
+          {% if q.type == "text" %}
+          <p class="empty-note">Свободные ответы: {{ q.respondents | thousands }}. Тексты — в CSV, здесь не показываем.</p>
+          {% elif q.rows %}
+            {% for sub in q.rows %}
+            <div class="q-row-title">{{ sub.name }}{% if sub.avg is not none %} · среднее {{ sub.avg }}{% endif %} · оценок {{ sub.n | thousands }}</div>
+            {% set top = sub.options | map(attribute="count") | max %}
+            {% for opt in sub.options %}
+            <div class="bar-row" data-qid="{{ q.id }}" data-opt="{{ sub.name }}::{{ opt.label }}">
+              <span class="label">{{ opt.label }}</span>
+              <span class="track"><span class="fill" style="width: {% if top %}{{ (opt.count / top * 100) | round(1) }}{% else %}0{% endif %}%;"></span></span>
+              <span class="val" data-col="opt-val">{{ opt.count | thousands }} · {{ opt.pct }}%</span>
+            </div>
+            {% endfor %}
+            {% endfor %}
+          {% elif q.options %}
+            {% set top = q.options | map(attribute="count") | max %}
+            {% for opt in q.options %}
+            <div class="bar-row" data-qid="{{ q.id }}" data-opt="{{ opt.label }}">
+              <span class="label">{{ opt.label }}</span>
+              <span class="track"><span class="fill" style="width: {% if top %}{{ (opt.count / top * 100) | round(1) }}{% else %}0{% endif %}%;"></span></span>
+              <span class="val" data-col="opt-val">{{ opt.count | thousands }} · {{ opt.pct }}%</span>
+            </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+        {% endfor %}
+        {% else %}
+        <p class="empty-note">По вопросам пока нет разбивки — ответов нет или вопросы не заведены.</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endfor %}
     {% endif %}
+  </section>
+
+  <section class="page-section" id="sessions" aria-labelledby="sessions-title">
+    <h2 class="section-title" id="sessions-title">Оценки сессий</h2>
+    <section class="block">
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi">
+            <div class="num" data-kpi="sess-n">{{ sessions_totals.sessions | thousands }}</div>
+            <div class="lbl">Сессий в программе</div>
+          </div>
+          <div class="kpi">
+            <div class="num" data-kpi="sess-prompted">{{ sessions_totals.prompted | thousands }}</div>
+            <div class="lbl">Приглашений ⭐</div>
+          </div>
+          <div class="kpi">
+            <div class="num" data-kpi="sess-rated">{{ sessions_totals.rated | thousands }}</div>
+            <div class="lbl">Оценок</div>
+          </div>
+          <div class="kpi">
+            <div class="num" data-kpi="sess-avg">{% if sessions_totals.avg is not none %}{{ sessions_totals.avg }}{% else %}—{% endif %}</div>
+            <div class="lbl">Средний балл</div>
+          </div>
+        </div>
+        <p class="empty-note" id="sessions-note">
+          {% if sessions_totals.enabled %}Тумблер оценки сессий включён.
+          {% else %}Тумблер «отзыв о сессии одним тапом» выключен (дефолт).{% endif %}
+          Приглашений: {{ sessions_totals.prompted | thousands }}, оценок: {{ sessions_totals.rated | thousands }}, комментариев: {{ sessions_totals.comments | thousands }}.
+        </p>
+        {% if sessions %}
+        <div class="table-wrap">
+        <table class="responsive" id="sessions-table">
+          <thead>
+            <tr>
+              <th>Сессия</th>
+              <th>Зал</th>
+              <th>Время</th>
+              <th class="num">Отметились</th>
+              <th class="num">Пригласили</th>
+              <th class="num">Оценили</th>
+              <th class="num">⭐ Средняя</th>
+              <th class="num">Комментариев</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sessions %}
+            <tr data-key="{{ s.key }}">
+              <td data-label="Сессия">{{ s.name }}</td>
+              <td data-label="Зал">{{ s.hall or "—" }}</td>
+              <td data-label="Время">{% if s.start %}{{ s.start }}–{{ s.end }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Отметились" data-col="should">{{ s.should | thousands }}</td>
+              <td class="num" data-label="Пригласили" data-col="started">{{ s.prompted | thousands }}</td>
+              <td class="num" data-label="Оценили" data-col="done">{{ s.done | thousands }}</td>
+              <td class="num" data-label="Средняя" data-col="avg">{% if s.avg is not none %}{{ s.avg }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Комментариев" data-col="comments">{{ s.comments | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="empty-note">Сессий в программе на этот день нет.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {% for s in sessions %}
+    {% if s.done or s.prompted %}
+    <section class="block" data-form="{{ s.key }}">
+      <h2 class="block-title">{{ s.name }}{% if s.hall %} · {{ s.hall }}{% endif %}</h2>
+      <div class="card">
+        <p class="empty-note">Отметились {{ s.should | thousands }} · пригласили {{ s.prompted | thousands }} · оценили {{ s.done | thousands }}{% if s.avg is not none %} · среднее {{ s.avg }}{% endif %}</p>
+        {% for q in s.questions %}
+        <div class="q-block" data-qid="{{ q.id }}">
+          <h3 class="q-title">{{ q.n }}. {{ q.text }}</h3>
+          <div class="q-meta">{{ q.type_label }} · ответили {{ q.respondents | thousands }}{% if q.avg is not none %} · среднее {{ q.avg }}{% endif %}</div>
+          {% if q.type == "text" %}
+          <p class="empty-note">Комментариев: {{ q.respondents | thousands }}. Тексты — в CSV.</p>
+          {% elif q.options %}
+            {% set top = q.options | map(attribute="count") | max %}
+            {% for opt in q.options %}
+            <div class="bar-row">
+              <span class="label">{{ opt.label }} ⭐</span>
+              <span class="track"><span class="fill" style="width: {% if top %}{{ (opt.count / top * 100) | round(1) }}{% else %}0{% endif %}%;"></span></span>
+              <span class="val">{{ opt.count | thousands }} · {{ opt.pct }}%</span>
+            </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    {% endfor %}
   </section>
 
   {% if hourly.hours %}
   <section class="page-section" id="hourly" aria-labelledby="hourly-title">
-    <h2 class="section-title" id="hourly-title">Сдали по часам, {{ day_label }}</h2>
+    <h2 class="section-title" id="hourly-title">По часам</h2>
     <section class="block">
       <div class="card" id="hourly-card">
-        {% set top = hourly.series[0].data | max %}
-        {% for h in hourly.hours %}
-        {% set n = hourly.series[0].data[loop.index0] %}
-        <div class="bar-row" data-hour="{{ h }}">
-          <span class="label">{{ h }}</span>
-          <span class="track"><span class="fill" style="width: {% if top %}{{ (n / top * 100) | round(1) }}{% else %}0{% endif %}%;"></span></span>
-          <span class="val" data-col="hour-val">{{ n | thousands }}</span>
-        </div>
-        {% endfor %}
-        <p class="empty-note">Число завершивших за этот час. Источник: база бота, время московское.</p>
+        <details>
+          <summary>Сдали по часам, {{ day_label }}</summary>
+          {% set top = hourly.series[0].data | max %}
+          {% for h in hourly.hours %}
+          {% set n = hourly.series[0].data[loop.index0] %}
+          <div class="bar-row" data-hour="{{ h }}">
+            <span class="label">{{ h }}</span>
+            <span class="track"><span class="fill" style="width: {% if top %}{{ (n / top * 100) | round(1) }}{% else %}0{% endif %}%;"></span></span>
+            <span class="val" data-col="hour-val">{{ n | thousands }}</span>
+          </div>
+          {% endfor %}
+        </details>
       </div>
     </section>
   </section>
@@ -194,10 +347,17 @@
       function apply(data) {
         setText(document.querySelector('[data-kpi="pct"]'), data.totals.pct + "%");
         setText(document.querySelector('[data-kpi="done"]'), fmt(data.totals.done));
-        setText(document.querySelector('[data-kpi="should"]'), fmt(data.totals.should));
-        setText(document.querySelector('[data-kpi="arrived"]'), fmt(data.arrived));
-        setText(document.querySelector('[data-kpi="forms"]'), fmt(data.totals.forms));
         setText(document.querySelector('[data-kpi="started"]'), fmt(data.totals.started));
+        setText(document.querySelector('[data-kpi="arrived"]'), fmt(data.arrived));
+        setText(document.querySelector('[data-kpi="should"]'), fmt(data.totals.should));
+        setText(document.querySelector('[data-kpi="not-started"]'), fmt(data.totals.not_started));
+        setText(document.querySelector('[data-kpi="abandoned"]'), fmt(data.totals.abandoned));
+        var st = data.sessions_totals || {};
+        setText(document.querySelector('[data-kpi="session-rated"]'), fmt(st.rated));
+        setText(document.querySelector('[data-kpi="sess-n"]'), fmt(st.sessions));
+        setText(document.querySelector('[data-kpi="sess-prompted"]'), fmt(st.prompted));
+        setText(document.querySelector('[data-kpi="sess-rated"]'), fmt(st.rated));
+        setText(document.querySelector('[data-kpi="sess-avg"]'), st.avg === null || st.avg === undefined ? "—" : String(st.avg));
         var note = document.getElementById("updated-note");
         if (note) {
           note.textContent = "Данные на " + data.updated_at +
@@ -205,25 +365,45 @@
             " сек, перезагружать не нужно.";
         }
         var table = document.getElementById("forms-table");
-        if (table && data.forms.length !== table.tBodies[0].querySelectorAll("tr[data-key]:not([data-key='total'])").length) {
+        if (table && data.forms.length !== table.tBodies[0].querySelectorAll("tr[data-key]").length) {
+          window.location.reload();
+          return;
+        }
+        if ((data.sessions || []).length !== document.querySelectorAll("#sessions-table tr[data-key]").length) {
           window.location.reload();
           return;
         }
         (data.forms || []).forEach(function (f) {
-          var row = document.querySelector('tr[data-key="' + f.key + '"]');
+          var row = document.querySelector('#forms-table tr[data-key="' + f.key + '"]');
           if (!row) { window.location.reload(); return; }
           setText(row.querySelector('[data-col="should"]'), fmt(f.should));
           setText(row.querySelector('[data-col="done"]'), fmt(f.done));
           setText(row.querySelector('[data-col="pct"]'), f.pct + "%");
           setText(row.querySelector('[data-col="started"]'), f.started === null ? "—" : fmt(f.started));
+          setText(row.querySelector('[data-col="not_started"]'), f.not_started === null ? "—" : fmt(f.not_started));
+          setText(row.querySelector('[data-col="abandoned"]'), f.abandoned === null ? "—" : fmt(f.abandoned));
+          (f.questions || []).forEach(function (q) {
+            (q.options || []).forEach(function (opt) {
+              var bar = document.querySelector('.q-block[data-qid="' + q.id + '"] .bar-row[data-opt="' + opt.label + '"]');
+              if (!bar) return;
+              var vals = (q.options || []).map(function (o) { return o.count; });
+              var top = 0;
+              vals.forEach(function (n) { if (n > top) top = n; });
+              var fill = bar.querySelector(".fill");
+              if (fill) fill.style.width = (top ? (opt.count / top * 100) : 0) + "%";
+              setText(bar.querySelector('[data-col="opt-val"]'), fmt(opt.count) + " · " + opt.pct + "%");
+            });
+          });
         });
-        var totalRow = document.querySelector('tr[data-key="total"]');
-        if (totalRow) {
-          setText(totalRow.querySelector('[data-col="should"]'), fmt(data.totals.should));
-          setText(totalRow.querySelector('[data-col="done"]'), fmt(data.totals.done));
-          setText(totalRow.querySelector('[data-col="pct"]'), data.totals.pct + "%");
-          setText(totalRow.querySelector('[data-col="started"]'), fmt(data.totals.started));
-        }
+        (data.sessions || []).forEach(function (s) {
+          var row = document.querySelector('#sessions-table tr[data-key="' + s.key + '"]');
+          if (!row) return;
+          setText(row.querySelector('[data-col="should"]'), fmt(s.should));
+          setText(row.querySelector('[data-col="started"]'), fmt(s.prompted));
+          setText(row.querySelector('[data-col="done"]'), fmt(s.done));
+          setText(row.querySelector('[data-col="avg"]'), s.avg === null || s.avg === undefined ? "—" : String(s.avg));
+          setText(row.querySelector('[data-col="comments"]'), fmt(s.comments));
+        });
         var hours = (data.hourly && data.hourly.hours) || [];
         var series = (data.hourly && data.hourly.series) || [];
         var totals = series.length ? series[0].data : [];
