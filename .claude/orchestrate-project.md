@@ -19,6 +19,9 @@
 - Коммит по-русски `тип(скоуп): тема`, скоуп — модуль (`admin`, `registration`, `payment`,
   `game`, `db`, `sheets`, `scheduler`, `config`, `tests`, `miniapp`, `dashboard`), без номеров
   планов и ID ревью, без строки `Claude-Session`.
+- На прод YouLead (`leafye`, `/home/leaf/YouLead26`) код только из коммита: commit → `git pull` →
+  compose. Грязный `compose up --build`, копирование `.py` в контейнер, «срочно без коммита» —
+  нельзя. SQLite-операции (одобрение, баллы, рассылки) в git не пишутся.
 - Сменил `callback_data` — прогнать `tests/test_roles_phase8*.py` и `tests/test_admin_caps*.py`,
   префикс добавить в `admin_caps.py`. Сменил текст — `rg` старой строки по `tests/`.
 
