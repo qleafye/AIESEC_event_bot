@@ -16,6 +16,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -2955,3 +2956,376 @@ def stats_card_block(conn, scope: Scope) -> dict | None:
     if not sent:
         return None
     return {"sent": sent}
+
+
+# ── Опросы и фидбек за день форума ──────────────────────────────────────────────────────
+
+_CHECKIN_ENTRY_POINT = "entry"
+_CHECKIN_YES = "yes"
+_CHECKIN_DAY_TODAY = "today"
+_FORM_TYPE_SURVEY = "опрос бота"
+_FORM_TYPE_POLL = "голосование"
+_FORM_TYPE_SESSION = "фидбек сессии"
+_FORM_TYPE_EXTERNAL = "внешняя форма"
+_REG_FORM_HINTS = ("фио", "университет", "вуз", "персональных данных", "согласие")
+
+
+def _table_exists(conn, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+    ).fetchone()
+    return row is not None
+
+
+def _pct(done: int, should: int) -> float:
+    if should <= 0:
+        return 0.0
+    return round(100.0 * done / should, 1)
+
+
+def _audience_count(conn, spec) -> int | None:
+    """Число людей по audience_json опроса — те же поля, что `count_and_list_filtered`
+    для checkin_entry/event_city/status. None = спека пустая или неразобранная."""
+    if not spec:
+        return None
+    clauses: list[str] = []
+    params: list = []
+    today = msk_now().strftime("%Y-%m-%d")
+    for item in spec:
+        if not isinstance(item, dict):
+            continue
+        field, value = item.get("field"), item.get("value")
+        if field == "checkin_entry":
+            if value != _CHECKIN_YES:
+                clauses.append("0")
+                continue
+            day = item.get("day")
+            if day == _CHECKIN_DAY_TODAY:
+                day = today
+            exists = (
+                "EXISTS (SELECT 1 FROM checkins c WHERE c.telegram_id = users.telegram_id "
+                "AND c.point = ?" + (" AND c.day = ?)" if day else ")")
+            )
+            clauses.append(exists)
+            params.append(_CHECKIN_ENTRY_POINT)
+            if day:
+                params.append(day)
+        elif field == "event_city":
+            exclude = item.get("exclude") or []
+            if exclude:
+                placeholders = ", ".join("?" for _ in exclude)
+                clauses.append(f"(event_city IS NULL OR event_city NOT IN ({placeholders}))")
+                params.extend(exclude)
+            elif value:
+                clauses.append("event_city = ?")
+                params.append(value)
+            else:
+                clauses.append("0")
+        elif field == "status" and value:
+            clauses.append("status = ?")
+            params.append(value)
+        elif field == "season" and value:
+            clauses.append("season = ?")
+            params.append(value)
+    if not clauses:
+        return None
+    sql = "SELECT COUNT(*) FROM users WHERE " + " AND ".join(clauses)
+    return int(_scalar(conn, sql, params) or 0)
+
+
+def _arrived_on_day(conn, scope: Scope, day: str) -> int:
+    parts = ["c.point = ?", "c.day = ?"]
+    params: list = [_CHECKIN_ENTRY_POINT, day]
+    city_frag, city_params = _city_sql(conn, scope.city)
+    season_frag, season_params = _season_sql(conn, scope.season)
+    if city_frag:
+        parts.append(city_frag)
+        params.extend(city_params)
+    if season_frag:
+        parts.append(season_frag)
+        params.extend(season_params)
+    sql = (
+        "SELECT COUNT(DISTINCT c.telegram_id) FROM checkins c "
+        "JOIN users ON users.telegram_id = c.telegram_id"
+        f"{_where(parts)}"
+    )
+    return int(_scalar(conn, sql, params) or 0)
+
+
+def _looks_like_registration_form(conn, form_id: int) -> bool:
+    rows = conn.execute(
+        "SELECT label FROM external_form_columns WHERE form_id = ?", (form_id,)
+    ).fetchall()
+    if not rows:
+        return False
+    labels = " ".join((row["label"] or "").lower() for row in rows)
+    return sum(1 for hint in _REG_FORM_HINTS if hint in labels) >= 2
+
+
+def _session_feedback_on(conn, city: str | None) -> bool:
+    keys = []
+    if city:
+        keys.append(f"session_feedback_enabled__city__{city}")
+    keys.append("session_feedback_enabled")
+    for key in keys:
+        row = conn.execute("SELECT value FROM bot_settings WHERE key = ?", (key,)).fetchone()
+        if row is not None and row["value"] is not None:
+            return row["value"] == "on"
+    return False
+
+
+def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
+    """Опросы бота, голосования дня, фидбек сессий и внешние формы за `day` (МСК).
+    Без ПД: только счётчики. `day=None` → сегодня по Москве."""
+    day = day or msk_now().strftime("%Y-%m-%d")
+    now = msk_now()
+    try:
+        day_label = datetime.strptime(day, "%Y-%m-%d").strftime("%d.%m.%Y")
+    except ValueError:
+        day_label = day
+    notes: list[str] = []
+    forms: list[dict] = []
+    hourly_by_key: dict[str, dict[str, int]] = {}
+
+    if _table_exists(conn, "polls"):
+        has_kind = any(r["name"] == "kind" for r in conn.execute("PRAGMA table_info(polls)"))
+        kind_sql = "COALESCE(kind, 'poll')" if has_kind else "'poll'"
+        city_sql = "1=1"
+        city_params: list = []
+        if scope.city is not None:
+            city_sql = "(city IS NULL OR city = ?)"
+            city_params.append(scope.city)
+        rows = conn.execute(
+            f"SELECT id, question, city, audience_json, status, scheduled_at, sending_since, "
+            f"{kind_sql} AS kind FROM polls "
+            f"WHERE status IN ('sending', 'open') AND {city_sql} ORDER BY id",
+            city_params,
+        ).fetchall()
+        has_progress = _table_exists(conn, "survey_progress")
+        has_answers = _table_exists(conn, "poll_answers")
+        has_messages = _table_exists(conn, "poll_messages")
+        for row in rows:
+            kind = row["kind"] or "poll"
+            sent_at = row["sending_since"] or row["scheduled_at"] or ""
+            sent_today = str(sent_at).startswith(day)
+            if kind == "survey":
+                form_type = _FORM_TYPE_SURVEY
+            elif kind == "poll":
+                if not sent_today:
+                    continue
+                form_type = _FORM_TYPE_POLL
+            else:
+                continue
+            spec = []
+            raw = row["audience_json"]
+            if raw:
+                try:
+                    loaded = json.loads(raw)
+                    if isinstance(loaded, list):
+                        spec = loaded
+                except (TypeError, ValueError):
+                    spec = []
+            should = _audience_count(conn, spec)
+            delivered = 0
+            if has_messages:
+                delivered = int(_scalar(
+                    conn,
+                    "SELECT COUNT(*) FROM poll_messages WHERE poll_id = ? AND status = 'ok'",
+                    (row["id"],),
+                ) or 0)
+            if should is None:
+                should = delivered
+            started = None
+            done = 0
+            hours: dict[str, int] = {}
+            if kind == "survey" and has_progress:
+                started = int(_scalar(
+                    conn,
+                    "SELECT COUNT(*) FROM survey_progress WHERE poll_id = ? "
+                    "AND started_at LIKE ?",
+                    (row["id"], f"{day}%"),
+                ) or 0)
+                done = int(_scalar(
+                    conn,
+                    "SELECT COUNT(*) FROM survey_progress WHERE poll_id = ? "
+                    "AND state = 'done' AND finished_at LIKE ?",
+                    (row["id"], f"{day}%"),
+                ) or 0)
+                for hr in conn.execute(
+                    "SELECT substr(finished_at, 12, 2) AS hour, COUNT(*) AS n "
+                    "FROM survey_progress WHERE poll_id = ? AND state = 'done' "
+                    "AND finished_at LIKE ? GROUP BY hour",
+                    (row["id"], f"{day}%"),
+                ):
+                    if hr["hour"]:
+                        hours[hr["hour"]] = int(hr["n"])
+            elif kind == "poll" and has_answers:
+                done = int(_scalar(
+                    conn,
+                    "SELECT COUNT(*) FROM poll_answers WHERE poll_id = ? "
+                    "AND answered_at LIKE ?",
+                    (row["id"], f"{day}%"),
+                ) or 0)
+                for hr in conn.execute(
+                    "SELECT substr(answered_at, 12, 2) AS hour, COUNT(*) AS n "
+                    "FROM poll_answers WHERE poll_id = ? AND answered_at LIKE ? "
+                    "GROUP BY hour",
+                    (row["id"], f"{day}%"),
+                ):
+                    if hr["hour"]:
+                        hours[hr["hour"]] = int(hr["n"])
+            key = f"{kind}-{row['id']}"
+            forms.append({
+                "key": key,
+                "id": row["id"],
+                "name": row["question"] or f"Опрос {row['id']}",
+                "type": form_type,
+                "kind": kind,
+                "should": should,
+                "done": done,
+                "started": started,
+                "pct": _pct(done, should),
+                "city": row["city"] or "",
+                "ref": f"{kind}:{row['id']}",
+            })
+            hourly_by_key[key] = hours
+
+    if _table_exists(conn, "session_feedback") and _table_exists(conn, "program_sessions"):
+        enabled = _session_feedback_on(conn, scope.city)
+        session_sql = (
+            "SELECT s.id, s.title, s.city, s.start_time, s.end_time, "
+            "(SELECT COUNT(*) FROM checkins c WHERE c.point = 'session:' || s.id) AS marked, "
+            "(SELECT COUNT(*) FROM session_feedback f WHERE f.session_id = s.id "
+            " AND f.rating IS NOT NULL AND f.rated_at LIKE ?) AS done "
+            "FROM program_sessions s WHERE s.day = ?"
+        )
+        session_params: list = [f"{day}%", day]
+        if scope.city is not None:
+            session_sql += " AND s.city = ?"
+            session_params.append(scope.city)
+        session_sql += " ORDER BY s.start_time, s.id"
+        session_rows = conn.execute(session_sql, session_params).fetchall()
+        prompted = int(_scalar(
+            conn,
+            "SELECT COUNT(*) FROM session_feedback f "
+            "JOIN program_sessions s ON s.id = f.session_id "
+            "WHERE s.day = ?" + (" AND s.city = ?" if scope.city else ""),
+            (day, scope.city) if scope.city else (day,),
+        ) or 0)
+        if not enabled and prompted == 0:
+            notes.append("Фидбек сессий выключен, приглашений за сегодня нет.")
+        else:
+            for s in session_rows:
+                should = int(s["marked"] or 0)
+                done = int(s["done"] or 0)
+                if should == 0 and done == 0 and not enabled:
+                    continue
+                key = f"session-{s['id']}"
+                forms.append({
+                    "key": key,
+                    "id": s["id"],
+                    "name": s["title"] or f"Сессия {s['id']}",
+                    "type": _FORM_TYPE_SESSION,
+                    "kind": "session",
+                    "should": should,
+                    "done": done,
+                    "started": None,
+                    "pct": _pct(done, should),
+                    "city": s["city"] or "",
+                    "ref": f"session:{s['id']}",
+                })
+                hourly_by_key[key] = {}
+
+    if _table_exists(conn, "external_forms") and _table_exists(conn, "external_form_answers"):
+        ext_rows = conn.execute(
+            "SELECT id, title, platform FROM external_forms ORDER BY id"
+        ).fetchall()
+        ext_today = 0
+        for form in ext_rows:
+            n_today = int(_scalar(
+                conn,
+                "SELECT COUNT(*) FROM external_form_answers "
+                "WHERE form_id = ? AND COALESCE(answered_at, received_at) LIKE ?",
+                (form["id"], f"{day}%"),
+            ) or 0)
+            ext_today += n_today
+            if n_today == 0:
+                continue
+            if _looks_like_registration_form(conn, form["id"]):
+                notes.append(
+                    f"Внешняя форма «{form['title']}» за сегодня есть ответы, "
+                    "но это анкета регистрации — в таблицу не входит."
+                )
+                continue
+            should = _arrived_on_day(conn, scope, day)
+            key = f"ext-{form['id']}"
+            hours: dict[str, int] = {}
+            for hr in conn.execute(
+                "SELECT substr(COALESCE(answered_at, received_at), 12, 2) AS hour, COUNT(*) AS n "
+                "FROM external_form_answers WHERE form_id = ? "
+                "AND COALESCE(answered_at, received_at) LIKE ? GROUP BY hour",
+                (form["id"], f"{day}%"),
+            ):
+                if hr["hour"]:
+                    hours[hr["hour"]] = int(hr["n"])
+            forms.append({
+                "key": key,
+                "id": form["id"],
+                "name": form["title"] or f"Форма {form['id']}",
+                "type": _FORM_TYPE_EXTERNAL,
+                "kind": "external",
+                "should": should,
+                "done": n_today,
+                "started": None,
+                "pct": _pct(n_today, should),
+                "city": scope.city or "",
+                "ref": f"ext:{form['id']}:{form['platform']}",
+            })
+            hourly_by_key[key] = hours
+        if ext_today == 0 and ext_rows:
+            notes.append("Внешних форм с ответами за сегодня нет.")
+
+    hour_set: set[str] = set()
+    for hours in hourly_by_key.values():
+        hour_set.update(hours)
+    if hour_set:
+        lo = min(int(h) for h in hour_set)
+        hi = max(int(now.strftime("%H")), max(int(h) for h in hour_set))
+        hour_labels = [f"{h:02d}" for h in range(lo, hi + 1)]
+    else:
+        hour_labels = []
+    hourly_series = []
+    totals_by_hour = [0] * len(hour_labels)
+    for form in forms:
+        hours = hourly_by_key.get(form["key"], {})
+        data = [hours.get(h, 0) for h in hour_labels]
+        if any(data):
+            hourly_series.append({"key": form["key"], "name": form["name"], "data": data})
+            for i, n in enumerate(data):
+                totals_by_hour[i] += n
+    if hourly_series:
+        hourly_series.insert(0, {"key": "total", "name": "Все формы", "data": totals_by_hour})
+
+    should_sum = sum(f["should"] for f in forms)
+    done_sum = sum(f["done"] for f in forms)
+    started_sum = sum(f["started"] or 0 for f in forms)
+    arrived = _arrived_on_day(conn, scope, day)
+    return {
+        "day": day,
+        "day_label": day_label,
+        "updated_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+        "arrived": arrived,
+        "forms": forms,
+        "totals": {
+            "forms": len(forms),
+            "should": should_sum,
+            "done": done_sum,
+            "started": started_sum,
+            "pct": _pct(done_sum, should_sum),
+        },
+        "hourly": {
+            "hours": [f"{h}:00" for h in hour_labels],
+            "series": hourly_series,
+        },
+        "notes": notes,
+    }

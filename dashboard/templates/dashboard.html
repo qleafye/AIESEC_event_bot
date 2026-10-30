@@ -1003,6 +1003,7 @@
   <section class="block">
     <div class="card">
       <a class="switch-link" href="/forum">🎪 Статистика форума</a>
+      <a class="switch-link" href="/feedback{% if scope.city %}?city={{ scope.city | urlencode }}{% endif %}">Опросы и фидбек</a>
       <a class="switch-link" href="/sources{% if scope.city %}?city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням</a>
     </div>
   </section>
