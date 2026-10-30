@@ -425,16 +425,21 @@ def kpi_row(conn, scope: Scope) -> dict:
         params + (prev_week_start, prev_week_end),
     ) or 0
 
-    # Автоотказ — заявка всё ещё отклонена правилом. Одобренная после автоотказа
-    # (маркер мог остаться) в этот счётчик не входит и остаётся в «реги-автоотказы».
-    has_auto_reject = (
-        "(auto_reject_rule_ids IS NOT NULL AND TRIM(auto_reject_rule_ids) NOT IN ('', '[]'))"
-    )
-    auto_rejects = _scalar(
-        conn,
-        f"SELECT COUNT(*) FROM users{_where(parts + [has_auto_reject, 'status = ?'])}",
-        params + ("rejected",),
-    ) or 0
+    # Одобрение снимает `auto_reject_rule_ids` с заявки, строка в `auto_reject_log` остаётся.
+    # Считать по текущему status='rejected' нельзя: после массового одобрения на плитке
+    # остаются единицы, хотя журнал хранит всех, кого правило когда-либо отклонило.
+    has_log = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'auto_reject_log'"
+    ).fetchone()
+    if has_log is None:
+        auto_rejects = 0
+    else:
+        auto_rejects = _scalar(
+            conn,
+            "SELECT COUNT(*) FROM users"
+            f"{_where(parts + ['telegram_id IN (SELECT telegram_id FROM auto_reject_log)'])}",
+            params,
+        ) or 0
 
     tracking_since = _scalar(conn, f"SELECT MIN(ts) FROM reg_events{_where(parts)}", params)
     starts = _scalar(
