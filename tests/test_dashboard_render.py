@@ -1199,23 +1199,26 @@ def test_empty_section_hidden_with_its_nav_button(tmp_path):
     assert 'href="#engagement"' not in text2
 
 
-def test_now_tiles_show_real_subtitle_only_with_reject_rules(tmp_path):
-    """Решение владельца 1 (23.09): подпись «реальных N» под первыми плитками «Сейчас»
-    видна только при включённом автоотказе, отдельного ряда `kpi-grid--real` больше нет."""
+def test_now_tiles_show_auto_reject_lines_only_with_reject_rules(tmp_path):
+    """Под «Всего заявок» две строки — автоотказы и реги-автоотказы — только при
+    включённом автоотказе. Подписи «реальных» на плитках нет."""
     db_path = _use_tmp_db(tmp_path)
     _seed(users=[
         {"telegram_id": 1, "status": "pending", "auto_reject_rule_ids": None},
         {"telegram_id": 2, "status": "rejected", "auto_reject_rule_ids": "[1]"},
+        {"telegram_id": 3, "status": "approved", "auto_reject_rule_ids": "[1]"},
     ])
     client = _stats_manager_client(db_path)
     resp_off = client.get("/")
+    assert "автоотказов" not in resp_off.text
+    assert "реги-автоотказы" not in resp_off.text
     assert "реальных" not in resp_off.text
-    assert "kpi-grid--real" not in resp_off.text
 
     _seed(settings={"reject_rules_enabled": "on"})
     resp_on = client.get("/")
-    assert "реальных" in resp_on.text
-    assert "kpi-grid--real" not in resp_on.text
+    assert "автоотказов 1" in resp_on.text
+    assert "реги-автоотказы 2" in resp_on.text
+    assert "реальных" not in resp_on.text
 
 
 def test_pending_tile_shows_count_and_oldest(tmp_path):
