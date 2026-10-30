@@ -1,7 +1,8 @@
 """Напоминания делегату о сессиях программы.
 
-1. «⏰ За N минут до сессии» — личное сообщение тому, кто на неё записан (`session_enrollments`),
-   с залом и компетенциями. Своя джоба на каждую сессию (`session_remind:{id}`).
+1. «⏰ За N минут до сессии» — личное сообщение всем одобренным делегатам города (запись
+   на эту сессию не нужна), с залом и компетенциями. Своя джоба на каждую сессию
+   (`session_remind:{id}`).
 2. «☀️ Программа на день» — утром в день программы список сессий делегата (его записи плюс общие
    сессии без трека — тот же `session_enroll.my_schedule`, что показывает «Моё расписание»).
    Своя джоба на пару город+день (`session_morning:{город}:{день}`).
@@ -10,8 +11,8 @@
 джобы сдвигается на `city_tz_offset` (тот же приём, что `services/session_feedback.py`).
 
 Идемпотентность — журнал `session_remind_sends` (`database/session_remind_db.py`): перезапуск,
-перепланирование и повторный тик не дублируют сообщения. Джоба перед отправкой перечитывает тумблер,
-сессию и записи: отписался, сессию удалили или перенесли — сообщение не уйдёт.
+перепланирование и повторный тик не дублируют сообщения. Джоба перед отправкой перечитывает тумблер
+и сессию: сессию удалили или перенесли — сообщение не уйдёт. Отписка от сессии получателей не сужает.
 
 Дедлайны: напоминание не уходит позже начала сессии, утренняя программа — позже начала первой
 сессии дня (бот был выключен — догнали, но не задним числом).
@@ -219,8 +220,16 @@ async def _city_delegates(session_users: list[dict], city: str) -> list[dict]:
     return out
 
 
+async def _approved_delegates(city: str) -> list[dict]:
+    """Одобренные делегаты города текущего сезона — «кто зарегистрировался»."""
+    import domain.cities as _cities
+    from database.db import list_approved_users
+
+    return await _city_delegates(await list_approved_users(city_scope=_cities.city_scope(city)), city)
+
+
 async def remind_recipients(session: dict) -> list[dict]:
-    return await _city_delegates(await rdb.list_enrolled_approved(session["id"]), session["city"])
+    return await _approved_delegates(session["city"])
 
 
 async def morning_items_for_user(telegram_id: int, city: str, day: str) -> list[dict]:
@@ -314,8 +323,6 @@ async def deliver_morning_program(city: str, day: str) -> dict:
     try:
         from services.forum.program import sessions_for_city_day
         from services.scheduler import _now_moscow_naive
-        import domain.cities as _cities
-        from database.db import list_approved_users
 
         if not await morning_enabled(city):
             return result
@@ -329,7 +336,7 @@ async def deliver_morning_program(city: str, day: str) -> dict:
             return result  # день уже идёт: утренняя программа поздняя
         ref = f"{city}:{day}"
         tr_maps: dict = {}
-        users = await _city_delegates(await list_approved_users(city_scope=_cities.city_scope(city)), city)
+        users = await _approved_delegates(city)
         for user in users:
             tid = int(user["telegram_id"])
             if await rdb.was_sent(tid, rdb.KIND_MORNING, ref):
