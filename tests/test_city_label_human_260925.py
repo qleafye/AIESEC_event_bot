@@ -179,6 +179,15 @@ def test_js_renders_city_label_not_city_code(rel):
             pytest.fail(f"{rel}: город выводится кодом — `{line.strip()}` (нужен .city_label)")
 
 
+def test_scanner_city_select_is_not_permanently_hidden():
+    """Обёртка «Город» прячется классом `hidden`. Сам `<select>` с этим классом остаётся
+    `display: none` (`.hidden` в конце app.css) даже когда поле показали: город не выбрать,
+    сессии дня не подгружаются."""
+    src = (ROOT / "miniapp/static/js/screens/scanner.js").read_text(encoding="utf-8")
+    assert 'h("select", { class: "input hidden"' not in src
+    assert 'const citySelect = h("select", { class: "input" });' in src
+
+
 # ── бот: CSV «Статистики прихода» и отчёт загрузки отметок ───────────────────────────────────
 
 class _User:
