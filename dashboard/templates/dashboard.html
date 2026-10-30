@@ -76,18 +76,14 @@
         <div class="kpi primary">
           <div class="num">{{ kpi.total | thousands }}</div>
           <div class="lbl">Всего заявок</div>
-          {# Решение владельца 1 (23.09): отдельного ряда «Реальные заявки» больше нет —
-             подпись «реальных N» под числом, видна только при включённом автоотказе. #}
           {% if reject_rules_enabled %}
-          <div class="delta">реальных {{ kpi.total_real | thousands }}</div>
+          <div class="delta">автоотказов {{ kpi.auto_rejects | thousands }}</div>
+          <div class="delta">реги-автоотказы {{ kpi.reg_minus_auto | thousands }}</div>
           {% endif %}
         </div>
         <div class="kpi">
           <div class="num">{{ kpi.today | thousands }}</div>
           <div class="lbl">Сегодня</div>
-          {% if reject_rules_enabled %}
-          <div class="delta">реальных {{ kpi.today_real | thousands }}</div>
-          {% endif %}
         </div>
         <div class="kpi">
           <div class="num">{{ kpi.week | thousands }}</div>
@@ -98,9 +94,6 @@
           <div class="delta down"><span aria-hidden="true">▼</span> <span class="visually-hidden">снижение на</span>{{ (-kpi.week_delta) | thousands }} к прошлой неделе</div>
           {% else %}
           <div class="delta">без изменений к прошлой неделе</div>
-          {% endif %}
-          {% if reject_rules_enabled %}
-          <div class="delta">реальных {{ kpi.week_real | thousands }}</div>
           {% endif %}
         </div>
         {# «На модерации» — новая плитка (решение владельца 23.09): сколько заявок ждёт
@@ -136,7 +129,7 @@
         <div class="kpi">
           <div class="num">{{ deleg_daily.total_today | thousands }}</div>
           <div class="lbl">Итого с делегациями</div>
-          <div class="delta">сегодня: реальные + форма без анкеты в боте · всего {{ deleg_daily.total_all | thousands }}</div>
+          <div class="delta">сегодня: бот без автоотказов + форма без анкеты в боте · всего {{ deleg_daily.total_all | thousands }}</div>
         </div>
         {% endif %}
       </div>
@@ -182,7 +175,7 @@
         <details class="chart-table" open>
           <summary>По дням: бот и форма делегаций (14 дней)</summary>
           <table>
-            <thead><tr><th>Дата</th><th class="num">Реальные</th><th class="num">Делегации (форма)</th><th class="num">Итого</th></tr></thead>
+            <thead><tr><th>Дата</th><th class="num">Без автоотказов</th><th class="num">Делегации (форма)</th><th class="num">Итого</th></tr></thead>
             <tbody>
               {% for r in deleg_daily.rows %}
               <tr><td>{{ r.day }}</td><td class="num">{{ r.real | thousands }}</td><td class="num">{{ r.form | thousands }}</td><td class="num">{{ r.total | thousands }}</td></tr>

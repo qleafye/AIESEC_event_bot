@@ -415,8 +415,8 @@ def build_page_context(
         "season_options": queries.season_options(conn),
         "kpi": queries.kpi_row(conn, scope),
         "past_season": queries.past_season_block(conn, scope),
-        # Подписи «реальных N» под первыми плитками «Сейчас» видны только при включённом
-        # автоотказе (решение владельца 23.09: отдельного ряда «Реальные заявки» больше нет).
+        # Строки «автоотказов» и «реги-автоотказы» под «Всего заявок» — только при
+        # включённом автоотказе.
         "reject_rules_enabled": flags.get("reject_rules_enabled") == "on",
         "funnel": _funnel_display(funnel_rows, funnel_since),
         # Пустой список тоже уходит в шаблон «как есть» — Jinja2 читает пустой список как
