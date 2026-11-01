@@ -122,7 +122,9 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # 10.10: +5 -- подписи кнопок экранов «🪙 Баланс» и «📜 История» (domain/settings/ui_text_fields.py).
     # 28.10: +17 -- ответы карточки задания и сдачи, вынесенные из кода
     # (domain/settings/delegate_text_fields.py).
-    assert len(keys) == 69
+    # 28.10: +18 -- тексты брони в магазине баллов (shop_*: «Взять», «🎫 Мои брони», отмена,
+    # подпись QR брони, уведомления делегату со стойки) — делегатские тексты группы game.
+    assert len(keys) == 87
     for moved in ("amb_tier1_threshold", "amb_progress_text", "wave_start_message_text"):
         assert s.SETTINGS_SCHEMA[moved]["group"] == "amb"
     for k in keys:
