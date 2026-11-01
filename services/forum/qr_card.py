@@ -1,4 +1,5 @@
-"""Оформленная карточка QR делегата: синий фон Юлида, белая карточка с кодом, имя и город.
+"""Оформленная карточка QR делегата: синий фон Юлида, белая карточка с кодом, имя, город
+и адрес ВК из анкеты, если делегат его указал.
 
 Содержимое QR не трогаем — строку собирает `services.forum.checkin.build_payload`, здесь только
 картинка вокруг неё. Рендер синхронный и тяжёлый (Pillow), вызывающий зовёт его через
@@ -145,9 +146,49 @@ def _background(title: str, watermark: str):
     return img, y + f_title.size + 44
 
 
-def render_qr_card(payload: str, name: str, city: str, title: str, footer: str, watermark: str) -> bytes:
-    """PNG 1080×1440: лого и заголовок на синем, белая карточка с QR, имя и город под кодом,
-    оранжевая плашка с подсказкой внизу. Бросает ImportError без Pillow, OSError без шрифтов."""
+_VK_EMPTY = {"-", "—", "–", "@", "нет", "нету", "no", "none", "n/a", "н/д"}
+
+
+def pass_vk_line(raw: str | None) -> str:
+    """Строка под городом на пропуске. Пусто, прочерк и «нет» не рисуем.
+
+    Ник из анкеты (`@ivan` или `ivan`) становится адресом `vk.com/ivan`: на площадке
+    карточку показывают с телефона, ссылку оттуда переписывают руками. Содержимое QR
+    не меняется."""
+    text = " ".join((raw or "").split())
+    if not text or text.casefold() in _VK_EMPTY:
+        return ""
+    low = text.casefold()
+    if low.startswith("https://"):
+        text, low = text[8:], low[8:]
+    elif low.startswith("http://"):
+        text, low = text[7:], low[7:]
+    if low.startswith("www."):
+        text, low = text[4:], low[4:]
+    if low.startswith("m.vk.com/"):
+        tail = text.split("/", 1)[1].strip("/")
+        return f"vk.com/{tail}" if tail else ""
+    if low.startswith("vk.com/"):
+        tail = text.split("/", 1)[1].strip("/")
+        return f"vk.com/{tail}" if tail else ""
+    if "/" in text and " " not in text:
+        return text
+    if " " in text:
+        return f"ВК: {text}"
+    nick = text[1:] if text.startswith("@") else text
+    if re.fullmatch(r"[A-Za-z0-9_.]{2,64}", nick):
+        return f"vk.com/{nick}"
+    return f"ВК: {text}"
+
+
+def render_qr_card(
+    payload: str, name: str, city: str, title: str, footer: str, watermark: str,
+    social: str = "",
+) -> bytes:
+    """PNG 1080×1440: лого и заголовок на синем, белая карточка с QR, имя, город и ВК
+    под кодом, оранжевая плашка с подсказкой внизу. `social` — уже готовая строка
+    (`pass_vk_line`); пустая карточка выглядит как раньше. Бросает ImportError без Pillow,
+    OSError без шрифтов."""
     from PIL import Image, ImageDraw
 
     background, y = _background(title, watermark)
@@ -155,20 +196,36 @@ def render_qr_card(payload: str, name: str, city: str, title: str, footer: str, 
     draw = ImageDraw.Draw(img)
 
     card_w = _W - 2 * _PAD
-    qr_side = 660
-    qr = segno.make(payload, error="m")
-    modules = qr.symbol_size(scale=1, border=0)[0]
-    scale = qr_side // modules
-    buf = io.BytesIO()
-    qr.save(buf, kind="png", scale=scale, border=0, dark=_TEXT)
-    qr_img = Image.open(buf).convert("RGBA")
-
     inner_w = card_w - 2 * _CARD_PAD
     f_name = _fit(draw, name, "raleway-800.woff2", 64, inner_w, min_size=40)
     name_lines = _wrap(draw, name, f_name, inner_w)
     f_city = _font("lato-700.woff2", 40)
     city = _ellipsize(draw, city, f_city, inner_w) if city else city
+    social_text = (social or "").strip()
+    f_social = _font("lato-700.woff2", 34) if social_text else None
+    if f_social is not None:
+        social_text = _ellipsize(draw, social_text, f_social, inner_w)
     text_h = len(name_lines) * (f_name.size + 10) + (f_city.size + 14 if city else 0)
+    if social_text:
+        text_h += f_social.size + 16
+
+    f_footer = _fit(draw, footer, "lato-700.woff2", 40, _W - 2 * _PAD - 80, min_size=28)
+    chip_h = f_footer.size + 44
+    qr_side = 660
+    if social_text:
+        # Плашка «Покажи этот QR» должна остаться под белой карточкой, а не наехать на код.
+        max_card_h = _H - _PAD - chip_h - 48 - y
+        overhead = _CARD_PAD + 40 + text_h + _CARD_PAD
+        room = max_card_h - overhead
+        if room < qr_side:
+            qr_side = max(360, int(room))
+
+    qr = segno.make(payload, error="m")
+    modules = qr.symbol_size(scale=1, border=0)[0]
+    scale = max(1, qr_side // modules)
+    buf = io.BytesIO()
+    qr.save(buf, kind="png", scale=scale, border=0, dark=_TEXT)
+    qr_img = Image.open(buf).convert("RGBA")
 
     card_h = _CARD_PAD + qr_img.height + 40 + text_h + _CARD_PAD
     card_top = y
@@ -184,10 +241,12 @@ def render_qr_card(payload: str, name: str, city: str, title: str, footer: str, 
     if city:
         ty += 4
         draw.text((_W // 2, ty), city, font=f_city, fill=_MUTED, anchor="ma")
+        ty += f_city.size
+    if social_text:
+        ty += 12
+        draw.text((_W // 2, ty), social_text, font=f_social, fill=_MUTED, anchor="ma")
 
-    f_footer = _fit(draw, footer, "lato-700.woff2", 40, _W - 2 * _PAD - 80, min_size=28)
     chip_w = int(draw.textlength(footer, font=f_footer)) + 80
-    chip_h = f_footer.size + 44
     chip_top = min(card_top + card_h + 48, _H - _PAD - chip_h)
     chip_left = (_W - chip_w) // 2
     draw.rounded_rectangle(
