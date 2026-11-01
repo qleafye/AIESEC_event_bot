@@ -2076,6 +2076,11 @@ async def send_task_deadline_reminder(task_id: int) -> None:
                     continue  # задания ему закрыты (отклонён, ждёт решения, прошлый сезон)
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
+                # Тихие часы откладывают текст на утро. Если утро уже после дедлайна,
+                # «скоро срок» приходит задним числом — не ставим в очередь.
+                due = await quiet_hours.defer_until(now, uid)
+                if due is not None and due >= deadline:
+                    continue
                 lang, tr_map = await i18n.context(uid)
                 template = i18n.tr(template_raw, lang, tr_map)
                 text = game_labels.fill_template(
