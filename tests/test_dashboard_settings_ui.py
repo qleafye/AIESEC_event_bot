@@ -42,6 +42,7 @@ DASHBOARD_KEYS_EXPECTED = [
     "dashboard_block_ambassadors",
     "dashboard_block_referrals",
     "dashboard_block_delegations",
+    "dashboard_block_polls",
 ]
 
 
