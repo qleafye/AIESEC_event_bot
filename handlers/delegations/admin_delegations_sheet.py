@@ -71,6 +71,14 @@ _RISK_HEADER = (
 _CHANGED = "Лист за это время изменился — проверьте цифры ещё раз"
 
 
+def _exc_label(exc: BaseException) -> str:
+    """Имя исключения и код ответа Google, если он есть. Одного имени мало:
+    429, 403 и 500 иначе выглядят одинаково."""
+    code = getattr(getattr(exc, "response", None), "status_code", None)
+    name = type(exc).__name__
+    return f"{name} {code}" if code else name
+
+
 def _form_enabled(form: dict) -> bool:
     return form.get("mirror_mode") == "yandex_export" and bool(form.get("mirror_tab"))
 
@@ -194,7 +202,7 @@ async def _show_check(callback, state: FSMContext, form: dict, tab: str) -> None
     try:
         res = await _dry_run(form, tab)
     except Exception as exc:  # noqa: BLE001 — сбой API листа объясняем, не роняем экран
-        logger.warning("delegations: сверка листа «%s» не удалась: %s", tab, type(exc).__name__)
+        logger.warning("delegations: сверка листа «%s» не удалась: %s", tab, _exc_label(exc))
         await state.update_data(dlg_tab=tab, dlg_dry=None)
         await _show(callback, _READ_FAILED.format(tab=_e(tab)),
                     _kb([[_btn("🔁 Сверить ещё раз", "dlg_check")],
@@ -309,7 +317,7 @@ async def dlg_write_yes(callback: types.CallbackQuery, state: FSMContext):
     try:
         fresh = await _dry_run(form, tab)
     except Exception as exc:  # noqa: BLE001 — сбой API листа объясняем, не роняем экран
-        logger.warning("delegations: пересверка листа «%s» не удалась: %s", tab, type(exc).__name__)
+        logger.warning("delegations: пересверка листа «%s» не удалась: %s", tab, _exc_label(exc))
         await _show_check(callback, state, form, tab)
         await callback.answer()
         return
