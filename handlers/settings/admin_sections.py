@@ -288,6 +288,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # 28.10: без подключённого чата кнопки нет (`_ROW_VISIBLE_IF`).
         ("screen", "admin_chat_reconcile", "🔄 Сверить состав чата"),
         ("group", "chat"),
+        # Тексты личных сообщений о сверке после привязки чата (domain/settings/chat_fields.py).
+        ("group", "chat_bind_texts"),
         ("group", "system"),
     ]),
 ]
