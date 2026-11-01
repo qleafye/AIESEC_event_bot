@@ -209,6 +209,85 @@ async def ensure_current_season(message: types.Message) -> bool:
 _ALERT_MAX = 200  # предел текста всплывающего окна Telegram (answerCallbackQuery)
 
 
+async def _auto_reject_repeat_text(telegram_id: int, user: dict, lang: str, tr_map: dict) -> str | None:
+    """Тексты автоотказа для делегата `telegram_id`. None — живого снимка нет, вызывающий
+    показывает общий `reject_text`. Id передаётся явно: у сообщения колбэка `from_user` — бот,
+    и журнал по нему прочитался бы не у делегата."""
+    from database.db import get_live_auto_reject_log_entry, get_reject_rule
+    from services.applications.applications import reject_message_text
+
+    raw_ids = (user.get("auto_reject_rule_ids") or "").strip()
+    if raw_ids in ("", "[]"):
+        return None
+    texts: list[str] = []
+    try:
+        entry = await get_live_auto_reject_log_entry(telegram_id)
+        if entry and entry.get("reject_texts"):
+            texts = [str(t) for t in json.loads(entry["reject_texts"]) or [] if str(t).strip()]
+        if not texts:
+            for rule_id in json.loads(raw_ids) or []:
+                rule = await get_reject_rule(int(rule_id))
+                text = str((rule or {}).get("reject_text") or "").strip()
+                if text:
+                    texts.append(text)
+    except (TypeError, ValueError) as exc:
+        logger.error(f"_auto_reject_repeat_text: битые id/снимок правил у {telegram_id}: {exc}")
+        return None
+    if not texts:
+        return None
+    reason = "\n\n".join(reg_i18n.tr_text(t, lang, tr_map) for t in texts)
+    return await reject_message_text(reason, lang, tr_map)
+
+
+async def _deliver_tasks_denial(event, text: str) -> None:
+    """Как `ensure_game_allowed`: сообщение — обычный ответ, колбэк — алерт до 200 символов,
+    иначе пустой ответ и текст в чат. Экран заданий не редактируется."""
+    if isinstance(event, types.CallbackQuery) or hasattr(event, "message"):
+        if len(text) <= _ALERT_MAX:
+            await event.answer(text, show_alert=True)
+        else:
+            await event.answer()
+            await reg_i18n.say(event.message, text)
+    else:
+        await reg_i18n.say(event, text)
+
+
+async def ensure_tasks_registered(event) -> bool:
+    """Допуск к заданиям для Message и CallbackQuery — то же правило, что у кнопки меню.
+    Нет строки `users`, pending, rejected, прошлый сезон. Id всегда `event.from_user.id`.
+    False — задания закрыты. Делегация при выключенной гейме остаётся на `ensure_game_allowed`."""
+    telegram_id = event.from_user.id
+    user = await get_user(telegram_id)
+    lang, tr_map = await reg_i18n.ctx_for(event)
+    if not user:
+        await _deliver_tasks_denial(
+            event,
+            reg_i18n.tr_text(
+                "Чтобы пользоваться ботом, сначала нужно зарегистрироваться. Отправь команду /start.",
+                lang, tr_map,
+            ),
+        )
+        return False
+    allowed, kind = _gate_decision(user.get("status"))
+    if not allowed:
+        if kind == "pending":
+            text = reg_i18n.tr_text(await get_setting_typed("pending_gate_text"), lang, tr_map)
+        else:
+            text = await _auto_reject_repeat_text(telegram_id, user, lang, tr_map)
+            if not text:
+                text = reg_i18n.tr_text(
+                    await get_setting("reject_text") or SETTINGS_SCHEMA["reject_text"]["default"],
+                    lang, tr_map,
+                )
+        await _deliver_tasks_denial(event, text)
+        return False
+    season_text = await _returning_text_if_past_season(telegram_id, user, lang, tr_map)
+    if season_text is not None:
+        await _deliver_tasks_denial(event, season_text)
+        return False
+    return True
+
+
 async def ensure_game_allowed(event) -> bool:
     """Делегации вузов (D-08): третий гейт игровых хендлеров (после `ensure_registered` и
     `ensure_current_season`) — делегату вуза монеты/задания закрыты, пока менеджер не включил
@@ -681,6 +760,8 @@ async def mytask_open(callback: types.CallbackQuery):
     и Mini App (`miniapp/routers/*`) — сигнатуру той функции не трогаем, чтобы не разойтись со
     вторым исполнителем на приложении; переводим только `status_line`, который СОБИРАЕТСЯ
     здесь (бот-only код) ДО передачи внутрь."""
+    if not await ensure_tasks_registered(callback):
+        return
     if not await ensure_game_allowed(callback):
         return
     lang, tr_map = await reg_i18n.ctx_for(callback)
@@ -747,6 +828,8 @@ async def mytask_back(callback: types.CallbackQuery):
     ок" per CONTEXT.md). A no-photo card IS the (edited) list message -- "back" re-renders the
     list into the SAME message via edit_text, at the page parsed from callback_data (default 0
     on parse failure, T-16-01-01)."""
+    if not await ensure_tasks_registered(callback):
+        return
     if not await ensure_game_allowed(callback):
         return
     if callback.message.photo:
@@ -771,6 +854,8 @@ async def gtasks_page(callback: types.CallbackQuery):
     """Phase 16 (16-01): list pagination -- edits the SAME message (T-16-01-01: page parsed
     with a try/except, clamped server-side inside `_game_task_list_screen`, never trusts the
     client-supplied page number as-is)."""
+    if not await ensure_tasks_registered(callback):
+        return
     if not await ensure_game_allowed(callback):
         return
     try:
@@ -847,6 +932,8 @@ async def _ack_album(media_group_id: str, bot: Bot, chat_id: int, state: FSMCont
 
 @router.callback_query(F.data.startswith("mytask_submit:"))
 async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
+    if not await ensure_tasks_registered(callback):
+        return
     if not await ensure_game_allowed(callback):
         return
     lang, tr_map = await reg_i18n.ctx_for(callback)
@@ -964,6 +1051,8 @@ async def cancel_game_submit(message: types.Message, state: FSMContext):
 
 @router.message(GameSubmit.proof)
 async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
+    if not await ensure_tasks_registered(message):
+        return
     kind, content, caption = _classify_part(message)
     if kind is None:
         await reg_i18n.say(message, "Не понял, пришли фото, документ, текст или ссылку.")
@@ -1012,6 +1101,8 @@ async def receive_proof(message: types.Message, bot: Bot, state: FSMContext):
 async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
     """T-091-01: task_id comes ONLY from state (gs_task_id), never from callback_data --
     can't be tampered with to finalize under a different task."""
+    if not await ensure_tasks_registered(callback):
+        return
     lang, tr_map = await reg_i18n.ctx_for(callback)
     data = await state.get_data()
     task_id = data.get("gs_task_id")
