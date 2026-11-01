@@ -34,6 +34,8 @@ _FORUM_EMOJI_KEYS = {
     "checkin_not_arrived_here_button_text": "chat",
     "checkin_not_arrived_coming_button_text": "chat",
     "checkin_not_arrived_cant_button_text": "chat",
+    # 28.10: кнопка «🎟 Мой QR» под ответом на «Я на месте» — подпись из реестра, перевод как у чата.
+    "checkin_not_arrived_qr_button_text": "chat",
 }
 
 

@@ -445,6 +445,9 @@ _CODE_LITERALS_EN = {
     # Форум-ночь п.7 («❗ Важное»): экран делегата «❗ Важное» (`lit:user_actions.important_today_*`).
     "Сегодня важных рассылок не было.": "No important messages today.",
     "❗ Важные рассылки за сегодня:": "❗ Important messages today:",
+    "[рассылка без текста]": "[message without text]",
+    # Подстановка {season} в приветствии вернувшегося, когда сезон прошлой анкеты не записан.
+    "прошлом событии": "the last event",
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа» (`lit:program.*`).
     "Программа": "Program",
     "Выберите день:": "Choose a day:",
@@ -757,6 +760,9 @@ _REGISTRY_TEXTS_EN = {
     "Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.": "The «💳 Payment» button will stay in the menu until you send the receipt.",
     "Ок! Оплатишь позже.": "Ok! You'll pay later.",
     "✅ Чек получен! Менеджер проверит его в ближайшее время.": "✅ Receipt received! A manager will check it shortly.",
+    # Фоновые напоминания об оплате (payment_reminder_text / payment_overdue_text).
+    "⏰ Напоминание об оплате участия!\n\nСрок оплаты истекает скоро. Загрузи чек оплаты через бота.": "⏰ Payment reminder!\n\nThe payment deadline is coming up soon. Upload your payment receipt via the bot.",
+    "⚠️ Срок оплаты участия истёк.\n\nЕсли ты ещё планируешь участвовать — загрузи чек через бота (кнопка «💳 Оплата» в меню) или свяжись с организатором.": "⚠️ The payment deadline has passed.\n\nIf you still plan to take part, upload your receipt via the bot (the «💳 Payment» button in the menu) or contact the organizer.",
     "⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.": "⏳ Your application is under review. Access will open once it's approved.",
     "Отбор не пройден.": "You didn't pass the selection.",
     "Чтобы продолжить, задайте @username в настройках Telegram и снова отправьте /start.": "To continue, set a @username in your Telegram settings and send /start again.",
@@ -1268,8 +1274,35 @@ _POINTS_261010_EN = {
         "Tasks and points for university delegations are switched off here. Everything else — the programme, the entry QR, the news — works as usual.",
 }
 
+# Чат (`reg_i18n.tr_text`) снимает ведущий эмодзи/символ ДО поиска перевода — тексту делегату с
+# префиксом нужен ключ и без него, иначе английский делегат видит русский (ошибки чека, «срок
+# сдачи вышел», подписи развилки формата, фоновые напоминания об оплате).
+_CHAT_CORE_EN = {
+    "Срок сдачи вышел. Отправить можно, но начислять баллы будет решать менеджер.":
+        "The deadline has passed. You can still submit, but a manager will decide on the points.",
+    "рассылка без текста]": "message without text]",
+    "Важные рассылки за сегодня:": "Important messages today:",
+    "Принимается только PDF-документ. Для скриншота используй функцию отправки фото.":
+        "Only a PDF document is accepted. For a screenshot, use the photo-sending option.",
+    "Файл слишком большой (максимум 10 МБ). Пришли чек меньшего размера.":
+        "File is too large (max 10 MB). Send a smaller receipt.",
+    "Изображение слишком большое (максимум 10 МБ). Пришли чек меньшего размера.":
+        "Image is too large (max 10 MB). Send a smaller receipt.",
+    "Слишком часто. Подожди пару секунд и попробуй снова.":
+        "Too often. Wait a couple of seconds and try again.",
+    "Отправь чек оплаты (PDF-документ или фото).\nИли /start — вернуться в меню (загрузить чек можно будет позже).":
+        "Send your payment receipt (a PDF document or photo).\nOr /start — return to the menu (you can upload the receipt later).",
+    "⏭ Оплачу позже": "⏭ I'll pay later",
+    "Гости с ночёвкой": "Guests with overnight stay",
+    "Гости без ночёвки": "Guests without overnight stay",
+    "Напоминание об оплате участия!\n\nСрок оплаты истекает скоро. Загрузи чек оплаты через бота.":
+        "Payment reminder!\n\nThe payment deadline is coming up soon. Upload your payment receipt via the bot.",
+    "Срок оплаты участия истёк.\n\nЕсли ты ещё планируешь участвовать — загрузи чек через бота (кнопка «💳 Оплата» в меню) или свяжись с организатором.":
+        "The payment deadline has passed.\n\nIf you still plan to take part, upload your receipt via the bot (the «💳 Payment» button in the menu) or contact the organizer.",
+}
+
 FORM_DEFAULT_EN: dict[str, str] = {
-    **_PROMPT_DEFAULTS_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
+    **_PROMPT_DEFAULTS_EN, **_CHAT_CORE_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
     **_OPTIONS_EN, **_CODE_LITERALS_EN, **_ENGINE_DYNAMIC_EN, **_REGISTRY_TEXTS_EN,
     **_AMBASSADOR_WAVE_TEXTS_EN, **_NEUTRAL_DEFAULTS_EN, **_POINTS_261010_EN,
     # Подписи кнопок главного меню (группа menu_labels): дефолты переведены руками в MENU_EN —
