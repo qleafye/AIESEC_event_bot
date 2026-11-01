@@ -2065,6 +2065,11 @@ async def init_db():
         # Последняя проблема приёма push-формы (запрос пришёл без ответов); снимается первым
         # нормальным ответом. Показывается в карточке формы.
         await _ensure_column(db, "external_forms", "push_warning", "TEXT")
+        # Предупреждение «форма с вопросом про вуз подключена, а делегации выключены»: когда
+        # фоновая проверка впервые увидела форму в таком состоянии и когда по ней ушло
+        # предупреждение менеджерам. Вышла из состояния — обе сбрасываются.
+        await _ensure_column(db, "external_forms", "dlg_off_seen_at", "TEXT")
+        await _ensure_column(db, "external_forms", "dlg_off_alerted_at", "TEXT")
         await db.execute('''
             CREATE TABLE IF NOT EXISTS external_form_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
