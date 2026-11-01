@@ -315,8 +315,11 @@ export async function render(root, params, ctx) {
     try {
       data = await api(cityCode
         ? `/checkin/points?city=${encodeURIComponent(cityCode)}`
-        : "/checkin/points");
+        : "/checkin/points", { timeoutMs: SCAN_TIMEOUT_MS });
     } catch (err) {
+      // Уже показанные точки не стираем: после паузы обновление могло не дойти,
+      // а волонтёр всё ещё сканирует вчерашний выбор — его поправит следующий удачный ответ.
+      if (pointsData.length) return;
       pointChips.replaceChildren(h("span", {
         class: "muted", text: isNetworkError(err) ? NETWORK_TEXT : "Точки недоступны.",
       }));
@@ -352,12 +355,20 @@ export async function render(root, params, ctx) {
   // видно, поэтому её отсчёт стартует, когда попап закрыт.
   let popupOpen = false;
 
-  function startScan() {
+  // После паузы в сканере остаётся вчерашняя сессия. Первый QR уходит в неё и краснеет
+  // («не сегодня»), список обновляется уже после отказа, и повтор того же человека проходит.
+  // Поэтому точки перечитываем до открытия камеры.
+  async function startScan() {
     if (!canScan) return;
     scanGate.resume(); // волонтёр видел отказ и сам продолжил — очередь уходит дальше
+    await loadPoints(citySelect.value || undefined);
     popupOpen = true;
     tg.showScanQrPopup({ text: SCAN_POPUP_TEXT }, onQrText);
   }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") loadPoints(citySelect.value || undefined);
+  });
 
   // closeButton=true — не-🟢 исход (duplicate/denied/not_found/foreign_event/другой город
   // форума/сетевая ошибка) или 🟢 с кнопкой записи на сессию: родной попап уже закрыт (submitScan вызвал tg.closeScanQrPopup()
@@ -524,13 +535,25 @@ export async function render(root, params, ctx) {
   // возвращает HOLD: очередь ждёт явного «Сканировать дальше», плашку отказа не затирает.
   // 🟢 с предложением записи на сессию держится так же: кнопку «Записать / Перезаписать на эту»
   // под открытой камерой не видно, а следующий скан затёр бы плашку.
+  function postScan(payloadText) {
+    return measured(() => api("/checkin/scan", {
+      method: "POST", timeoutMs: SCAN_TIMEOUT_MS,
+      body: { payload: payloadText, point: selectedPoint, city: citySelect.value || undefined },
+    }));
+  }
+
   async function submitScan(payloadText) {
     showChecking();
     try {
-      const res = await measured(() => api("/checkin/scan", {
-        method: "POST", timeoutMs: SCAN_TIMEOUT_MS,
-        body: { payload: payloadText, point: selectedPoint, city: citySelect.value || undefined },
-      }));
+      let res;
+      try {
+        res = await postScan(payloadText);
+      } catch (err) {
+        // После паузы первый запрос часто не доходит (радио телефона ещё спит).
+        // Повтор один: отметка идемпотентна, второй ответ «уже был» — не вторая запись.
+        if (!isNetworkError(err)) throw err;
+        res = await postScan(payloadText);
+      }
       loadNetTexts();
       const holds = !SUCCESS_STATUSES.has(res.status)
         || offersEnroll(res, { training: selectedPoint === TRAINING_POINT });
