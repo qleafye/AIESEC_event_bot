@@ -251,8 +251,8 @@ _BIND_INSTRUCTIONS = (
     "Добавьте бота в чат оргов этого города (правами администратора можно не наделять) и "
     "подтвердите одним из двух способов:\n\n"
     "1. Перешлите сюда любое сообщение ИЗ этого чата — бот определит чат по пересылке.\n"
-    "2. Если пересылка в чате выключена (защита контента) — отправьте прямо в чате команду "
-    "/sos_id.\n\n"
+    "2. Если пересылка в чате выключена (защита контента) — откройте группу оргов и напишите "
+    "там /sos_id. В эту личку команда чат не привязывает.\n\n"
     "Заявка активна 15 минут."
 )
 
@@ -270,10 +270,19 @@ async def asos_bind_start(callback: types.CallbackQuery, state: FSMContext):
             )
             return
         bind_city = code
+    current = await sos_service.sos_chat_for_city(bind_city)
     await sos_service.set_pending_bind(callback.from_user.id, bind_city)
     await state.set_state(SosChatBind.waiting)
     await callback.answer()
-    await callback.message.answer(_BIND_INSTRUCTIONS, reply_markup=get_cancel_kb())
+    text = _BIND_INSTRUCTIONS
+    if current:
+        title = (current.get("title") or "").strip()
+        shown = f"«{title}»" if title else "текущий чат"
+        text = (
+            f"Сейчас привязан {shown}. Он останется, пока вы не подтвердите другой.\n\n"
+            + _BIND_INSTRUCTIONS
+        )
+    await callback.message.answer(text, reply_markup=get_cancel_kb())
 
 
 @router.message(SosChatBind.waiting, F.text.in_({"Отмена", "/cancel"}))
@@ -283,15 +292,34 @@ async def asos_bind_cancel(message: types.Message, state: FSMContext):
     await message.answer("Привязка отменена.", reply_markup=ReplyKeyboardRemove())
 
 
+def _bind_refusal(message: types.Message) -> str:
+    """Ошибка называет, что именно прислали: личку, сообщение человека или вообще не пересылку."""
+    raw = (message.text or "").strip()
+    cmd = raw.split()[0].split("@", 1)[0] if raw else ""
+    if cmd == "/sos_id":
+        return (
+            "Это личка с ботом, сюда /sos_id чат не привязывает. "
+            "Откройте группу оргов и напишите /sos_id там."
+        )
+    origin = getattr(message, "forward_origin", None)
+    if origin is not None and getattr(origin, "chat", None) is None:
+        return (
+            "Вы переслали сообщение человека, а не из группы. "
+            "Откройте чат оргов и перешлите сюда сообщение оттуда "
+            "или напишите /sos_id в той группе."
+        )
+    return (
+        "Не вижу сообщения из группы. Перешлите сюда любое сообщение из чата оргов "
+        "или напишите /sos_id в той группе."
+    )
+
+
 @router.message(SosChatBind.waiting)
 async def asos_bind_step(message: types.Message, state: FSMContext, bot: Bot):
     origin = getattr(message, "forward_origin", None)
     chat = getattr(origin, "chat", None) if origin is not None else None
     if chat is None:
-        await message.answer(
-            "Не понял — перешлите сюда сообщение ИЗ чата оргов (не от человека), либо "
-            "отправьте команду /sos_id прямо в этом чате."
-        )
+        await message.answer(_bind_refusal(message))
         return
     result = await sos_service.complete_chat_bind(
         bot, message.from_user.id, chat.id, chat.title or chat.full_name or "",
