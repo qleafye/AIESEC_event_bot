@@ -16,7 +16,7 @@
 // (screens/applications.js, screens/task_edit.js) не переписывались.
 
 import { icon } from "./icons.js";
-import { flatRow, errorText } from "./ui.js";
+import { flatRow, errorText, labelText } from "./ui.js";
 import { buildV2Control } from "./form_types.js";
 
 export { errorText };
@@ -591,7 +591,7 @@ function resumeForkControl(h, spec, value, onChange) {
     box.append(h("button", {
       class: "btn secondary", type: "button", "aria-label": opt.label,
       onClick: () => onChange(opt.code),
-    }, icon(opt.icon), h("span", { text: opt.label })));
+    }, icon(opt.icon), h("span", { text: labelText(opt.label) })));
   }
   return { control: box };
 }
