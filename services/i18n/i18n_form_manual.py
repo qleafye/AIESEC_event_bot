@@ -467,6 +467,8 @@ _CODE_LITERALS_EN = {
     # ведущего эмодзи, `reg_i18n.tr_text` снимает его до поиска.
     "Сохранил, открывается": "Saved, it opens",
     "Написать": "Write a comment",
+    "Не сейчас": "Not now",
+    "Ок, без оценки.": "Ok, no rating.",
     "Покажи этот экран волонтёру на входе.": "Show this screen to the volunteer at the entrance.",
     "Ты уже отмечен(а) на входе в {time} — всё в порядке, хорошего дня!":
         "You're already checked in at the entrance at {time} — all good, have a great day!",

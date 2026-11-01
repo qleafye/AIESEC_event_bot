@@ -511,6 +511,21 @@ def test_sfb_rate_marks_rating_and_offers_comment(tmp_path):
     assert "пару слов" in cb.message.text
 
 
+def test_sfb_dismiss_writes_nothing(tmp_path):
+    _ready(tmp_path)
+    sid = _run(_make_session())
+    _run(db.record_session_checkin(DELEGATE_ID, sid, [], source="miniapp"))
+    stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    _run(db.create_session_feedback_prompt(DELEGATE_ID, sid, stamp))
+
+    cb = FakeCallback(f"sfb:x:{sid}", user_id=DELEGATE_ID)
+    _run(sf_handlers.sfb_dismiss(cb))
+
+    row = _run(db.get_session_feedback(DELEGATE_ID, sid))
+    assert row["rating"] is None
+    assert "без оценки" in cb.message.text
+
+
 def test_sfb_rate_retap_changes_rating_not_duplicate_row(tmp_path):
     _ready(tmp_path)
     sid = _run(_make_session())

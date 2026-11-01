@@ -551,6 +551,8 @@ def code_literals() -> list[tuple[str, str]]:
     # (services/session_feedback.py). Ключи без ведущего эмодзи — как у кнопок выше.
     items.append(("lit:checkin_broadcast.confirm_button", "Сохранил, открывается"))
     items.append(("lit:session_feedback.comment_button", "Написать"))
+    items.append(("lit:session_feedback.dismiss_button", "Не сейчас"))
+    items.append(("lit:session_feedback.dismissed", "Ок, без оценки."))
     items.append(("lit:checkin_not_arrived.coming_button", "Уже еду"))
     items.append(("lit:checkin_not_arrived.cant_button", "Не смогу прийти"))
     items.append(("lit:checkin_not_arrived.here_button", "Я на месте"))
