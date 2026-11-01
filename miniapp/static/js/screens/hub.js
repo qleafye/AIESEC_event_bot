@@ -624,7 +624,9 @@ async function renderManagerHub(root, ctx, opts = {}) {
         // D-04: плитка уже несёт Lucide-иконку слева — labelText снимает ведущий эмодзи
         // подписи реестра, не дублируя его рядом с иконкой (тот же приём, что выше по файлу).
         label: labelText(labels[item.section] || item.section),
-        meta: "…",
+        // «…» только пока грузится счётчик. У плитки без загрузчика (заявки, FAQ, сканер)
+        // многоточие висело бы всегда.
+        meta: MANAGER_FETCHERS[item.hash] ? "…" : "",
       });
       tileEls[item.hash] = el;
       tiles.append(el);
@@ -641,8 +643,9 @@ async function renderManagerHub(root, ctx, opts = {}) {
       const data = await api(fetcher.path, { quiet: true });
       applyManagerTileData(item.hash, data, tileEls[item.hash], hero);
     } catch (_) {
-      // Плитка без цифры, экран не падает (T-19.1-16) — сервер по-прежнему проверял право
-      // на каждом из этих же маршрутов, отказ здесь — сетевой/403, не утечка данных.
+      // Сеть или 403: многоточие не оставляем, иначе плитка выглядит вечно загружающейся.
+      const small = tileEls[item.hash] && tileEls[item.hash].querySelector("small");
+      if (small) small.textContent = "";
     }
   }));
 }
