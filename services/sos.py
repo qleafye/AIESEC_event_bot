@@ -257,13 +257,23 @@ async def complete_chat_bind(bot, admin_id: int, chat_id: int, title: str) -> st
         return BIND_EXPIRED
     if not await _bot_is_chat_member(bot, chat_id):
         return BIND_NOT_MEMBER
+    city = pending.get("city")
+    already = await sos_chat_for_city(city)
+    same = (
+        already is not None
+        and int(already["chat_id"]) == int(chat_id)
+        and (already.get("title") or "") == (title or "")
+    )
     await clear_pending_bind(admin_id)
-    await bind_sos_chat(admin_id, chat_id, title, pending.get("city"))
+    await bind_sos_chat(admin_id, chat_id, title, city)
+    shown = html_module.escape(title or str(chat_id))
+    note = (
+        f"Чат SOS «{shown}» уже был привязан — заново ничего не менял."
+        if same
+        else f"✅ Чат SOS «{shown}» привязан."
+    )
     try:
-        await bot.send_message(
-            admin_id,
-            f"✅ Чат SOS «{html_module.escape(title or str(chat_id))}» привязан.",
-        )
+        await bot.send_message(admin_id, note)
     except Exception as e:
         logger.info("sos.complete_chat_bind: не удалось подтвердить admin_id=%s: %s", admin_id, e)
     return BIND_OK

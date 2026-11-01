@@ -924,6 +924,52 @@ def test_asos_bind_start_sets_pending_and_state(tmp_path):
     assert _run(sos_service.get_pending_bind(ADMIN_ID)) is not None
 
 
+def test_asos_bind_start_says_current_chat_stays(tmp_path):
+    _ready(tmp_path)
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Юлид орги", None))
+    state = _fresh_state(ADMIN_ID)
+    cb = FakeCallback("asos_bind", user_id=ADMIN_ID)
+    _run(admin_sos.asos_bind_start(cb, state))
+    text = cb.message.answers[0][0]
+    assert "Юлид орги" in text and "останется" in text
+
+
+def test_asos_bind_step_private_command_and_person_forward_explain(tmp_path):
+    _ready(tmp_path)
+    state = _fresh_state(ADMIN_ID)
+    _run(sos_service.set_pending_bind(ADMIN_ID, None))
+    _run(state.set_state(SosChatBind.waiting))
+    bot = FakeBot()
+
+    private = FakeMessage(text="/sos_id", user_id=ADMIN_ID)
+    _run(admin_sos.asos_bind_step(private, state, bot))
+    assert "личка" in private.answers[-1][0]
+    assert _run(state.get_state()) == SosChatBind.waiting.state
+
+    class _Person:
+        chat = None
+
+    person = FakeMessage(user_id=ADMIN_ID, forward_origin=_Person())
+    _run(admin_sos.asos_bind_step(person, state, bot))
+    assert "человека" in person.answers[-1][0]
+
+    plain = FakeMessage(text="f", user_id=ADMIN_ID)
+    _run(admin_sos.asos_bind_step(plain, state, bot))
+    assert "Не вижу сообщения из группы" in plain.answers[-1][0]
+    assert _run(sos_service.get_pending_bind(ADMIN_ID)) is not None
+
+
+def test_rebind_same_chat_does_not_look_like_a_new_success(tmp_path):
+    _ready(tmp_path)
+    _run(sos_service.bind_sos_chat(ADMIN_ID, CHAT_ID, "Чат оргов Москвы", None))
+    _run(sos_service.set_pending_bind(ADMIN_ID, None))
+    bot = FakeBot()
+    result = _run(sos_service.complete_chat_bind(bot, ADMIN_ID, CHAT_ID, "Чат оргов Москвы"))
+    assert result == sos_service.BIND_OK
+    assert any("уже был привязан" in s[1] for s in bot.sent)
+    assert all("привязан." not in s[1] or "уже был" in s[1] for s in bot.sent)
+
+
 def test_asos_bind_step_forwarded_chat_message_completes_bind(tmp_path):
     _ready(tmp_path)
     state = _fresh_state(ADMIN_ID)
