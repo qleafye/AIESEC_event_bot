@@ -3436,6 +3436,54 @@ def _session_forms_for_day(conn, scope: Scope, day: str, notes: list[str], hourl
     }
 
 
+_FEEDBACK_DAY_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def feedback_program_days(conn, scope: Scope) -> list[dict]:
+    """Дни программы: у выбранного города или у всех, если город на странице не выбран.
+    Подпись кнопки — день и месяц, не код даты."""
+    if not _table_exists(conn, "program_sessions"):
+        return []
+    if scope.city is not None:
+        rows = conn.execute(
+            "SELECT DISTINCT day FROM program_sessions "
+            "WHERE city = ? AND day IS NOT NULL ORDER BY day",
+            (scope.city,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT DISTINCT day FROM program_sessions "
+            "WHERE day IS NOT NULL ORDER BY day"
+        ).fetchall()
+    days: list[dict] = []
+    for row in rows:
+        raw = str(row["day"] or "")
+        if not _FEEDBACK_DAY_RE.match(raw):
+            continue
+        days.append({
+            "day": raw,
+            "label": datetime.strptime(raw, "%Y-%m-%d").strftime("%d.%m"),
+        })
+    return days
+
+
+def resolve_feedback_day(raw: str | None, days: list[dict], today: str) -> str:
+    """День экрана. Кривой адрес и дата вне программы не принимаются.
+    Без выбора: сегодня, если оно в программе, иначе последний прошедший день,
+    иначе первый день программы. Без программы остаётся сегодня, как раньше."""
+    known = [d["day"] for d in days]
+    if raw and _FEEDBACK_DAY_RE.match(raw) and (not known or raw in known):
+        return raw
+    if today in known:
+        return today
+    past = [d for d in known if d <= today]
+    if past:
+        return past[-1]
+    if known:
+        return known[0]
+    return today
+
+
 def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
     """Опросы бота, голосования дня, фидбек сессий и внешние формы за `day` (МСК).
     Без ПД на странице: счётчики, распределение закрытых вопросов, не сырой текст.
@@ -3446,6 +3494,7 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
         day_label = datetime.strptime(day, "%Y-%m-%d").strftime("%d.%m.%Y")
     except ValueError:
         day_label = day
+    when = "сегодня" if day == now.strftime("%Y-%m-%d") else day_label
     notes: list[str] = []
     forms: list[dict] = []
     hourly_by_key: dict[str, dict[str, int]] = {}
@@ -3580,7 +3629,7 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
                 continue
             if _looks_like_registration_form(conn, form["id"]):
                 notes.append(
-                    f"Внешняя форма «{form['title']}» за сегодня есть ответы, "
+                    f"Внешняя форма «{form['title']}» за {when} есть ответы, "
                     "но это анкета регистрации — в таблицу не входит."
                 )
                 continue
@@ -3609,7 +3658,7 @@ def feedback_day(conn, scope: Scope, *, day: str | None = None) -> dict:
             })
             hourly_by_key[key] = hours
         if ext_today == 0 and ext_rows:
-            notes.append("Внешних форм с ответами за сегодня нет.")
+            notes.append(f"Внешних форм с ответами за {when} нет.")
 
     hour_set: set[str] = set()
     for hours in hourly_by_key.values():
