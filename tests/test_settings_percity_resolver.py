@@ -55,6 +55,7 @@ EXPECTED_PER_CITY_KEYS = {
     "session_enroll_back_button",
     "session_remind_enabled",
     "session_remind_minutes",
+    "session_remind_audience",
     "session_remind_text",
     "session_morning_enabled",
     "session_morning_time",
