@@ -1,5 +1,6 @@
 """Экран «⏰ Напоминания о сессиях» (из «⚙️ Настройки записи»): тумблер «за N минут до сессии»,
-минуты кнопками, текст напоминания, тумблер «утром — программа на день», время и шапка утреннего
+минуты кнопками, кому слать (всем одобренным или только записанным), текст напоминания,
+тумблер «утром — программа на день», время и шапка утреннего
 сообщения, «📨 Прислать себе пример» и строка-статус «сколько запланировано».
 
 Всё кнопками (правило проекта «бот для людей»): коды настроек менеджер не видит, текстом вводятся
@@ -17,7 +18,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from domain.cities import cities_module_on, city_label, get_setting_typed_for_city, header_snapshot, per_city_key
 from domain.settings.placeholders import hint
-from domain.settings.schema import SETTINGS_SCHEMA
+from domain.settings.schema import SETTINGS_SCHEMA, option_label
 from handlers.admin import router
 from handlers.forum.admin_program import _CITY_FORBIDDEN_ALERT, _city_allowed
 from handlers.states import EditSetting
@@ -66,16 +67,33 @@ async def _status_line(code: str) -> str:
     return f"Запланировано на {_day_label(plan['day'])}: " + ", ".join(parts) + "."
 
 
+def _audience_paragraph(audience: str) -> str:
+    """Текущий выбор — словами подписи. Коды настройки в абзац не попадают."""
+    chosen = option_label("session_remind_audience", audience if audience == "enrolled" else "approved")
+    if audience == "enrolled":
+        return (
+            f"Сейчас: {chosen}. "
+            "Напоминание за N минут приходит только записанным на эту сессию и одобренным. "
+            "Утренняя программа — только тем, кто записался хотя бы на одну сессию этого дня. "
+            "Общая сессия без записи сама по себе её не присылает."
+        )
+    return (
+        f"Сейчас: {chosen}. "
+        "Напоминание за N минут приходит личным сообщением всем одобренным делегатам города. "
+        "Записываться на сессию для этого не нужно. "
+        "Утренняя программа — тем, у кого в этот день есть своё расписание."
+    )
+
+
 async def render_remind_screen(code: str) -> tuple[str, InlineKeyboardMarkup]:
     remind_on = await sr.remind_enabled(code)
     minutes = await sr.remind_minutes(code)
     morning_on = await sr.morning_enabled(code)
     morning_at = await sr.morning_time(code)
+    audience = await sr.remind_audience(code)
     lines = [
         f"⏰ <b>Напоминания о сессиях</b> — {html_module.escape(await city_label(code))}", "",
-        "Напоминание за N минут приходит личным сообщением всем одобренным делегатам города. "
-        "Записываться на сессию для этого не нужно. "
-        "Утренняя программа — тем, у кого в этот день есть своё расписание.", "",
+        _audience_paragraph(audience), "",
         f"Напоминать за {minutes} мин до сессии: {_onoff(remind_on)}",
         f"Утром — программа на день: {_onoff(morning_on)}, в {morning_at} по времени города",
         "", await _status_line(code),
@@ -87,12 +105,20 @@ async def render_remind_screen(code: str) -> tuple[str, InlineKeyboardMarkup]:
         InlineKeyboardButton(text=("✅ " if m == minutes else "") + f"{m} мин", callback_data=f"prog_srmmin:{code}:{m}")
         for m in sr.MINUTES_CHOICES
     ]
+    audience_row = [
+        InlineKeyboardButton(
+            text=("✅ " if audience == opt else "") + option_label("session_remind_audience", opt),
+            callback_data=f"prog_srmaud:{code}:{opt}",
+        )
+        for opt in ("approved", "enrolled")
+    ]
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text=f"Напоминать за {minutes} мин: " + ("✅ → ❌" if remind_on else "❌ → ✅"),
             callback_data=f"prog_srmon:{code}",
         )],
         minute_row,
+        audience_row,
         [InlineKeyboardButton(text="✏️ Текст напоминания", callback_data=f"prog_srmtx:{code}:remind")],
         [InlineKeyboardButton(
             text="Утром — программа на день: " + ("✅ → ❌" if morning_on else "❌ → ✅"),
@@ -228,3 +254,22 @@ async def prog_srmex(callback: types.CallbackQuery):
     await callback.message.answer("📨 А так — утреннюю программу (если у вас нет своих записей, показаны все сессии дня):")
     await callback.message.answer(morning)
     await callback.answer("Прислал.")
+
+
+@router.callback_query(F.data.startswith("prog_srmaud:"))
+async def prog_srmaud(callback: types.CallbackQuery):
+    _, code, value = callback.data.split(":", 2)
+    if await _deny(callback, code):
+        return
+    if value not in ("approved", "enrolled"):
+        approved = option_label("session_remind_audience", "approved")
+        enrolled = option_label("session_remind_audience", "enrolled")
+        await callback.answer(
+            f"Выберите одну из кнопок: «{approved}» или «{enrolled}».",
+            show_alert=True,
+        )
+        return
+    await set_setting_by_admin(
+        callback.from_user.id, await _write_key("session_remind_audience", code), value,
+    )
+    await _show(callback, code, "Сохранено.")

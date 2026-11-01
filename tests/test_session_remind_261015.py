@@ -547,7 +547,15 @@ def test_screen_shows_status_and_all_buttons(tmp_path, monkeypatch):
     for prefix in ("prog_srmon", "prog_srmmo", "prog_srmtx", "prog_srmtm", "prog_srmex", "prog_enrset"):
         assert any(c.startswith(prefix) for c in data), prefix
     assert [c for c in data if c.startswith("prog_srmmin")] == [f"prog_srmmin:msk:{m}" for m in (5, 10, 15, 30)]
-    assert not any("session_remind" in t for t in [b.text for row in kb.inline_keyboard for b in row])
+    buttons = [b for row in kb.inline_keyboard for b in row]
+    by_text = {b.text: b.callback_data for b in buttons}
+    assert by_text["✅ Всем одобренным"] == "prog_srmaud:msk:approved"
+    assert by_text["Только записанным на сессию"] == "prog_srmaud:msk:enrolled"
+    for button in buttons:
+        assert "approved" not in button.text
+        assert "enrolled" not in button.text
+        assert "session_remind" not in button.text
+    assert "approved" not in text and "enrolled" not in text and "session_remind" not in text
 
 
 def test_toggle_and_minutes_handlers_save_and_rerender(tmp_path, monkeypatch):
@@ -571,6 +579,32 @@ def test_toggle_and_minutes_handlers_save_and_rerender(tmp_path, monkeypatch):
     assert on is True and minutes == 15 and morning is True
     assert "Напоминать за 15 мин" in cb.message.text_edited or cb.message.text_edited
     assert bad.answers and bad.answers[0][1] is True and "5, 10, 15 или 30" in bad.answers[0][0]
+
+
+def test_audience_buttons_save_enrolled_and_reject_unknown(tmp_path, monkeypatch):
+    ready(tmp_path)
+    _setup(monkeypatch, NOW_MORNING)
+
+    async def go():
+        await seed_msk_program()
+        bad = FakeCallback("prog_srmaud:msk:all")
+        await ui.prog_srmaud(bad)
+        still = await sr.remind_audience(CITY)
+        ok = FakeCallback("prog_srmaud:msk:enrolled")
+        await ui.prog_srmaud(ok)
+        saved = await sr.remind_audience(CITY)
+        marked = [b.text for row in ok.message.edit_markup.inline_keyboard for b in row]
+        return still, saved, bad, marked, ok.answers
+
+    still, saved, bad, marked, answers = run(go())
+    assert still == "approved"
+    alert, is_alert = bad.answers[0]
+    assert is_alert is True
+    assert "Всем одобренным" in alert and "Только записанным на сессию" in alert
+    assert "Выберите одну из кнопок" in alert
+    assert saved == "enrolled"
+    assert "✅ Только записанным на сессию" in marked
+    assert answers and answers[-1] == ("Сохранено.", False)
 
 
 def test_text_and_time_editors_open_generic_edit_with_return_to_screen(tmp_path):
