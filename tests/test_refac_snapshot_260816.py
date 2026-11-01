@@ -646,6 +646,11 @@ def _build_snapshot_lines():
 # 0 реордеров. handlers/settings/admin_qr_card_theme.py (шов-импорт из хвоста admin_miniapp_theme.py):
 # 3 message (qrct_photo_step/qrct_document_step/qrct_image_step_invalid) после miniapp_theme_photo_step_invalid
 # и 13 callback_query qrct_* после miniapp_theme_remove_photo; pure insert, zero reorders.
+# Дрифт-нота (28.10, бронь в магазине баллов): +13 хендлеров, чистые вставки поверх уже слитого снимка, пересчитано
+# по составу строк. admin.router: ввод кода брони (1 message, state:ShopAdmin:*) и shp_resv/shp_code/shp_rc/shp_rgo/shp_rcan/shp_rcango
+# (6 callback_query) из handlers/game/admin_shop_reserve.py (хвост admin_shop.py) — сразу после хендлеров admin_shop;
+# user_actions.router: shopv_take/shopv_go/shopv_my/shopv_qr/shopv_cancel/shopv_cgo — сразу после shop_showcase,
+# ПЕРЕД reg_handoff_idle_fallback. Pure insert, zero reorders.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -898,6 +903,7 @@ admin|message|shop_command|cmd:shop
 admin|message|shop_find_input|state:ShopAdmin:*
 admin|message|shop_new_input|state:ShopAdmin:*
 admin|message|shop_edit_input|state:ShopAdmin:*
+admin|message|shop_code_input|state:ShopAdmin:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1839,6 +1845,12 @@ admin|callback_query|shop_top|shp_top:*
 admin|callback_query|shop_top_csv|shp_topcsv
 admin|callback_query|shop_sales|shp_sales:*
 admin|callback_query|shop_sales_csv|shp_salescsv
+admin|callback_query|shop_toggle_reserve|shp_resv
+admin|callback_query|shop_code_start|shp_code
+admin|callback_query|shop_res_card|shp_rc:*
+admin|callback_query|shop_res_issue|shp_rgo:*
+admin|callback_query|shop_res_cancel|shp_rcan:*
+admin|callback_query|shop_res_cancel_go|shp_rcango:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2019,6 +2031,12 @@ user_actions|callback_query|certificate_get|cert_get
 user_actions|callback_query|certificate_edit|cert_edit
 user_actions|callback_query|certificate_send|cert_ok
 user_actions|callback_query|shop_showcase|shopv
+user_actions|callback_query|shop_take|shopv_take:*
+user_actions|callback_query|shop_take_go|shopv_go:*
+user_actions|callback_query|shop_my|shopv_my
+user_actions|callback_query|shop_my_qr|shopv_qr:*
+user_actions|callback_query|shop_cancel|shopv_cancel:*
+user_actions|callback_query|shop_cancel_go|shopv_cgo:*
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2662,7 +2680,8 @@ def test_snapshot_total_handler_count_is_292():
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
     # 28.10 (оформление карточки QR): +16 хендлеров qrct_*, чистая вставка поверх снимка с опросом (1369 -> 1385).
     # 28.10 (делегации в одном месте): +1 admin dlg_off_alert после dlg_game, чистая вставка (1385 -> 1386).
-    assert len(GOLDEN_SNAPSHOT) == 1386
+    # 28.10 (бронь в магазине баллов): +13 хендлеров, чистая вставка (1386 -> 1399).
+    assert len(GOLDEN_SNAPSHOT) == 1399
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
