@@ -405,10 +405,10 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await _safe_answer(message, f"{p}{await prompt('source', participant_type, city_code)}", reply_markup=await get_source_kb())
         await state.set_state(Registration.source)
     elif step_key == "local_committee":
-        await _safe_answer(message, f"{p}{await prompt('local_committee', participant_type, city_code)}", reply_markup=get_local_committee_kb())
+        await _safe_answer(message, f"{p}{await prompt('local_committee', participant_type, city_code)}", reply_markup=get_local_committee_kb(await engine_options("local_committee")))
         await state.set_state(Registration.local_committee)
     elif step_key == "position":
-        await _safe_answer(message, f"{p}{await prompt('position', participant_type, city_code)}", reply_markup=get_position_kb())
+        await _safe_answer(message, f"{p}{await prompt('position', participant_type, city_code)}", reply_markup=get_position_kb(await engine_options("position")))
         await state.set_state(Registration.position)
     elif step_key == "education_status":  # Phase 28 (28-01, R-A3): реестровый список, пусто = прежние три (D-06)
         await _safe_answer(message, f"{p}{await prompt('education_status', participant_type, city_code)}", reply_markup=get_education_status_kb(await engine_options("education_status")))
@@ -462,10 +462,10 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await _safe_answer(message, f"{p}{await prompt('comments', participant_type, city_code)}", reply_markup=get_skip_kb())
         await state.set_state(Registration.comments)
     elif step_key == "department":
-        await _safe_answer(message, f"{p}{await prompt('department', participant_type, city_code)}", reply_markup=get_department_kb())
+        await _safe_answer(message, f"{p}{await prompt('department', participant_type, city_code)}", reply_markup=get_department_kb(await engine_options("department")))
         await state.set_state(Registration.department)
     elif step_key == "aiesec_role":
-        await _safe_answer(message, f"{p}{await prompt('aiesec_role', participant_type, city_code)}", reply_markup=get_aiesec_role_kb())
+        await _safe_answer(message, f"{p}{await prompt('aiesec_role', participant_type, city_code)}", reply_markup=get_aiesec_role_kb(await engine_options("aiesec_role")))
         await state.set_state(Registration.aiesec_role)
     elif step_key == "needs_certificate":
         await _safe_answer(message, f"{p}{await prompt('needs_certificate', participant_type, city_code)}", reply_markup=get_yes_no_kb())
@@ -477,7 +477,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         )
         await state.set_state(Registration.alumni_status)
     elif step_key == "english_level":
-        await _safe_answer(message, f"{p}{await prompt('english_level', participant_type, city_code)}", reply_markup=get_english_level_kb())
+        await _safe_answer(message, f"{p}{await prompt('english_level', participant_type, city_code)}", reply_markup=get_english_level_kb(await engine_options("english_level")))
         await state.set_state(Registration.english_level)
     elif step_key == "allergies":
         await _safe_answer(message, f"{p}{await prompt('allergies', participant_type, city_code)}", reply_markup=get_skip_kb())
@@ -489,7 +489,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await _safe_answer(message, f"{p}{await prompt('arrival', participant_type, city_code)}", reply_markup=get_arrival_kb())
         await state.set_state(Registration.arrival)
     elif step_key == "housing":
-        await _safe_answer(message, f"{p}{await prompt('housing', participant_type, city_code)}", reply_markup=get_housing_kb())
+        await _safe_answer(message, f"{p}{await prompt('housing', participant_type, city_code)}", reply_markup=get_housing_kb(await engine_options("housing")))
         await state.set_state(Registration.housing)
     elif step_key == "bed_sharing":
         await _safe_answer(message,
@@ -506,7 +506,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif step_key == "transport":
         await _safe_answer(message,
             f"{p}{await prompt('transport', participant_type, city_code)}",
-            reply_markup=_reply_kb(TRANSPORT_OPTIONS),
+            reply_markup=_reply_kb(await engine_options("transport")),
         )
         await state.set_state(Registration.transport)
     elif step_key == "payment_plan_date":
@@ -1229,15 +1229,16 @@ async def _reg_form_cta_kb(message: types.Message) -> InlineKeyboardMarkup | Non
 DEFAULT_PARTY_FORK_TEXT = SETTINGS_SCHEMA["party_fork_text"]["default"]
 
 
-def _party_fork_kb() -> InlineKeyboardMarkup:
+def _party_fork_kb(labels: dict | None = None) -> InlineKeyboardMarkup:
     """D-10/D-09: pre-flow inline keyboard, not a REG_FLOW step. Кнопки строятся из
     `reg_options.PARTY_TRACK_OPTIONS` — того же списка, что отдаёт пикеру веба
     `reg_engine.party_track_options()`; токен callback — обратная карта `_PARTY_TAG_MAP`
-    (единый словарь токенов с deep-link), `full` остаётся `full`."""
+    (единый словарь токенов с deep-link), `full` остаётся `full`. `labels` — код -> подпись из
+    реестра (`reg_engine.party_track_options()`); None — дефолты реестра (они же прежние подписи)."""
     token_by_track = {track: token for token, track in _PARTY_TAG_MAP.items()}
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=label, callback_data=f"party_pick:{token_by_track.get(code, code)}")]
-        for code, label in PARTY_TRACK_OPTIONS
+        [InlineKeyboardButton(text=(labels or {}).get(code) or SETTINGS_SCHEMA[reg_engine.PARTY_TRACK_LABEL_KEYS[code]]["default"], callback_data=f"party_pick:{token_by_track.get(code, code)}")]
+        for code, _ in PARTY_TRACK_OPTIONS
     ])
 
 
@@ -2509,7 +2510,7 @@ async def _continue_after_city(
             participant_type=dl_party_track or recovered_track or _existing.get("participant_type"),
         )
         fork_text = await get_setting_typed("party_fork_text")  # Phase 17.1 (17.1-03): реестр
-        await reg_i18n.say(message, fork_text, reply_markup=_party_fork_kb())  # Quick 260906
+        await reg_i18n.say(message, fork_text, reply_markup=_party_fork_kb({o["code"]: o["label"] for o in await reg_engine.party_track_options()}))  # Quick 260906
         return  # wait for the tap; the party_pick handler starts the flow with the chosen track
 
     await _start_registration_flow(
