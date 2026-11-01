@@ -1818,6 +1818,10 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         user = await get_user(ambassador_id)
         if not user or not wave_eligible(dict(user), wave):
             return
+        # Тот же гейт, что у напоминания о дедлайне: отклонённый, pending и прошлый сезон
+        # задания не видят. Старт волны — это и есть пуш списка заданий.
+        if not (await _game_open_filter())(dict(user)):
+            return
 
         tasks = await list_wave_tasks(wave_id, active_only=True)
         lang, tr_map = await i18n.context(ambassador_id)
@@ -2076,6 +2080,11 @@ async def send_task_deadline_reminder(task_id: int) -> None:
                     continue  # задания ему закрыты (отклонён, ждёт решения, прошлый сезон)
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
+                # Тихие часы отдают уже собранный текст утром, без повторной проверки срока.
+                # «Скоро дедлайн» после самого дедлайна не ставим в очередь.
+                due = await quiet_hours.defer_until(now, uid)
+                if due is not None and due >= deadline:
+                    continue
                 lang, tr_map = await i18n.context(uid)
                 template = i18n.tr(template_raw, lang, tr_map)
                 text = game_labels.fill_template(
