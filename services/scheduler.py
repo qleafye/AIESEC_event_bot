@@ -1818,6 +1818,12 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         user = await get_user(ambassador_id)
         if not user or not wave_eligible(dict(user), wave):
             return
+        # Тот же допуск, что у напоминания о дедлайне. Ряд — полный `get_user`
+        # (`SELECT *`): урезанный список амбассадоров колонки status не несёт,
+        # и пустой статус там читался бы как одобренный.
+        allowed = await _game_open_filter()
+        if not allowed(user):
+            return
 
         tasks = await list_wave_tasks(wave_id, active_only=True)
         lang, tr_map = await i18n.context(ambassador_id)
