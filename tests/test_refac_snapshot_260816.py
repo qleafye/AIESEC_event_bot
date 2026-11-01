@@ -637,6 +637,11 @@ def _build_snapshot_lines():
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 3 вставки, 0 удалений, 0 реордеров.
 # admin.router: /shop + ввод (4 message) и shp_*/admin_shop (20 callback_query) из handlers/game/admin_shop.py, хвост admin.py;
 # user_actions.router: витрина shopv (handlers/game/shop_delegate.py) — ПЕРЕД reg_handoff_idle_fallback.
+# Дрифт-нота (28.10, оформление карточки QR): +16 хендлеров admin.router, чистые вставки (1368 -> 1384),
+# пересчитано RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 2 вставки, 0 удалений,
+# 0 реордеров. handlers/settings/admin_qr_card_theme.py (шов-импорт из хвоста admin_miniapp_theme.py):
+# 3 message (qrct_photo_step/qrct_document_step/qrct_image_step_invalid) после miniapp_theme_photo_step_invalid
+# и 13 callback_query qrct_* после miniapp_theme_remove_photo; pure insert, zero reorders.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -657,6 +662,9 @@ admin|message|settings_list_add_item|state:EditSetting:*
 admin|message|miniapp_theme_color_step|state:MiniAppTheme:*
 admin|message|miniapp_theme_photo_step|state:MiniAppTheme:*
 admin|message|miniapp_theme_photo_step_invalid|state:MiniAppTheme:*
+admin|message|qrct_photo_step|state:QrCardTheme:*
+admin|message|qrct_document_step|state:QrCardTheme:*
+admin|message|qrct_image_step_invalid|state:QrCardTheme:*
 admin|message|admin_lookup_search_cancel|state:LookupAdmin:*
 admin|message|admin_lookup_search_step|state:LookupAdmin:*
 admin|message|arr_text_cancel|state:RejectRuleEdit:*,state:RejectRuleEdit:*
@@ -970,6 +978,19 @@ admin|callback_query|miniapp_theme_toggle_playful|miniapp_theme_toggle_playful
 admin|callback_query|miniapp_theme_toggle_pattern|miniapp_theme_toggle_pattern
 admin|callback_query|miniapp_theme_photo_start|miniapp_theme_photo:*
 admin|callback_query|miniapp_theme_remove_photo|miniapp_theme_remove_photo:*
+admin|callback_query|qrct_open|qrct_open
+admin|callback_query|qrct_cancel_edit|qrct_cancel_edit
+admin|callback_query|qrct_pick|qrct_pick:*
+admin|callback_query|qrct_set|qrct_set:*
+admin|callback_query|qrct_toggle|qrct_toggle:*
+admin|callback_query|qrct_photo|qrct_photo:*
+admin|callback_query|qrct_remove|qrct_remove:*
+admin|callback_query|qrct_preview|qrct_preview
+admin|callback_query|qrct_save|qrct_save
+admin|callback_query|qrct_save_go|qrct_save_go
+admin|callback_query|qrct_discard|qrct_discard
+admin|callback_query|qrct_reset|qrct_reset
+admin|callback_query|qrct_reset_go|qrct_reset_go
 admin|callback_query|show_admin_section|admin_sec:*
 admin|callback_query|sheet_logs_open|sheet_logs_open
 admin|callback_query|sheet_logs_autosync_toggle|sheet_logs_autosync_toggle
@@ -2634,7 +2655,8 @@ def test_snapshot_total_handler_count_is_292():
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
     # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
-    assert len(GOLDEN_SNAPSHOT) == 1369
+    # 28.10 (оформление карточки QR): +16 хендлеров qrct_*, чистая вставка поверх снимка с опросом (1369 -> 1385).
+    assert len(GOLDEN_SNAPSHOT) == 1385
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
