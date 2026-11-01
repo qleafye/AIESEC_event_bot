@@ -4487,6 +4487,23 @@ SETTINGS_SCHEMA = {
         "default": "🛍 {shop}: бронь {code} «{title}» отменили на стойке, {price} баллов вернулись. На счету: {balance}.",
         "placeholders": {"shop": "название магазина", "code": "код выдачи брони", "title": "товар", "price": "цена в баллах", "balance": "баланс после операции"},
     },
+    # Магазин баллов: фото товаров альбомом на витрине в чате.
+    "shop_photos_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Фото товаров»",
+        "prompt": "Кнопка на витрине: прислать фото товаров альбомом. Видна, пока витрина открыта и хотя бы у одного товара есть фото.\n\nПример: 🖼 Фото товаров",
+        "default": "🖼 Фото товаров",
+    },
+    "shop_photo_caption_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: подпись к фото товара",
+        "prompt": "Подпись под каждым фото в альбоме товаров.\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах\n\nПример: {title} — {price} баллов",
+        "placeholders": {"title": "товар", "price": "цена в баллах"},
+        "default": "{title} — {price} баллов",
+    },
+    "shop_photos_failed_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: фото не загрузились",
+        "prompt": "Всплывающее сообщение, если Телеграм не принял альбом с фото товаров.",
+        "default": "Фото сейчас не загрузились — попробуй ещё раз через минуту.",
+    },
     "leaderboard_header_text": {
         "type": "text", "group": "game", "label": "🏆 Рейтинг: заголовок",
         "prompt": "Первая строка экрана «🏆 Рейтинг» (и команды /рейтинг). Поддерживается HTML.",
@@ -6658,6 +6675,109 @@ SETTINGS_SCHEMA = {
             "«из {total}»."
         ),
         "default": "из {total}",
+    },
+    # Магазин баллов: экран «🛍 Магазин» делегата (miniapp/routers/shop.py).
+    "miniapp_shop_closed_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: витрина закрыта",
+        "prompt": "Что видит делегат на экране «Магазин», если витрину скрыли, пока экран был открыт.",
+        "default": "Магазин сейчас закрыт — загляни позже.",
+    },
+    "miniapp_shop_empty_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: товаров нет",
+        "prompt": "Текст на экране «Магазин», когда на витрине нет ни одного товара.",
+        "default": "Товаров пока нет — загляни позже.",
+    },
+    "miniapp_shop_balance_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: баланс",
+        "prompt": "Строка с балансом вверху экрана «Магазин».\n\nПодставляется:\n{balance} — баллов на счету\n\nПример: На счету: {balance} баллов",
+        "placeholders": {"balance": "баллов на счету"},
+        "default": "На счету: {balance} баллов",
+    },
+    "miniapp_shop_price_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: цена товара",
+        "prompt": "Цена на карточке товара.\n\nПодставляется:\n{price} — цена в баллах\n\nПример: {price} баллов",
+        "placeholders": {"price": "цена в баллах"},
+        "default": "{price} баллов",
+    },
+    "miniapp_shop_stock_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: остаток товара",
+        "prompt": "Сколько штук осталось — на карточке товара с ограниченным количеством.\n\nПодставляется:\n{n} — сколько осталось\n\nПример: Осталось {n}",
+        "placeholders": {"n": "сколько осталось"},
+        "default": "Осталось {n}",
+    },
+    "miniapp_shop_sold_out_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: товар закончился",
+        "prompt": "Пометка на карточке товара, который закончился.",
+        "default": "Закончился",
+    },
+    "miniapp_shop_limit_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: лимит в одни руки исчерпан",
+        "prompt": "Пометка на карточке, когда делегат уже взял максимум этого товара.\n\nПодставляется:\n{n} — лимит в одни руки\n\nПример: Ты уже взял(а) максимум — {n} в одни руки",
+        "placeholders": {"n": "лимит в одни руки"},
+        "default": "Ты уже взял(а) максимум — {n} в одни руки",
+    },
+    "miniapp_shop_short_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: не хватает баллов",
+        "prompt": "Пометка на карточке, когда баллов меньше цены.\n\nПодставляется:\n{n} — сколько баллов не хватает\n\nПример: Не хватает {n}",
+        "placeholders": {"n": "сколько баллов не хватает"},
+        "default": "Не хватает {n}",
+    },
+    "miniapp_shop_take_button_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Взять»",
+        "prompt": "Кнопка на карточке товара (видна, когда включена «Бронь делегатом»).",
+        "default": "Взять",
+    },
+    "miniapp_shop_take_yes_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Да, списать»",
+        "prompt": "Кнопка в подтверждении брони — списывает баллы.",
+        "default": "Да, списать",
+    },
+    "miniapp_shop_cancel_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Не надо»",
+        "prompt": "Кнопка в подтверждении брони — передумал брать.",
+        "default": "Не надо",
+    },
+    "miniapp_shop_reserve_off_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: бронь выключена",
+        "prompt": "Подсказка на экране «Магазин», пока «Бронь делегатом» выключена.",
+        "default": "Взять товар здесь пока нельзя — подходи к стойке магазина на форуме и покажи свой QR.",
+    },
+    "miniapp_shop_reserved_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: бронь оформлена",
+        "prompt": "Сообщение после брони в приложении.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи",
+        "placeholders": {"title": "товар", "code": "код выдачи брони"},
+        "default": "Забронировано: «{title}». Код выдачи — {code}. Покажи QR или назови код на стойке магазина.",
+    },
+    "miniapp_shop_my_title_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: заголовок «Мои брони»",
+        "prompt": "Заголовок блока броней делегата на экране «Магазин».",
+        "default": "Мои брони",
+    },
+    "miniapp_shop_code_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: код выдачи брони",
+        "prompt": "Строка под названием брони.\n\nПодставляется:\n{code} — код выдачи\n\nПример: Код выдачи: {code}",
+        "placeholders": {"code": "код выдачи брони"},
+        "default": "Код выдачи: {code}",
+    },
+    "miniapp_shop_qr_button_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Показать QR»",
+        "prompt": "Кнопка у брони — показать QR для стойки.",
+        "default": "Показать QR",
+    },
+    "miniapp_shop_cancel_button_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Отменить бронь»",
+        "prompt": "Кнопка у брони — отменить её и вернуть баллы.",
+        "default": "Отменить бронь",
+    },
+    "miniapp_shop_cancel_yes_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Да, отменить бронь»",
+        "prompt": "Кнопка в подтверждении отмены брони.",
+        "default": "Да, отменить бронь",
+    },
+    "miniapp_shop_keep_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Не отменять»",
+        "prompt": "Кнопка в подтверждении отмены брони — оставить бронь.",
+        "default": "Не отменять",
     },
     "miniapp_empty_admin_tasks": {
         "type": "text", "group": "miniapp", "label": "🗂 Пустой список активных заданий",
