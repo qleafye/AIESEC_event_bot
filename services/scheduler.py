@@ -2066,7 +2066,9 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         # Отметка ДО рассылки: лучше недослать одному при сбое, чем разослать всем дважды.
         await mark_task_deadline_reminded(task_id, task.get("deadline_at") or "")
         title = task_title(task)
-        deadline_txt = await game_labels.task_deadline_text(task)
+        # В карточке делегату — только день. В напоминании нужен час: иначе «12.10» не говорит,
+        # что день ещё входит до 23:59. Подсказка настройки обещает в {deadline} дату и время.
+        deadline_txt = game_labels.task_deadline_admin(task)
 
         for uid in recipients:
             # CR-05: сбой у ОДНОГО получателя (например, кривой src в i18n) не должен
