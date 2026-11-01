@@ -124,7 +124,8 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # (domain/settings/delegate_text_fields.py).
     # 28.10: +18 -- тексты брони в магазине баллов (shop_*: «Взять», «🎫 Мои брони», отмена,
     # подпись QR брони, уведомления делегату со стойки) — делегатские тексты группы game.
-    assert len(keys) == 87
+    # 28.10: +3 -- фото товаров альбомом на витрине (кнопка, подпись к фото, текст сбоя).
+    assert len(keys) == 90
     for moved in ("amb_tier1_threshold", "amb_progress_text", "wave_start_message_text"):
         assert s.SETTINGS_SCHEMA[moved]["group"] == "amb"
     for k in keys:

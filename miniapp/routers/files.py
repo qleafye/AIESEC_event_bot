@@ -9,6 +9,8 @@
 Доступ (T-19-20, IDOR) — allow-list, а не «всё, что знает бот» (у бота есть и чеки, и
 резюме делегатов — их `file_id` менеджер геймы видеть не должен):
   - обложка неархивного задания или лого приложения (`miniapp_logo`) — любому принципалу;
+  - фото товара магазина баллов, пока товар на витрине (`shop_db.is_item_photo`), — любому
+    принципалу (экран «🛍 Магазин»); анонимно — нет, это не оформление приложения;
   - любой ассет оформления из `web_theme.ASSET_KEYS` (лого/обложка тёмной темы, 4 стикера,
     иконка монеты, T-19.1-06) — любому принципалу: это графика мероприятия, а не персональные
     данные, менеджер загружает её осознанно как публичное оформление (accept, threat_model);
@@ -129,6 +131,10 @@ async def can_read_file(p: Principal, file_id: str) -> bool:
     if await is_public_asset(file_id):
         return True
     if await is_active_task_cover(file_id):
+        return True
+    from database import shop_db
+
+    if await shop_db.is_item_photo(file_id):
         return True
     # Phase 22 (22-04, T-22-12): держателю `settings` — только file_id, который прямо сейчас
     # является значением photo/file-ключа реестра (settings_ops.file_setting_keys), не любой.
