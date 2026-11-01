@@ -50,6 +50,8 @@
   GET  /app/api/uploads/limits     -> {max_bytes, photo_max_bytes, max_parts, max_text, too_large_text, empty_hint}
   POST /app/api/uploads  multipart `file` -> {kind: photo|document, content: file_id, part_token}
                                        413 too_large (> 20 МБ); 502 {"reason":"telegram_unavailable"}
+                                       каждый ответ изнутри маршрута — заголовок `X-Upload-Ref` (12 hex)
+  POST /app/api/uploads/timing  JSON {ref, client_ms, status, target, size} -> 204 (строка лога uploads.client)
   GET  /app/api/file/{file_id}     -> байты файла (прокси getFile; `principal`; владелец части ИЛИ
                                        moderate_game в пределах города ИЛИ обложка/лого); 403/404
   Менеджер (план 19-05, `require_cap("moderate_game")` + section review):
