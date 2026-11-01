@@ -31,6 +31,7 @@ import domain.regform.engine as reg_engine
 from services.amb import amb_progress, amb_screen
 from services.applications import applications
 from services.i18n import i18n
+from services.game.city_texts import city_text  # тексты геймы и волн города делегата + {chat}
 from services.registration import reg_edit_policy
 from domain.settings.schema import get_setting_typed
 from services.comms.text_fill import fill_collapsing
@@ -152,7 +153,8 @@ async def _amb_lines(
         view = await amb_screen.delegate_view(telegram_id, user=user, need_state=False)
         status = None
         if view.get("status_key"):
-            status = await i18n.tr_setting(view["status_key"], lang, tr_map) or None
+            who = dict(user) if user is not None else telegram_id  # строка статуса — города делегата
+            status = await city_text(view["status_key"], who, lang=lang, tr_map=tr_map) or None
         points = None
         if view.get("referral_points") is not None:
             tpl = await i18n.tr_setting("amb_referral_points_text", lang, tr_map)

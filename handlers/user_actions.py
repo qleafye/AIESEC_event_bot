@@ -90,6 +90,7 @@ from services.forum.checkin import build_checkin_qr, checkin_denial  # Квик 
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from services.amb import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
 from services.amb import amb_status  # правила входа/выхода амбассадора — одна точка
+from services.game.city_texts import city_text  # тексты геймы и волн города делегата + {chat}
 from handlers.game.referral_screen import referral_screen as _referral_screen, amb_tr as _amb_tr  # «Моя ссылка»
 from config import config
 from domain.regform.engine import build_referral_link, is_past_season_row  # решение владельца 17.09: один формат amb_<id> везде
@@ -563,7 +564,7 @@ async def _game_task_list_screen(
         tasks, is_ambassador=is_ambassador, path=user.get("ambassador_path") if user else None,
     )
     if not tasks:
-        return reg_i18n.tr_text(await get_setting_typed("game_task_list_empty"), lang, tr_map), None
+        return await city_text("game_task_list_empty", user_id, lang=lang, tr_map=tr_map, tr=reg_i18n.tr_text), None
 
     total_pages = max(1, -(-len(tasks) // PAGE_SIZE))
     page = max(0, min(page, total_pages - 1))
@@ -1060,7 +1061,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
     await state.set_state(None)
     await callback.answer()
     await callback.message.answer(
-        reg_i18n.tr_text(await get_setting_typed("game_submit_accepted_text"), lang, tr_map),
+        await city_text("game_submit_accepted_text", callback.from_user.id, lang=lang, tr_map=tr_map, tr=reg_i18n.tr_text),
         reply_markup=await get_main_menu_kb(callback.from_user.id),
     )
 
@@ -1902,7 +1903,7 @@ async def show_wave_rating(callback: types.CallbackQuery):
             text, kb = await _wave_rating_screen(closing["id"], callback.from_user.id, lang, tr_map)
             text += "\n\n" + reg_i18n.tr_text("Волна закончилась — итоги готовятся.", lang, tr_map)
         else:
-            text = reg_i18n.tr_text(await get_setting_typed("wave_rating_closed_text"), lang, tr_map)
+            text = await city_text("wave_rating_closed_text", dict(user or {}), lang=lang, tr_map=tr_map, tr=reg_i18n.tr_text)
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=reg_i18n.tr_text("◀️ Назад", lang, tr_map), callback_data="gtasks_back:0")]])
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         await callback.answer()
@@ -1962,7 +1963,7 @@ async def ambassador_leave_confirm(callback: types.CallbackQuery):
     """Выход из команды — `services.amb.amb_status.leave` (место без пакета освобождается, баллы остаются)."""
     await amb_status.leave(callback.from_user.id)
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_done_text"), lang, tr_map)
+    text = await city_text("ambassador_leave_done_text", callback.from_user.id, lang=lang, tr_map=tr_map, tr=reg_i18n.tr_text)
     await callback.message.edit_text(text)
     await callback.answer()
 
@@ -1973,7 +1974,7 @@ async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
     result = await amb_status.request_join(callback.from_user.id, source="my_link")
     lang, tr_map = await reg_i18n.ctx_for(callback)
     if result.outcome in ("full", "declined"):
-        text = reg_i18n.tr_text(await get_setting_typed("amb_slots_full_text") or "", lang, tr_map)
+        text = await city_text("amb_slots_full_text", callback.from_user.id, lang=lang, tr_map=tr_map, tr=reg_i18n.tr_text)
         await callback.answer(text if len(text) <= 200 else text[:199].rstrip() + "…", show_alert=True)
         return
     text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)
