@@ -664,6 +664,8 @@ def _build_snapshot_lines():
 # 3 message в state:ShopAdmin:* (shop_photo_got_photo/got_document/other) и shp_ph/shp_phdel/shp_phdelgo
 # (3 callback_query) сразу после хендлеров admin_shop_reserve; user_actions.router: shopv_ph (альбом
 # «🖼 Фото товаров») — сразу после shop_showcase, ПЕРЕД shop_take. Pure insert, zero reorders.
+# Дрифт-нота (28.10, готовность к форуму): +5 хендлеров ready_list/ready_city/ready_skip/ready_unskip/ready_remind_toggle
+# (handlers/settings/admin_readiness.py) — хвост цепочки admin_sections.py, сразу после admin_program.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -1124,6 +1126,11 @@ admin|callback_query|prog_copy_pick_day|prog_copysrc:*
 admin|callback_query|prog_copy_confirm|prog_copyday:*
 admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|prog_wretime|prog_wretime
+admin|callback_query|ready_list|ready_list
+admin|callback_query|ready_city|ready_city:*
+admin|callback_query|ready_skip|ready_skip:*
+admin|callback_query|ready_unskip|ready_unskip:*
+admin|callback_query|ready_remind_toggle|ready_remind_toggle
 admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
@@ -2713,7 +2720,8 @@ def test_snapshot_total_handler_count_is_292():
     # 28.10 (бронь в магазине баллов): +13 хендлеров, чистая вставка (1386 -> 1399).
     # 28.10 (фото товара в магазине баллов): +7 хендлеров, чистая вставка (1399 -> 1406).
     # 28.10 (назначение внешней формы): +10 admin extf_newp и девять extf_purpose*/extf_reg*, чистая вставка (1406 -> 1416).
-    assert len(GOLDEN_SNAPSHOT) == 1416
+    # 28.10 (готовность к форуму): +5 хендлеров ready_*, чистая вставка (1416 -> 1421).
+    assert len(GOLDEN_SNAPSHOT) == 1421
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
