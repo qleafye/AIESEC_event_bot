@@ -186,11 +186,22 @@ async def reconcile_city(code: str) -> None:
         logger.error("session_feedback.reconcile_city(%s) failed: %s: %s", code, type(e).__name__, e)
 
 
-def rating_keyboard(session_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="⭐" * n, callback_data=f"sfb:r:{session_id}:{n}")
+def rating_keyboard(
+    session_id: int, lang: str = "ru", tr_map: dict | None = None,
+) -> InlineKeyboardMarkup:
+    """Оценки 1–5 в два ряда (3+2): цифра и одна звезда. «Пропустить» снимает клавиатуру.
+    Ленивый импорт `tr_text` — модуль остаётся aiogram-free на импорте `handlers.*`."""
+    from handlers.i18n.reg_i18n import tr_text
+
+    rates = [
+        InlineKeyboardButton(text=f"{n} ⭐", callback_data=f"sfb:r:{session_id}:{n}")
         for n in range(_RATING_MIN, _RATING_MAX + 1)
-    ]])
+    ]
+    skip = InlineKeyboardButton(
+        text=tr_text("Пропустить", lang, tr_map or {}),
+        callback_data=f"sfb:x:{session_id}",
+    )
+    return InlineKeyboardMarkup(inline_keyboard=[rates[:3], rates[3:], [skip]])
 
 
 def comment_offer_keyboard(
@@ -223,7 +234,6 @@ async def deliver_feedback_prompts(session_id: int) -> None:
             return
         title = (session.get("title") or "").strip() or "сессия"
         template = await get_setting_typed("session_feedback_prompt_text") or "Как тебе «{title}»?"
-        kb = rating_keyboard(session_id)
 
         # Ленивые импорты — модуль aiogram-free на уровне импорта (докстринг), эта функция
         # выполняется ТОЛЬКО ботом. `handlers.i18n.reg_i18n.tr_fmt` — тот же порядок «шаблон
@@ -245,9 +255,12 @@ async def deliver_feedback_prompts(session_id: int) -> None:
                 continue  # уже приглашали (повторный тик джобы/reconcile) — не дублируем
             lang, tr_map = await i18n_service.context_cached(telegram_id, tr_maps)
             text = reg_i18n.tr_fmt(template, lang, tr_map, title=title)
+            kb = rating_keyboard(session_id, lang, tr_map)
             await quiet_hours.send_or_queue_text(
                 now, telegram_id, text,
-                sender=lambda tid=telegram_id, t=text: bot.send_message(tid, t, reply_markup=kb),
+                sender=lambda tid=telegram_id, t=text, markup=kb: bot.send_message(
+                    tid, t, reply_markup=markup,
+                ),
                 reply_markup=kb,
             )
     except Exception as e:
