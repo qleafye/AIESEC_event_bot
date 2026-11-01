@@ -50,6 +50,32 @@ def test_shop_scan_sends_card_and_marks_nothing(tmp_path, monkeypatch):
     assert _run(bot_db.list_checkins_for_user(uid)) == []
 
 
+def test_game_manager_scans_shop_without_checkin_right(tmp_path, monkeypatch):
+    """Менеджер геймификации без права отметок на входе видит только магазин и не ставит вход."""
+    client = client_with(tmp_path)
+    uid = 950903
+    _run(_insert_user(uid, full_name="Сидорова Анна", city="spb"))
+    _run(bot_db.add_coins(uid, 200, reason="задания", changed_by=1, source="manual"))
+    _run(shop_db.add_item("Шоппер", 150, 10, None))
+    sent = []
+
+    async def fake_send(cfg, chat_id, text, reply_markup=None, parse_mode=None):
+        sent.append(chat_id)
+        return {}
+
+    monkeypatch.setattr(telegram_api, "send_message", fake_send)
+    assert _points(client, GAME_MANAGER_ID) == ["shop"]
+    shop = client.post(
+        f"{BASE}/scan",
+        json={"payload": _qr(uid, full_name="Сидорова Анна"), "point": "shop"},
+        headers=_hdr(GAME_MANAGER_ID),
+    )
+    assert shop.status_code == 200 and shop.json()["status"] == "shop" and sent == [GAME_MANAGER_ID]
+    entry = client.post(f"{BASE}/scan", json={"payload": _qr(uid)}, headers=_hdr(GAME_MANAGER_ID))
+    assert entry.status_code == 403 and entry.json()["reason"] == "no_cap"
+    assert _run(bot_db.list_checkins_for_user(uid)) == []
+
+
 def test_shop_scan_without_game_right_refused(tmp_path, monkeypatch):
     client = client_with(tmp_path)
     _grant_checkin_to_bound_manager()

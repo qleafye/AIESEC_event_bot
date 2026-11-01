@@ -141,8 +141,8 @@ export const NAV = [
   { hash: "#/stats", section: "stats", cap: "stats", alsoCap: "moderate_game", group: "data" },
   { hash: "#/settings", section: "settings", cap: "settings", group: "manage" },
   // Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме — первый пункт группы
-  // «🎪 Событие» (SECTION_GROUPS выше её уже несла, плиток в ней раньше не было).
-  { hash: "#/scanner", section: "checkin", cap: "checkin", group: "event" },
+  // «🎪 Событие». anyCap: плитку видит и менеджер геймификации (магазин без отметок входа).
+  { hash: "#/scanner", section: "checkin", cap: "checkin", anyCap: ["checkin", "moderate_game"], group: "event" },
 ];
 
 // Иконки навигации (D-13) по маршруту — общий словарь для таб-бара (раскладка A) и плиток
@@ -424,8 +424,9 @@ export function visibleNav() {
     // остальные делегатские разделы только approved-делегату.
     if (item.delegate) return item.section === "form" ? Boolean(me.form_access) : Boolean(me.is_delegate);
     if (item.staffOnly && me.is_delegate) return false;
-    return Array.isArray(me.caps) && me.caps.includes(item.cap)
-      && (!item.alsoCap || me.caps.includes(item.alsoCap));
+    const caps = Array.isArray(me.caps) ? me.caps : [];
+    if (item.anyCap) return item.anyCap.some((c) => caps.includes(c));
+    return caps.includes(item.cap) && (!item.alsoCap || caps.includes(item.alsoCap));
   });
 }
 
