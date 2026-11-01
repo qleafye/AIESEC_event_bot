@@ -640,6 +640,12 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
             if _sheet_id():  # таблица не задана — кнопку не показываем
                 buttons.append([InlineKeyboardButton(text=row[2], url=sheet_url())])
         elif kind in ("screen", "screen_admin"):
+            # Без привязанного чата сверка состава нечего сверять — кнопка отвечает
+            # «чат не подключён». Старая клавиатура в переписке всё ещё ловится хендлером.
+            if row[1] == "admin_chat_reconcile":
+                from services import chat_tracking
+                if not await chat_tracking.bound_chats():
+                    continue
             buttons.append([InlineKeyboardButton(text=row[2], callback_data=row[1])])
         elif kind == "toggle":
             # Проверяем НАЛИЧИЕ ключа, а не истинность: пустой список строк у существующего

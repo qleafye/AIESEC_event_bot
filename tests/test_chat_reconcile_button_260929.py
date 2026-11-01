@@ -188,6 +188,26 @@ def test_button_in_manage_section_with_settings_cap():
     assert required_capability(callback_data="admin_chat_reconcile") == "settings"
 
 
+def _keyboard_callbacks(kb):
+    return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+
+def test_reconcile_button_hidden_until_a_chat_is_bound(tmp_path):
+    from handlers.settings.admin_sections import build_section_keyboard
+
+    _ready(tmp_path)
+
+    async def go():
+        hidden = await build_section_keyboard("manage", ADMIN_ID)
+        await chat_tracking.bind_chat(None, CHAT_ID, "Чат делегатов", None)
+        shown = await build_section_keyboard("manage", ADMIN_ID)
+        return hidden, shown
+
+    hidden, shown = _run(go())
+    assert "admin_chat_reconcile" not in _keyboard_callbacks(hidden)
+    assert "admin_chat_reconcile" in _keyboard_callbacks(shown)
+
+
 def test_reconcile_summary_logged_warning_on_problem_info_on_ok(tmp_path, caplog):
     """Итог сверки — одна строка именованного логгера chat_recon: WARNING с причиной, когда
     пусто/ошибки/нет чата, INFO когда всё хорошо. Без имён, юзернеймов и телефонов."""
