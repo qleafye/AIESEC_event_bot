@@ -545,6 +545,7 @@ def test_send_task_deadline_reminder_manager_template_with_stray_brace_does_not_
     text = bot.sent[0][1]
     assert "{ссылка}" in text  # неизвестный плейсхолдер остался как есть, не упал
     assert "{deadline}" not in text  # известный — подставлен
+    assert "05.10 12:00" in text  # час виден: день входит до этого времени
 
 
 def test_send_task_deadline_reminder_deadline_pushed_forward_reschedules(tmp_path, monkeypatch):
