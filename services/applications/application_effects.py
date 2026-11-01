@@ -144,6 +144,17 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
             await update_status_in_sheet(telegram_id, STATUS_LABELS["rejected"])
 
 
+async def auto_approve_effects(bot, telegram_id: int) -> None:
+    """Приветствие заявке, одобренной без модерации (автоодобрение анкеты, форма «Регистрация»
+    с тумблером «сразу одобрять»): «заявка принята», при включённой оплате — шаг оплаты; учёт
+    доставки — как у остальных решений."""
+    from handlers.reg.reg_schema import approve_user  # локальный импорт против цикла
+    send_err = await approve_user(bot, telegram_id, auto_approved=True)
+    await _record_delivery_fail_soft(
+        telegram_id, "approved", "failed" if send_err else "delivered", send_err,
+    )
+
+
 async def mass_approve_effects(bot, ids: list) -> None:
     """Перенесённый `_welcome_flipped` (обработка `TelegramRetryAfter`, пауза 0.05 между
     отправками) + один `bulk_update_status_in_sheet`. Пустой список — выход без единого вызова.
