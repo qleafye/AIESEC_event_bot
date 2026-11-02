@@ -1,4 +1,4 @@
-"""Напоминания о сессиях: за N минут до начала (всем одобренным города) и утренняя «программа на день».
+"""Напоминания о сессиях: за N минут только записанным и утро — своё расписание или список дня.
 
 pytest-asyncio нет — корутины через `asyncio.run`, БД — шаблонная копия `fast_init_db`
 (`tests/_enroll38.py`), планирование — реальный `AsyncIOScheduler` на временном jobstore (приём
@@ -104,7 +104,7 @@ def test_parse_hhmm_and_clamp():
 
 # ── Получатели ───────────────────────────────────────────────────────────────────────────────
 
-def test_remind_recipients_are_approved_delegates_of_the_city(tmp_path):
+def test_remind_recipients_are_enrolled_approved_of_this_session(tmp_path):
     ready(tmp_path)
 
     async def go():
@@ -120,7 +120,7 @@ def test_remind_recipients_are_approved_delegates_of_the_city(tmp_path):
         session = await db.get_program_session(ids["A"])
         return [u["telegram_id"] for u in await sr.remind_recipients(session)]
 
-    assert run(go()) == [101, 102, 104]
+    assert run(go()) == [101]
 
 
 # ── Тексты ───────────────────────────────────────────────────────────────────────────────────
@@ -188,19 +188,19 @@ def test_deliver_reminders_once_and_idempotent(tmp_path, monkeypatch):
         ids = await seed_msk_program()
         await _on("session_remind_enabled")
         await add_user(101)
-        await add_user(102)  # на сессию не записан — напоминание всё равно уходит
+        await add_user(102)  # на сессию не записан — напоминание не уходит
         await edb.enroll_tx(101, ids["A"])
         first = await sr.deliver_session_reminders(ids["A"])
         second = await sr.deliver_session_reminders(ids["A"])
         return first, second
 
     first, second = run(go())
-    assert first["sent"] == 2 and second["sent"] == 0
-    assert [chat for chat, _ in bot.sent] == [101, 102]
+    assert first["sent"] == 1 and second["sent"] == 0
+    assert [chat for chat, _ in bot.sent] == [101]
     assert "Сессия A" in bot.sent[0][1]
 
 
-def test_deliver_reminders_still_go_after_unenroll(tmp_path, monkeypatch):
+def test_deliver_reminders_skip_after_unenroll(tmp_path, monkeypatch):
     ready(tmp_path)
     bot = _setup(monkeypatch, NOW_09_45)
 
@@ -212,8 +212,8 @@ def test_deliver_reminders_still_go_after_unenroll(tmp_path, monkeypatch):
         await edb.unenroll(101, ids["A"])
         return await sr.deliver_session_reminders(ids["A"])
 
-    assert run(go())["sent"] == 1
-    assert [chat for chat, _ in bot.sent] == [101]
+    assert run(go())["sent"] == 0
+    assert bot.sent == []
 
 
 def test_deliver_reminders_switched_off_sends_nothing(tmp_path, monkeypatch):
@@ -307,7 +307,7 @@ def test_enrolled_audience_reminds_only_enrolled_of_this_city_and_season(tmp_pat
     assert chats == [101]
 
 
-def test_garbage_audience_keeps_all_approved_including_unenrolled(tmp_path, monkeypatch):
+def test_garbage_audience_does_not_widen_the_ping(tmp_path, monkeypatch):
     ready(tmp_path)
     bot = _setup(monkeypatch, NOW_09_45)
 
@@ -316,14 +316,14 @@ def test_garbage_audience_keeps_all_approved_including_unenrolled(tmp_path, monk
         await _on("session_remind_enabled")
         await db.set_setting("session_remind_audience", "nope")
         await add_user(101)
-        await add_user(102)  # не записан — при мусоре напоминание всё равно уходит
+        await add_user(102)  # не записан — старое значение круга его не добавляет
         await edb.enroll_tx(101, ids["A"])
         result = await sr.deliver_session_reminders(ids["A"])
         return result, sorted(chat for chat, _ in bot.sent)
 
     result, chats = run(go())
-    assert result["sent"] == 2
-    assert chats == [101, 102]
+    assert result["sent"] == 1
+    assert chats == [101]
 
 
 # ── Утренняя программа ───────────────────────────────────────────────────────────────────────
@@ -373,30 +373,30 @@ def test_morning_program_idempotent_and_skips_pending_and_off_switch(tmp_path, m
     off, first, second = run(go())
     assert off["sent"] == 0
     assert first["sent"] == 1 and second["sent"] == 0
-    assert [chat for chat, _ in bot.sent] == [101]  # у делегата только общая пленарка
+    assert [chat for chat, _ in bot.sent] == [101]  # не записан — одно сообщение со списком дня
 
 
-def test_morning_enrolled_skips_plenary_only_and_keeps_plenary_for_enrolled(tmp_path, monkeypatch):
+def test_morning_splits_personal_schedule_and_day_list(tmp_path, monkeypatch):
     ready(tmp_path)
     bot = _setup(monkeypatch, NOW_MORNING)
 
     async def go():
         ids = await seed_msk_program()
         await _on("session_morning_enabled")
-        await db.set_setting("session_remind_audience", "enrolled")
-        await add_user(101)  # только общая пленарка
+        await db.set_setting("session_remind_audience", "approved")
+        await add_user(101)  # ничего не выбрал
         await add_user(102)
         await edb.enroll_tx(102, ids["A"])
         result = await sr.deliver_morning_program(CITY, DAY)
-        reserved = await rdb.was_sent(101, rdb.KIND_MORNING, f"{CITY}:{DAY}")
-        return result, reserved
+        return result, dict(bot.sent)
 
-    result, reserved = run(go())
-    assert result["sent"] == 1
-    assert reserved is False
-    (chat, text), = bot.sent
-    assert chat == 102
-    assert "«Пленарка»" in text and "«Сессия A»" in text
+    result, sent = run(go())
+    assert result["sent"] == 2
+    assert sent[101].startswith("☀️ Сегодня на форуме:")
+    assert "«Сессия A»" in sent[101]
+    assert "Твоя программа" not in sent[101]
+    assert sent[102].startswith("☀️ Доброе утро! Твоя программа на сегодня:")
+    assert "«Пленарка»" in sent[102] and "«Сессия A»" in sent[102]
 
 
 def test_morning_program_not_sent_when_day_already_started(tmp_path, monkeypatch):
@@ -549,8 +549,10 @@ def test_screen_shows_status_and_all_buttons(tmp_path, monkeypatch):
     assert [c for c in data if c.startswith("prog_srmmin")] == [f"prog_srmmin:msk:{m}" for m in (5, 10, 15, 30)]
     buttons = [b for row in kb.inline_keyboard for b in row]
     by_text = {b.text: b.callback_data for b in buttons}
-    assert by_text["✅ Всем одобренным"] == "prog_srmaud:msk:approved"
-    assert by_text["Только записанным на сессию"] == "prog_srmaud:msk:enrolled"
+    assert "записан на эту сессию" in text
+    assert "одно сообщение со списком дня" in text
+    assert by_text["✏️ Шапка списка дня"] == "prog_srmtx:msk:overview"
+    assert not any(c.startswith("prog_srmaud") for c in data)
     for button in buttons:
         assert "approved" not in button.text
         assert "enrolled" not in button.text
@@ -581,30 +583,23 @@ def test_toggle_and_minutes_handlers_save_and_rerender(tmp_path, monkeypatch):
     assert bad.answers and bad.answers[0][1] is True and "5, 10, 15 или 30" in bad.answers[0][0]
 
 
-def test_audience_buttons_save_enrolled_and_reject_unknown(tmp_path, monkeypatch):
+def test_old_audience_button_explains_and_writes_nothing(tmp_path, monkeypatch):
     ready(tmp_path)
     _setup(monkeypatch, NOW_MORNING)
 
     async def go():
         await seed_msk_program()
-        bad = FakeCallback("prog_srmaud:msk:all")
-        await ui.prog_srmaud(bad)
-        still = await sr.remind_audience(CITY)
-        ok = FakeCallback("prog_srmaud:msk:enrolled")
-        await ui.prog_srmaud(ok)
-        saved = await sr.remind_audience(CITY)
-        marked = [b.text for row in ok.message.edit_markup.inline_keyboard for b in row]
-        return still, saved, bad, marked, ok.answers
+        before = await db.get_setting("session_remind_audience")
+        old = FakeCallback("prog_srmaud:msk:approved")
+        await ui.prog_srmaud(old)
+        after = await db.get_setting("session_remind_audience")
+        return before, after, old.answers
 
-    still, saved, bad, marked, answers = run(go())
-    assert still == "approved"
-    alert, is_alert = bad.answers[0]
+    before, after, answers = run(go())
+    assert before == after
+    alert, is_alert = answers[0]
     assert is_alert is True
-    assert "Всем одобренным" in alert and "Только записанным на сессию" in alert
-    assert "Выберите одну из кнопок" in alert
-    assert saved == "enrolled"
-    assert "✅ Только записанным на сессию" in marked
-    assert answers and answers[-1] == ("Сохранено.", False)
+    assert "больше не выбирается" in alert and "списком дня" in alert
 
 
 def test_text_and_time_editors_open_generic_edit_with_return_to_screen(tmp_path):
@@ -650,7 +645,7 @@ def test_example_sends_remind_and_morning_and_explains_empty_program(tmp_path, m
     empty, full = run(go())
     assert empty.answers[0][1] is True and "нет сессий" in empty.answers[0][0]
     sent = full.message.answers_sent
-    assert len(sent) == 4 and "Через 10 мин" in sent[1] and "Доброе утро" in sent[3]
+    assert len(sent) == 4 and "Через 10 мин" in sent[1] and "Сегодня на форуме" in sent[3]
 
 
 def test_enroll_settings_screen_links_to_reminders(tmp_path):

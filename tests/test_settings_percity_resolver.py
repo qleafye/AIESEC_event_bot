@@ -60,6 +60,7 @@ EXPECTED_PER_CITY_KEYS = {
     "session_morning_enabled",
     "session_morning_time",
     "session_morning_head",
+    "session_morning_overview_head",
     "session_enroll_menu_label",
     "session_enroll_intro_text",
     "session_enroll_mix_button",
