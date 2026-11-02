@@ -1,20 +1,20 @@
 """Напоминания делегату о сессиях программы.
 
-1. «⏰ За N минут до сессии» — личное сообщение с залом и компетенциями. По умолчанию всем
-   одобренным делегатам города (запись на эту сессию не нужна). Круг сужается до записанных
-   на эту сессию, только если менеджер так выбрал (`remind_audience`). Своя джоба на каждую
-   сессию (`session_remind:{id}`).
-2. «☀️ Программа на день» — утром в день программы список сессий делегата (его записи плюс общие
-   сессии без трека — тот же `session_enroll.my_schedule`, что показывает «Моё расписание»).
-   Своя джоба на пару город+день (`session_morning:{город}:{день}`).
+1. «⏰ За N минут до сессии» — личное сообщение с залом и компетенциями. Только тем, кто
+   записан на эту сессию и одобрен. Круг не расширяется до всех одобренных города.
+   Своя джоба на каждую сессию (`session_remind:{id}`).
+2. «☀️ Программа на день» — одно утреннее сообщение на город и день
+   (`session_morning:{город}:{день}`). У кого в этот день есть своя запись — его расписание
+   (записи плюс общие сессии без трека, тот же `session_enroll.my_schedule`). Кто ничего
+   не выбрал — одно «сегодня на форуме» со списком дня, не сообщение на каждую сессию.
 
 Время сессий и утренней отправки — МЕСТНОЕ время города, планировщик живёт по Москве, поэтому момент
 джобы сдвигается на `city_tz_offset` (тот же приём, что `services/session_feedback.py`).
 
 Идемпотентность — журнал `session_remind_sends` (`database/session_remind_db.py`): перезапуск,
 перепланирование и повторный тик не дублируют сообщения. Джоба перед отправкой перечитывает тумблер
-и сессию: сессию удалили или перенесли — сообщение не уйдёт. Отписка от сессии сужает круг,
-только когда менеджер выбрал записанных.
+и сессию: сессию удалили или перенесли — сообщение не уйдёт. Отписка снимает человека с напоминания
+этой сессии. Mute рассылок сюда не входит.
 
 Дедлайны: напоминание не уходит позже начала сессии, утренняя программа — позже начала первой
 сессии дня (бот был выключен — догнали, но не задним числом).
@@ -112,13 +112,6 @@ async def remind_minutes(city: str | None) -> int:
     return clamp_minutes(await get_setting_typed_for_city("session_remind_minutes", city))
 
 
-async def remind_audience(city: str | None) -> str:
-    """Единственное место, где решается круг напоминания и утренней программы.
-    Сужает только точная строка «enrolled»; пусто, дефолт и мусор — все одобренные."""
-    value = await get_setting_typed_for_city("session_remind_audience", city)
-    return "enrolled" if value == "enrolled" else "approved"
-
-
 async def morning_time(city: str | None) -> str:
     raw = await get_setting_typed_for_city("session_morning_time", city)
     parsed = parse_hhmm(raw) or parse_hhmm(DEFAULT_MORNING_TIME)
@@ -195,11 +188,16 @@ def _program_line(item: dict, hall: str, competencies: list[str], common_label: 
 
 async def build_morning_text(
     city: str, items: list[dict], *, lang: str = "ru", tr_map: dict | None = None,
+    head_key: str = "session_morning_head",
 ) -> str:
-    """Шапка + по строке на сессию (по времени). Общие сессии помечаются как в «Моём расписании»."""
+    """Шапка + по строке на сессию (по времени). Общие сессии помечаются как в «Моём расписании».
+    Список дня для тех, кто ничего не выбрал, берёт другую шапку (`head_key`)."""
     from database import session_enroll_db as edb
 
-    head = await get_setting_typed_for_city("session_morning_head", city)
+    if head_key == "session_morning_overview_head":
+        head = await get_setting_typed_for_city("session_morning_overview_head", city)
+    else:
+        head = await get_setting_typed_for_city("session_morning_head", city)
     common_label = await get_setting_typed_for_city("session_enroll_common_label", city)
     comps = await edb.competency_names_for_sessions([i["session"]["id"] for i in items])
     lines = [_translate(head, lang, tr_map)]
@@ -238,11 +236,10 @@ async def _approved_delegates(city: str) -> list[dict]:
 
 
 async def remind_recipients(session: dict) -> list[dict]:
-    city = session["city"]
-    if await remind_audience(city) == "enrolled":
-        enrolled = await rdb.list_enrolled_approved(session["id"])
-        return await _city_delegates(enrolled, city)
-    return await _approved_delegates(city)
+    """Только записанные на эту сессию и одобренные в этом городе и сезоне.
+    Настройка «всем одобренным» круг больше не расширяет."""
+    enrolled = await rdb.list_enrolled_approved(session["id"])
+    return await _city_delegates(enrolled, session["city"])
 
 
 async def morning_items_for_user(telegram_id: int, city: str, day: str) -> list[dict]:
@@ -349,20 +346,22 @@ async def deliver_morning_program(city: str, day: str) -> dict:
             return result  # день уже идёт: утренняя программа поздняя
         ref = f"{city}:{day}"
         tr_maps: dict = {}
-        audience = await remind_audience(city)
         users = await _approved_delegates(city)
+        overview = [{"session": s} for s in sessions]
         for user in users:
             tid = int(user["telegram_id"])
             if await rdb.was_sent(tid, rdb.KIND_MORNING, ref):
                 result["skipped"] += 1
                 continue
             items = await morning_items_for_user(tid, city, day)
-            if not items:
-                continue
-            if audience == "enrolled" and not any(item.get("kind") == "chosen" for item in items):
-                continue
             lang, tr_map = await _lang_for(tid, tr_maps)
-            text = await build_morning_text(city, items, lang=lang, tr_map=tr_map)
+            if any(item.get("kind") == "chosen" for item in items):
+                text = await build_morning_text(city, items, lang=lang, tr_map=tr_map)
+            else:
+                text = await build_morning_text(
+                    city, overview, lang=lang, tr_map=tr_map,
+                    head_key="session_morning_overview_head",
+                )
             if await _send(tid, text, rdb.KIND_MORNING, ref, now):
                 result["sent"] += 1
             else:
@@ -622,7 +621,12 @@ async def build_examples(city: str, telegram_id: int) -> tuple[str, str] | None:
         target_session = sessions[0]
     remind = await build_remind_text(target_session, await remind_minutes(city))
     items = await morning_items_for_user(telegram_id, city, target_day)
-    if not items:
-        sessions = await sessions_for_city_day(city, target_day)
-        items = [{"session": s, "kind": "chosen"} for s in sessions]
-    return remind, await build_morning_text(city, items)
+    if any(item.get("kind") == "chosen" for item in items):
+        morning = await build_morning_text(city, items)
+    else:
+        day_sessions = await sessions_for_city_day(city, target_day)
+        morning = await build_morning_text(
+            city, [{"session": s} for s in day_sessions],
+            head_key="session_morning_overview_head",
+        )
+    return remind, morning
