@@ -411,6 +411,15 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             "reason_line": reason_line, "status_screen_enabled": status_screen_on,
             "haptics_enabled": haptics_on, **extra,
         }
+    if status == "waitlist":
+        heading = await i18n.tr_setting("waitlist_heading_text", lang, tr_map)
+        body = await i18n.tr_setting("waitlist_delegate_text", lang, tr_map)
+        return {
+            "status": status, "heading": heading, "body": body, "days": None,
+            "cta_text": None, "event_dates": event_dates, "event_place": event_place,
+            "reason_line": None, "status_screen_enabled": False,
+            "haptics_enabled": haptics_on, **_STATUS_SCREEN_EXTRAS_OFF,
+        }
     if status == "approved" and status_screen_on:
         payment = await _payment_card(user, lang, tr_map)
         extra = {

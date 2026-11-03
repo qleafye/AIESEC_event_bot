@@ -241,6 +241,10 @@ async def _appr_card_kb(tid: int, has_resume: bool, total: int, has_history: boo
             callback_data=f"appr_flag:{0 if flagged_only else 1}",
         )])
     rows.append([InlineKeyboardButton(text=f"✅ Одобрить все ({total})", callback_data="appr_all")])
+    from handlers.applications.admin_waitlist import waitlist_row
+    extra = await waitlist_row(tid)
+    if extra:
+        rows.insert(1, extra)
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

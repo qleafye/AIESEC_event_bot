@@ -856,7 +856,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1608,
+        1610,
+        "Лист ожидания: +2 строки — права appr_waitlist:* и toggle_apps_waitlist (moderate_reg); 1608 -> 1610. "
         "28.10 (магазин баллов): +3 строки — права admin_shop/shp_*/cmd:shop/state:ShopAdmin:* (moderate_game); 1605 -> 1608. "
         "28.10 (сертификаты после форума): +3 строки — права certadm_*/state:CertAdmin:* (moderate_reg); 1602 -> 1605. "
         "25.10 (анкета из нескольких вопросов): +5 строк — права poll_new_single/psv_*/state:SurveyBuild:* (broadcast); 1597 -> 1602. "

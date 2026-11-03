@@ -79,7 +79,10 @@ DELEGATE_LABELS = {
     "reg_q_expectations": "\U0001f4ac Ожидания",
 }
 
-STATUS_LABELS = {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
+STATUS_LABELS = {
+    "pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена",
+    "waitlist": "Лист ожидания",
+}
 
 # Статус оплаты (users.payment_status) -> подпись. Единственный источник: рассылки
 # (`handlers/comms/admin_broadcasts.py`) и профиль Mini App читают отсюда.

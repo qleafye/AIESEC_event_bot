@@ -101,10 +101,8 @@ def _gate_decision(status) -> tuple[bool, str | None]:
     """Map a user's status to (allowed, denial_kind). Legacy/missing/unknown -> allowed
     (the ~590 live users have status='approved' via the migration default)."""
     status = status or "approved"
-    if status == "pending":
-        return False, "pending"
-    if status == "rejected":
-        return False, "rejected"
+    if status in ("pending", "rejected", "waitlist"):
+        return False, status
     return True, None  # approved + any unknown legacy value
 
 
@@ -123,6 +121,8 @@ async def ensure_registered(message: types.Message) -> bool:
     if kind == "pending":
         # Phase 17.1 (17.1-01): текст гейта — в реестре (сосед reject_text ниже уже был там).
         await reg_i18n.say(message, await get_setting_typed("pending_gate_text"))
+    elif kind == "waitlist":
+        await reg_i18n.say(message, await get_setting_typed("waitlist_delegate_text"))
     elif not await _say_auto_reject_again(message, user):  # rejected
         await reg_i18n.say(
             message,
@@ -1666,8 +1666,8 @@ async def open_miniapp_button(message: types.Message):
 @router.message(MenuButton("menu_checkin_qr"))
 async def show_my_checkin_qr(message: types.Message):
     # ensure_registered закрывает «нет анкеты»/pending/rejected человеческим текстом реестра
-    # (см. ensure_registered выше). Но её _gate_decision пропускает legacy/NULL/будущий
-    # waitlist как «допущен» ради обратной совместимости ~590 старых записей — QR это
+    # (см. ensure_registered выше). Но её _gate_decision пропускает legacy/NULL как
+    # «допущен» ради обратной совместимости ~590 старых записей — QR это
     # МАТЕРИАЛЬНЫЙ пропуск на площадку (D-02), такой лёгкий гейт для него мал. Правило допуска
     # к самому чек-ину — отдельная строгая проверка `services.forum.checkin.checkin_denial` ниже.
     if not await ensure_registered(message):
@@ -1686,7 +1686,7 @@ async def show_my_checkin_qr(message: types.Message):
         await message.answer(text)
         return
     if denial is not None:  # 'no_user' (гонка удаления между ensure_registered и этим вызовом)
-        # или 'not_approved' (легаси/NULL/waitlist, которых ensure_registered пропускает) —
+        # или 'not_approved' (легаси/NULL, которых ensure_registered пропускает) —
         # тот же переведённый текст ожидания, что видят pending-делегаты у ensure_registered.
         text = reg_i18n.tr_text(await get_setting_typed("pending_gate_text"), lang, tr_map)
         await message.answer(text)
