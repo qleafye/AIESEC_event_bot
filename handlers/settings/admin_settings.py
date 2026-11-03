@@ -2900,3 +2900,4 @@ from handlers.settings import admin_miniapp_theme  # noqa: E402,F401
 from handlers.settings import admin_sections  # noqa: E402,F401
 from handlers.settings import admin_settings_placeholders as ph  # noqa: E402  -- проверка {подстановок} при сохранении текста + превью
 from handlers.settings import admin_settings_global as gscope  # noqa: E402  -- общая настройка при городе в шапке: ввод только после кнопки
+from handlers.settings import admin_partner_export  # noqa: E402,F401
