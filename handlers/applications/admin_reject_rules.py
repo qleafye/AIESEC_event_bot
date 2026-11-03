@@ -10,13 +10,12 @@
 Конструктор условий и счётчик dry-run — ОТДЕЛЬНЫЙ шов (потолок размера модуля, не архитектурная
 граница): кнопки карточки ведут в `handlers/applications/admin_reject_cond.py` (импорт хвостом, конец файла).
 
-Запись правила — ТОЛЬКО через `services.applications.reject_rules.save_rule`/`delete_rule` (план 31-04),
-второй двери в `reject_rules` здесь нет. Право по городу (`can_edit_city`, D-16) перепроверяется
+Запись правила идёт через общий редактор (`save_rule`/`delete_rule` остаются единственной дверью
+в базу). Право по городу (`can_edit_city`, D-16) перепроверяется
 в КАЖДОМ мутирующем хендлере ПЕРЕД действием — клавиатуры в чате не истекают (T-31-08-01, тот же
 приём, что `handlers/forum/admin_faq.py::_card_out_of_scope`). Копия правила (D-12) ВСЕГДА выключена;
 удаление подтверждается экраном, называющим последствия (форма `admin_faq.py::afaq_delete_confirm`)."""
 import html as html_module
-import json
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
@@ -24,7 +23,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeybo
 
 from config import config
 from domain.cities import ALL_CITIES, ALL_CITIES_LABEL, city_codes, city_label
-from database.db import count_auto_reject_log_for_rule, get_reject_rule, get_staff_city
+from database.db import get_staff_city
 from handlers.admin import router
 from handlers.applications import admin_reject_master as master  # рубильник выключен — строка в карточке
 from handlers.settings.admin_core import _admin_city_view
@@ -32,33 +31,35 @@ from handlers.states import RejectRuleEdit
 from keyboards.builders import get_cancel_kb
 from domain.regform.engine import label_for
 from services.applications.reject_rules import (
+    OPERATOR_LABELS,
     RULE_PRESETS,
     can_edit_city,
-    delete_rule,
     rule_summary,
     rules_for_admin,
-    save_rule,
+)
+from services.applications.reject_rules_editor import (
+    TRACKS,
+    copy_to_city,
+    create_from_preset,
+    create_rule,
+    delete as editor_delete,
+    load_rule,
+    master_state,
+    save_patch,
+    set_enabled,
 )
 from services.settings.audit import set_setting_by_admin
 from domain.settings.schema import get_setting_typed
 
 RULES_PAGE = 8
 
-# Человеческие подписи операторов (D-01/D-09) — своя копия таблицы `services.applications.reject_rules.
-# rule_summary` (не импорт приватного имени соседнего): карточка печатает условия bullet-списком.
-_OPERATOR_LABELS = {
-    "in": "один из", "not_in": "ни один из",
-    "lt": "меньше", "gt": "больше", "between": "между",
-    "before": "раньше", "after": "позже",
-    "age_on_forum_lt": "возраст на дату форума меньше",
-    "filled": "заполнено", "empty": "не заполнено",
-    "has_file": "есть", "no_file": "нет",
-}
+# Подписи операторов — из общего слоя. Имена загрузки и записи оставлены: их зовут тесты.
+_OPERATOR_LABELS = OPERATOR_LABELS
+_load_rule = load_rule
+_save_patch = save_patch
 _NO_VALUE_OPERATORS = ("filled", "empty", "has_file", "no_file")
 
-# D-05: три чекбокса «Полная / Краткая / Вечеринка» — «Вечеринка» покрывает ОБА внутренних кода
-# сразу (`services.applications.applications.TRACK_FILTERS`); коды менеджеру не показываются нигде (T-31-08-03).
-_TRACK_UI = (("full", "Полная"), ("short", "Краткая"), ("party", "Вечеринка"))
+# «Вечеринка» на кнопке — оба внутренних кода сразу. Подписи чипов берём из editor.TRACKS.
 _TRACK_CODES = {
     "full": ("full",),
     "short": ("short",),
@@ -92,40 +93,6 @@ def _short(text: str | None, limit: int) -> str:
     return stripped[: max(0, limit - 1)].rstrip() + "…"
 
 
-async def _load_rule(rule_id: int) -> dict | None:
-    """Свежая копия правила с разобранными JSON-колонками — зовётся ПЕРЕД КАЖДЫМ действием
-    (T-31-08-01), не кешируется между рендером карточки и тапом по кнопке."""
-    row = await get_reject_rule(rule_id)
-    if row is None:
-        return None
-    rule = dict(row)
-    try:
-        rule["tracks"] = json.loads(row.get("tracks") or "[]") or []
-    except (TypeError, ValueError):
-        rule["tracks"] = []
-    try:
-        rule["conditions"] = json.loads(row.get("conditions") or "[]") or []
-    except (TypeError, ValueError):
-        rule["conditions"] = []
-    return rule
-
-
-async def _save_patch(admin_id: int, rule: dict, **overrides) -> tuple[int | None, str | None]:
-    """Единственная дверь мутации (`save_rule` не умеет частичный PATCH) — поля берутся из уже
-    перечитанного правила, подмешивается РОВНО то одно, что меняет вызывающий хендлер."""
-    fields = {
-        "name": rule.get("name"),
-        "city": rule.get("city"),
-        "tracks": rule.get("tracks") or ["full"],
-        "conditions": rule.get("conditions") or [],
-        "action": rule.get("action"),
-        "reject_text": rule.get("reject_text"),
-        "enabled": rule.get("enabled"),
-    }
-    fields.update(overrides)
-    return await save_rule(admin_id, rule["id"], **fields)
-
-
 async def _default_new_rule_city(admin_id: int) -> str | None:
     """Привязанному менеджеру — его город (единственный доступный, D-16); суперадмину/
     непривязанному — «Все города» (переназначить можно сразу кнопкой города на карточке)."""
@@ -135,7 +102,7 @@ async def _default_new_rule_city(admin_id: int) -> str | None:
 
 
 def _tracks_label(tracks: list[str]) -> str:
-    active = [ui_label for ui_code, ui_label in _TRACK_UI if any(c in tracks for c in _TRACK_CODES[ui_code])]
+    active = [ui_label for ui_code, ui_label in TRACKS if any(c in tracks for c in _TRACK_CODES[ui_code])]
     return " / ".join(active) if active else "—"
 
 
@@ -164,12 +131,6 @@ def _condition_groups_text(conditions: list[list[dict]]) -> str:
         cond_lines = [_condition_line(cond) for cond in (group or [])] or ["• (условий в группе пока нет)"]
         blocks.append("\n".join([header] + cond_lines))
     return "\n— ИЛИ —\n".join(blocks)
-
-
-async def _rule_reject_count(rule_id: int) -> int:
-    """Число ЖИВЫХ строк журнала с ИМЕННО этим правилом — COUNT в SQL (`database.db.
-    count_auto_reject_log_for_rule`), без города (правило может быть «все города»)."""
-    return await count_auto_reject_log_for_rule(rule_id, city_scope=None, include_returned=False)
 
 
 # ── Экран списка ──────────────────────────────────────────────────────────────
@@ -268,12 +229,13 @@ async def arr_master_toggle(callback: types.CallbackQuery):
     `enabled` каждого правила не трогается — состояние каждого сохраняется. Рубильник один на
     всё событие, поэтому переключают его только суперадмин и менеджер без привязки к городу;
     выключение — через подтверждение с числом включённых правил."""
-    if not await can_edit_city(callback.from_user.id, None):
+    state = await master_state(callback.from_user.id)
+    if not state["can_toggle"]:
         await callback.answer(MASTER_DENIED_TEXT, show_alert=True)
         return
     current_on = await get_setting_typed("reject_rules_enabled")
     if current_on and callback.data == "arr_master":
-        enabled_count = sum(1 for r in await rules_for_admin(callback.from_user.id) if r.get("enabled"))
+        enabled_count = state["enabled_count"]
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Да, выключить", callback_data="arr_master:go")],
             [InlineKeyboardButton(text="← Отмена", callback_data="admin_reject_rules")],
@@ -308,15 +270,21 @@ async def arr_toggle_enabled(callback: types.CallbackQuery):
     if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
         await callback.answer("Правило недоступно — обновите список.", show_alert=True)
         return
-    new_enabled = 0 if rule.get("enabled") else 1
-    _, error = await _save_patch(callback.from_user.id, rule, enabled=new_enabled)
-    if error:
-        await callback.answer(error, show_alert=True)
+    turning_on = not rule.get("enabled")
+    if turning_on:
+        result = await set_enabled(callback.from_user.id, rule_id, True, confirm=False, base_rev=None)
+        if result.needs_confirm and not result.error:
+            await callback.answer(result.needs_confirm["text"], show_alert=True)
+            return
+    else:
+        result = await set_enabled(callback.from_user.id, rule_id, False, confirm=False, base_rev=None)
+    if result.error:
+        await callback.answer(result.error, show_alert=True)
         return
     screen = await render_rule_card(callback.from_user.id, rule_id)
     text, kb = screen
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
-    if new_enabled:
+    if turning_on:
         await callback.answer(await master.enabled_alert(callback.from_user.id), show_alert=True)
     else:
         await callback.answer(
@@ -362,25 +330,21 @@ async def arr_preset_pick(callback: types.CallbackQuery):
         await callback.answer("Нет прав создать правило в этом городе.", show_alert=True)
         return
     if 0 <= n < len(presets):
-        preset = presets[n]
-        fields = dict(
-            name=preset.get("name"), city=default_city, tracks=["full"],
-            conditions=preset.get("conditions") or [], action=preset.get("action") or "reject",
-            reject_text=preset.get("reject_text"), enabled=0,
-        )
+        result = await create_from_preset(callback.from_user.id, n, default_city)
     elif n == len(presets):
-        # «Своё правило» (D-11): пустое правило, условия добавляются конструктором (план 31-10).
-        fields = dict(
-            name=None, city=default_city, tracks=["full"], conditions=[],
-            action="reject", reject_text=None, enabled=0,
-        )
+        # «Своё правило»: пустая выключенная строка. Индекс за пределом заготовок
+        # create_from_preset не принимает — это отдельная пустая карточка.
+        result = await create_rule(callback.from_user.id, {
+            "name": None, "city": default_city, "tracks": ["full"], "conditions": [],
+            "action": "reject", "reject_text": None,
+        })
     else:
         await callback.answer("Такой заготовки нет — обновите экран.", show_alert=True)
         return
-    new_id, error = await save_rule(callback.from_user.id, None, **fields)
-    if error:
-        await callback.answer(error, show_alert=True)
+    if result.error or not result.view:
+        await callback.answer(result.error or "Не получилось создать правило.", show_alert=True)
         return
+    new_id = result.view["id"]
     screen = await render_rule_card(callback.from_user.id, new_id)
     if screen is None:
         await callback.answer("Правило создано, но не открылось — обновите список.", show_alert=True)
@@ -458,7 +422,7 @@ async def render_rule_card(admin_id: int, rule_id: int) -> tuple[str, InlineKeyb
 
     track_codes = rule.get("tracks") or ["full"]
     track_row = []
-    for ui_code, ui_label in _TRACK_UI:
+    for ui_code, ui_label in TRACKS:
         checked = any(code in track_codes for code in _TRACK_CODES[ui_code])
         mark = "✅" if checked else "⬜"
         track_row.append(InlineKeyboardButton(text=f"{mark} {ui_label}", callback_data=f"arr_track:{rule_id}:{ui_code}"))
@@ -792,16 +756,12 @@ async def arr_copy_go(callback: types.CallbackQuery):
     if not await can_edit_city(callback.from_user.id, code):
         await callback.answer("Нет прав скопировать правило в этот город.", show_alert=True)
         return
-    # D-12/T-31-08-04: копия ВСЕГДА выключена — не начнёт отклонять людей до того, как менеджер её посмотрел.
-    new_id, error = await save_rule(
-        callback.from_user.id, None,
-        name=rule.get("name"), city=code, tracks=rule.get("tracks") or ["full"],
-        conditions=rule.get("conditions") or [], action=rule.get("action"),
-        reject_text=rule.get("reject_text"), enabled=0,
-    )
-    if error:
-        await callback.answer(error, show_alert=True)
+    # Копия всегда выключена — не начнёт отклонять людей, пока менеджер её не посмотрел.
+    result = await copy_to_city(callback.from_user.id, rule_id, code)
+    if result.error or not result.view:
+        await callback.answer(result.error or "Не получилось скопировать правило.", show_alert=True)
         return
+    new_id = result.view["id"]
     screen = await render_rule_card(callback.from_user.id, new_id)
     if screen is None:
         await callback.answer("Копия создана, но не открылась — обновите список.", show_alert=True)
@@ -827,16 +787,20 @@ async def arr_delete_confirm(callback: types.CallbackQuery):
     if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
         await callback.answer("Правило недоступно — обновите список.", show_alert=True)
         return
-    name_or_summary = rule.get("name") or await rule_summary(rule)
-    rejected_count = await _rule_reject_count(rule_id)
+    result = await editor_delete(callback.from_user.id, rule_id, confirm=False)
+    if result.error or not result.needs_confirm:
+        await callback.answer(result.error or "Правило недоступно — обновите список.", show_alert=True)
+        return
+    info = result.needs_confirm
+    rejected_count = info.get("rejected_so_far") or 0
     count = f" ({rejected_count})" if rejected_count else ""
     kept = (f"Уже помеченные им заявки{count} останутся с пометкой, журнал — как есть."
             if rule.get("action") == "flag"
             else f"Уже отклонённые им заявки{count} и журнал останутся как есть.")
     lines = [
-        f"🗑 <b>Удалить правило «{html_module.escape(str(name_or_summary))}»?</b>", "",
+        f"🗑 <b>{html_module.escape(info['text'])}</b>", "",
         f"Правило пропадёт из списка. {kept}",
-        "Вернуть правило нельзя — если сомневаетесь, лучше выключите его.",
+        "Если сомневаетесь, лучше выключите его.",
     ]
     buttons = [[InlineKeyboardButton(text="🗑 Да, удалить навсегда", callback_data=f"arr_dgo:{rule_id}")]]
     if rule.get("enabled"):
@@ -857,10 +821,10 @@ async def arr_delete_go(callback: types.CallbackQuery):
     if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
         await callback.answer("Правило уже недоступно.", show_alert=True)
         return
-    # D-26/T-31-08-06: удаление не трогает журнал автоотказов и не меняет статус делегата — правило уходит, история остаётся.
-    deleted, error = await delete_rule(callback.from_user.id, rule_id)
-    if not deleted:
-        await callback.answer(error or "Не удалось удалить правило.", show_alert=True)
+    # Удаление не трогает журнал автоотказов и не меняет статус делегата.
+    result = await editor_delete(callback.from_user.id, rule_id, confirm=True)
+    if result.error:
+        await callback.answer(result.error or "Не удалось удалить правило.", show_alert=True)
         return
     text, kb = await render_rules_screen(callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
