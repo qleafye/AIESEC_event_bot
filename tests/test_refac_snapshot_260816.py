@@ -632,6 +632,8 @@ def _build_snapshot_lines():
 # Дрифт-нота (28.10, сертификаты после форума): +18 хендлеров, чистые вставки (1325 -> 1343), пересчитано
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 4 вставки, 0 удалений, 0 реордеров.
 # admin.router: certadm_* (handlers/forum/admin_certificates.py, хвост admin.py) — 4 message + 9 callback_query;
+# Дрифт-нота (04.11, сертификат волонтёра уходит сам): +2 admin.callback_query certadm_yes/certadm_rm
+# сразу после certadm_ppl, чистая вставка (1369 -> 1371).
 # user_actions.router: /certificate, ввод имени, cert_get/cert_edit/cert_ok — ПЕРЕД reg_handoff_idle_fallback.
 # Дрифт-нота (28.10, магазин баллов): +25 хендлеров, чистые вставки (1343 -> 1368), пересчитано
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 3 вставки, 0 удалений, 0 реордеров.
@@ -1790,6 +1792,8 @@ admin|callback_query|certadm_tpls|certadm_tpls
 admin|callback_query|certadm_tpl|certadm_tpl:*
 admin|callback_query|certadm_tpldel|certadm_tpldel:*
 admin|callback_query|certadm_ppl|certadm_ppl:*
+admin|callback_query|certadm_yes|certadm_yes:*
+admin|callback_query|certadm_rm|certadm_rm:*
 admin|callback_query|certadm_clr|certadm_clr:*
 admin|callback_query|certadm_clrgo|certadm_clrgo:*
 admin|callback_query|certadm_preview|certadm_preview
@@ -2634,7 +2638,9 @@ def test_snapshot_total_handler_count_is_292():
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
     # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
-    assert len(GOLDEN_SNAPSHOT) == 1369
+    # 04.11 (сертификат волонтёра и амбассадора уходит сам): +2 admin.callback_query
+    # certadm_yes/certadm_rm сразу после certadm_ppl; чистая вставка (1369 -> 1371).
+    assert len(GOLDEN_SNAPSHOT) == 1371
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
