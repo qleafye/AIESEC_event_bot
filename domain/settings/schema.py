@@ -5745,6 +5745,14 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "dashboard", "label": "🏫 Делегации",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+    "dashboard_block_it3plus": {
+        "type": "enum", "group": "dashboard", "label": "💻 В IT от 3 лет",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    "dashboard_block_case_optin": {
+        "type": "enum", "group": "dashboard", "label": "🧩 Хотят в кейс",
+        "options": ["on", "off"], "prompt": None, "default": "off",
+    },
     # Квик 260921: своя иконка вкладки браузера дашборда статистики — НЕ `miniapp_logo`
     # (лого в шапке Mini App, отдельный ключ/поверхность). Загружается документом (PNG/ICO,
     # НЕ фото — Telegram пережимает фото в JPEG) с экрана «🎭 Пресеты и ручки оформления»
