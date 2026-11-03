@@ -47,6 +47,7 @@ _ADMIN_MENU_ROWS: list[tuple[str, str]] = [
     ("📈 Источники", "admin_source_stats"),
     ("🔗 Ссылки с метками", "admin_source_links"),  # маркетологу: метки + новая ссылка кнопкой
     ("📄 Экспорт CSV", "admin_export_csv"),
+    ("🤝 Экспорт для партнёров", "admin_export_partner"),
     ("📝 Незавершённые → таблица", "admin_export_incomplete"),
     ("📋 Заявки", "admin_applications"),
     ("🧾 Чеки", "admin_receipts"),

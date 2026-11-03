@@ -238,6 +238,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("screen_admin", "admin_sheet_target", "🔗 Какая таблица"),
         ("screen", "admin_export_participants", "👥 Список участников"),
         ("op", "admin_export_csv"),
+        ("op", "admin_export_partner"),
         ("op", "admin_export_incomplete"),
         ("op", "admin_sync_sheet"),
         ("op", "admin_rebuild_sheet"),

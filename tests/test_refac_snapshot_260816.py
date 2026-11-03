@@ -1086,6 +1086,7 @@ admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
 admin|callback_query|settings_edit_all|settings_edit_all:*
+admin|callback_query|show_partner_export|admin_export_partner
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -2651,7 +2652,9 @@ def test_snapshot_total_handler_count_is_292():
     # toggle_apps_waitlist, +1 admin.callback_query bciv_toggle сразу после bcstatus_filter,
     # +4 user_actions.callback_query в хвосте после unmute_broadcasts_today;
     # чистая вставка (1371 -> 1379).
-    assert len(GOLDEN_SNAPSHOT) == 1379
+    # Партнёрский CSV: +1 admin.callback_query show_partner_export сразу после
+    # settings_edit_all (хвост admin_settings.py); чистая вставка (1379 -> 1380).
+    assert len(GOLDEN_SNAPSHOT) == 1380
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

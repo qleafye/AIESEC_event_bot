@@ -202,6 +202,7 @@ def test_stats_manager_sees_only_data_section_with_five_ops():
         "admin_monthly_stats",
         "admin_source_stats",
         "admin_export_csv",
+        "admin_export_partner",
         "admin_export_incomplete",
     ]
 
