@@ -377,6 +377,8 @@ async def _send_confirm_prompt(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
         callback_data="bc_important_toggle",
     )
+    from handlers.comms.admin_broadcast_interview import confirm_rows
+    iv_rows = await confirm_rows(state)
     from services.comms import quiet_hours
     now = _now_moscow_naive()
     window = await quiet_hours.window_for_city(None)
@@ -392,7 +394,7 @@ async def _send_confirm_prompt(
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
-            *season_rows, [important_btn],
+            *season_rows, *iv_rows, [important_btn],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
         ])
         await bot.send_message(chat_id, text, reply_markup=kb)
@@ -400,7 +402,7 @@ async def _send_confirm_prompt(
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
-        *season_rows, [important_btn],
+        *season_rows, *iv_rows, [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
     ])
     await bot.send_message(chat_id, f"{warning}Отправить это {total} пользователям?", reply_markup=kb)
@@ -577,6 +579,8 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     bc_kind = data.get("bc_kind", "media")
     bc_content_html = data.get("bc_content_html")
     bc_base_markup = data.get("bc_reply_markup")
+    from handlers.comms.admin_broadcast_interview import with_interview_button
+    bc_base_markup = with_interview_button(bc_base_markup, bool(data.get("bc_interview_button")))
     important = bool(data.get("bc_important"))
     admin_id = callback.from_user.id
 
@@ -964,11 +968,13 @@ async def _send_schedule_confirm_prompt(target, state: FSMContext) -> None:
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
         callback_data="sched_important_toggle",
     )
+    from handlers.comms.admin_broadcast_interview import confirm_rows
+    iv_rows = await confirm_rows(state)
     from handlers.comms.admin_broadcast_season import schedule_season_extra
     season_text, season_rows = await schedule_season_extra(state)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗓 Запланировать", callback_data="sched_go")],
-        *season_rows, [important_btn],
+        *season_rows, *iv_rows, [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="sched_no")],
     ])
     await target.answer(
@@ -1011,7 +1017,8 @@ async def sched_go(callback: types.CallbackQuery, state: FSMContext):
         return
 
     filters = data.get("filters")
-    filter_spec = json.dumps(filters, ensure_ascii=False) if filters else None
+    from handlers.comms.admin_broadcast_interview import pack_filter_spec
+    filter_spec = pack_filter_spec(filters, bool(data.get("bc_interview_button")))
 
     bid = await create_scheduled_broadcast(
         text, photo, filter_spec, _fmt_dt(when), callback.from_user.id, important=important,
@@ -1748,3 +1755,4 @@ from handlers.comms import admin_broadcast_ext_form_filter  # noqa: E402,F401
 from handlers.comms import admin_broadcast_season  # noqa: E402,F401  # сезон по умолчанию, «из них прошлого сезона»
 from handlers.comms import admin_broadcast_enroll_filter  # noqa: E402,F401  # фильтры записи на сессии и теста
 from handlers.comms import admin_broadcast_status  # noqa: E402,F401  # разбивка по статусу заявки, «Только одобренные»
+from handlers.comms import admin_broadcast_interview  # noqa: E402,F401  # галочка «Выбрать время»

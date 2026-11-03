@@ -832,54 +832,60 @@ async def send_scheduled_broadcast(broadcast_id: int):
             return
 
         filter_spec = row.get("filter_spec")
+        interview_on = False
         if filter_spec:
             try:
                 spec = json.loads(filter_spec)
-                # WR-02: the `exclude` list inside an `event_city` filter is a SNAPSHOT of "the
-                # other known city codes" taken when the manager built the filter. EVENT_CITIES
-                # is an .env list edited between scheduling and sending, so a city added after
-                # scheduling is missing from the frozen exclude — the default-city condition
-                # (`event_city NOT IN (...)`) stops excluding it and its delegates leak into a
-                # broadcast addressed to another city. Re-resolve against the LIVE registry at
-                # send time; the stored exclude is only a fallback for pre-WR-02 rows.
-                from domain.cities import refresh_city_filter_spec
-                spec = refresh_city_filter_spec(spec)
-                if spec is None:
-                    # An event_city filter names a code the registry no longer knows. Refuse:
-                    # normalizing it would silently redirect the whole broadcast to the DEFAULT
-                    # city, which is worse than not sending at all.
-                    logger.error(
-                        f"Scheduled broadcast {broadcast_id} targets an unknown event_city — "
-                        "refusing to send (empty audience)"
-                    )
-                    target_ids = []
+                from handlers.comms.admin_broadcast_interview import peel_interview_flag
+                interview_on, spec = peel_interview_flag(spec)
+                if not spec:
+                    target_ids = await get_all_users_ids()
                 else:
-                    # Квик 260914-rgr (RGR-01..07): та же забота, что у event_city выше —
-                    # карта `chats` внутри спеки delegate_chat пересобирается ЗАНОВО на
-                    # момент отправки, а не хранится замороженной со времени планирования.
-                    # Выбрано пересобирать (не отдельный `refresh_*_spec`, как у городов) —
-                    # проще и честнее: чат, отвязанный между планированием и отправкой, не
-                    # должен давать аудиторию «все», а замороженная карта именно так бы и
-                    # сделала (пустой EXISTS -> фрагмент "0" -> пустая, но НЕ ошибочная
-                    # аудитория есть только если карта пуста целиком, а не устарела).
-                    if any(isinstance(f, dict) and f.get("field") == "delegate_chat" for f in spec):
-                        from domain.cities import city_scope as _city_scope
-                        from services.chat_tracking import bound_chats
+                    # WR-02: the `exclude` list inside an `event_city` filter is a SNAPSHOT of "the
+                    # other known city codes" taken when the manager built the filter. EVENT_CITIES
+                    # is an .env list edited between scheduling and sending, so a city added after
+                    # scheduling is missing from the frozen exclude — the default-city condition
+                    # (`event_city NOT IN (...)`) stops excluding it and its delegates leak into a
+                    # broadcast addressed to another city. Re-resolve against the LIVE registry at
+                    # send time; the stored exclude is only a fallback for pre-WR-02 rows.
+                    from domain.cities import refresh_city_filter_spec
+                    spec = refresh_city_filter_spec(spec)
+                    if spec is None:
+                        # An event_city filter names a code the registry no longer knows. Refuse:
+                        # normalizing it would silently redirect the whole broadcast to the DEFAULT
+                        # city, which is worse than not sending at all.
+                        logger.error(
+                            f"Scheduled broadcast {broadcast_id} targets an unknown event_city — "
+                            "refusing to send (empty audience)"
+                        )
+                        target_ids = []
+                    else:
+                        # Квик 260914-rgr (RGR-01..07): та же забота, что у event_city выше —
+                        # карта `chats` внутри спеки delegate_chat пересобирается ЗАНОВО на
+                        # момент отправки, а не хранится замороженной со времени планирования.
+                        # Выбрано пересобирать (не отдельный `refresh_*_spec`, как у городов) —
+                        # проще и честнее: чат, отвязанный между планированием и отправкой, не
+                        # должен давать аудиторию «все», а замороженная карта именно так бы и
+                        # сделала (пустой EXISTS -> фрагмент "0" -> пустая, но НЕ ошибочная
+                        # аудитория есть только если карта пуста целиком, а не устарела).
+                        if any(isinstance(f, dict) and f.get("field") == "delegate_chat" for f in spec):
+                            from domain.cities import city_scope as _city_scope
+                            from services.chat_tracking import bound_chats
 
-                        bound = await bound_chats()
-                        chats_payload = []
-                        for entry in bound:
-                            sc = _city_scope(entry["city"]) if entry["city"] else None
-                            chats_payload.append({
-                                "city": entry["city"], "chat_id": entry["chat_id"],
-                                "exclude": list(sc[1]) if sc else [],
-                            })
-                        spec = [
-                            {**f, "chats": chats_payload}
-                            if isinstance(f, dict) and f.get("field") == "delegate_chat" else f
-                            for f in spec
-                        ]
-                    target_ids = await count_and_list_filtered(spec)
+                            bound = await bound_chats()
+                            chats_payload = []
+                            for entry in bound:
+                                sc = _city_scope(entry["city"]) if entry["city"] else None
+                                chats_payload.append({
+                                    "city": entry["city"], "chat_id": entry["chat_id"],
+                                    "exclude": list(sc[1]) if sc else [],
+                                })
+                            spec = [
+                                {**f, "chats": chats_payload}
+                                if isinstance(f, dict) and f.get("field") == "delegate_chat" else f
+                                for f in spec
+                            ]
+                        target_ids = await count_and_list_filtered(spec)
             except Exception as e:
                 logger.error(f"Scheduled broadcast {broadcast_id} bad filter_spec: {e}")
                 target_ids = []
@@ -934,6 +940,8 @@ async def send_scheduled_broadcast(broadcast_id: int):
         sent_message_ids: dict[int, int] = {}
         # Языки получателей и кнопка «🔕» — один раз на рассылку, не походом в БД на каждого.
         langs = await load_recipient_langs() if not important else None
+        from handlers.comms.admin_broadcast_interview import with_interview_button
+        interview_base = with_interview_button(None, interview_on)
         # Чекпоинт `mark_delivery` остаётся на КАЖДОГО получателя (он и есть защита от дубля
         # после краха), но пишется через одно соединение на весь цикл (`delivery_writer`);
         # строки журнала отзыва копятся и сбрасываются пачкой.
@@ -946,7 +954,9 @@ async def send_scheduled_broadcast(broadcast_id: int):
                         continue
                     # Ревью 470ce5e..3703ba4: ровно 1 API-вызов на получателя — пометка важности
                     # внутри `content`, кнопка «🔕» внутри `markup` (альбома здесь не бывает).
-                    markup = await recipient_markup(chat_id, important, langs=langs)
+                    markup = await recipient_markup(
+                        chat_id, important, interview_base, langs=langs,
+                    )
                     if photo:
                         async def _send(cid, _photo=photo, _caption=content, _markup=markup):
                             msg = await _bot.send_photo(

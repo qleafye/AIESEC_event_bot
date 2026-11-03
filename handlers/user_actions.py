@@ -2297,3 +2297,5 @@ async def unmute_broadcasts_today(callback: types.CallbackQuery):
         await callback.message.edit_reply_markup(reply_markup=new_markup)
     except Exception:
         pass
+
+from handlers import interviews as interview_delegate  # noqa: E402,F401

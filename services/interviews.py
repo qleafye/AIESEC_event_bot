@@ -23,6 +23,7 @@ _OTHER_SEASON = "Запись на интервью открыта для тек
 _OFF = "Запись на интервью сейчас выключена."
 _ALREADY = "Ты уже выбрал время."
 _GONE = "Этого времени уже нет."
+_OTHER_CITY = "Это время открыто для другого города."
 
 
 def _stamp(now: datetime) -> str:
@@ -79,6 +80,14 @@ async def window_open(now: datetime) -> str | None:
     return None
 
 
+def _city_matches(user: dict, slot: dict) -> bool:
+    """Общий слот (город пустой) открыт всем. Слот с кодом — только этому городу анкеты."""
+    code = slot.get("event_city")
+    if not code:
+        return True
+    return (user.get("event_city") or "").strip() == str(code).strip()
+
+
 def _arm(user_id: int, starts_at: str, slot_id: int) -> None:
     starts = _parse_start(starts_at)
     if starts is None:
@@ -102,6 +111,8 @@ async def book_slot(user: dict, slot_id: int, now: datetime | None = None) -> st
     slot = await interview_db.get_slot(slot_id)
     if slot is None:
         return _GONE
+    if not _city_matches(user, slot):
+        return _OTHER_CITY
     code = await interview_db.book(int(user["telegram_id"]), int(slot_id), _stamp(moment))
     if code == "full":
         return await _text("interview_full_text", "Это время уже занято.")
@@ -133,6 +144,8 @@ async def move_slot(user: dict, slot_id: int, now: datetime | None = None) -> st
     slot = await interview_db.get_slot(slot_id)
     if slot is None:
         return _GONE
+    if not _city_matches(user, slot):
+        return _OTHER_CITY
     code = await interview_db.reschedule(uid, int(slot_id), _stamp(moment))
     if code == "full":
         return await _text("interview_full_text", "Это время уже занято.")
