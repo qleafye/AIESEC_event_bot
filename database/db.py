@@ -938,6 +938,16 @@ async def init_db():
         await _ensure_column(db, "broadcasts", "important", "INTEGER DEFAULT 0")
         await _ensure_column(db, "broadcasts", "full_text", "TEXT")
         await _ensure_column(db, "broadcasts", "mute_skipped", "INTEGER DEFAULT 0")
+        await _ensure_column(db, "broadcasts", "consent_key", "TEXT")
+        await _ensure_column(db, "scheduled_broadcasts", "consent_key", "TEXT")
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS broadcast_consent_taps (
+                broadcast_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                accepted_at TEXT,
+                PRIMARY KEY (broadcast_id, user_id)
+            )
+        ''')
         # БЕЗ PRIMARY KEY: альбом отдаёт несколько message_id на один chat_id — по одной строке
         # на каждое доставленное сообщение, не одна на получателя.
         await db.execute('''
@@ -5112,22 +5122,23 @@ async def create_scheduled_broadcast(
     filter_spec: str | None,
     scheduled_at: str,
     created_by: int,
-    *, important: bool = False,
+    *, important: bool = False, consent_key: str | None = None,
 ) -> int:
     """Insert a pending scheduled broadcast; return its new id (the job's only arg).
 
     `important` (форум-ночь п.7, kw-only с дефолтом False — существующие вызовы байт-в-байт
     прежние): копируется в журнал `broadcasts` при отправке (services/scheduler.py::
-    send_scheduled_broadcast), read back via get_scheduled_broadcast (SELECT *)."""
+    send_scheduled_broadcast), read back via get_scheduled_broadcast (SELECT *).
+    `consent_key` — какое согласие прикреплено кнопкой; без аргумента пишется NULL."""
     created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO scheduled_broadcasts "
             "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at, "
-            "important) "
-            "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+            "important, consent_key) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
             (text, photo_file_id, filter_spec, scheduled_at, created_by, created_at,
-             1 if important else 0),
+             1 if important else 0, consent_key),
         )
         await db.commit()
         return cursor.lastrowid
@@ -5308,22 +5319,23 @@ async def cleanup_deliveries(broadcast_id: int):
 
 async def create_broadcast(
     admin_id: int, text_preview: str, total: int,
-    *, important: bool = False, full_text: str | None = None,
+    *, important: bool = False, full_text: str | None = None, consent_key: str | None = None,
 ) -> int:
     """Insert a 'sending' row for an immediate broadcast; return its new id.
 
     Форум-ночь п.7: `important`/`full_text` — тот же ряд, что и у отложенной рассылки
     (services/scheduler.py::send_scheduled_broadcast заводит/переиспользует ЭТУ ЖЕ строку
     журнала через log_broadcast_id). kw-only с дефолтами — существующие позиционные вызовы
-    остаются байт-в-байт прежними."""
+    остаются байт-в-байт прежними. `consent_key` без аргумента — NULL."""
     started_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO broadcasts "
             "(admin_id, text_preview, started_at, status, total, delivered, blocked, "
-            "important, full_text) "
-            "VALUES (?, ?, ?, 'sending', ?, 0, 0, ?, ?)",
-            (admin_id, text_preview, started_at, total, 1 if important else 0, full_text),
+            "important, full_text, consent_key) "
+            "VALUES (?, ?, ?, 'sending', ?, 0, 0, ?, ?, ?)",
+            (admin_id, text_preview, started_at, total, 1 if important else 0, full_text,
+             consent_key),
         )
         await db.commit()
         return cursor.lastrowid

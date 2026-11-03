@@ -915,10 +915,11 @@ async def send_scheduled_broadcast(broadcast_id: int):
         # `log_bid` — id строки `broadcasts` (им владеют record_broadcast_delivery/
         # finish_broadcast — журнал «Последние рассылки» и отзыв). Не перепутать.
         log_bid = row.get("log_broadcast_id")
+        consent_key = (row.get("consent_key") or "").strip() or None
         if not log_bid:
             log_bid = await create_broadcast(
                 row.get("created_by") or 0, (row.get("text") or "")[:80], len(target_ids),
-                important=important, full_text=row.get("text"),
+                important=important, full_text=row.get("text"), consent_key=consent_key,
             )
             await set_scheduled_log_broadcast_id(broadcast_id, log_bid)
 
@@ -941,7 +942,9 @@ async def send_scheduled_broadcast(broadcast_id: int):
         # Языки получателей и кнопка «🔕» — один раз на рассылку, не походом в БД на каждого.
         langs = await load_recipient_langs() if not important else None
         from handlers.comms.admin_broadcast_interview import with_interview_button
+        from handlers.comms.admin_broadcast_consent import with_consent_button
         interview_base = with_interview_button(None, interview_on)
+        interview_base = await with_consent_button(interview_base, log_bid, consent_key)
         # Чекпоинт `mark_delivery` остаётся на КАЖДОГО получателя (он и есть защита от дубля
         # после краха), но пишется через одно соединение на весь цикл (`delivery_writer`);
         # строки журнала отзыва копятся и сбрасываются пачкой.

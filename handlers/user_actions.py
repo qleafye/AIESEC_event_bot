@@ -2299,3 +2299,4 @@ async def unmute_broadcasts_today(callback: types.CallbackQuery):
         pass
 
 from handlers import interviews as interview_delegate  # noqa: E402,F401
+from handlers.comms import consent_tap as consent_delegate  # noqa: E402,F401

@@ -767,6 +767,8 @@ _REGISTRY_TEXTS_EN = {
     "Запись закрыта.": "Booking is closed.",
     "Перенести можно было один раз.": "You could move it only once.",
     "Время интервью {when} отменили. Выбери другое, если запись ещё открыта.": "The interview time {when} was cancelled. Pick another if booking is still open.",
+    "Принято. Спасибо.": "Got it. Thank you.",
+    "Эта кнопка больше не действует.": "This button no longer works.",
     "Отбор не пройден.": "You didn't pass the selection.",
     "Чтобы продолжить, задайте @username в настройках Telegram и снова отправьте /start.": "To continue, set a @username in your Telegram settings and send /start again.",
     "Программа форума ещё не загружена.": "The forum program hasn't been uploaded yet.",

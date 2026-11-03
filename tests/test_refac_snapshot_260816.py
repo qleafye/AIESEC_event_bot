@@ -1161,6 +1161,10 @@ admin|callback_query|enrf_cancel|enrf_cancel
 admin|callback_query|bcstatus_only|bcstatus_only
 admin|callback_query|bcstatus_filter|bcstatus_filter
 admin|callback_query|bciv_toggle|bciv_toggle
+admin|callback_query|bc_consent_open|bc_consent_open
+admin|callback_query|bc_consent_long|bc_consent_long
+admin|callback_query|bc_consent_pick|bc_consent:*
+admin|callback_query|bc_consent_clear|bc_consent_clear
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -2018,6 +2022,7 @@ user_actions|callback_query|interview_open|iv_open
 user_actions|callback_query|interview_pick|iv_pick:*
 user_actions|callback_query|interview_move|iv_move
 user_actions|callback_query|interview_move_to|iv_moveto:*
+user_actions|callback_query|consent_tap|cns:*
 """.strip("\n").splitlines()
 
 
@@ -2654,7 +2659,10 @@ def test_snapshot_total_handler_count_is_292():
     # чистая вставка (1371 -> 1379).
     # Партнёрский CSV: +1 admin.callback_query show_partner_export сразу после
     # settings_edit_all (хвост admin_settings.py); чистая вставка (1379 -> 1380).
-    assert len(GOLDEN_SNAPSHOT) == 1380
+    # Кнопка согласия в рассылке: +4 admin.callback_query (bc_consent_open/long/pick/clear)
+    # сразу после bciv_toggle и перед admin_event_preset, +1 user_actions.callback_query
+    # consent_tap в хвосте после iv_moveto; чистая вставка (1380 -> 1385).
+    assert len(GOLDEN_SNAPSHOT) == 1385
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
