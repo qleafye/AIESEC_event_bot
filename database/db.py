@@ -2613,6 +2613,25 @@ async def init_db():
             "WHERE revoked_at IS NULL AND consumed_at IS NULL"
         )
 
+        # Журнал действий менеджера по карточке. Это не правка анкеты: сюда не пишут
+        # record_answer_history и не будят лист истории правок. subject_id NULL — пакет
+        # без одного делегата (сверка листа); такие строки удаление человека не трогает.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS admin_actions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                actor_id INTEGER,
+                subject_id INTEGER,
+                action TEXT NOT NULL,
+                before_json TEXT,
+                after_json TEXT,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_admin_actions_subject "
+            "ON admin_actions(subject_id, id)"
+        )
+
         # Квик 260912-mcj: одноразовый сдвиг семьи «сейчас» бота на московское время — на
         # этом же соединении, до финального commit (см. докстринг функции).
         await _migrate_local_timestamps_to_msk(db)
@@ -4107,6 +4126,55 @@ async def get_answer_history(telegram_id: int, limit: int = 5) -> list[dict]:
         d = dict(row)
         d["changes"] = json.loads(d["changes"]) if d.get("changes") else []
         result.append(d)
+    return result
+
+
+async def record_admin_action(
+    *,
+    actor_id: int | None,
+    subject_id: int | None,
+    action: str,
+    before: dict | None = None,
+    after: dict | None = None,
+) -> int:
+    """Одна строка журнала действий менеджера. Не история ответов и не лист правок.
+
+    `before`/`after` — словари вызывающего кода. None хранится как SQL NULL, не как
+    строка «null». Время — московское, как у admin_delegate_overrides."""
+    if not action or not action.strip():
+        raise ValueError("action")
+    created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    before_json = None if before is None else json.dumps(before, ensure_ascii=False)
+    after_json = None if after is None else json.dumps(after, ensure_ascii=False)
+    async with _connect() as conn:
+        cursor = await conn.execute(
+            "INSERT INTO admin_actions "
+            "(actor_id, subject_id, action, before_json, after_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (actor_id, subject_id, action, before_json, after_json, created_at),
+        )
+        await conn.commit()
+        new_id = cursor.lastrowid
+    return int(new_id)
+
+
+async def list_admin_actions(subject_id: int, *, limit: int = 20) -> list[dict]:
+    """Действия по одному делегату, новые сверху. `before` и `after` — словари или None."""
+    async with _connect() as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM admin_actions WHERE subject_id = ? ORDER BY id DESC LIMIT ?",
+            (subject_id, limit),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        raw_before = item.get("before_json")
+        raw_after = item.get("after_json")
+        item["before"] = json.loads(raw_before) if raw_before else None
+        item["after"] = json.loads(raw_after) if raw_after else None
+        result.append(item)
     return result
 
 
@@ -11175,6 +11243,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # делегата (кому что разрешили). granted_by/revoked_by — id менеджера, авторские колонки,
     # не трогаем отдельно (строка целиком уходит вместе с делегатом).
     ("admin_delegate_overrides", "telegram_id", "overrides"),
+    # Стираются строки, где удаляемый — объект действия. actor_id не ключ удаления:
+    # журнал, где этот человек только автор, остаётся. subject_id IS NULL (пакет сверки)
+    # тоже остаётся. Группа overrides — в подтверждении удаления не появляется новое слово.
+    ("admin_actions", "subject_id", "overrides"),
     # Идея №29 бэклога чек-ина («Твой Юлид в цифрах»): forum_stats_card_sends.telegram_id —
     # кому и когда ушла итоговая картинка-карточка, тот же личный след, группа общая "checkin"
     # (соседи forum_noshow_poll/regional_noshow_move выше — тот же журнал отправки делегату).
