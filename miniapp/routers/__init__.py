@@ -280,6 +280,36 @@
                                        end_time}]}]}], empty_text|null}
                                        view/фото резолвятся services.forum.program (общая точка
                                        правды с чат-кнопкой и гейтом кнопки меню бота)
+  Менеджер (редактор правил автоотказа; право «Настройки» и одноимённый раздел;
+  город и слепок считает services.applications.reject_rules_editor, роутер город не сравнивает):
+  GET  /app/api/admin/reject-rules?city&offset&limit -> {items[RuleView, у общего правила
+                                       без права правки ещё locked_text], total, offset, limit,
+                                       empty_text, hint, master{enabled, can_toggle, status_text},
+                                       can_toggle_master, cities[{code,label}], paused_count}
+                                       порядок: пауза, включено, выключено, затем по имени;
+                                       ?city= только у руководителя без привязки; limit по умолчанию 100
+  GET  /app/api/admin/reject-rules/catalog?city&tracks= -> вопросы, заготовки, города, треки
+  GET  /app/api/admin/reject-rules/{id} -> {rule}; 404 not_found; 403 out_of_scope
+  POST /app/api/admin/reject-rules {draft|preset, city} -> {ok, rule}; правило всегда выключено
+                                       400 invalid — пустой черновик, пустые треки, чужое действие,
+                                       вариант не из анкеты
+  PUT  /app/api/admin/reject-rules/{id} {правило, base_rev} -> {ok, rule}
+                                       | 409 {reason:"stale", text, rule} | 400 invalid
+                                       | 403 out_of_scope | 404 not_found
+  POST /app/api/admin/reject-rules/preview -> {matched, total, text, too_wide, forum_date_missing}
+                                       ничего не пишет
+  POST /app/api/admin/reject-rules/{id}/enable {confirm, base_rev}
+                                       -> {needs_confirm} | {ok, rule} | 400 invalid | 409 | 403 | 404
+  POST /app/api/admin/reject-rules/{id}/disable {base_rev} -> {ok, rule}
+  POST /app/api/admin/reject-rules/{id}/copy {city} -> {ok, rule}; имя кончается на « (копия)»,
+                                       правило выключено; чужой город — 403 out_of_scope
+  DELETE /app/api/admin/reject-rules/{id}?confirm=0|1
+                                       -> {needs_confirm:{text, rejected_so_far, enabled,
+                                       can_disable_instead}} | {ok}
+  POST /app/api/admin/reject-rules/master {enabled, confirm}
+                                       -> {needs_confirm:{text, enabled_count}} | {ok, enabled}
+                                       привязанный менеджер — 403 out_of_scope; выключение без
+                                       confirm не пишет; включение сразу пишет reject_rules_enabled
 
 Коды ошибок — всегда JSON-тело с полем `reason`:
   401 {"reason": "no_auth"}        — ни initData, ни cookie
@@ -313,6 +343,7 @@ from miniapp.routers import (
     profile,
     program,
     questions,
+    reject_rules,
     review,
     settings,
     stats,
@@ -337,6 +368,7 @@ ALL_ROUTERS = [
     applications.router,
     questions.router,
     faq.router,
+    reject_rules.router,
     checkin.router,
     checkin_enroll.router,
     program.router,
