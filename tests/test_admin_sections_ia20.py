@@ -341,10 +341,11 @@ def test_apps_section_for_moderate_reg_has_operations_only():
     # этом списке отсутствуют).
     # Лист ожидания — единственный тумблер раздела на капе `moderate_reg`: его включает тот же
     # менеджер, который разбирает заявки. Остальные тумблеры по-прежнему требуют `settings`.
+    # Запись на интервью — экран того же менеджера, сразу перед тумблером листа ожидания.
     rows = sec.visible_rows("apps", {"moderate_reg"}, False)
     assert [sec.row_callback(r) for r in rows] == [
         "admin_applications", "admin_app_list", "admin_questions", "admin_faq", "admin_sos",
-        "admin_forum_functions", "admin_delegations", "toggle_apps_waitlist",
+        "admin_forum_functions", "admin_delegations", "admin_interviews", "toggle_apps_waitlist",
     ]
     assert [sec.row_callback(r) for r in rows if r[0] in ("toggle", "group")] == [
         "toggle_apps_waitlist",

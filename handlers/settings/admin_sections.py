@@ -143,6 +143,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Делегации вузов на Москву: экран «🏫 Делегации» внутри «📋 Заявки», своего раздела
         # не заводим — девять разделов зафиксированы (капа `moderate_reg`, как у заявок).
         ("screen", "admin_delegations", "🏫 Делегации"),
+        ("screen", "admin_interviews", "🗓 Интервью"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
         ("toggle", "settings_toggle_party_approval"),
@@ -773,3 +774,4 @@ from handlers.forum import admin_program  # noqa: E402,F401
 
 # Лист ожидания заявок — тот же хвостовой приём, снимок хендлеров только дописывается.
 from handlers.applications import admin_waitlist  # noqa: E402,F401
+from handlers import admin_interviews  # noqa: E402,F401

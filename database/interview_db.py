@@ -164,6 +164,57 @@ async def reschedule(user_id: int, slot_id: int, booked_at: str) -> str:
     return "full"
 
 
+async def list_visible_slots(event_city: str | None, *, every: bool = False) -> list[dict]:
+    """NULL-слот виден всем. Слот с кодом города — только этому городу.
+
+    `every` — шапка «все города»: менеджер видит и чужие коды, чтобы их убрать.
+    Модуль городов выключен передаёт city=None и every=False: только общие слоты.
+    """
+    sql = (
+        "SELECT id, event_city, starts_at, cap, created_by, created_at "
+        "FROM interview_slots "
+    )
+    if every:
+        sql += "ORDER BY starts_at, id"
+        args: tuple = ()
+    elif event_city is None:
+        sql += "WHERE event_city IS NULL ORDER BY starts_at, id"
+        args = ()
+    else:
+        sql += "WHERE event_city IS NULL OR event_city = ? ORDER BY starts_at, id"
+        args = (event_city,)
+    async with _db._connect() as db:
+        async with db.execute(sql, args) as cur:
+            return [_row(r) for r in await cur.fetchall()]
+
+
+async def list_slot_people(slot_id: int) -> list[dict]:
+    """Кто записан: имя и ник для экрана менеджера. Делегату этот список не отдаём."""
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT b.user_id, u.full_name, u.username "
+            "FROM interview_bookings b "
+            "LEFT JOIN users u ON u.telegram_id = b.user_id "
+            "WHERE b.slot_id = ? ORDER BY b.booked_at, b.user_id",
+            (int(slot_id),),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [
+        {"user_id": int(r[0]), "full_name": r[1] or "", "username": r[2] or ""}
+        for r in rows
+    ]
+
+
+async def set_slot_cap(slot_id: int, cap: int) -> None:
+    """Кап этого слота. Ниже 1 не опускается."""
+    async with _db._connect() as db:
+        await db.execute(
+            "UPDATE interview_slots SET cap = ? WHERE id = ?",
+            (max(1, int(cap)), int(slot_id)),
+        )
+        await db.commit()
+
+
 async def delete_slot(slot_id: int) -> list[int]:
     """Снимает слот и его брони. Напоминания этих людей отменяет."""
     sid = int(slot_id)

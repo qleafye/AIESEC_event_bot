@@ -378,6 +378,9 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "appr_approve:*": "moderate_reg",
     "appr_waitlist:*": "moderate_reg",
     "toggle_apps_waitlist": "moderate_reg",
+    "admin_interviews": "moderate_reg",
+    "ivadm:*": "moderate_reg",
+    "state:InterviewAdmin:*": "moderate_reg",
     # Phase 21 (21-07, T-21-09): кнопка «🕓 История» правок анкеты в карточке заявки — та же
     # капа, что и вся остальная карточка, чужую историю без прав не открыть.
     "appr_history:*": "moderate_reg",
@@ -492,6 +495,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности на превью немедленной рассылки —
     # та же capability, что bc_go/bc_no рядом.
     "bc_important_toggle": "broadcast",
+    "bciv_toggle": "broadcast",
     "bc_rev:*": "broadcast",
     "bc_revgo:*": "broadcast",
     "bc_revno*": "broadcast",
