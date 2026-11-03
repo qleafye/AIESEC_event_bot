@@ -1570,6 +1570,27 @@ async def init_db():
             "ON application_decisions(effects_sent_at, undone_at, effects_due_at)"
         )
 
+        # Слоты интервью кейс-чемпионата. event_city NULL — слот общий (модуль городов
+        # выключен). starts_at — московское время без пояса, YYYY-MM-DD HH:MM.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS interview_slots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_city TEXT,
+                starts_at TEXT NOT NULL,
+                cap INTEGER NOT NULL,
+                created_by INTEGER,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS interview_bookings (
+                user_id INTEGER PRIMARY KEY,
+                slot_id INTEGER NOT NULL,
+                reschedule_count INTEGER NOT NULL DEFAULT 0,
+                booked_at TEXT NOT NULL
+            )
+        ''')
+
         # Phase 31 (31-02, D-05/D-15): правила автоотказа по анкете. Условия правила хранятся
         # ОДНОЙ JSON-колонкой (`conditions`), а не нормализованной схемой условий — D-02
         # фиксирует ровно два булевых уровня (группы через ИЛИ, условия внутри группы через

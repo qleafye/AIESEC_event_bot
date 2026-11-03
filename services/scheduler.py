@@ -1144,6 +1144,70 @@ async def send_payment_reminder(user_id: int):
         logger.error(f"send_payment_reminder({user_id}) failed: {e}")
 
 
+def schedule_interview_reminder(user_id: int, slot_id: int, run_at: datetime):
+    """Напоминание за 2 часа. Один id на человека: новая запись заменяет старую.
+
+    Если время уже прошло (слот ближе чем через 2 часа), джобу не ставим."""
+    if run_at <= _now_moscow_naive():
+        return
+    get_scheduler().add_job(
+        send_interview_reminder, "date",
+        run_date=run_at, args=[int(user_id), int(slot_id)],
+        id=f"interview_rem_{int(user_id)}", replace_existing=True,
+    )
+
+
+def cancel_interview_reminder(user_id: int):
+    try:
+        get_scheduler().remove_job(f"interview_rem_{int(user_id)}")
+    except Exception:
+        pass
+
+
+async def send_interview_reminder(user_id: int, slot_id: int):
+    """Перед отправкой бронь читается заново. Чужой или старый slot_id молчит.
+
+    Тихие часы не переносят напоминание на момент слота или позже: тогда письмо
+    уходит сразу, иначе человек получил бы его уже на созвоне."""
+    try:
+        from database import interview_db
+        from services.comms import quiet_hours
+
+        if await get_setting_typed("interview_booking_enabled") != "on":
+            return
+        booking = await interview_db.get_booking(int(user_id))
+        if not booking or int(booking["slot_id"]) != int(slot_id):
+            return
+        slot = await interview_db.get_slot(int(slot_id))
+        if not slot:
+            return
+        try:
+            starts = datetime.strptime(slot["starts_at"].strip(), "%Y-%m-%d %H:%M")
+        except (TypeError, ValueError, AttributeError):
+            return
+        now = _now_moscow_naive()
+        if now >= starts:
+            return
+        due = await quiet_hours.defer_until(now, int(user_id))
+        if due is not None and due < starts:
+            get_scheduler().add_job(
+                send_interview_reminder, "date",
+                run_date=due, args=[int(user_id), int(slot_id)],
+                id=f"interview_rem_{int(user_id)}", replace_existing=True,
+            )
+            return
+        text = await get_setting_typed("interview_reminder_text") or (
+            "Напоминание: интервью {when}. До встречи."
+        )
+        when = starts.strftime("%d.%m.%Y %H:%M")
+        await _safe_send(
+            lambda cid: _bot.send_message(cid, str(text).replace("{when}", when)),
+            int(user_id),
+        )
+    except Exception as e:
+        logger.error(f"send_interview_reminder({user_id}) failed: {e}")
+
+
 async def sweep_payment_overdue():
     """Daily interval target: mark past-deadline non-payers as 'overdue'. Touches only
     'not_paid' rows that actually entered the payment flow ('payment_option' set or
