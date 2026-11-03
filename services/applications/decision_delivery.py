@@ -20,7 +20,22 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from database.db import record_admin_action
+
 logger = logging.getLogger(__name__)
+
+
+async def _remember(action: str, by_admin, before: dict, after: dict, subject_id=None) -> None:
+    try:
+        await record_admin_action(
+            actor_id=by_admin,
+            subject_id=subject_id,
+            action=action,
+            before=before,
+            after=after,
+        )
+    except Exception as e:
+        logger.warning("decision_delivery: журнал %s не записан: %s", action, e)
 
 # Три человеческие причины сбоя, которые классифицирует
 # `services.applications.application_effects._classify_decision_delivery_error` — константы здесь, единая
@@ -93,7 +108,9 @@ def summarize_deliveries(users: list[dict]) -> dict:
     }
 
 
-async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) -> dict:
+async def resend_undelivered_decisions(
+    bot, *, city_scope: tuple | None = None, by_admin: int | None = None,
+) -> dict:
     """«📨 Переотправить решения» (задача координатора 25.09, п.4). Пересчитывает недоставленные
     СВЕЖИМ снимком (статус/доставка могли смениться между показом отчёта и тапом «Да») —
     `resendable` берётся из `summarize_deliveries` НАД ТОЛЬКО ЧТО прочитанным списком, значит
@@ -131,6 +148,9 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
         targets = summary["resendable"]
         blocked = summary["blocked"]
         if not targets:
+            await _remember(
+                "resend_decisions", by_admin, {"resendable": 0}, {"done": 0, "failed": 0},
+            )
             return {"ok": True, "done": 0, "failed": [], "total": 0, "blocked": blocked}
 
         done = 0
@@ -156,6 +176,10 @@ async def resend_undelivered_decisions(bot, *, city_scope: tuple | None = None) 
                     **it, "reason": (fresh or {}).get("decision_delivery_error") or "не доставлено",
                 })
             await asyncio.sleep(_RESEND_PAUSE_S)
+        await _remember(
+            "resend_decisions", by_admin,
+            {"resendable": len(targets)}, {"done": done, "failed": len(failed)},
+        )
         return {"ok": True, "done": done, "failed": failed, "total": len(targets), "blocked": blocked}
     except Exception as e:
         logger.error(f"resend_undelivered_decisions: неожиданный сбой: {e}")
@@ -210,7 +234,7 @@ async def preview_decision_text(user: dict) -> str:
     return plain
 
 
-async def resend_one_decision(bot, telegram_id: int) -> dict:
+async def resend_one_decision(bot, telegram_id: int, *, by_admin: int | None = None) -> dict:
     """Переотправка решения ОДНОМУ делегату (кнопка в карточке /find). Тот же путь, что у
     массовой: `apply_decision_effects(sheet=False, resend=True)` — тот же текст, та же запись
     `users.decision_delivery_*`; результат читаем из свежей строки, а не предполагаем успех.
@@ -231,17 +255,30 @@ async def resend_one_decision(bot, telegram_id: int) -> dict:
         if decision not in DECIDED_STATUSES:
             return {"ok": False, "error": "по заявке ещё нет решения"}
         reason = await last_rejection_reason(telegram_id) if decision == "rejected" else None
+        before = {"status": decision}
         try:
             await apply_decision_effects(bot, telegram_id, decision, reason, sheet=False, resend=True)
         except Exception as e:
             logger.error(f"resend_one_decision: сбой отправки {telegram_id}: {e}")
+            await _remember(
+                "resend_decision", by_admin, before, {"delivered": False}, subject_id=telegram_id,
+            )
             return {"ok": True, "delivered": False, "error": f"ошибка отправки: {e}"}
         fresh = await get_user(telegram_id) or {}
         status = fresh.get("decision_delivery_status")
         if status == "delivered":
+            await _remember(
+                "resend_decision", by_admin, before, {"delivered": True}, subject_id=telegram_id,
+            )
             return {"ok": True, "delivered": True}
         if status == "queued":
+            await _remember(
+                "resend_decision", by_admin, before, {"queued": True}, subject_id=telegram_id,
+            )
             return {"ok": True, "delivered": False, "queued": True}
+        await _remember(
+            "resend_decision", by_admin, before, {"delivered": False}, subject_id=telegram_id,
+        )
         return {"ok": True, "delivered": False, "error": fresh.get("decision_delivery_error") or "не доставлено"}
     finally:
         _release(key)
