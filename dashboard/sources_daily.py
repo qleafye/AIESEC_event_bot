@@ -167,8 +167,10 @@ class SourcesQuery:
             new = tuple(v for v in current if v != value) if value in current else current + (value,)
         return replace(self, **{attr: new})
 
-    def pairs(self, *, city, season) -> list[tuple[str, str]]:
+    def pairs(self, *, city, season, event=None) -> list[tuple[str, str]]:
         out: list[tuple[str, str]] = []
+        if event:
+            out.append(("event", event))
         if city:
             out.append(("city", city))
         if season:
@@ -192,11 +194,11 @@ class SourcesQuery:
             out.append(("period", self.period))
         return out
 
-    def href(self, *, city, season, toggle=None, **overrides) -> str:
+    def href(self, *, city, season, event=None, toggle=None, **overrides) -> str:
         q = replace(self, **overrides) if overrides else self
         if toggle is not None:
             q = q.toggled(*toggle)
-        return "?" + urllib.parse.urlencode(q.pairs(city=city, season=season))
+        return "?" + urllib.parse.urlencode(q.pairs(city=city, season=season, event=event))
 
 
 # ── выборка и корзины ────────────────────────────────────────────────────────────────────

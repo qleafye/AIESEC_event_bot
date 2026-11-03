@@ -87,7 +87,11 @@
             <tr>
               <td data-label="Событие">
                 <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+                {% if e.available %}
+                <a href="/?event={{ e.code | urlencode }}">{{ e.name }}</a>
+                {% else %}
                 {{ e.name }}
+                {% endif %}
                 {% if not e.available %}
                 <span class="cell-empty" title="{{ e.error }}">— недоступно</span>
                 {% elif e.season_options | length > 1 %}
