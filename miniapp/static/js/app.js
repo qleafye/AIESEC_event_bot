@@ -76,6 +76,10 @@ export const ROUTES = [
   // Quick 260906-nxp: менеджерский экран ведения того же списка (список/правка/порядок/
   // город/удаление) — тот же раздел «faq», второй записи чекбокса не заводится.
   ["#/admin-faq", "screens/admin_faq.js"],
+  // Редактор правил автоотказа. Отдельной записи «#/admin-reject-rule/new» нет:
+  // "new" и так попадает в {id}, как у «#/task-edit/{id}» выше.
+  ["#/admin-reject-rules", "screens/admin_reject_rules.js"],
+  ["#/admin-reject-rule/{id}", "screens/admin_reject_rule.js"],
   // Phase 30 (30-05, задача 3, A2-07): полноэкранный статус заявки (на проверке / одобрена /
   // отклонена) — под тумблером `reg_form_status_screen`; выключен -> hub.js на этот hash не
   // ведёт вовсе (плита остаётся некликабельной, сегодняшнее поведение).
@@ -133,6 +137,9 @@ export const NAV = [
   // есть в проекте, #/coins и #/admin-coins); staffOnly НЕ ставим — менеджер, зарегистрированный
   // делегатом, обязан сохранить доступ к ведению FAQ.
   { hash: "#/admin-faq", section: "faq", cap: "moderate_reg", group: "apps" },
+  // Правила автоотказа — тот же раздел «📋 Заявки», без своего чекбокса: видимость
+  // решает уже существующий раздел settings и право settings.
+  { hash: "#/admin-reject-rules", section: "settings", cap: "settings", group: "apps", label: "🚫 Правила автоотказа" },
   { hash: "#/review", section: "review", cap: "moderate_game", group: "game" },
   { hash: "#/admin-tasks", section: "admin_tasks", cap: "moderate_game", group: "game" },
   { hash: "#/admin-coins", section: "coins", cap: "moderate_game", staffOnly: true, group: "game" },
@@ -158,6 +165,7 @@ export const NAV_ICONS = {
   "#/applications": "shield-check",
   "#/questions": "message-circle",
   "#/admin-faq": "help-circle",
+  "#/admin-reject-rules": "ban",
   "#/review": "check-circle-2",
   "#/admin-tasks": "clipboard-list",
   "#/admin-coins": "wallet",
@@ -311,6 +319,21 @@ function updateBackButton(hash) {
   if (isHome) tg.BackButton.hide(); else tg.BackButton.show();
 }
 
+// Лист поверх экрана забирает BackButton себе и обязан вернуть историю. Telegram зовёт
+// каждый зарегистрированный обработчик, поэтому один onClick поверх backToHistory уводил
+// бы и лист, и предыдущий экран.
+export function suspendBackButton(handler) {
+  if (!tg || !tg.BackButton || typeof handler !== "function") return () => {};
+  tg.BackButton.offClick(backToHistory);
+  tg.BackButton.onClick(handler);
+  tg.BackButton.show();
+  return () => {
+    tg.BackButton.offClick(handler);
+    tg.BackButton.onClick(backToHistory);
+    updateBackButton(location.hash);
+  };
+}
+
 // ── экраны состояний ─────────────────────────────────────────────────────────────────────
 // D-13 (найдено планом 19.1-08 при визуальной сверке): эмодзи здесь были функциональной
 // UI-иконкой, не голосом текста реестра ("эмодзи только в текстах реестра") -- заменены на
@@ -445,7 +468,7 @@ function isActive(activeHash, hash) {
 }
 
 function navLabel(item) {
-  return labelText(sectionLabels[item.section] || item.section);
+  return labelText(item.label || sectionLabels[item.section] || item.section);
 }
 
 // «Ещё» (раскладка A, nav.html:186-192) — оверлей, не маршрут: закрывается тапом вне листа
