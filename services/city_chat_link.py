@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import html
 import logging
+import re
 import time
 from dataclasses import dataclass
 
@@ -13,6 +15,7 @@ from config import config
 from database import city_chat_db
 from domain.cities import cities_module_on, city_label, normalize_city
 from services import chat_tracking
+from services.comms.text_fill import fill_collapsing
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,12 @@ _CHECK_FAILED = "Не смог проверить ссылку в чат. Ста
 _BAD_LIMIT = "Лимит — число от 1 до 99999, например 200."
 _BAD_DAYS = "Срок — число дней, например 14."
 _NAME_LIMIT = 32
+_FAIL_WINDOW = 120
+_fail_notified_at: dict[str, float] = {}
+_CARRIER_LINE = re.compile(
+    r"(?:^|\n)[ \t]*(?:Чат города:|City chat:)[ \t]*(?=\n|$)"
+)
+_CARRIER_TAIL = re.compile(r"[ \t]*(?:Чат города:|City chat:)[ \t]*$")
 
 
 @dataclass
@@ -268,6 +277,49 @@ async def describe(client, city: str | None) -> str:
         return result.error or _CHECK_FAILED
     fresh = await city_chat_db.get_link(city)
     return _words(fresh or row)
+
+
+async def _delegate_city(telegram_id: int) -> str | None:
+    try:
+        if not await cities_module_on():
+            return None
+        from database.db import get_user
+
+        row = await get_user(telegram_id)
+        return normalize_city(row.get("event_city") if row else None)
+    except Exception as exc:
+        logger.warning("city_chat_link: city resolve exc=%s", type(exc).__name__)
+        return None
+
+
+def _drop_empty_carrier(text: str) -> str:
+    text = _CARRIER_LINE.sub("", text)
+    text = _CARRIER_TAIL.sub("", text)
+    return text.strip()
+
+
+def _remember_failure(city: str | None) -> bool:
+    key = city or ""
+    now = time.time()
+    last = _fail_notified_at.get(key)
+    if last is not None and now - last < _FAIL_WINDOW:
+        return False
+    _fail_notified_at[key] = now
+    return True
+
+
+async def render_for_delegate(text, telegram_id: int, client, *, notify=None) -> str:
+    """`{chat}` → URL из issue. Без токена Telegram не спрашиваем. Сбой вырезает токен."""
+    if not isinstance(text, str) or "{chat}" not in text:
+        return text
+    city = await _delegate_city(telegram_id)
+    result = await issue(client, city)
+    if result.ok and result.url:
+        return text.replace("{chat}", html.escape(result.url))
+    cleaned = _drop_empty_carrier(fill_collapsing(text, chat=""))
+    if notify is not None and _remember_failure(city):
+        await notify(city, result.error or _CHECK_FAILED)
+    return cleaned
 
 
 async def recipients_for_city(city: str | None) -> list[int]:
