@@ -39,16 +39,28 @@ export class ApiTimeout extends Error {
 }
 
 // timeoutMs — для запросов, которые нельзя ждать бесконечно (скан у двери): на «подвисшей»
-// сети fetch без сигнала висит минутами. Без timeoutMs поведение прежнее.
+// сети fetch без сигнала висит минутами. Без timeoutMs и без signal поведение прежнее:
+// в fetch не уходит сигнал, и быстрый запрос не становится таймаутом.
+// signal — внешняя отмена (счётчик правил): AbortError пробрасывается как есть, это не
+// «сервер не ответил». Если заданы оба, abort внешнего сигнала гасит и внутренний таймер.
 // quiet — фоновый запрос (подсказка/плитка на главной): его 403 не уводит весь экран в
 // «Нет доступа», а только бросает ApiError — вызывающий молча рисует экран без этой строки.
-export async function api(path, { method = "GET", body, form, timeoutMs, quiet = false } = {}) {
+export async function api(path, { method = "GET", body, form, timeoutMs, quiet = false, signal } = {}) {
   const headers = { "X-Requested-With": "fetch" };
   if (initData) headers["X-Telegram-Init-Data"] = initData;
   if (body !== undefined && !form) headers["Content-Type"] = "application/json";
 
   const controller = timeoutMs && typeof AbortController === "function" ? new AbortController() : null;
   const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  let onExternalAbort = null;
+  if (controller && signal) {
+    if (signal.aborted) controller.abort();
+    else {
+      onExternalAbort = () => controller.abort();
+      signal.addEventListener("abort", onExternalAbort, { once: true });
+    }
+  }
+  const fetchSignal = controller ? controller.signal : (signal || undefined);
   let response;
   try {
     response = await fetch(`/app/api${path}`, {
@@ -56,13 +68,15 @@ export async function api(path, { method = "GET", body, form, timeoutMs, quiet =
       headers,
       body: form || (body !== undefined ? JSON.stringify(body) : undefined),
       credentials: "same-origin",
-      signal: controller ? controller.signal : undefined,
+      signal: fetchSignal,
     });
   } catch (err) {
+    if (signal && signal.aborted) throw err;
     if (controller && controller.signal.aborted) throw new ApiTimeout(timeoutMs);
     throw err;
   } finally {
     if (timer) clearTimeout(timer);
+    if (onExternalAbort && signal) signal.removeEventListener("abort", onExternalAbort);
   }
 
   if (response.ok) {
