@@ -545,6 +545,13 @@ class ChatCleanupEdit(StatesGroup):
     waiting_for_value = State()
 
 
+class CityChatEdit(StatesGroup):
+    # Экран «Чат города»: число мест или срок ссылки. В data — токен города и что
+    # именно подтверждается. Адрес ссылки в состояние не кладём.
+    waiting_for_limit = State()
+    waiting_for_days = State()
+
+
 class AmbExclude(StatesGroup):
     # Ступени амбассадоров СкиллАп (handlers/amb/admin_amb_tiers.py): ручное исключение
     # приглашённого из зачёта — кого (пересылка / @username / id), причина свободным текстом,
