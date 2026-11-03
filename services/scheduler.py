@@ -613,6 +613,29 @@ async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> b
         return False
 
 
+async def _render_delegate_text(bot, chat_id: int, text):
+    """{chat} в письме делегату становится ссылкой на этого человека. Без токена Telegram молчит."""
+    from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+    from services.city_chat_link import render_for_delegate
+
+    return await render_for_delegate(
+        text, chat_id, client_from_bot(bot), notify=notify_if_bot_ready,
+    )
+
+
+async def _send_delegate_message(
+    chat_id, text, *, bot=None, on_permanent_failure=None, **send_kwargs,
+) -> bool:
+    """Напоминание делегату: ссылка чата, затем обычный _safe_send. Сообщения админам сюда не идут."""
+    sender = bot or _bot
+    body = await _render_delegate_text(sender, chat_id, text)
+
+    async def _send(cid, _body=body, _kwargs=send_kwargs):
+        await sender.send_message(cid, _body, **_kwargs)
+
+    return await _safe_send(_send, chat_id, on_permanent_failure=on_permanent_failure)
+
+
 # ── Форум-ночь п.7: «❗ Важное» + «🔕 Не присылать сегодня» — общий хвост доставки ────────────
 # Ревью 470ce5e..3703ba4 (находки): пометка важности и предложение «🔕» больше НЕ уходят
 # отдельными сообщениями — `bot.copy_message` умеет подменить CAPTION медиа-сообщения (в
@@ -799,6 +822,7 @@ async def send_mute_offer_if_eligible(
             base_text = await get_setting_typed("broadcast_mute_offer_text") or _MUTE_OFFER_TEXT
             button = await mute_button(chat_id)
         text = reg_i18n.tr_text(base_text, lang, tr_map)
+        text = await _render_delegate_text(bot, chat_id, text)
         kb = InlineKeyboardMarkup(inline_keyboard=[[button]])
         msg = await bot.send_message(chat_id, text, reply_markup=kb)
         await mark_mute_offer_shown(chat_id, today)
@@ -949,15 +973,17 @@ async def send_scheduled_broadcast(broadcast_id: int):
                     markup = await recipient_markup(chat_id, important, langs=langs)
                     if photo:
                         async def _send(cid, _photo=photo, _caption=content, _markup=markup):
+                            caption = await _render_delegate_text(_bot, cid, _caption)
                             msg = await _bot.send_photo(
-                                cid, _photo, caption=_caption, reply_markup=_markup,
+                                cid, _photo, caption=caption, reply_markup=_markup,
                             )
                             sent_message_ids[cid] = msg.message_id
                             return msg
                         ok = await _safe_send(_send, chat_id)
                     else:
                         async def _send(cid, _text=content, _markup=markup):
-                            msg = await _bot.send_message(cid, _text, reply_markup=_markup)
+                            body = await _render_delegate_text(_bot, cid, _text)
+                            msg = await _bot.send_message(cid, body, reply_markup=_markup)
                             sent_message_ids[cid] = msg.message_id
                             return msg
                         ok = await _safe_send(_send, chat_id)
@@ -1139,7 +1165,7 @@ async def send_payment_reminder(user_id: int):
             "⏰ Напоминание об оплате участия!\n\n"
             "Срок оплаты истекает скоро. Загрузи чек оплаты через бота."
         )
-        await _safe_send(lambda cid: _bot.send_message(cid, text), user_id)
+        await _send_delegate_message(user_id, text)
     except Exception as e:
         logger.error(f"send_payment_reminder({user_id}) failed: {e}")
 
@@ -1200,7 +1226,7 @@ async def sweep_payment_overdue():
             for tid in overdue_ids:
                 await quiet_hours.send_or_queue_text(
                     _now_moscow_naive(), tid, text,
-                    sender=lambda cid=tid: _bot.send_message(cid, text),
+                    sender=lambda cid=tid, txt=text: _send_delegate_message(cid, txt),
                 )
                 await asyncio.sleep(0.05)
     except Exception as e:
@@ -1529,9 +1555,8 @@ async def nudge_incomplete_registrations():
             # A blocked user can never receive the nudge, so stamping nudged_at on permanent
             # failure is what keeps the "exactly once" contract (D-14) from degenerating into
             # "forever" — the give-up is the one-shot.
-            ok = await _safe_send(
-                lambda cid, mt=msg_text, k=user_kb: _bot.send_message(cid, mt, reply_markup=k), tid,
-                on_permanent_failure=mark_nudged,
+            ok = await _send_delegate_message(
+                tid, msg_text, reply_markup=user_kb, on_permanent_failure=mark_nudged,
             )
             if ok:
                 await mark_nudged(tid)  # one-shot only after a successful send
@@ -1876,9 +1901,8 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         now = _now_moscow_naive()
 
         async def _sender():
-            await _safe_send(
-                lambda cid: _bot.send_message(cid, text, parse_mode="HTML", reply_markup=markup),
-                ambassador_id,
+            await _send_delegate_message(
+                ambassador_id, text, parse_mode="HTML", reply_markup=markup,
             )
 
         await quiet_hours.send_or_queue_text(
@@ -2084,7 +2108,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
                 )
 
                 async def _sender(cid=uid, txt=text):
-                    await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+                    await _send_delegate_message(cid, txt, parse_mode="HTML")
 
                 await quiet_hours.send_or_queue_text(now, uid, text, sender=_sender, parse_mode="HTML")
                 await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
@@ -2262,7 +2286,7 @@ async def send_wave_results(wave_id: int) -> None:
                 )
 
                 async def _sender(cid=user_id, txt=text):
-                    await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+                    await _send_delegate_message(cid, txt, parse_mode="HTML")
 
                 await quiet_hours.send_or_queue_text(now, user_id, text, sender=_sender, parse_mode="HTML")
                 await asyncio.sleep(0.05)  # та же пауза между отправками, что в broadcast_run.py
@@ -2276,7 +2300,7 @@ async def send_wave_results(wave_id: int) -> None:
                 )
 
                 async def _winner_sender(cid=user_id, txt=winner_text):
-                    await _safe_send(lambda c: _bot.send_message(c, txt, parse_mode="HTML"), cid)
+                    await _send_delegate_message(cid, txt, parse_mode="HTML")
 
                 await quiet_hours.send_or_queue_text(
                     now, user_id, winner_text, sender=_winner_sender, parse_mode="HTML",

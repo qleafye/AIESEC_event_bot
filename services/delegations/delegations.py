@@ -317,10 +317,21 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
 
     text = tr(template, lang, tr_map).replace("{university}", html_module.escape(university or ""))
     text = fill_event(text, await event_name(), lang, escape=True)
+    if isinstance(text, str) and "{chat}" not in text:
+        line = tr("Чат города: {chat}", lang, tr_map)
+        text = f"{text}\n{line}" if text else line
     kb = await get_main_menu_kb(tid)
-    err = await send_with_retry(
-        lambda: bot.send_message(tid, text, reply_markup=kb, parse_mode="HTML")
-    )
+
+    async def _send():
+        from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+        from services.city_chat_link import render_for_delegate
+
+        body = await render_for_delegate(
+            text, tid, client_from_bot(bot), notify=notify_if_bot_ready,
+        )
+        await bot.send_message(tid, body, reply_markup=kb, parse_mode="HTML")
+
+    err = await send_with_retry(_send)
     if err is not None:
         logger.error("delegations: сообщение делегату не доставлено (tid=%s): %s",
                      tid, type(err).__name__)
