@@ -24,6 +24,9 @@ AMB_FIELD_ORDER = [
     "wave_rating_button_text",  # 10.10: кнопка «🏅 Рейтинг волны» под списком заданий
     # Ссылка и список приглашённых («Моя ссылка») — 09.10 переехали сюда из «🎮 Геймификации».
     "referral_link_prompt_text", "referral_list_header_text", "referral_list_empty_text",
+    "amb_invite_threshold",
+    "amb_invite_threshold_with_count_text", "amb_invite_threshold_done_with_count_text",
+    "amb_invite_threshold_left_text", "amb_invite_threshold_done_text",
     # Тексты амбассадорского блока и пути — делегатские.
     "ambassador_block_header_text",
     "ambassador_path_prompt_text", "ambassador_path_label_invite", "ambassador_path_label_content",
