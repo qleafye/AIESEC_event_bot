@@ -21,6 +21,7 @@
     amb_tier_reached           {telegram_id, tier, left}
     bot_profile_changed        {}
     settings_changed           {keys, by, prev_bot_name}
+    reject_rules_recheck       {keys}
 
 `reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
 код (`services/infra/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
@@ -62,6 +63,11 @@ check_tiers` и в бот-процессе, и в веб-процессе (од�
 бот (`services.amb.amb_tiers_notify`). Payload — только id, номер ступени и сколько осталось до
 разбора резюме, без данных приглашённых.
 
+`reject_rules_recheck` — ставит веб после `settings/batch`, если в пакете есть ключ вопроса
+анкеты или списка вариантов. Payload — только ключи настроек, без персональных данных и без
+значений ответов. Бот пересчитывает паузы правил автоотказа и шлёт то же сообщение о паузе,
+что при выключении вопроса в чате. Повторная доставка того же события второго сообщения не шлёт.
+
 Fail-soft: таблицу создаёт `database.db.init_db` (схемой владеет ТОЛЬКО бот, здесь
 миграций нет и быть не может). Если бот ещё старой версии и таблицы нет — `enqueue`
 логирует предупреждение и возвращает None: сама сдача уже сохранена, уведомление догонит
@@ -96,6 +102,7 @@ OUTBOX_KINDS = frozenset({
     "amb_tier_reached",
     "bot_profile_changed",
     "settings_changed",
+    "reject_rules_recheck",
 })
 
 

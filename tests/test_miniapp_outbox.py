@@ -150,4 +150,5 @@ def test_kinds_match_module_docstring():
         "reg_finalized", "reg_edited", "reg_resume_upload", "reg_fsm_reset",
         "application_decided", "application_mass_approved", "checkin_first_entry",
         "onsite_approved", "amb_tier_reached", "bot_profile_changed", "settings_changed",
+        "reject_rules_recheck",
     }
