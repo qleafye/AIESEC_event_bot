@@ -897,7 +897,7 @@ async def draft_consent(
     p: Principal = Depends(form_gate),
     _: Principal = Depends(require_section("form")),
 ) -> dict:
-    valid_keys = {consent_key for _label, consent_key in await reg_engine.consent_entries()}
+    valid_keys = {consent_key for _label, consent_key in await reg_engine.registration_consent_entries()}
     if key not in valid_keys:
         raise HTTPException(400, {"reason": "bad_key"})
     # Quick 260907-4ai: в вебе разметки кнопки на сервере нет — снимок берём из той же

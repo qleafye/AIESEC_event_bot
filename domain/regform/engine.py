@@ -1006,12 +1006,10 @@ async def _prompt_base(
 DEFAULT_CONSENTS = [("Согласие на обработку персональных данных", "personal_data")]
 
 
-async def consent_entries() -> list[tuple[str, str]]:
-    """Parse consent_list ('Видимое название | ключ' per line) → [(label, key)]. Accepts ';'
-    as a line separator too (mobile Telegram Enter=send trap)."""
-    raw = await get_setting("consent_list") or ""
+def _consent_pairs(raw: str) -> list[tuple[str, str]]:
+    """«Видимое название | ключ» по строке. «;» тоже разделитель строки."""
     entries: list[tuple[str, str]] = []
-    for line in raw.replace(";", "\n").strip().splitlines():
+    for line in (raw or "").replace(";", "\n").strip().splitlines():
         line = line.strip()
         if not line or "|" not in line:
             continue
@@ -1019,14 +1017,32 @@ async def consent_entries() -> list[tuple[str, str]]:
         consent_key = consent_key.strip()
         if consent_key:
             entries.append((label.strip(), consent_key))
-    return entries or DEFAULT_CONSENTS
+    return entries
+
+
+async def consent_entries() -> list[tuple[str, str]]:
+    """Parse consent_list ('Видимое название | ключ' per line) → [(label, key)]. Accepts ';'
+    as a line separator too (mobile Telegram Enter=send trap)."""
+    return _consent_pairs(await get_setting("consent_list") or "") or DEFAULT_CONSENTS
+
+
+async def broadcast_consent_entries() -> list[tuple[str, str]]:
+    """Согласия, которые анкета не спрашивает: кнопка в рассылке. Пустой список — пустой,
+    не запасное согласие анкеты."""
+    return _consent_pairs(await get_setting("consent_broadcast_list") or "")
+
+
+async def registration_consent_entries() -> list[tuple[str, str]]:
+    """Пары анкеты без ключей, которые менеджер оставил только для рассылки."""
+    skip = {key for _label, key in await broadcast_consent_entries()}
+    return [(label, key) for label, key in await consent_entries() if key not in skip]
 
 
 async def get_consent_steps() -> list[str]:
     """Consent step keys (consent:<key>) when consent_enabled is on, else []."""
     if not await _is_module_enabled("consent_enabled"):
         return []
-    return [f"consent:{key}" for _label, key in await consent_entries()]
+    return [f"consent:{key}" for _label, key in await registration_consent_entries()]
 
 
 async def should_show_fork(party_track: str | None, recovered_track: str | None,

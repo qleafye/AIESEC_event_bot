@@ -497,6 +497,10 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # та же capability, что bc_go/bc_no рядом.
     "bc_important_toggle": "broadcast",
     "bciv_toggle": "broadcast",
+    "bc_consent_open": "broadcast",
+    "bc_consent_clear": "broadcast",
+    "bc_consent_long": "broadcast",
+    "bc_consent:*": "broadcast",
     "bc_rev:*": "broadcast",
     "bc_revgo:*": "broadcast",
     "bc_revno*": "broadcast",
