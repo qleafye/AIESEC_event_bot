@@ -647,12 +647,25 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
     try:
         complete_text = await _approve_text_for(participant_type, city_code, auto_approved=auto_approved)
         complete_text = reg_i18n.tr_text(complete_text, lang, tr_map)
+        if isinstance(complete_text, str) and "{chat}" not in complete_text:
+            line = reg_i18n.tr_text("Чат города: {chat}", lang, tr_map)
+            complete_text = f"{complete_text}\n{line}" if complete_text else line
         kwargs = {"parse_mode": "HTML"}
         if with_menu:
             kwargs["reply_markup"] = await get_main_menu_kb(telegram_id)
         # `quiet_now` — «сейчас» для очереди тихих часов; None = путь без неё (дефолт), и тогда
         # обе отправки ниже идут напрямую, как до 16.09.
+        # Ссылка чата подставляется только внутри немедленной отправки: очередь хранит {chat}.
         quiet_now = None
+
+        async def _deliver_decision() -> None:
+            from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+            from services.city_chat_link import render_for_delegate
+
+            body = await render_for_delegate(
+                complete_text, telegram_id, client_from_bot(bot), notify=notify_if_bot_ready,
+            )
+            await bot.send_message(telegram_id, body, **kwargs)
 
         async def _send_decision_text() -> None:
             nonlocal quiet_now
@@ -662,11 +675,11 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
                 quiet_now = _now_moscow_naive()
                 await quiet_hours.send_or_queue_text(
                     quiet_now, telegram_id, complete_text,
-                    sender=lambda: bot.send_message(telegram_id, complete_text, **kwargs),
+                    sender=_deliver_decision,
                     reply_markup=kwargs.get("reply_markup"),
                 )
             else:
-                await bot.send_message(telegram_id, complete_text, **kwargs)
+                await _deliver_decision()
 
         from services.infra.telegram_send import send_with_retry
         send_err = await send_with_retry(_send_decision_text)

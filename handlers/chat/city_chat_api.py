@@ -45,6 +45,16 @@ def client_from_bot(bot) -> _InviteClient:
     return _InviteClient(bot)
 
 
+async def notify_if_bot_ready(city, phrase: str) -> None:
+    """Пинг менеджерам с боевого бота. Пока планировщик его не поднял, письмо делегату
+    всё равно уходит: токен уже вырезан, старая ссылка не подставляется."""
+    from services import scheduler as sched
+
+    if sched._bot is None:
+        return
+    await notify_link_failure(sched._bot, city, phrase)
+
+
 async def notify_link_failure(bot, city, phrase: str) -> None:
     from services.city_chat_link import recipients_for_city
 
