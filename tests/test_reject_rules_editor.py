@@ -331,6 +331,7 @@ def test_arr_track_toggle_rejects_unchecking_last_track(tmp_path):
 
 def test_arr_track_toggle_adds_and_removes_party_pair_together(tmp_path):
     _ready(tmp_path)
+    _run(db.set_setting("reg_q_resume", "on"))
     rule_id = _run(_create_rule(tracks=json.dumps(["full"]), reject_text="x"))
     callback = _FakeCallback(f"arr_track:{rule_id}:party", user_id=SUPERADMIN_ID)
     _run(admin_reject_rules.arr_track_toggle(callback))

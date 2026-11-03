@@ -366,6 +366,58 @@ async def validate_condition(
 _VALID_ACTIONS = ("reject", "flag")  # D-03: закрытое множество, автоодобрения нет
 
 
+def _parse_stored_list(raw) -> list:
+    """Колонка `tracks`/`conditions` в строке базы — JSON-строка; в уже разобранном правиле — список."""
+    if isinstance(raw, list):
+        return raw
+    try:
+        parsed = json.loads(raw or "[]")
+    except (TypeError, ValueError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _condition_groups_empty(groups: list) -> bool:
+    return not groups or all(not group for group in groups)
+
+
+def _rule_scope_unchanged(existing: dict, new_city, tracks: list, conditions: list) -> bool:
+    """Город, треки и условия не менялись — переименование включённого правила на паузе проходит."""
+    old_city = existing.get("city")
+    if (old_city or None) != (new_city or None):
+        if not old_city or not new_city or normalize_city(old_city) != normalize_city(new_city):
+            return False
+    old_tracks = _parse_stored_list(existing.get("tracks")) or ["full"]
+    if list(old_tracks) != list(tracks):
+        return False
+    return _parse_stored_list(existing.get("conditions")) == conditions
+
+
+def _first_disabled_step(groups: list, live_steps: list[str]) -> str | None:
+    live = set(live_steps or [])
+    for group in groups or []:
+        for cond in group or []:
+            step = (cond or {}).get("step")
+            if step and step not in live:
+                return step
+    return None
+
+
+async def enabled_steps(rule: dict) -> list[str]:
+    """Вопросы, включённые хотя бы для одного трека правила. Выключенный вопрос в условие
+    не берём: правило на нём сразу встанет на паузу. Несколько треков — шаг подходит, если
+    включён хотя бы для одного из них."""
+    tracks = rule.get("tracks") or ["full"]
+    city = rule.get("city")
+    enabled: list[str] = []
+    for step_key, setting_key, _t in REG_FLOW:
+        for track in tracks:
+            if await is_step_enabled_for_track(setting_key, track, city):
+                enabled.append(step_key)
+                break
+    return enabled
+
+
 async def save_rule(admin_id: int, rule_id: int | None, **fields) -> tuple[int | None, str | None]:
     """Единственная дверь записи правила. `(id, None)` при успехе, `(None, причина)` при
     нарушении прав или валидации — причина человеческая, без кодов.
@@ -413,7 +465,26 @@ async def save_rule(admin_id: int, rule_id: int | None, **fields) -> tuple[int |
     if action == "reject" and enabled and not reject_text:
         return None, "Без текста отказа делегат не поймёт причину — впишите текст."
 
-    tracks = fields.get("tracks") or ["full"]
+    tracks = list(fields.get("tracks") or ["full"])
+    # D-11: включить правило без условий нельзя. Уже включённое можно переименовать,
+    # даже если вопрос анкеты выключен и правило стоит на паузе — блокируем только
+    # включение и смену условий, города или треков.
+    if enabled and _condition_groups_empty(normalized_groups):
+        return None, "В правиле нет ни одного условия — включить нечего. Добавьте условие."
+    was_enabled = rule_id is not None and bool(int(existing.get("enabled") or 0))
+    scope_same = rule_id is not None and _rule_scope_unchanged(
+        existing, new_city, tracks, normalized_groups,
+    )
+    if enabled and (rule_id is None or not was_enabled or not scope_same):
+        live_steps = await enabled_steps({"city": new_city, "tracks": tracks})
+        blocked = _first_disabled_step(normalized_groups, live_steps)
+        if blocked:
+            where = "всех городов" if not new_city else await city_label(new_city)
+            return None, (
+                f"Правило опирается на вопрос «{label_for(blocked)}», а он выключен для {where}. "
+                "Включите вопрос в «⚙️ Настройки» или уберите это условие."
+            )
+
     tracks_json = json.dumps(list(tracks), ensure_ascii=False)
     conditions_json = json.dumps(normalized_groups, ensure_ascii=False)
     name = fields.get("name")
@@ -476,8 +547,8 @@ async def _maybe_enqueue_rule_text_translation(text: str | None, rule_id: int | 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 # Человеческие подписи операторов (D-10) — ни одного кодового значения в результате
-# `rule_summary` (CLAUDE.md).
-_OPERATOR_LABELS = {
+# `rule_summary` (CLAUDE.md). Публичное имя читает редактор; алиас держит старые ссылки.
+OPERATOR_LABELS = {
     "in": "один из", "not_in": "ни один из",
     "lt": "меньше", "gt": "больше", "between": "между",
     "before": "раньше", "after": "позже",
@@ -485,6 +556,7 @@ _OPERATOR_LABELS = {
     "filled": "заполнено", "empty": "не заполнено",
     "has_file": "есть", "no_file": "нет",
 }
+_OPERATOR_LABELS = OPERATOR_LABELS
 
 _ACTION_LABELS = {"reject": "отказ", "flag": "пометка"}
 
@@ -511,7 +583,7 @@ async def rule_summary(rule: dict) -> str:
             op = cond.get("op")
             values = cond.get("values") or []
             step_label = label_for(step) if step else "?"
-            op_label = _OPERATOR_LABELS.get(op, op or "?")
+            op_label = OPERATOR_LABELS.get(op, op or "?")
             if op in _NO_VALUE_OPERATORS:
                 cond_texts.append(f"{step_label} — {op_label}")
             elif op == "between" and len(values) == 2:
