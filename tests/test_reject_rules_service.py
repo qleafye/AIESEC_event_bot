@@ -40,6 +40,9 @@ async def _setup_staff():
     await db.add_staff(BOUND_MANAGER_ID, "reg_manager", SUPERADMIN_ID)
     await db.set_staff_city(BOUND_MANAGER_ID, "msk")
     await db.add_staff(UNBOUND_MANAGER_ID, "reg_manager", SUPERADMIN_ID)
+    # Резюме в реестре выключено. Включённое правило на выключенном вопросе больше не
+    # сохраняется — этим тестам нужен живой вопрос, а не проверка гейта.
+    await db.set_setting("reg_q_resume", "on")
 
 
 async def _create_rule(**overrides):

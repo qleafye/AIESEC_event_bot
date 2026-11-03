@@ -399,6 +399,7 @@ def test_arc_gate_first_tap_shows_counter_does_not_enable(tmp_path):
 
 def test_arc_dry_go_enables_after_gate_confirm(tmp_path):
     _ready(tmp_path)
+    _run(db.set_setting("reg_q_resume", "on"))
     rule_id = _run(_create_rule(
         city="msk", enabled=0, reject_text="x",
         conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),
