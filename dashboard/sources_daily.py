@@ -50,11 +50,19 @@ PERIOD_LABELS = {
     "today": "Сегодня", "yesterday": "Вчера", "7": "7 дней", "30": "30 дней", "all": "Весь сезон",
 }
 
-STATUS_LABELS = {"approved": "Одобрена", "pending": "Ждёт решения", "rejected": "Отказ"}
+STATUS_LABELS = {
+    "approved": "Одобрена",
+    "pending": "Ждёт решения",
+    "rejected": "Отказ",
+    "waitlist": "Лист ожидания",
+}
 _STATUS_OTHER = "other"
 _STATUS_OTHER_LABEL = "Другой статус"
-# Смысловые цвета статусов: зелёный / жёлтый / коралловый (порядок токенов --chart-N).
-_STATUS_COLORS = {"approved": "3", "pending": "4", "rejected": "6", _STATUS_OTHER: "other"}
+# Смысловые цвета статусов: зелёный / жёлтый / коралловый / серый (порядок токенов --chart-N).
+_STATUS_COLORS = {
+    "approved": "3", "pending": "4", "rejected": "6", "waitlist": "5",
+    _STATUS_OTHER: "other",
+}
 
 # Дубль `reg_options.PARTY_TRACK_OPTIONS`: дашборд не тянет корневые модули бота без COPY в
 # образ (tests/test_dashboard_docker.py). Дрейф ловит test_track_labels_match_bot_registry.

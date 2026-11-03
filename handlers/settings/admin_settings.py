@@ -956,6 +956,9 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
     def _row(text: str, callback_data: str) -> list[list[InlineKeyboardButton]]:
         return [[InlineKeyboardButton(text=text, callback_data=callback_data)]]
 
+    from handlers.applications.admin_waitlist import waitlist_toggle_row
+    waitlist_rows = await waitlist_toggle_row()
+
     return {
         "settings_toggle_reg": reg_rows,
         "settings_toggle_bonus": _row(bonus_toggle_text, "settings_toggle_bonus"),
@@ -973,6 +976,7 @@ async def _settings_toggle_rows_impl(admin_id: int | None, *, header_code) -> di
         "settings_toggle_party_approval": _row(party_appr_txt, "settings_toggle_party_approval"),
         "toggle_preselect_enabled": _row(preselect_toggle_text, "toggle_preselect_enabled"),
         "toggle_pending_reminder": _row(pending_rem_text, "toggle_pending_reminder"),
+        "toggle_apps_waitlist": waitlist_rows,
         "toggle_nudge_enabled": _row(nudge_toggle_text, "toggle_nudge_enabled"),
         "toggle_reg_edit_policy": _row(reg_edit_policy_text, "toggle_reg_edit_policy"),
         "toggle_reg_resubmit_after_reject": _row(reg_resubmit_text, "toggle_reg_resubmit_after_reject"),

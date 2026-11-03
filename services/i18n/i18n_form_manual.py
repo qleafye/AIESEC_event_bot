@@ -758,6 +758,8 @@ _REGISTRY_TEXTS_EN = {
     "Ок! Оплатишь позже.": "Ok! You'll pay later.",
     "✅ Чек получен! Менеджер проверит его в ближайшее время.": "✅ Receipt received! A manager will check it shortly.",
     "⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.": "⏳ Your application is under review. Access will open once it's approved.",
+    "Ты в листе ожидания. Мы напишем, если освободится место.": "You're on the waiting list. We'll message you if a place opens up.",
+    "Лист ожидания": "Waiting list",
     "Отбор не пройден.": "You didn't pass the selection.",
     "Чтобы продолжить, задайте @username в настройках Telegram и снова отправьте /start.": "To continue, set a @username in your Telegram settings and send /start again.",
     "Программа форума ещё не загружена.": "The forum program hasn't been uploaded yet.",

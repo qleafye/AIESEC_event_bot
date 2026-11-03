@@ -569,9 +569,22 @@ def status_totals(conn, scope: Scope) -> dict:
     rows = conn.execute(
         f"SELECT status, COUNT(*) AS cnt FROM users{_where(parts)} GROUP BY status", params
     ).fetchall()
+    waitlist_n = 0
+    seen_waitlist = False
     for row in rows:
         if row["status"] in totals:
             totals[row["status"]] = row["cnt"]
+        elif row["status"] == "waitlist":
+            seen_waitlist = True
+            waitlist_n = row["cnt"]
+    # Ключ есть, только если менеджер включил режим или такие заявки уже лежат в скоупе.
+    # Иначе словарь остаётся из трёх старых ключей.
+    setting = conn.execute(
+        "SELECT value FROM bot_settings WHERE key = ?",
+        ("apps_waitlist_enabled",),
+    ).fetchone()
+    if (setting is not None and setting["value"] == "on") or seen_waitlist:
+        totals["waitlist"] = waitlist_n
     return totals
 
 

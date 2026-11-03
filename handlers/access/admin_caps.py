@@ -376,6 +376,8 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # button carries an optional ":<city>" suffix. Prefix key, not the bare exact string.
     "appr_all_yes*": "moderate_reg",
     "appr_approve:*": "moderate_reg",
+    "appr_waitlist:*": "moderate_reg",
+    "toggle_apps_waitlist": "moderate_reg",
     # Phase 21 (21-07, T-21-09): кнопка «🕓 История» правок анкеты в карточке заявки — та же
     # капа, что и вся остальная карточка, чужую историю без прав не открыть.
     "appr_history:*": "moderate_reg",

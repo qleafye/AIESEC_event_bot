@@ -338,13 +338,17 @@ def test_apps_section_for_moderate_reg_has_operations_only():
     # встал сразу после "admin_sos" (последний форумный экран раздела).
     # 06.10 (делегации вузов): «🏫 Делегации» — та же капа `moderate_reg`, в SECTIONS стоит
     # после «🚫 Правила автоотказа» (та и два экрана правил перед ней гейтятся `settings` и в
-    # этом списке отсутствуют) — для менеджера заявок это последняя строка раздела.
+    # этом списке отсутствуют).
+    # Лист ожидания — единственный тумблер раздела на капе `moderate_reg`: его включает тот же
+    # менеджер, который разбирает заявки. Остальные тумблеры по-прежнему требуют `settings`.
     rows = sec.visible_rows("apps", {"moderate_reg"}, False)
     assert [sec.row_callback(r) for r in rows] == [
         "admin_applications", "admin_app_list", "admin_questions", "admin_faq", "admin_sos",
-        "admin_forum_functions", "admin_delegations",
+        "admin_forum_functions", "admin_delegations", "toggle_apps_waitlist",
     ]
-    assert not [r for r in rows if r[0] in ("toggle", "group")]
+    assert [sec.row_callback(r) for r in rows if r[0] in ("toggle", "group")] == [
+        "toggle_apps_waitlist",
+    ]
 
 
 def test_admin_sos_row_is_not_an_orphan(tmp_path, caplog):

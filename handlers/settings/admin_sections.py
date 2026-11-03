@@ -153,6 +153,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_reg_submit_notify"),
         ("toggle", "toggle_preselect_enabled"),
         ("toggle", "toggle_pending_reminder"),
+        ("toggle", "toggle_apps_waitlist"),
         ("toggle", "toggle_nudge_enabled"),
         # Квик 260911-w2m: «можно ли делегату сейчас править анкету» — СРАЗУ ПЕРЕД
         # «что делать с правкой» (toggle_reg_edit_remoderation): читается парой, сначала
@@ -769,3 +770,6 @@ from handlers.applications import admin_reject_retro  # noqa: E402,F401
 # Форум-ночь п.4 (расписание форума в боте): шов «🗓 Программа форума» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_reports, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers.forum import admin_program  # noqa: E402,F401
+
+# Лист ожидания заявок — тот же хвостовой приём, снимок хендлеров только дописывается.
+from handlers.applications import admin_waitlist  # noqa: E402,F401

@@ -1077,6 +1077,8 @@ admin|callback_query|prog_copy_pick_day|prog_copysrc:*
 admin|callback_query|prog_copy_confirm|prog_copyday:*
 admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|prog_wretime|prog_wretime
+admin|callback_query|appr_waitlist|appr_waitlist:*
+admin|callback_query|toggle_apps_waitlist|toggle_apps_waitlist
 admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
@@ -2634,7 +2636,9 @@ def test_snapshot_total_handler_count_is_292():
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
     # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
-    assert len(GOLDEN_SNAPSHOT) == 1369
+    # Лист ожидания: +2 admin.callback_query (appr_waitlist, toggle_apps_waitlist) сразу после
+    # prog_wretime и перед phchk_save; чистая вставка (1369 -> 1371).
+    assert len(GOLDEN_SNAPSHOT) == 1371
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
