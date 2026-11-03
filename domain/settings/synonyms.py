@@ -536,6 +536,8 @@ SETTINGS_SYNONYMS: dict[str, list[str]] = {
     "dashboard_block_game": ["гейма дашборд", "геймификация блок"],
     "dashboard_block_referrals": ["рефералка дашборд", "кто кого привёл", "амбассадоры блок"],
     "dashboard_block_delegations": ["делегации дашборд", "делегации по вузам", "вузы ца статистика"],
+    "dashboard_block_it3plus": ["ит от трёх лет", "айти опыт"],
+    "dashboard_block_case_optin": ["кейс чемпионат", "хотят в кейс"],
     "dashboard_block_ambassadors": ["амбассадоры дашборд", "срез по амбассадорам"],
     "dashboard_favicon": ["фавикон", "иконка вкладки", "иконка вкладки браузера"],
 
