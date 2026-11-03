@@ -18,7 +18,7 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
-from database.db import create_poll, count_and_list_filtered, get_distinct_filter_values
+from database.db import create_poll, get_distinct_filter_values
 from services.comms.polls import (
     POLL_QUESTION_MAX,
     POLL_OPTION_MAX,
@@ -39,6 +39,7 @@ from domain.cities import cities_module_on, city_label, city_scope, enabled_citi
 from handlers.states import PollCreate
 from handlers.settings.admin_core import _admin_city_view
 from handlers.comms.admin_broadcasts import _TRACK_LABELS
+from handlers.comms.admin_poll_midcheck import recount_note, resolve_audience_tap
 from handlers.admin import router
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,8 @@ async def _audience_kb(admin_id: int) -> tuple[str, InlineKeyboardMarkup]:
     rows = [
         [InlineKeyboardButton(text="👥 Все делегаты", callback_data="poll_aud:all")],
         [InlineKeyboardButton(text="✅ Только одобренные", callback_data="poll_aud:approved")],
+        [InlineKeyboardButton(text="🚪 Пришли сегодня", callback_data="poll_aud:today")],
+        [InlineKeyboardButton(text="📍 Отмечены на этой сессии", callback_data="poll_aud:session")],
     ]
     if scope is None and await cities_module_on():
         for c in await enabled_cities():
@@ -335,9 +338,12 @@ async def _quiet_hours_warning() -> str:
 @router.callback_query(F.data.startswith("poll_aud:"), PollCreate.audience)
 async def poll_audience_pick(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     choice = callback.data[len("poll_aud:"):]
-    spec, city = await build_audience_spec(choice, callback.from_user.id)
-    ids = await count_and_list_filtered(spec) if spec else None
-    count = len(ids) if ids is not None else None
+    tap = await resolve_audience_tap(choice, callback.from_user.id, state, surface="poll")
+    if tap["kind"] in ("screen", "refuse"):
+        await callback.answer()
+        await callback.message.edit_text(tap["text"], parse_mode="HTML", reply_markup=tap["markup"])
+        return
+    spec, city, ids = tap["spec"], tap["city"], tap["ids"]
     data = await state.get_data()
     await state.update_data(audience=spec, city=city)
     await state.set_state(PollCreate.confirm)
@@ -351,12 +357,10 @@ async def poll_audience_pick(callback: types.CallbackQuery, state: FSMContext, b
         allows_multiple_answers=bool(data.get("multi")),
         is_closed=True,
     )
-    if count is None:
-        from database.db import get_all_users_ids
-        count = len(await get_all_users_ids())
     await callback.message.answer(
         f"{_step(5)}Выше — как опрос увидит делегат (превью закрыто, голосовать нельзя).\n\n"
-        f"Кому: <b>{html_module.escape(audience_label(spec))}</b> — {count} чел.\n"
+        f"Кому: <b>{html_module.escape(audience_label(spec))}</b> — {len(ids)} чел.\n"
+        f"{recount_note(spec)}"
         f"{await _quiet_hours_warning()}"
         "Отправить сейчас или запланировать?",
         parse_mode="HTML", reply_markup=_confirm_kb(),
