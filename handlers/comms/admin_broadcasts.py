@@ -1494,8 +1494,17 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         options = await get_distinct_filter_values(field)
         labels = {code: _TRACK_LABELS.get(code, code) for code in options}
     else:
-        options = await get_distinct_filter_values(field)
-        labels = None
+        fixed = None
+        if field == "status":
+            from handlers.comms.admin_broadcast_status import status_segment_options
+
+            fixed = await status_segment_options()
+        if fixed is None:
+            options = await get_distinct_filter_values(field)
+            labels = None
+        else:
+            options = [code for code, _label in fixed]
+            labels = {code: label for code, label in fixed}
     if not options:
         await callback.answer("В базе нет значений для этого поля.", show_alert=True)
         return
