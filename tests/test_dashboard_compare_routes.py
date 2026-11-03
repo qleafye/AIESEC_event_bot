@@ -146,12 +146,12 @@ def _access_headers(token: str) -> dict:
 
 def _cell_value(html: str, name_marker: str, data_label: str) -> str:
     """Значение ячейки KPI-таблицы для строки события `name_marker` под колонкой
-    `data_label`. Ищем ТОЛЬКО внутри секции «Событие рядом» — имя события до неё уже
+    `data_label`. Ищем ТОЛЬКО внутри секции `id="applications"` — имя события до неё уже
     встречается в ряду «фишек» (event-chips), где нет `data-label`, но ЕСТЬ имя другого
     события впереди по документу, и наивный поиск «от первого вхождения имени» уводил бы
     на чужую ячейку."""
-    table_start = html.find("Событие рядом")
-    assert table_start != -1, "секция «Событие рядом» не найдена в разметке"
+    table_start = html.find('id="applications"')
+    assert table_start != -1, "секция заявок не найдена в разметке"
     scoped = html[table_start:]
     pattern = re.compile(
         re.escape(name_marker) + r".*?data-label=\"" + re.escape(data_label) + r"\">\s*([0-9]+)",

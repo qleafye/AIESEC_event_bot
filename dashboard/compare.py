@@ -437,16 +437,11 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
         if cut is not None:
             cuts.append(cut)
 
-    # Две колонки геймификации в и без того широкой таблице появляются ТОЛЬКО когда хотя бы
-    # у одного события есть данные игры -- тот же приём «погашенное у всех в таблицу не
-    # попадает», что уже применён к разрезам (`_build_cut`) и ступеням воронки
-    # (`present_labels`).
-    show_game_columns = any(e["game_participants"] for e in event_ctxs)
-    # Колонка «Ответ» — тот же приём, но гейт берётся от `questions_total` (есть ли вопросы
-    # ВООБЩЕ), а НЕ от `kpi["question_answer_avg_minutes"]` (есть ли уже посчитанное среднее):
-    # у события, где вопросы есть, но ни на один ещё не ответили, честное «—» в колонке —
-    # полезная информация, и колонка обязана остаться.
-    show_question_column = any(e["questions_total"] for e in event_ctxs)
+    # Секции «Число играющих» и «Число вопросов» есть, только когда хотя бы у одного
+    # события число ненулевое. Гейт вопросов — questions_total, не среднее время ответа:
+    # вопросы без ответа всё равно показывают секцию.
+    show_players = any(e["game_participants"] for e in event_ctxs)
+    show_questions = any(e["questions_total"] for e in event_ctxs)
 
     context = {
         "events": event_ctxs,
@@ -456,8 +451,8 @@ def build_compare_context(cfg, *, codes=None, axis="day_n", seasons=None, now=No
         "cuts": cuts,
         "unavailable": unavailable,
         "generated_at": now.isoformat(),
-        "show_game_columns": show_game_columns,
-        "show_question_column": show_question_column,
+        "show_players": show_players,
+        "show_questions": show_questions,
     }
     _CACHE[cache_key] = (now.timestamp(), context)
     return context
