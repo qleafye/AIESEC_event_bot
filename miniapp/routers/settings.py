@@ -50,6 +50,7 @@ from domain.cities import (
     set_admin_city,
 )
 from database.db import get_setting, settings_snapshot
+from services.applications.reject_rules_affects import affects_reject_rules
 from services.settings.audit import write_setting_logged
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
 from domain.settings.search import search_terms
@@ -752,6 +753,18 @@ async def settings_batch(
                     if warning:
                         warnings[key] = (warnings.get(key, "") + "\n\n" + warning).strip()
                     saved.append(key)
+                recheck_keys = [key for key in saved if affects_reject_rules(key)]
+                if recheck_keys:
+                    # Сбой очереди не откатывает уже записанные настройки.
+                    try:
+                        from miniapp.outbox import enqueue
+
+                        await enqueue("reject_rules_recheck", {"keys": recheck_keys})
+                    except Exception as exc:  # noqa: BLE001 — сохранение важнее уведомления
+                        logger.warning(
+                            "settings/batch: пересчёт правил автоотказа не поставлен в очередь: %s",
+                            exc,
+                        )
                 # E5 (quick 260904-de4): смена пресета в вебе обязана дописать ручки пресета — тот
                 # же приём, что у кнопки пресета в боте (`miniapp_preset_apply`). Дозапись — ТОЛЬКО
                 # после успешной фазы 2 (право "settings" уже проверил `require_cap` выше), только

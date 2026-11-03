@@ -62,6 +62,9 @@ Telegram или пересобирать таблицу самому — еди�
   окна отмены); событие на старшую из новых ступеней и на ступень разбора резюме, если она
   среди новых (ступень 1 при прыжке помечается сразу). Повтор
   безопасен: доставка сначала атомарно ставит `notified_at`, второе сообщение не уходит.
+- `reject_rules_recheck` -> `services.applications.reject_rules_notify.on_settings_written_batch(keys)` —
+  веб выключил вопрос анкеты или поменял список вариантов. Payload — только ключи настроек.
+  Повтор безопасен: сообщение уходит в том вызове, где пауза правила только что появилась.
 
 At-least-once, с ретраями (T-19-56): исключение -> `mark_miniapp_outbox_failed` (`attempts+1`,
 текст ошибки), после `MAX_ATTEMPTS` попыток строка выводится из очереди (помечена обработанной)
@@ -275,6 +278,13 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
         from services.bot.bot_profile import sync_bot_profile  # ленивый, как выше
 
         await sync_bot_profile(bot)
+        return
+    if kind == "reject_rules_recheck":
+        # Идемпотентность держит active_rules: paused_changed истинен ровно в вызове,
+        # где пауза появилась. Повтор того же события второго сообщения не шлёт.
+        from services.applications import reject_rules_notify  # ленивый: модуль тянет планировщик
+
+        await reject_rules_notify.on_settings_written_batch(list(payload.get("keys") or []))
         return
     if kind == "settings_changed":
         # 09.10: правка в приложении запускает те же реакции, что запись из бота.
