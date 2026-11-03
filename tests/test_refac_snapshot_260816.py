@@ -884,6 +884,8 @@ admin|message|certadm_open_input|state:CertAdmin:*
 admin|message|certadm_tpl_file|state:CertAdmin:*
 admin|message|certadm_tpl_not_file|state:CertAdmin:*
 admin|message|certadm_ppl_input|state:CertAdmin:*
+admin|message|certadm_ppl_file|state:CertAdmin:*
+admin|message|certadm_ppl_other|state:CertAdmin:*
 admin|message|shop_command|cmd:shop
 admin|message|shop_find_input|state:ShopAdmin:*
 admin|message|shop_new_input|state:ShopAdmin:*
@@ -2640,7 +2642,9 @@ def test_snapshot_total_handler_count_is_292():
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
     # 04.11 (сертификат волонтёра и амбассадора уходит сам): +2 admin.callback_query
     # certadm_yes/certadm_rm сразу после certadm_ppl; чистая вставка (1369 -> 1371).
-    assert len(GOLDEN_SNAPSHOT) == 1371
+    # 04.11 (список людей файлом): +2 admin.message certadm_ppl_file/certadm_ppl_other
+    # сразу после certadm_ppl_input; чистая вставка (1371 -> 1373).
+    assert len(GOLDEN_SNAPSHOT) == 1373
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import asyncio
+import io
+import zipfile
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+from xml.sax.saxutils import escape
 
 from aiogram.exceptions import TelegramForbiddenError
 
@@ -229,3 +232,123 @@ def test_remove_button_drops_the_row(tmp_path):
     )
     _run(adm.certadm_rm(cb, state))
     assert _run(cdb.list_people("volunteer")) == []
+
+
+def _xlsx(rows: list[list[str]]) -> bytes:
+    """Минимальный .xlsx: общие строки и первый лист. openpyxl в проект не тащим."""
+    shared: list[str] = []
+    index: dict[str, int] = {}
+
+    def sid(value: str) -> int:
+        if value not in index:
+            index[value] = len(shared)
+            shared.append(value)
+        return index[value]
+
+    body = []
+    for r_i, row in enumerate(rows, 1):
+        cells = []
+        for c_i, value in enumerate(row):
+            col = chr(ord("A") + c_i)
+            cells.append(f'<c r="{col}{r_i}" t="s"><v>{sid(value)}</v></c>')
+        body.append(f'<row r="{r_i}">{"".join(cells)}</row>')
+    ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+    sheet = (
+        f'<?xml version="1.0" encoding="UTF-8"?>'
+        f'<worksheet xmlns="{ns}"><sheetData>{"".join(body)}</sheetData></worksheet>'
+    )
+    items = "".join(f"<si><t>{escape(value)}</t></si>" for value in shared)
+    strings = (
+        f'<?xml version="1.0" encoding="UTF-8"?>'
+        f'<sst xmlns="{ns}" count="{len(shared)}" uniqueCount="{len(shared)}">{items}</sst>'
+    )
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("xl/sharedStrings.xml", strings)
+        zf.writestr("xl/worksheets/sheet1.xml", sheet)
+    return buf.getvalue()
+
+
+def test_csv_with_header_stores_the_name():
+    adds, bad = certs.people_from_file(
+        "Ник;ФИО\nanna_k;Иванова Анна\n".encode("utf-8"), "people.csv",
+    )
+    assert adds == [("anna_k", "Иванова Анна")]
+    assert bad == []
+
+
+def test_csv_without_header_finds_nick_in_the_other_column():
+    adds, bad = certs.people_from_file(
+        "Иванова Анна,@anna_k\n".encode("utf-8"), "people.csv",
+    )
+    assert adds == [("anna_k", "Иванова Анна")]
+    assert bad == []
+
+
+def test_xlsx_ignores_the_extra_date_column():
+    raw = _xlsx([
+        ["Ник", "ФИО", "Дата"],
+        ["@petr_k", "Петров Пётр", "2026-10-30"],
+    ])
+    adds, bad = certs.people_from_file(raw, "people.xlsx")
+    assert adds == [("petr_k", "Петров Пётр")]
+    assert bad == []
+
+
+def test_row_without_a_nick_is_reported():
+    adds, bad = certs.people_from_file(
+        "Ник;ФИО\n;Сидорова Мария\nboris_k;Борисов Борис\n".encode("utf-8"), "people.csv",
+    )
+    assert adds == [("boris_k", "Борисов Борис")]
+    assert bad == ["Сидорова Мария"]
+
+
+def test_old_xls_is_refused():
+    try:
+        certs.people_from_file(b"\xd0\xcf\x11\xe0rest", "people.xls")
+    except certs.PeopleTableError as e:
+        assert "старый Excel" in str(e)
+    else:
+        raise AssertionError("старый .xls должен быть отказом, а не списком")
+
+
+def test_minus_in_the_file_does_not_remove(tmp_path):
+    _use_db(tmp_path)
+    _paste("volunteer", "@anna — Иванова Анна")
+    raw = "-@anna\n".encode("utf-8")
+
+    class _Bot:
+        async def download(self, file_id):
+            return io.BytesIO(raw)
+
+    state = SimpleNamespace(get_data=AsyncMock(return_value={"kind": "volunteer"}), clear=AsyncMock())
+    msg = SimpleNamespace(
+        document=SimpleNamespace(file_id="FILE", file_size=len(raw), file_name="people.csv"),
+        answer=AsyncMock(),
+    )
+    _run(adm.certadm_ppl_file(msg, state, _Bot()))
+    assert _run(cdb.list_people("volunteer")) == ["anna"]
+    assert "минус" in msg.answer.call_args.args[0]
+
+
+def test_file_adds_people_and_says_the_list_was_not_replaced(tmp_path):
+    _use_db(tmp_path)
+    _paste("volunteer", "@old_nick — Старова Анна")
+    raw = "Ник;ФИО\nanna_k;Иванова Анна\n".encode("utf-8")
+
+    class _Bot:
+        async def download(self, file_id):
+            return io.BytesIO(raw)
+
+    state = SimpleNamespace(get_data=AsyncMock(return_value={"kind": "volunteer"}), clear=AsyncMock())
+    msg = SimpleNamespace(
+        document=SimpleNamespace(file_id="FILE", file_size=len(raw), file_name="people.csv"),
+        answer=AsyncMock(),
+    )
+    _run(adm.certadm_ppl_file(msg, state, _Bot()))
+    rows = _run(cdb.list_people_rows("volunteer"))
+    assert {(row["username"], row["list_name"]) for row in rows} == {
+        ("old_nick", "Старова Анна"),
+        ("anna_k", "Иванова Анна"),
+    }
+    assert "не заменён" in msg.answer.call_args_list[0].args[0]

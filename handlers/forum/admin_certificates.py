@@ -297,9 +297,11 @@ async def _people_text_kb(kind: str) -> tuple[str, InlineKeyboardMarkup]:
     shown = "\n".join(lines) if lines else "пока никого"
     text = (
         f"{_PEOPLE_TITLES[kind]} — <b>{len(people)}</b>\n\n{shown}\n\n"
-        "Пришлите людей строками: @nick — Фамилия Имя Отчество.\n"
-        "Ник без имени тоже добавляется. Пример:\n"
+        "Пришлите людей строками или файлом Excel/CSV.\n"
+        "Строка: @nick — Фамилия Имя Отчество. Ник без имени тоже добавляется.\n"
+        "В файле две колонки: ник и имя. Пример строки:\n"
         "@ivanov — Иванова Анна\n\n"
+        "Файл дополняет список, целиком его не заменяет. "
         "Чтобы убрать одного — пришлите его ник с минусом: -@ivanov"
     )
     if people:
@@ -330,23 +332,19 @@ async def certadm_ppl(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
-@router.message(CertAdmin.people, F.text)
-async def certadm_ppl_input(message: types.Message, state: FSMContext):
-    kind = (await state.get_data()).get("kind")
-    if kind not in _PEOPLE_TITLES:
-        await state.clear()
-        await message.answer("Не понял, какой список — откройте «🎓 Сертификаты» заново.")
-        return
-    added, adds, remove, bad = await certs.apply_people_paste(kind, message.text or "")
+_TABLE_MAX = 2 * 1024 * 1024
+
+
+def _people_result(added: int, adds: list, remove: list, bad: list[str]) -> str | None:
+    """`None` — никого не разобрали, ответ уже со словом «пропустил», если было что пропустить."""
     if not adds and not remove:
         reply = (
-            "Не нашёл ни одного ника. Пришлите строку @nick — Фамилия Имя Отчество "
-            "или @ники через пробел."
+            "Не нашёл ни одного ника. Пришлите строку @nick — Фамилия Имя Отчество, "
+            "@ники через пробел или файл .xlsx/.csv с колонками «ник» и «имя»."
         )
         if bad:
             reply += "\n\nНе похоже на ник, пропустил: " + ", ".join(html.escape(b) for b in bad[:10])
-        await message.answer(reply)
-        return
+        return reply
     parts = [f"✅ Добавлено: {added}"]
     if len(adds) > added:
         parts.append(f"уже были в списке: {len(adds) - added}")
@@ -355,9 +353,66 @@ async def certadm_ppl_input(message: types.Message, state: FSMContext):
     reply = ", ".join(parts) + "."
     if bad:
         reply += "\n\nНе похоже на ник, пропустил: " + ", ".join(html.escape(b) for b in bad[:10])
+    return reply
+
+
+async def _answer_people(message: types.Message, kind: str, reply: str) -> None:
     await message.answer(reply)
     text, kb = await _people_text_kb(kind)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(CertAdmin.people, F.text)
+async def certadm_ppl_input(message: types.Message, state: FSMContext):
+    kind = (await state.get_data()).get("kind")
+    if kind not in _PEOPLE_TITLES:
+        await state.clear()
+        await message.answer("Не понял, какой список — откройте «🎓 Сертификаты» заново.")
+        return
+    added, adds, remove, bad = await certs.apply_people_paste(kind, message.text or "")
+    reply = _people_result(added, adds, remove, bad)
+    if not adds and not remove:
+        await message.answer(reply)
+        return
+    await _answer_people(message, kind, reply)
+
+
+@router.message(CertAdmin.people, F.document)
+async def certadm_ppl_file(message: types.Message, state: FSMContext, bot):
+    kind = (await state.get_data()).get("kind")
+    if kind not in _PEOPLE_TITLES:
+        await state.clear()
+        await message.answer("Не понял, какой список — откройте «🎓 Сертификаты» заново.")
+        return
+    doc = message.document
+    if (doc.file_size or 0) > _TABLE_MAX:
+        await message.answer("Файл больше 2 МБ. Для списка людей это много — пришлите файл поменьше.")
+        return
+    buf = await bot.download(doc.file_id)
+    raw = buf.read(_TABLE_MAX + 1)
+    if len(raw) > _TABLE_MAX:
+        await message.answer("Файл больше 2 МБ. Для списка людей это много — пришлите файл поменьше.")
+        return
+    try:
+        adds, bad = certs.people_from_file(raw, doc.file_name or "")
+    except certs.PeopleTableError as e:
+        await message.answer(str(e))
+        return
+    added = await certs.apply_people_changes(kind, adds, [])
+    reply = _people_result(added, adds, [], bad)
+    if not adds:
+        await message.answer(reply)
+        return
+    reply += "\n\nФайл дополнил список. Кто уже был — имя обновилось. Целиком список не заменён."
+    await _answer_people(message, kind, reply)
+
+
+@router.message(CertAdmin.people)
+async def certadm_ppl_other(message: types.Message):
+    await message.answer(
+        "Жду людей строками или файлом .xlsx/.csv. "
+        "В таблице — колонка с @ником и колонка с именем."
+    )
 
 
 @router.callback_query(F.data.startswith("certadm_yes:"))
