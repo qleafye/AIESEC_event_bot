@@ -19,10 +19,13 @@
 from __future__ import annotations
 
 import asyncio
+import csv
 import io
 import logging
 import re
+import zipfile
 from datetime import datetime
+from xml.etree import ElementTree as ET
 
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -289,9 +292,8 @@ def _remember_add(adds: list[tuple[str, str | None]], seen: dict[str, int], nick
     adds.append((nick, list_name))
 
 
-async def apply_people_paste(kind: str, text: str) -> tuple[int, list[tuple[str, str | None]], list[str], list[str]]:
-    """Записать разбор в список. Имя ложится на строку списка и не трогает `certificate_names`."""
-    adds, removes, bad = parse_people_paste(text)
+async def apply_people_changes(kind: str, adds: list[tuple[str, str | None]], removes: list[str]) -> int:
+    """Имя ложится на строку списка и не трогает `certificate_names`. Возвращает, сколько строк новые."""
     added = 0
     for username, list_name in adds:
         reset = False
@@ -303,7 +305,199 @@ async def apply_people_paste(kind: str, text: str) -> tuple[int, list[tuple[str,
             added += 1
     for username in dict.fromkeys(removes):
         await cdb.remove_person(kind, username)
+    return added
+
+
+async def apply_people_paste(kind: str, text: str) -> tuple[int, list[tuple[str, str | None]], list[str], list[str]]:
+    """Записать разбор текста в список."""
+    adds, removes, bad = parse_people_paste(text)
+    added = await apply_people_changes(kind, adds, removes)
     return added, adds, list(dict.fromkeys(removes)), bad
+
+
+class PeopleTableError(Exception):
+    """Файл списка люди не прочитали. Текст — что сказать менеджеру."""
+
+
+_TABLE_ROWS = 2000
+_XLSX_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+_NICK_HEADERS = {"ник", "ники", "username", "telegram", "tg", "user", "никнейм", "юзернейм", "телеграм"}
+_NAME_HEADERS = {"имя", "фио", "фамилия", "name"}
+
+
+def _header_kind(cell: str) -> str | None:
+    word = (cell or "").strip().casefold().replace("ё", "е").strip(":")
+    first = word.split()[0] if word else ""
+    if first in _NICK_HEADERS or word in _NICK_HEADERS:
+        return "nick"
+    if first in _NAME_HEADERS or word in _NAME_HEADERS:
+        return "name"
+    return None
+
+
+def _nick_cell(cell: str) -> str | None:
+    text = (cell or "").strip()
+    if not text or re.search(r"\s", text):
+        return None
+    nick = cdb.normalize_username(text)
+    return nick if _NICK_RE.fullmatch(nick or "") else None
+
+
+def _looks_like_name(cell: str) -> bool:
+    text = (cell or "").strip()
+    return bool(text) and any(ch.isalpha() for ch in text) and _nick_cell(text) is None
+
+
+def _col_index(letters: str) -> int:
+    number = 0
+    for ch in letters:
+        number = number * 26 + (ord(ch.upper()) - 64)
+    return number - 1
+
+
+def _xlsx_rows(data: bytes) -> list[list[str]]:
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise PeopleTableError(
+            "Не смог открыть этот Excel. Сохраните таблицу как .xlsx или .csv и пришлите ещё раз."
+        ) from e
+    with zf:
+        names = set(zf.namelist())
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in names:
+            root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            for si in root.findall(f"{{{_XLSX_NS}}}si"):
+                shared.append("".join((t.text or "") for t in si.iter(f"{{{_XLSX_NS}}}t")))
+        sheets = sorted(n for n in names if n.startswith("xl/worksheets/sheet") and n.endswith(".xml"))
+        if not sheets:
+            raise PeopleTableError(
+                "В файле нет листа. Пришлите .xlsx или .csv: колонка с @ником и колонка с именем."
+            )
+        root = ET.fromstring(zf.read(sheets[0]))
+    rows: list[list[str]] = []
+    for row in root.findall(f"{{{_XLSX_NS}}}sheetData/{{{_XLSX_NS}}}row"):
+        cells: dict[int, str] = {}
+        next_col = 0
+        for cell in row.findall(f"{{{_XLSX_NS}}}c"):
+            ref = cell.get("r") or ""
+            letters = "".join(ch for ch in ref if ch.isalpha())
+            idx = _col_index(letters) if letters else next_col
+            next_col = idx + 1
+            if idx > 40:
+                continue
+            kind = cell.get("t")
+            if kind == "inlineStr":
+                value = "".join((t.text or "") for t in cell.iter(f"{{{_XLSX_NS}}}t"))
+            else:
+                node = cell.find(f"{{{_XLSX_NS}}}v")
+                raw = node.text if node is not None and node.text else ""
+                if kind == "s" and raw:
+                    try:
+                        value = shared[int(raw)]
+                    except (ValueError, IndexError):
+                        value = ""
+                else:
+                    value = raw
+            cells[idx] = value.strip()
+        if cells:
+            width = max(cells) + 1
+            rows.append([cells.get(i, "") for i in range(width)])
+    return rows
+
+
+def _csv_rows(data: bytes) -> list[list[str]]:
+    text = data.decode("utf-8-sig", errors="replace")
+    if "\ufffd" in text:
+        text = data.decode("cp1251", errors="replace")
+    sample = text[:2000]
+    delimiter = ";" if sample.count(";") > sample.count(",") else ","
+    if sample.count("\t") > sample.count(delimiter):
+        delimiter = "\t"
+    return [row for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+
+
+def _rows_of_file(data: bytes, filename: str) -> list[list[str]]:
+    name = (filename or "").lower()
+    if data[:4] == b"\xd0\xcf\x11\xe0" or name.endswith(".xls"):
+        raise PeopleTableError(
+            "Это старый Excel (.xls). Сохраните таблицу как .xlsx или .csv и пришлите ещё раз."
+        )
+    if data[:2] == b"PK" or name.endswith(".xlsx"):
+        return _xlsx_rows(data)
+    if name.endswith(".csv") or name.endswith(".txt") or name.endswith(".tsv"):
+        return _csv_rows(data)
+    raise PeopleTableError(
+        "Жду таблицу .xlsx или .csv. В ней колонка с @ником и колонка с именем, по человеку на строку."
+    )
+
+
+def _pick_column(rows: list[list[str]], predicate, skip: int | None = None) -> int | None:
+    if not rows:
+        return None
+    width = max(len(row) for row in rows)
+    best, score = None, 0
+    for idx in range(width):
+        if idx == skip:
+            continue
+        values = [row[idx] for row in rows if idx < len(row) and row[idx]]
+        if not values:
+            continue
+        hits = sum(1 for value in values if predicate(value))
+        if hits > score:
+            best, score = idx, hits
+    return best if score else None
+
+
+def people_from_file(data: bytes, filename: str) -> tuple[list[tuple[str, str | None]], list[str]]:
+    """Строки таблицы → те же пары `(ник, имя)`, что и вставка текстом. Список целиком файл не заменяет."""
+    table = [[(cell or "").strip() for cell in row] for row in _rows_of_file(data, filename)]
+    table = [row for row in table if any(row)]
+    if not table:
+        raise PeopleTableError(
+            "В файле нет людей. Нужны колонка с @ником и колонка с именем, по человеку на строку."
+        )
+    header = [_header_kind(cell) for cell in table[0]]
+    nick_i = header.index("nick") if "nick" in header else None
+    name_i = header.index("name") if "name" in header else None
+    data_rows = table[1:] if nick_i is not None or name_i is not None else table
+    if not data_rows:
+        raise PeopleTableError("В файле только шапка. Добавьте людей: одна строка — один человек.")
+    if nick_i is None:
+        nick_i = _pick_column(data_rows, lambda cell: _nick_cell(cell) is not None)
+    if name_i is None and nick_i is not None:
+        name_i = _pick_column(data_rows, _looks_like_name, skip=nick_i)
+    adds: list[tuple[str, str | None]] = []
+    bad: list[str] = []
+    seen: dict[str, int] = {}
+    if nick_i is None:
+        pasted, removes, bad = parse_people_paste(
+            "\n".join(" ".join(cell for cell in row if cell) for row in data_rows)
+        )
+        if removes:
+            bad.append("минус в таблице никого не убирает — пришлите -@nick отдельным сообщением")
+        return pasted[:_TABLE_ROWS], bad
+    for row in data_rows:
+        if len(adds) >= _TABLE_ROWS:
+            bad.append("дальше не читал: в файле больше 2000 строк")
+            break
+        raw = row[nick_i] if nick_i < len(row) else ""
+        nick = _nick_cell(raw)
+        if nick is None:
+            found = [n for cell in row if (n := _nick_cell(cell))]
+            nick = found[0] if len(found) == 1 else None
+        if nick is None:
+            joined = " ".join(cell for cell in row if cell)
+            if joined:
+                bad.append(joined)
+            continue
+        list_name = None
+        if name_i is not None and name_i < len(row) and row[name_i]:
+            list_name = clean_name(row[name_i])
+            if list_name is None:
+                bad.append(row[name_i])
+        _remember_add(adds, seen, nick, list_name)
+    return adds, bad
 
 
 async def people_screen(kind: str) -> list[dict]:
