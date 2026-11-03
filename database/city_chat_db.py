@@ -99,6 +99,16 @@ async def allow(chat_id: int, telegram_id: int, added_by: int | None) -> None:
         await db.commit()
 
 
+async def allowed_ids(chat_id: int) -> set[int]:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM city_chat_allow WHERE chat_id = ?",
+            (int(chat_id),),
+        ) as cur:
+            rows = await cur.fetchall()
+    return {int(row[0]) for row in rows}
+
+
 async def is_allowed(chat_id: int, telegram_id: int) -> bool:
     async with _db._connect() as db:
         async with db.execute(
@@ -106,6 +116,18 @@ async def is_allowed(chat_id: int, telegram_id: int) -> bool:
             (int(chat_id), int(telegram_id)),
         ) as cur:
             return await cur.fetchone() is not None
+
+
+async def summary_notices(chat_id: int) -> list[dict]:
+    async with _db._connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT chat_id, admin_id, message_id, opened_at "
+            "FROM city_chat_summary_notice WHERE chat_id = ? ORDER BY admin_id",
+            (int(chat_id),),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(row) for row in rows]
 
 
 async def summary_notice(chat_id: int, admin_id: int) -> dict | None:
