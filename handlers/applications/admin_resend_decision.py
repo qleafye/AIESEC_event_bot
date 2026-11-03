@@ -74,7 +74,9 @@ async def decresend_go(callback: types.CallbackQuery):
     user = await _checked_user(callback, callback.data.split(":", 1)[1])
     if user is None:
         return
-    result = await decision_delivery.resend_one_decision(callback.bot, user["telegram_id"])
+    result = await decision_delivery.resend_one_decision(
+        callback.bot, user["telegram_id"], by_admin=callback.from_user.id,
+    )
     if not result.get("ok"):
         await callback.answer(str(result.get("error") or "не удалось отправить"), show_alert=True)
         return

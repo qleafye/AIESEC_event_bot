@@ -156,7 +156,7 @@ async def sheet_reconcile_append_go(callback: types.CallbackQuery):
     await callback.answer("➕ Дописываю...")
     result = None
     try:
-        result = await apply_append_missing(city_scope=scope)
+        result = await apply_append_missing(city_scope=scope, by_admin=callback.from_user.id)
         if not result["ok"]:
             if result.get("crashed"):
                 text = _crash_text(result.get("done", 0), result.get("total", 0))
@@ -225,7 +225,7 @@ async def sheet_reconcile_status_go(callback: types.CallbackQuery):
     await callback.answer("🔄 Выправляю...")
     result = None
     try:
-        result = await apply_fix_statuses(city_scope=scope)
+        result = await apply_fix_statuses(city_scope=scope, by_admin=callback.from_user.id)
         if not result["ok"]:
             if result.get("crashed"):
                 text = _crash_text(result.get("done", 0), result.get("total", 0))
@@ -306,7 +306,9 @@ async def sheet_reconcile_resend_go(callback: types.CallbackQuery):
     await callback.answer("📨 Переотправляю...")
     result = None
     try:
-        result = await resend_undelivered_decisions(callback.bot, city_scope=scope)
+        result = await resend_undelivered_decisions(
+            callback.bot, city_scope=scope, by_admin=callback.from_user.id,
+        )
         if not result["ok"]:
             if result.get("crashed"):
                 text = _crash_text(result.get("done", 0), result.get("total", 0))
