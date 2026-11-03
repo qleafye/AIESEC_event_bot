@@ -28,7 +28,7 @@ from domain.cities import get_setting_typed_for_city
 from database.db import get_checkin_status, get_referrals, get_setting, get_user, settings_snapshot
 from domain.payment import parse_options
 import domain.regform.engine as reg_engine
-from services.amb import amb_progress, amb_screen
+from services.amb import amb_progress, amb_screen, invite_threshold
 from services.applications import applications
 from services.i18n import i18n
 from services.registration import reg_edit_policy
@@ -212,6 +212,12 @@ async def _referral_block(
         count = len(await get_referrals(telegram_id))
         invites_tpl = await i18n.tr_setting("miniapp_hub_referral_invites_text", lang, tr_map or {})
         invites_text = invites_tpl.format(count=count) if invites_tpl else None
+    if invites_text:
+        extra = await invite_threshold.threshold_line(
+            telegram_id, progress_shown=True, tr=tr_key,
+        )
+        if extra:
+            invites_text = f"{invites_text}\n\n{extra}"
     status_text, points_text, wave_text = await _amb_lines(telegram_id, lang, tr_map or {}, user)
     return {
         "status_text": status_text,

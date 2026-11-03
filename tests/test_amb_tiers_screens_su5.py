@@ -186,7 +186,10 @@ def test_program_off_screen_byte_identical_acceptance_11(tmp_path):
     _make_ambassador()
     _seed_invitees(3)
     _approve(801)
-    assert _screen() == _old_screen_text(AMB)
+    assert _screen() == (
+        _old_screen_text(AMB)
+        + "\n\nПо твоей ссылке анкету завершили: 3. До порога 5 осталось 2."
+    )
 
 
 def test_non_ambassador_sees_no_progress(tmp_path):
@@ -196,7 +199,10 @@ def test_non_ambassador_sees_no_progress(tmp_path):
     _seed_user(811, referrer_id=710)
     text = _screen(710)
     assert "По твоей ссылке:" not in text
-    assert text == _old_screen_text(710, ambassador=False)
+    assert text == (
+        _old_screen_text(710, ambassador=False)
+        + "\n\nПо твоей ссылке анкету завершили: 1. До порога 5 осталось 4."
+    )
 
 
 def test_progress_english(tmp_path):
@@ -350,7 +356,10 @@ def test_hub_progress_for_ambassador_acceptance_2(client):
     _set("amb_qualified_program", "on")
     _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
     _seed_http_invitees(3, approve=1)
-    assert _hub_invites(client) == "По твоей ссылке: 3. Прошли отбор: 1. До разбора резюме: 2"
+    assert _hub_invites(client) == (
+        "По твоей ссылке: 3. Прошли отбор: 1. До разбора резюме: 2"
+        "\n\nДо порога 5 осталось 2."
+    )
 
 
 def test_hub_progress_ignores_menu_invites_toggle(client):
@@ -367,7 +376,7 @@ def test_hub_program_off_keeps_old_counter_acceptance_11(client):
     _run(db.set_ambassador_flag(DELEGATE_ID, active=True, at="2026-09-01 00:00:00"))
     _seed_http_invitees(2)
     tpl = SETTINGS_SCHEMA["miniapp_hub_referral_invites_text"]["default"]
-    assert _hub_invites(client) == tpl.format(count=2)
+    assert _hub_invites(client) == tpl.format(count=2) + "\n\nДо порога 5 осталось 3."
     _set("menu_invites", "off")
     assert _hub_invites(client) is None
 
@@ -378,7 +387,7 @@ def test_hub_non_ambassador_keeps_old_counter(client):
     _set("amb_qualified_program", "on")
     _seed_http_invitees(2)
     tpl = SETTINGS_SCHEMA["miniapp_hub_referral_invites_text"]["default"]
-    assert _hub_invites(client) == tpl.format(count=2)
+    assert _hub_invites(client) == tpl.format(count=2) + "\n\nДо порога 5 осталось 3."
 
 
 def test_hub_progress_db_error_falls_back_to_old_counter(client, monkeypatch):
@@ -398,7 +407,7 @@ def test_hub_progress_db_error_falls_back_to_old_counter(client, monkeypatch):
 
     monkeypatch.setattr(amb_progress, "render_progress", boom)
     tpl = SETTINGS_SCHEMA["miniapp_hub_referral_invites_text"]["default"]
-    assert _hub_invites(client) == tpl.format(count=2)
+    assert _hub_invites(client) == tpl.format(count=2) + "\n\nДо порога 5 осталось 3."
 
 
 def _seed_referral_coins():

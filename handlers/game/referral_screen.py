@@ -23,6 +23,7 @@ from database.db import get_user
 from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link
 from services.amb import amb_progress, amb_screen
+from services.amb.invite_threshold import threshold_line
 from services.i18n import i18n as i18n_service
 from domain.settings.schema import get_setting_typed
 
@@ -95,6 +96,7 @@ async def referral_screen(
     buttons: list[list[InlineKeyboardButton]] = []
     view = await amb_screen.delegate_view(user_id)
     status, points, place = await _lines(view, lang, tr_map)
+    progress = None
     if user and user.get("is_ambassador"):
         if status:
             text += "\n\n" + status
@@ -120,6 +122,12 @@ async def referral_screen(
         else:
             cta_label = await _tr_key("miniapp_form_ambassador_cta_text", lang, tr_map)
             buttons.append([InlineKeyboardButton(text=cta_label, callback_data="ambjoin")])
+
+    extra = await threshold_line(
+        user_id, progress_shown=progress is not None, tr=amb_tr(lang, tr_map),
+    )
+    if extra:
+        text += "\n\n" + extra
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
     return text, kb
