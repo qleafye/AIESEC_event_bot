@@ -886,6 +886,9 @@ admin|message|shop_command|cmd:shop
 admin|message|shop_find_input|state:ShopAdmin:*
 admin|message|shop_new_input|state:ShopAdmin:*
 admin|message|shop_edit_input|state:ShopAdmin:*
+admin|message|find_person_cancel|state:FindPerson:*,state:FindPerson:*
+admin|message|find_person_cancel|state:FindPerson:*,state:FindPerson:*
+admin|message|find_person_message|state:FindPerson:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -2634,7 +2637,10 @@ def test_snapshot_total_handler_count_is_292():
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
     # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
-    assert len(GOLDEN_SNAPSHOT) == 1369
+    # 03.11 (/find по id и пересылке): +3 admin.message — find_person_cancel дважды
+    # (Отмена и /cancel) и find_person_message, хвост message-блока после shop_edit_input;
+    # чистая вставка (1369 -> 1372).
+    assert len(GOLDEN_SNAPSHOT) == 1372
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

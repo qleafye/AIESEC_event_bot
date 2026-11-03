@@ -143,6 +143,10 @@ class StaffAdd(StatesGroup):
     # forwarded message / @username / numeric id, then role assignment is a callback.
     waiting_for_person = State()
 
+class FindPerson(StatesGroup):
+    # /find без аргумента ждёт @username, числовой id или пересланное сообщение.
+    waiting = State()
+
 class GameTaskCreate(StatesGroup):
     # Phase 9 (GAME-01/02/03, wave 2, 09-02): one State per task-creation wizard step.
     # category/proof_type are driven by inline buttons (not free text), but the state is
