@@ -2529,7 +2529,8 @@ button.rr-card { padding-right: var(--sp-8); cursor: pointer; }
 }
 .rr-cond {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: var(--sp-2);
   padding: var(--sp-2) 0;
   border-top: 1px solid var(--border);
@@ -2549,14 +2550,14 @@ button.rr-card { padding-right: var(--sp-8); cursor: pointer; }
   font-weight: 400;
   white-space: nowrap;
 }
-.rr-chip.is-on, .rr-chip[aria-pressed="true"] {
+.rr-chip.is-on, .rr-chip[aria-pressed="true"], .rr-chip[aria-checked="true"] {
   background: var(--accent-soft);
   color: var(--accent-text);
   border: 1px solid var(--accent);
 }
-.rr-seg { display: flex; gap: var(--sp-1); }
+.rr-seg { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .rr-seg button, .rr-seg [role="radio"] {
-  flex: 1;
+  flex: 1 1 calc(50% - var(--sp-1));
   min-height: 44px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -2615,6 +2616,25 @@ button.rr-card { padding-right: var(--sp-8); cursor: pointer; }
 .rr-preset__name { font-size: 16px; font-weight: 700; }
 .rr-preset__summary { font-size: 12px; font-weight: 400; color: var(--text-muted); }
 .rr-empty-actions { display: flex; flex-direction: column; gap: var(--sp-2); }
+.rr-input { font-size: 16px; font-weight: 400; min-height: 44px; width: 100%; }
+.rr-field { display: flex; flex-direction: column; gap: var(--sp-1); }
+.rr-inline { display: flex; align-items: center; gap: var(--sp-2); }
+.rr-unit { font-size: 16px; font-weight: 400; }
+.rr-check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 48px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  font-size: 16px;
+  font-weight: 400;
+}
+.rr-block-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 44px; }
 .rr-sheet button:focus-visible,
 .rr-card:focus-visible,
 .rr-card__hit:focus-visible,
