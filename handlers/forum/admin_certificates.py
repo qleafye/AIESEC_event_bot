@@ -87,7 +87,8 @@ async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
         f"<b>Выдано</b>: участник {sends.get('participant', 0)}, компетенции {sends.get('competency', 0)}, волонтёр {sends.get('volunteer', 0)}, "
         f"амбассадор {sends.get('ambassador', 0)}. Сообщение «готов» получили: {await cdb.announce_count()}.\n\n"
         "Когда выдача откроется, бот сам напишет каждому, кому положен сертификат, с кнопкой "
-        "«🎓 Получить сертификат». Перед отправкой человек проверяет, как написано имя. "
+        "«🎓 Получить сертификат». Участник и компетенции проверяют имя перед файлом. "
+        "Волонтёру и амбассадору бот сам присылает PDF — имя берётся из списка. "
         "Потерявшим сообщение — команда /certificate."
     )
     kb = _kb([
@@ -276,19 +277,44 @@ async def certadm_tpl_not_file(message: types.Message):
 # ── волонтёры и амбассадоры ────────────────────────────────────────────────────────────
 
 async def _people_text_kb(kind: str) -> tuple[str, InlineKeyboardMarkup]:
-    people = await cdb.list_people(kind)
-    shown = ", ".join(f"@{html.escape(p)}" for p in people) if people else "пока никого"
+    people = await certs.people_screen(kind)
+    lines = []
+    rows = []
+    for person in people:
+        bit = f"@{html.escape(person['username'])}"
+        if person["list_name"]:
+            bit += f" — {html.escape(person['list_name'])}"
+        if person["mark"]:
+            bit += f" — {html.escape(person['mark'])}"
+        if person["form_surname"]:
+            bit += f" (в анкете: {html.escape(person['form_surname'])})"
+        lines.append(bit)
+        if person["conflict"]:
+            rows.append([
+                ("Да, это он", f"certadm_yes:{kind}:{person['username']}"),
+                ("Убрать", f"certadm_rm:{kind}:{person['username']}"),
+            ])
+    shown = "\n".join(lines) if lines else "пока никого"
     text = (
         f"{_PEOPLE_TITLES[kind]} — <b>{len(people)}</b>\n\n{shown}\n\n"
-        "Чтобы добавить — пришлите @ники через пробел, запятую или с новой строки.\n"
-        "Пример: @ivanov @maria_k\n\n"
+        "Пришлите людей строками: @nick — Фамилия Имя Отчество.\n"
+        "Ник без имени тоже добавляется. Пример:\n"
+        "@ivanov — Иванова Анна\n\n"
         "Чтобы убрать одного — пришлите его ник с минусом: -@ivanov"
     )
-    rows = []
     if people:
         rows.append([("🗑 Очистить весь список", f"certadm_clr:{kind}")])
     rows.append([("◀️ Назад", "certadm_home")])
     return text, _kb(rows)
+
+
+def _parse_person_cb(data: str) -> tuple[str, str] | None:
+    parts = data.split(":")
+    if len(parts) != 3 or parts[1] not in _PEOPLE_TITLES:
+        return None
+    if not re.fullmatch(r"[a-z0-9_]{4,32}", parts[2]):
+        return None
+    return parts[1], parts[2]
 
 
 @router.callback_query(F.data.startswith("certadm_ppl:"))
@@ -311,27 +337,19 @@ async def certadm_ppl_input(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer("Не понял, какой список — откройте «🎓 Сертификаты» заново.")
         return
-    add, remove, bad = [], [], []
-    for token in re.split(r"[\s,;]+", message.text.strip()):
-        if not token:
-            continue
-        minus = token.startswith("-")
-        name = cdb.normalize_username(token[1:] if minus else token)
-        if not re.fullmatch(r"[a-z0-9_]{4,32}", name):
-            bad.append(token)
-            continue
-        (remove if minus else add).append(name)
-    if not add and not remove:
-        await message.answer(
-            "Не нашёл ни одного ника. Пришлите @ники через пробел, например: @ivanov @maria_k"
+    added, adds, remove, bad = await certs.apply_people_paste(kind, message.text or "")
+    if not adds and not remove:
+        reply = (
+            "Не нашёл ни одного ника. Пришлите строку @nick — Фамилия Имя Отчество "
+            "или @ники через пробел."
         )
+        if bad:
+            reply += "\n\nНе похоже на ник, пропустил: " + ", ".join(html.escape(b) for b in bad[:10])
+        await message.answer(reply)
         return
-    added = await cdb.add_people(kind, add)
-    for name in remove:
-        await cdb.remove_person(kind, name)
     parts = [f"✅ Добавлено: {added}"]
-    if len(add) > added:
-        parts.append(f"уже были в списке: {len(add) - added}")
+    if len(adds) > added:
+        parts.append(f"уже были в списке: {len(adds) - added}")
     if remove:
         parts.append(f"убрано: {len(remove)}")
     reply = ", ".join(parts) + "."
@@ -340,6 +358,36 @@ async def certadm_ppl_input(message: types.Message, state: FSMContext):
     await message.answer(reply)
     text, kb = await _people_text_kb(kind)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("certadm_yes:"))
+async def certadm_yes(callback: types.CallbackQuery, state: FSMContext):
+    parsed = _parse_person_cb(callback.data)
+    if parsed is None:
+        await callback.answer("Не понял, кого подтвердить — откройте список заново.", show_alert=True)
+        return
+    kind, username = parsed
+    await cdb.confirm_list_name(kind, username)
+    await state.set_state(CertAdmin.people)
+    await state.update_data(kind=kind)
+    await callback.answer("Да, отправлю это имя")
+    text, kb = await _people_text_kb(kind)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("certadm_rm:"))
+async def certadm_rm(callback: types.CallbackQuery, state: FSMContext):
+    parsed = _parse_person_cb(callback.data)
+    if parsed is None:
+        await callback.answer("Не понял, кого убрать — откройте список заново.", show_alert=True)
+        return
+    kind, username = parsed
+    await cdb.remove_person(kind, username)
+    await state.set_state(CertAdmin.people)
+    await state.update_data(kind=kind)
+    await callback.answer("Убрал из списка")
+    text, kb = await _people_text_kb(kind)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("certadm_clr:"))
