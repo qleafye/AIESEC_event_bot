@@ -9576,17 +9576,29 @@ def option_label(key: str, code: str) -> str:
     return option_labels(key).get(code, code)
 
 
-async def get_setting_typed(key: str):
+async def get_setting_typed(key: str, city_code: str | None = None):
     """Thin async accessor (D-05) — raw read via the existing `get_setting` (database.db,
     unchanged, D-07) then dispatch through the pure `_parse_setting`. Does not duplicate
     raw I/O; calls `get_setting` exactly once.
 
     `default_free` у записи реестра — заводской текст под бесплатное участие: берётся вместо
     `default`, только если своего значения менеджера нет ВОВСЕ (строки в `bot_settings` нет) и
-    модуль оплаты выключен. Сохранённое значение, даже пустое, всегда сильнее обоих наборов."""
+    модуль оплаты выключен. `city_code` — город, который вызывающий уже знает: тогда тумблер
+    `payment_enabled` читается для него. Делегата у функции нет, без города остаётся общий
+    тумблер (Москву не подставляем). Сохранённое значение, даже пустое, всегда сильнее обоих
+    наборов."""
     raw = await get_setting(key)
     if raw is None:
         free = (SETTINGS_SCHEMA.get(key) or {}).get("default_free")
-        if free is not None and await get_setting_typed("payment_enabled") != "on":
+        if free is not None and await _payment_enabled_for_free_text(city_code) != "on":
             return free
     return _parse_setting(key, raw)
+
+
+async def _payment_enabled_for_free_text(city_code: str | None):
+    """Тумблер оплаты для выбора `default_free`. Пустой город — общий ключ, не Москва."""
+    if not city_code:
+        return await get_setting_typed("payment_enabled")
+    from domain.cities import get_setting_typed_for_city
+
+    return await get_setting_typed_for_city("payment_enabled", city_code)
