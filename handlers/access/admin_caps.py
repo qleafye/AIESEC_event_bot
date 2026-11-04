@@ -545,6 +545,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "bcseason_*": "broadcast",
     "bcstatus_*": "broadcast",
     "extff_*": "broadcast",
+    "bcstatus_*": "broadcast",
     "sched_cancel_*": "broadcast",
     # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности + подтверждение/отмена планирования
     # отложенной рассылки (handlers/comms/admin_broadcasts.py::sched_*) — та же capability, что и
