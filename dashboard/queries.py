@@ -2623,27 +2623,26 @@ def _ambassador_wave_tasks(conn, scope: Scope, wave: "dict | None") -> list[dict
     return result[:_AMBASSADOR_ROWS_LIMIT]
 
 
-def _amb_team_stats(conn, parts: list[str], params: tuple) -> "dict | None":
+def _amb_team_stats(conn, parts: list[str], params: tuple, scope=None) -> "dict | None":
     """Команда амбассадоров по статусу (`users.ambassador_status`), только числа. `None` — модуль
-    «Отбор амбассадоров» выключен или в базе ещё нет колонок статуса (старая схема)."""
+    «Отбор амбассадоров» выключен или в базе ещё нет колонок статуса (старая схема).
+    Один город в скоупе читает городской оверрайд тумблера и лимита мест."""
     try:
+        from dashboard.amb_tiers_block import setting_for_city_scope
+
         cols = {r[1] for r in conn.execute("PRAGMA table_info(users)")}
         if not {"ambassador_status", "ambassador_slot_at"} <= cols:
             return None
-        row = conn.execute(
-            "SELECT value FROM bot_settings WHERE key = 'amb_team_selection_enabled'"
-        ).fetchone()
-        if row is None or row[0] != "on":
+        enabled = setting_for_city_scope(conn, "amb_team_selection_enabled", scope)
+        if enabled != "on":
             return None
 
         def count(extra: str) -> int:
             return _scalar(conn, f"SELECT COUNT(*) FROM users{_where(parts + [extra])}", params) or 0
 
-        limit_row = conn.execute(
-            "SELECT value FROM bot_settings WHERE key = 'amb_slots_limit'"
-        ).fetchone()
         try:
-            limit = max(0, int(limit_row[0])) if limit_row is not None else 0
+            raw_limit = setting_for_city_scope(conn, "amb_slots_limit", scope)
+            limit = max(0, int(raw_limit)) if raw_limit is not None else 0
         except (TypeError, ValueError):
             limit = 0
         with_pack = count("ambassador_status = 'active' AND ambassador_slot_at IS NOT NULL")
@@ -2672,7 +2671,7 @@ def ambassador_block(conn, scope: Scope) -> "dict | None":
     total = _scalar(
         conn, f"SELECT COUNT(*) FROM users{_where(parts + ['is_ambassador = 1'])}", params
     ) or 0
-    team = _amb_team_stats(conn, parts, params)
+    team = _amb_team_stats(conn, parts, params, scope)
     if total == 0 and not (team and (team["candidates"] or team["team"])):
         return None
 

@@ -203,7 +203,7 @@ async def survey_new(callback: types.CallbackQuery, state: FSMContext):
         pass
     await callback.message.answer(
         f"📋 <b>Новая анкета</b>\n\nНапишите название (до {TITLE_MAX} символов) — его видите только вы.\n"
-        "Например: <i>Итоги первого дня Юлида</i>",
+        "Например: <i>Итоги первого дня форума</i>",
         parse_mode="HTML", reply_markup=get_cancel_kb(),
     )
 
@@ -214,7 +214,7 @@ async def survey_title_step(message: types.Message, state: FSMContext):
     if not text or len(text) > TITLE_MAX:
         await message.answer(
             f"Нужно название до {TITLE_MAX} символов (сейчас {len(text)}). "
-            "Например: Итоги первого дня Юлида."
+            "Например: Итоги первого дня форума."
         )
         return
     scope, _ = await _admin_city_view(message.from_user.id)
@@ -242,11 +242,11 @@ async def survey_draft(callback: types.CallbackQuery, state: FSMContext):
 _TEXT_STEPS = {
     "title": (
         SurveyBuild.edit_title, "✏️ Новое название",
-        f"Пришлите название до {TITLE_MAX} символов.\nНапример: <i>Итоги первого дня Юлида</i>", TITLE_MAX),
+        f"Пришлите название до {TITLE_MAX} символов.\nНапример: <i>Итоги первого дня форума</i>", TITLE_MAX),
     "intro": (
         SurveyBuild.intro, "📝 Приглашение",
         "Пришлите текст, с которым делегат получит анкету.\n"
-        "Например: <i>Привет! Расскажи, как прошёл первый день Юлида — 3 минуты</i>", TEXT_MAX),
+        "Например: <i>Привет! Расскажи, как прошёл первый день форума — 3 минуты</i>", TEXT_MAX),
     "outro": (
         SurveyBuild.outro, "🏁 Финальный текст",
         "Пришлите текст, который делегат увидит после последнего вопроса.\n"

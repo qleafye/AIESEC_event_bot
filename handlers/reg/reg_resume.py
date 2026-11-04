@@ -172,7 +172,7 @@ async def resume_from_draft(tap_message: types.Message, state: FSMContext, bot: 
     # consents/ФИО) or it was toggled off while the draft sat idle. The same safe fallback as
     # a fresh flow start: consents -> ФИО -> first enabled question. Never crashes, never
     # loses answers already merged into FSM data above.
-    consent_steps = await _get_consent_steps()
+    consent_steps = await _get_consent_steps(data.get("event_city"))
     if consent_steps:
         await state.update_data(_consent_queue=consent_steps, _consent_i=0)
         await _ask_step_or_recall(consent_steps[0], tap_message, state, 1, len(consent_steps))

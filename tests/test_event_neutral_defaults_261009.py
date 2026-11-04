@@ -94,13 +94,26 @@ def test_event_placeholder_defaults_and_hints():
         assert expected_placeholders(key)["event"] == "название мероприятия", key
 
 
-def test_default_source_option_keeps_stored_answer_label():
-    """«Соцсети Юлид» — это и ответ, сохранённый в users.source у старых анкет: смена подписи
-    разбила бы статистику источников на две корзины, поэтому вариант оставлен как был."""
+def test_default_source_option_is_neutral_and_stored_rows_stay(tmp_path):
+    """Новое мероприятие не стартует с чужого имени: пустая настройка «Откуда узнал» показывает
+    «Соцсети», не «Соцсети Юлид». Уже сохранённый список и уже записанный ответ делегата
+    повторный init_db не переписывает — статистика старых анкет остаётся в своей корзине."""
     from domain.regform.options import DEFAULT_SOURCE_OPTIONS
 
-    assert "Соцсети Юлид" in DEFAULT_SOURCE_OPTIONS
+    assert "Соцсети" in DEFAULT_SOURCE_OPTIONS
+    assert "Соцсети Юлид" not in DEFAULT_SOURCE_OPTIONS
     assert "Соцсети мероприятия" not in DEFAULT_SOURCE_OPTIONS
+
+    _ready(tmp_path)
+    _run(db.set_setting("source_options", "Соцсети Юлид\nДругое"))
+    _run(db.add_user({
+        "telegram_id": UID, "full_name": "Тест Делегатов", "username": "t",
+        "event_city": None, "registration_date": "2026-09-01 00:00:00", "status": "approved",
+        "source": "Соцсети Юлид",
+    }))
+    _run(db.init_db())
+    assert _run(db.get_setting("source_options")) == "Соцсети Юлид\nДругое"
+    assert _run(db.get_user(UID))["source"] == "Соцсети Юлид"
 
 
 # ── подстановка {event} ───────────────────────────────────────────────────────────────────

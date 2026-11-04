@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from database import amb_status_db
 from database import db as _db
 from services.infra.timeutil import msk_now
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city, is_per_city
 
 logger = logging.getLogger(__name__)
 
@@ -72,26 +72,27 @@ def _now() -> str:
 TOGGLE_KEY = "amb_team_selection_enabled"
 
 
-async def selection_enabled() -> bool:
-    """Включён ли модуль «🤝 Отбор амбассадоров». Всё, кроме явного `on`, — выключен."""
-    return await get_setting_typed(TOGGLE_KEY) == "on"
+async def selection_enabled(city: str | None = None) -> bool:
+    """Включён ли модуль «🤝 Отбор амбассадоров». Всё, кроме явного `on`, — выключен.
+    `city` — event_city человека; без города (экран менеджера) — общее значение."""
+    return await get_setting_typed_for_city(TOGGLE_KEY, city) == "on"
 
 
-async def join_mode() -> str:
+async def join_mode(city: str | None = None) -> str:
     """`selection` или `instant`; всё прочее (мусор в обход валидатора) — `instant`. Модуль
     выключен — всегда `instant`, что бы ни лежало в настройке."""
-    if not await selection_enabled():
+    if not await selection_enabled(city):
         return MODE_INSTANT
-    mode = await get_setting_typed("amb_join_mode")
+    mode = await get_setting_typed_for_city("amb_join_mode", city)
     return MODE_SELECTION if mode == MODE_SELECTION else MODE_INSTANT
 
 
-async def slots_limit() -> int:
+async def slots_limit(city: str | None = None) -> int:
     """Лимит мест, 0 — без лимита. Отрицательное и мусор — 0. Модуль выключен — 0."""
-    if not await selection_enabled():
+    if not await selection_enabled(city):
         return 0
     try:
-        return max(0, int(await get_setting_typed("amb_slots_limit") or 0))
+        return max(0, int(await get_setting_typed_for_city("amb_slots_limit", city) or 0))
     except (TypeError, ValueError):
         return 0
 
@@ -101,10 +102,10 @@ async def slot_counter() -> tuple[int, int]:
     return await amb_status_db.slots_taken(), await slots_limit()
 
 
-async def slots_full() -> bool:
+async def slots_full(city: str | None = None) -> bool:
     """Лимит задан и набран. В БД ходит только при лимите > 0: вызывается из горячего пути
     анкеты, а у событий без лимита лишний COUNT на каждый шаг не нужен."""
-    limit = await slots_limit()
+    limit = await slots_limit(city)
     if limit <= 0:
         return False
     return await amb_status_db.slots_taken() >= limit
@@ -112,8 +113,17 @@ async def slots_full() -> bool:
 
 # ── Показывать ли предложение ────────────────────────────────────────────────────────────────
 
+async def _person_city(telegram_id: int | None) -> str | None:
+    """Сырой event_city. Пока ключи группы amb не городские — None и без чтения пользователя."""
+    if telegram_id is None or not is_per_city(TOGGLE_KEY):
+        return None
+    user = await _db.get_user(int(telegram_id))
+    return (user or {}).get("event_city")
+
+
 async def _offer_open(telegram_id: int | None) -> bool:
-    if not await selection_enabled():
+    city = await _person_city(telegram_id)
+    if not await selection_enabled(city):
         return True  # как до модуля: предложение открыто всем
     if telegram_id is not None:
         st = await amb_status_db.get_status(int(telegram_id))
@@ -124,10 +134,10 @@ async def _offer_open(telegram_id: int | None) -> bool:
             return True
         if status == _DECLINED:
             return False
-        if status == _CANDIDATE and await join_mode() == MODE_SELECTION:
+        if status == _CANDIDATE and await join_mode(city) == MODE_SELECTION:
             # Уже ждёт решения менеджера — повторно предлагать нечего.
             return False
-    return not await slots_full()
+    return not await slots_full(city)
 
 
 async def offer_open(telegram_id: int | None = None) -> bool:
@@ -149,7 +159,7 @@ async def _try_slot(telegram_id: int) -> bool:
     try:
         from services.amb import amb_tiers
         return await amb_status_db.try_claim_slot(
-            int(telegram_id), limit=await slots_limit(),
+            int(telegram_id), limit=await slots_limit(await _person_city(telegram_id)),
             season=await amb_tiers.current_season(), at=_now(),
         )
     except Exception:
@@ -163,10 +173,11 @@ async def _credit_candidate_period(telegram_id: int, *, since: str, by: int) -> 
     человек уже в команде, сбой начисления это не отменяет."""
     try:
         from database import amb_journal_db
-        coins = int(await get_setting_typed("ambassador_referral_coins") or 0)
+        city = await _person_city(telegram_id)
+        coins = int(await get_setting_typed_for_city("ambassador_referral_coins", city) or 0)
         result = await amb_journal_db.credit_candidate_period(
             int(telegram_id), since=since, coins=coins, by=by, at=_now(),
-            reason_tpl=await get_setting_typed("amb_referral_catchup_reason_text"),
+            reason_tpl=await get_setting_typed_for_city("amb_referral_catchup_reason_text", city),
         )
         if result["count"]:
             logger.info("amb_take_catchup tid=%s invitees=%s coins=%s", telegram_id,
@@ -207,16 +218,17 @@ async def _request_join(tid: int) -> JoinResult:
     status = await _status(tid)
     if status is None:
         return JoinResult("no_user")
-    if not await selection_enabled():
+    city = await _person_city(tid)
+    if not await selection_enabled(city):
         return await _join_legacy(tid, status)
     if status == _DECLINED:
         return JoinResult("declined")
     if status == _ACTIVE:
         return JoinResult("already_active")
-    mode = await join_mode()
+    mode = await join_mode(city)
     if mode == MODE_SELECTION and status == _CANDIDATE:
         return JoinResult("already_candidate")
-    if await slots_full():
+    if await slots_full(city):
         return JoinResult("full")
 
     if mode == MODE_INSTANT:
@@ -313,9 +325,16 @@ async def on_applications_approved(telegram_ids) -> None:
     """Собственную заявку одобрили: действующему амбассадору без места — место, если есть.
     Не амбассадору — ничего. Модуль выключен — ничего. Никогда не бросает (одобрение уже
     состоялось)."""
-    if not await _enabled_safe():
+    if not is_per_city(TOGGLE_KEY) and not await _enabled_safe():
         return
     for raw in telegram_ids or ():
+        if is_per_city(TOGGLE_KEY):
+            try:
+                if not await selection_enabled(await _person_city(int(raw))):
+                    continue
+            except Exception:
+                logger.exception("amb_status: тумблер отбора не прочитан (tid=%s)", raw)
+                continue
         try:
             st = await amb_status_db.get_status(int(raw))
             if st and st["status"] == _ACTIVE and not st["slot_at"]:
@@ -329,7 +348,7 @@ async def on_applications_unapproved(telegram_ids) -> None:
     пакета снимается, человек остаётся в команде «без пакета». Статус заявки перечитывается —
     повторное одобрение между событием и вызовом место не отнимет. Модуль выключен — ничего.
     Никогда не бросает."""
-    if not await _enabled_safe():
+    if not is_per_city(TOGGLE_KEY) and not await _enabled_safe():
         return
     try:
         from services.amb import amb_tiers
@@ -345,6 +364,8 @@ async def on_applications_unapproved(telegram_ids) -> None:
                 continue
             if user.get("status") == "approved" and (user.get("season") or "") == season:
                 continue
+            if is_per_city(TOGGLE_KEY) and not await selection_enabled(user.get("event_city")):
+                continue
             if await amb_status_db.release_slot(tid):
                 logger.info("amb_slot_release tid=%s reason=unapproved", tid)
         except Exception:
@@ -354,7 +375,7 @@ async def on_applications_unapproved(telegram_ids) -> None:
 async def reconcile_slots() -> int:
     """Сверка: снять места у всех, чья заявка уже не одобрена в текущем сезоне (пропущенные
     швы). Возвращает, сколько мест снято. Модуль выключен — 0. Никогда не бросает."""
-    if not await _enabled_safe():
+    if not is_per_city(TOGGLE_KEY) and not await _enabled_safe():
         return 0
     released = 0
     try:
@@ -365,6 +386,8 @@ async def reconcile_slots() -> int:
         return 0
     for tid in holders:
         try:
+            if is_per_city(TOGGLE_KEY) and not await selection_enabled(await _person_city(tid)):
+                continue
             if await amb_status_db.release_slot(tid):
                 released += 1
                 logger.info("amb_slot_release tid=%s reason=reconcile", tid)
@@ -384,10 +407,11 @@ async def delegate_state(telegram_id: int) -> str:
     status = st.get("status") or _NONE
     if status == _ACTIVE:
         return "active_pack" if st.get("slot_at") else "active_no_pack"
-    if not await selection_enabled():
+    city = await _person_city(telegram_id)
+    if not await selection_enabled(city):
         return "open"
     if status == _DECLINED:
         return "declined"
-    if status == _CANDIDATE and await join_mode() == MODE_SELECTION:
+    if status == _CANDIDATE and await join_mode(city) == MODE_SELECTION:
         return "candidate"
     return "open" if await offer_open(telegram_id) else "full"

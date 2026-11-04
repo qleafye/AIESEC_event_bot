@@ -25,7 +25,7 @@ from domain.regform.engine import build_referral_link
 from services.amb import amb_progress, amb_screen
 from services.amb.invite_threshold import threshold_line
 from services.i18n import i18n as i18n_service
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 
@@ -36,14 +36,14 @@ _PATHS = (
 )
 
 
-def amb_tr(lang: str, tr_map: dict | None):
+def amb_tr(lang: str, tr_map: dict | None, city: str | None = None):
     async def tr_key(key: str) -> str:  # колбэк перевода для services.amb.amb_progress
-        return reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map or {})
+        return reg_i18n.tr_text(await get_setting_typed_for_city(key, city), lang, tr_map or {})
     return tr_key
 
 
-async def _tr_key(key: str, lang: str, tr_map: dict) -> str:
-    return reg_i18n.tr_text(await get_setting_typed(key), lang, tr_map)
+async def _tr_key(key: str, lang: str, tr_map: dict, city: str | None = None) -> str:
+    return reg_i18n.tr_text(await get_setting_typed_for_city(key, city), lang, tr_map)
 
 
 def _fmt(template: str, **subs) -> str:
@@ -54,10 +54,10 @@ def _fmt(template: str, **subs) -> str:
         return template
 
 
-async def _tr_line(key: str, lang: str, tr_map: dict) -> str:
+async def _tr_line(key: str, lang: str, tr_map: dict, city: str | None = None) -> str:
     """Строка статуса с эмодзи в начале: `reg_i18n.tr_text` отрезает ведущий символ и ищет перевод
     по остатку, а ручной перевод лежит по хешу ПОЛНОЙ строки — сначала ищем по полной."""
-    text = await get_setting_typed(key)
+    text = await get_setting_typed_for_city(key, city)
     if lang != "ru" and isinstance(text, str) and text:
         full = i18n_service.tr(text, lang, tr_map)
         if full != text:
@@ -65,20 +65,22 @@ async def _tr_line(key: str, lang: str, tr_map: dict) -> str:
     return reg_i18n.tr_text(text, lang, tr_map)
 
 
-async def _lines(view: dict, lang: str, tr_map: dict) -> tuple[str | None, str | None, str | None]:
+async def _lines(
+    view: dict, lang: str, tr_map: dict, city: str | None = None,
+) -> tuple[str | None, str | None, str | None]:
     """Строки статуса, баллов и места в волне — тексты из реестра, с переводом."""
     status = None
     if view["status_key"]:
-        status = await _tr_line(view["status_key"], lang, tr_map) or None
+        status = await _tr_line(view["status_key"], lang, tr_map, city) or None
     points = None
     if view["referral_points"] is not None:
-        points = _fmt(await _tr_line("amb_referral_points_text", lang, tr_map),
+        points = _fmt(await _tr_line("amb_referral_points_text", lang, tr_map, city),
                       points=view["referral_points"])
     place = None
     wp = view["wave_place"]
     if wp:
         wave = f"{reg_i18n.tr_text('Волна', lang, tr_map)} {wp['number']}"
-        place = _fmt(await _tr_line("amb_wave_place_text", lang, tr_map),
+        place = _fmt(await _tr_line("amb_wave_place_text", lang, tr_map, city),
                      wave=wave, place=wp["place"], total=wp["total"])
     return status, points, place
 
@@ -88,39 +90,40 @@ async def referral_screen(
 ) -> tuple[str, InlineKeyboardMarkup | None]:
     tr_map = tr_map or {}
     user = await get_user(user_id)
+    city = user.get("event_city") if user else None
     bot_user = await bot.get_me()
     referral_link = build_referral_link(bot_user.username, user_id)
-    tpl = await get_setting_typed("referral_link_prompt_text")
+    tpl = await get_setting_typed_for_city("referral_link_prompt_text", city)
     text = reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link)
 
     buttons: list[list[InlineKeyboardButton]] = []
     view = await amb_screen.delegate_view(user_id)
-    status, points, place = await _lines(view, lang, tr_map)
+    status, points, place = await _lines(view, lang, tr_map, city)
     progress = None
     if user and user.get("is_ambassador"):
         if status:
             text += "\n\n" + status
-        progress = await amb_progress.render_progress(user_id, amb_tr(lang, tr_map))
+        progress = await amb_progress.render_progress(user_id, amb_tr(lang, tr_map, city))
         if progress is not None:
             text += "\n\n" + progress
         for line in (points, place):
             if line:
                 text += "\n\n" + line
-        text += "\n\n" + await _tr_key("ambassador_path_prompt_text", lang, tr_map)
+        text += "\n\n" + await _tr_key("ambassador_path_prompt_text", lang, tr_map, city)
         current_path = user.get("ambassador_path") or "none"  # NULL -> метка "none"
         path_row = []
         for code, key in _PATHS:
-            label = await _tr_key(key, lang, tr_map)
+            label = await _tr_key(key, lang, tr_map, city)
             mark = "✅ " if current_path == code else ""
             path_row.append(InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"ambpath:{code}"))
         buttons.append(path_row)
-        leave_label = await _tr_key("ambassador_leave_button_text", lang, tr_map)
+        leave_label = await _tr_key("ambassador_leave_button_text", lang, tr_map, city)
         buttons.append([InlineKeyboardButton(text=leave_label, callback_data="ambleave")])
     else:
         if status:
             text += "\n\n" + status
         else:
-            cta_label = await _tr_key("miniapp_form_ambassador_cta_text", lang, tr_map)
+            cta_label = await _tr_key("miniapp_form_ambassador_cta_text", lang, tr_map, city)
             buttons.append([InlineKeyboardButton(text=cta_label, callback_data="ambjoin")])
 
     extra = await threshold_line(

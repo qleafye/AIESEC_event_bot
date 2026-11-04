@@ -198,6 +198,8 @@ async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
     `file.size` ДО отправки показывает `miniapp_upload_too_large_text` из реестра."""
     lang, tr_map = await i18n.context(actor.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
+    user = await get_user(actor.telegram_id)
+    proof_city = (user or {}).get("event_city")
     return {
         "max_bytes": MAX_UPLOAD_BYTES,
         "photo_max_bytes": PHOTO_MAX_BYTES,
@@ -208,7 +210,9 @@ async def upload_limits(actor: UploadActor = Depends(upload_actor)) -> dict:
         # {name} подставляет фронт — имя файла известно только ему.
         "upload_failed_text": await i18n.tr_setting("miniapp_upload_failed_text", lang, tr_map),
         "cover_not_image_text": await i18n.tr_setting("miniapp_upload_cover_not_image_text", lang, tr_map),
-        "empty_hint": await i18n.tr_setting("game_proof_empty_hint", lang, tr_map),
+        "empty_hint": await i18n.tr_setting_for_city(
+            "game_proof_empty_hint", proof_city, lang, tr_map,
+        ),
     }
 
 
@@ -498,9 +502,11 @@ async def create_submission_route(
     ):
         raise HTTPException(404, {"reason": "task_not_found"})
 
+    city = (user or {}).get("event_city")
     if not body.parts:
         raise HTTPException(400, {
-            "reason": "empty", "hint": await i18n.tr_setting("game_proof_empty_hint", lang, tr_map),
+            "reason": "empty",
+            "hint": await i18n.tr_setting_for_city("game_proof_empty_hint", city, lang, tr_map),
         })
     if len(body.parts) > MAX_PARTS:
         raise HTTPException(400, {"reason": "too_many_parts", "limit": MAX_PARTS})
@@ -515,7 +521,7 @@ async def create_submission_route(
                 raise HTTPException(403, {"reason": "bad_part_token"})
         parts.append(part)
 
-    state = await submission_state(task["id"], p.telegram_id)
+    state = await submission_state(task["id"], p.telegram_id, city)
     if state["status"] in ("pending", "approved"):
         raise HTTPException(409, {"reason": "already_submitted"})
     if not state["can_submit"]:
@@ -546,5 +552,5 @@ async def create_submission_route(
     })
     return {
         "submission_id": submission_id,
-        "accepted_text": await i18n.tr_setting("game_submit_accepted_text", lang, tr_map),
+        "accepted_text": await i18n.tr_setting_for_city("game_submit_accepted_text", city, lang, tr_map),
     }

@@ -345,16 +345,22 @@ async def multi_requirement_hint(step_key: str, event_city: str | None = None) -
     return text.replace("{max}", str(limit))
 
 
-async def option_list_for(setting_key: str, defaults: list[str]) -> list[str]:
-    """Admin-editable option list (newline text) with a hardcoded fallback. Verbatim
-    behaviour of the pre-move handlers/registration.py::_get_options — kept as a generic
-    2-arg helper (setting_key, defaults), because handlers/reg/reg_flow.py::_multi_options calls
-    it directly with an (opt_key, default) pair from MULTI_CONFIG."""
-    raw = await get_setting(setting_key)
-    if raw:
-        items = [line.strip() for line in raw.splitlines() if line.strip()]
-        if items:
-            return items
+async def option_list_for(
+    setting_key: str, defaults: list[str], city_code: str | None = None,
+) -> list[str]:
+    """Admin-editable option list with a hardcoded fallback. Kept as a generic helper
+    (setting_key, defaults): handlers/reg/reg_flow.py::_multi_options calls it with an
+    (opt_key, default) pair from MULTI_CONFIG. `city_code` — город мероприятия человека;
+    без него список общий."""
+    raw = await get_setting_typed_for_city(setting_key, city_code)
+    if isinstance(raw, list):
+        items = [str(line).strip() for line in raw if str(line).strip()]
+    elif raw:
+        items = [line.strip() for line in str(raw).splitlines() if line.strip()]
+    else:
+        items = []
+    if items:
+        return items
     return list(defaults)
 
 
@@ -386,7 +392,7 @@ _LITERAL_OPTIONS = {
 }
 
 
-async def options(step_key: str) -> list[str]:
+async def options(step_key: str, city_code: str | None = None) -> list[str]:
     """Плоский список подписей кнопок для `step_key` — единая точка правды для клавиатур
     бота (через `keyboards/builders.py` -> reg_options) и Mini App (`step_spec()` ниже).
     Реестровые override (source/city/study_field/goal/formats) резолвятся точно так же, как
@@ -394,24 +400,26 @@ async def options(step_key: str) -> list[str]:
     — вариантов нет, список — свободный ввод не подходит)."""
     if step_key in SELECT_CONFIG:
         opt_key, default = SELECT_CONFIG[step_key]
-        return await option_list_for(opt_key, default)
+        return await option_list_for(opt_key, default, city_code)
     if step_key in MULTI_CONFIG:
         opt_key, default = MULTI_CONFIG[step_key]
-        return await option_list_for(opt_key, default)
+        return await option_list_for(opt_key, default, city_code)
     if step_key == "source":
-        return await option_list_for("source_options", _opts.DEFAULT_SOURCE_OPTIONS)
+        return await option_list_for("source_options", _opts.DEFAULT_SOURCE_OPTIONS, city_code)
     if step_key == "education_status":
         # Phase 28 (28-01, R-A3 CONTEXT): editable list, пустой реестр -> прежние три
         # литерала байт-в-байт (D-06) — единственное расхождение с прежним прямым
         # `_LITERAL_OPTIONS["education_status"]`.
-        return await option_list_for("education_status_options", _opts.EDUCATION_STATUS_OPTIONS)
+        return await option_list_for("education_status_options", _opts.EDUCATION_STATUS_OPTIONS, city_code)
     if step_key == "university":
         mode = await get_setting_typed("reg_university_mode")
         if mode == "text":
             return []
-        uni_opts = await get_setting("university_options")
-        if uni_opts and uni_opts.strip():
-            return [line.strip() for line in uni_opts.splitlines() if line.strip()]
+        uni_opts = await get_setting_typed_for_city("university_options", city_code)
+        if isinstance(uni_opts, list):
+            return [str(line).strip() for line in uni_opts if str(line).strip()]
+        if uni_opts and str(uni_opts).strip():
+            return [line.strip() for line in str(uni_opts).splitlines() if line.strip()]
         return []  # пусто = свободный ввод, питерский список не подставляем
     return list(_LITERAL_OPTIONS.get(step_key, []))
 
@@ -422,13 +430,15 @@ async def options(step_key: str) -> list[str]:
 # поверхностей (Mini App здесь, план 27-05 — чат бота) зовут `option_pairs` перед рендером и
 # `canonical_option` перед `validate_answer`, само ядро их не вызывает нигде внутри себя.
 
-async def option_pairs(step_key: str, lang: str, tr_map: dict[str, str]) -> list[tuple[str, str]]:
+async def option_pairs(
+    step_key: str, lang: str, tr_map: dict[str, str], city_code: str | None = None,
+) -> list[tuple[str, str]]:
     """`[(канон_ru, подпись_для_показа), ...]` — общий источник для Mini App (план 27-04) и
     чата бота (план 27-05). При `lang == "ru"` подпись — ТОТ ЖЕ объект, что канон (`tr()`
     отдаёт `text` по `is`, не копию — обязательное условие снимков `test_miniapp_labels_drift`/
     `test_reg_engine_parity`). Для шага без вариантов (`options()` вернула `[]`) — пустой
     список; `canonical_option` на пустом списке безопасен (падает сразу в ярус A/`None`)."""
-    return [(opt, _tr(opt, lang, tr_map)) for opt in await options(step_key)]
+    return [(opt, _tr(opt, lang, tr_map)) for opt in await options(step_key, city_code)]
 
 
 def canonical_option(pairs: list[tuple[str, str]], text) -> str | None:
@@ -535,14 +545,16 @@ def is_studying(value, statuses: list[str] | None = None) -> bool:
     return str(value).startswith("Да")
 
 
-async def studying_statuses() -> list[str]:
+async def studying_statuses(city_code: str | None = None) -> list[str]:
     """Реестровый список «учащихся» статусов (`edu_studying_statuses`, type: list) — пусто
     (дефолт) означает «множество не настроено», и `is_studying` откатывается на прежнее
-    правило `startswith("Да")`. Список из реестра сюда приходит уже в виде отдельных строк
-    (`get_setting` + построчный парсинг), без литерального дефолта — старое поведение живёт
-    в `is_studying`, а не здесь."""
-    raw = await get_setting("edu_studying_statuses") or ""
-    return [line.strip() for line in raw.splitlines() if line.strip()]
+    правило `startswith("Да")`. Без литерального дефолта — старое поведение живёт в
+    `is_studying`. `city_code` — город мероприятия человека."""
+    raw = await get_setting_typed_for_city("edu_studying_statuses", city_code)
+    if isinstance(raw, list):
+        return [str(line).strip() for line in raw if str(line).strip()]
+    raw = raw or ""
+    return [line.strip() for line in str(raw).splitlines() if line.strip()]
 
 
 async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
@@ -573,11 +585,11 @@ async def enabled_steps(data: dict, city_code: str | None = None) -> list[str]:
 async def _enabled_steps_impl(data: dict, city_code: str | None) -> list[str]:
     enabled = []
     edu_conditional = await get_setting_typed("edu_conditional") == "on"
-    edu_studying_set = await studying_statuses()
+    city = city_code if city_code is not None else data.get("event_city")
+    edu_studying_set = await studying_statuses(city)
     studying = is_studying(data.get("education_status", ""), edu_studying_set)
     resume_type = data.get("resume_type")
     participant_type = data.get("participant_type") or "full"
-    city = city_code if city_code is not None else data.get("event_city")
     # Phase 28 (28-06, SU-06): пропуск «Источника» у пришедших по реф-ссылке (`amb_<id>`/
     # числовой формат — обоим уже дан один и тот же `referrer_id`) — дефолт off (YL/РилТолк
     # байт-в-байт), `source` при этом уже получает «Реферальная ссылка» из `with_defaults`.
@@ -936,8 +948,13 @@ async def _default_prompt_text(
         )
         return f"Что ты ожидаешь от {event_name}? Что хотел(а) бы узнать или получить?"
     if step_key == "payment_plan_date":
-        deadline = await get_setting("payment_deadline")
-        dl_date = deadline.split()[0] if deadline else ""
+        deadline = await get_setting_typed_for_city("payment_deadline", city_code)
+        if hasattr(deadline, "strftime"):
+            dl_date = deadline.strftime("%d.%m.%Y")
+        elif deadline:
+            dl_date = str(deadline).split()[0]
+        else:
+            dl_date = ""
         dl_note = f" Крайний срок: {dl_date}." if dl_date else ""
         return f"Когда планируешь оплатить взнос?{dl_note} Введи дату (ДД.ММ.ГГГГ):"
     if step_key in PROMPT_DEFAULTS:
@@ -1006,11 +1023,16 @@ async def _prompt_base(
 DEFAULT_CONSENTS = [("Согласие на обработку персональных данных", "personal_data")]
 
 
-def _consent_pairs(raw: str) -> list[tuple[str, str]]:
-    """«Видимое название | ключ» по строке. «;» тоже разделитель строки."""
+def _consent_pairs(raw) -> list[tuple[str, str]]:
+    """«Видимое название | ключ» по строке. «;» тоже разделитель строки.
+    Пустой разбор — пустой список, без запасного согласия."""
+    if isinstance(raw, list):
+        lines = [str(item) for item in raw]
+    else:
+        lines = (str(raw) if raw else "").replace(";", "\n").splitlines()
     entries: list[tuple[str, str]] = []
-    for line in (raw or "").replace(";", "\n").strip().splitlines():
-        line = line.strip()
+    for line in lines:
+        line = str(line).strip()
         if not line or "|" not in line:
             continue
         label, consent_key = line.split("|", 1)
@@ -1020,29 +1042,31 @@ def _consent_pairs(raw: str) -> list[tuple[str, str]]:
     return entries
 
 
-async def consent_entries() -> list[tuple[str, str]]:
-    """Parse consent_list ('Видимое название | ключ' per line) → [(label, key)]. Accepts ';'
-    as a line separator too (mobile Telegram Enter=send trap)."""
-    return _consent_pairs(await get_setting("consent_list") or "") or DEFAULT_CONSENTS
+async def consent_entries(city_code: str | None = None) -> list[tuple[str, str]]:
+    """Список согласий города. Пустое городское переопределение оставляет общий список.
+    Совсем пустой список — запасное согласие на персональные данные."""
+    raw = await get_setting_typed_for_city("consent_list", city_code)
+    return _consent_pairs(raw) or list(DEFAULT_CONSENTS)
 
 
-async def broadcast_consent_entries() -> list[tuple[str, str]]:
+async def broadcast_consent_entries(city_code: str | None = None) -> list[tuple[str, str]]:
     """Согласия, которые анкета не спрашивает: кнопка в рассылке. Пустой список — пустой,
     не запасное согласие анкеты."""
-    return _consent_pairs(await get_setting("consent_broadcast_list") or "")
+    raw = await get_setting_typed_for_city("consent_broadcast_list", city_code)
+    return _consent_pairs(raw)
 
 
-async def registration_consent_entries() -> list[tuple[str, str]]:
-    """Пары анкеты без ключей, которые менеджер оставил только для рассылки."""
-    skip = {key for _label, key in await broadcast_consent_entries()}
-    return [(label, key) for label, key in await consent_entries() if key not in skip]
+async def registration_consent_entries(city_code: str | None = None) -> list[tuple[str, str]]:
+    """Пары анкеты города без ключей, которые менеджер оставил только для рассылки."""
+    skip = {key for _label, key in await broadcast_consent_entries(city_code)}
+    return [(label, key) for label, key in await consent_entries(city_code) if key not in skip]
 
 
-async def get_consent_steps() -> list[str]:
+async def get_consent_steps(city_code: str | None = None) -> list[str]:
     """Consent step keys (consent:<key>) when consent_enabled is on, else []."""
-    if not await _is_module_enabled("consent_enabled"):
+    if await get_setting_typed_for_city("consent_enabled", city_code) != "on":
         return []
-    return [f"consent:{key}" for _label, key in await registration_consent_entries()]
+    return [f"consent:{key}" for _label, key in await registration_consent_entries(city_code)]
 
 
 async def should_show_fork(party_track: str | None, recovered_track: str | None,
@@ -1121,14 +1145,14 @@ async def pre_flow(answers: dict, meta: dict | None = None) -> list[str]:
     бот сюда не заглядывает — pre_flow вообще не вызывается из handlers/*) — старое поведение,
     все согласия модуля."""
     meta = meta or {}
-    consent_steps = await get_consent_steps()
+    is_registered = bool(meta.get("is_registered"))
+    event_city = meta.get("event_city") or answers.get("event_city")
+    consent_steps = await get_consent_steps(event_city)
     pending_consent_keys = meta.get("pending_consent_keys")
     if pending_consent_keys is not None:
         pending = set(pending_consent_keys)
         consent_steps = [step for step in consent_steps if step.split(":", 1)[1] in pending]
     screens = list(consent_steps)
-    is_registered = bool(meta.get("is_registered"))
-    event_city = meta.get("event_city") or answers.get("event_city")
     if await should_show_city_fork(event_city, is_registered):
         screens.append("city_fork")
     if await should_show_fork(meta.get("party_track"), meta.get("recovered_track"), is_registered):
@@ -1530,7 +1554,7 @@ async def validate_composite(
     toggle_step = _COMPOSITE_TOGGLE_STEP.get(group)
     studying = True
     if toggle_step and toggle_step in parts:
-        studying = is_studying(answers.get(toggle_step, ""), await studying_statuses())
+        studying = is_studying(answers.get(toggle_step, ""), await studying_statuses(event_city))
     errors: dict[str, str] = {}
     for step_key in parts:
         if step_key == toggle_step:
@@ -2083,8 +2107,8 @@ async def _composite_spec_for(
     # своего списка «учащихся» не держит (T-skg-03). `studying_option` — первый вариант
     # `options("education_status")`, для которого `is_studying` истинно; `not_studying_options`
     # — все остальные варианты (пустой список опций -> `studying_option is None`, T-skg-03).
-    edu_opts = await options("education_status")
-    edu_statuses = await studying_statuses()
+    edu_opts = await options("education_status", event_city)
+    edu_statuses = await studying_statuses(event_city)
     studying_option = None
     studying_idx = None
     for idx, opt in enumerate(edu_opts):
@@ -2225,7 +2249,7 @@ async def step_spec(step_key: str, participant_type: str | None = None,
         spec["other_hint_text"] = await get_setting_typed("reg_resume_link_other_hint_text")
         spec["invalid_hint_text"] = await get_setting_typed("reg_resume_link_invalid_text")
     if ui_type in ("choice-chips", "select", "multi", "yesno"):
-        spec["options"] = await options(step_key)
+        spec["options"] = await options(step_key, event_city)
     # Приёмка 17.09 (находка 3, уточнение владельца): «Дальше» неактивна, пока ничего не
     # выбрано — тот же паттерн, что у V2-select (`v2_texts.pick_option`, `form_types.js::
     # selectTiles`), применённый к легаси-рендеру choice-chips/yesno (`form.js::choiceChips`,
@@ -2508,7 +2532,9 @@ async def form_spec(answers: dict, participant_type: str | None = None,
             # Дефолт тумблера — «учится» (30-CONTEXT.md реш. 6: у делегата без ответа карточка
             # стартует со всеми частями открытыми), как и клиентский дефолт `compositeCard`.
             if toggle_key and toggle_raw_for_studying not in (None, "", "-"):
-                composite["studying"] = is_studying(toggle_raw_for_studying, await studying_statuses())
+                composite["studying"] = is_studying(
+                    toggle_raw_for_studying, await studying_statuses(event_city),
+                )
             elif toggle_key:
                 composite["studying"] = True
         steps_out.append(spec)

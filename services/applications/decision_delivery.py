@@ -221,7 +221,9 @@ async def preview_decision_text(user: dict) -> str:
         from services.applications.applications import last_rejection_reason, reject_message_text
         from services.i18n.i18n import context as _i18n_context
         lang, tr_map = await _i18n_context(tid)
-        raw = await reject_message_text(await last_rejection_reason(tid), lang, tr_map)
+        raw = await reject_message_text(
+            await last_rejection_reason(tid), lang, tr_map, city_code=user.get("event_city"),
+        )
     else:
         from domain.cities import cities_module_on, normalize_city
         from handlers.reg.reg_schema import _approve_text_for

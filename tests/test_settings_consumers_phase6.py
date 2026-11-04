@@ -16,6 +16,7 @@ is driven via asyncio.run() and config.DB_PATH points at a tmp_path file (same s
 tests/test_settings_groups_c0x.py).
 """
 import asyncio
+import re
 
 from config import config
 from database import db
@@ -31,6 +32,21 @@ def _db_ready(tmp_path):
 def _flat_button_texts(kb):
     """Extract button texts from a ReplyKeyboardMarkup, row-major flattened."""
     return [btn.text for row in kb.keyboard for btn in row]
+
+
+def _for_city_arg(src: str, key: str) -> str:
+    """Город в вызове `get_setting_typed_for_city("key", city)`. Литерал None — город выброшен."""
+    match = re.search(
+        rf'get_setting_typed_for_city\(\s*"{re.escape(key)}"\s*,\s*((?:[^()]|\([^()]*\))*)\)',
+        src,
+    )
+    assert match, (
+        f"{key} must be read via get_setting_typed_for_city(key, city), "
+        "not get_setting_typed(key) with the city dropped"
+    )
+    city = " ".join(match.group(1).split()).rstrip(",").strip()
+    assert city != "None", f"{key}: city argument is None, the caller's city was dropped"
+    return city
 
 
 # ── Oracle equivalence: pending_reminder_interval (int) ──────────────────────────────
@@ -156,24 +172,20 @@ def test_source_kb_reads_via_registry(tmp_path):
 
     calls = []
 
-    async def fake_get_setting_typed(key):
-        calls.append(key)
+    async def fake_get_setting_typed_for_city(key, city):
+        calls.append((key, city))
         return ["x", "y"]
 
-    had_attr = hasattr(builders_mod, "get_setting_typed")
-    orig_get_setting_typed = getattr(builders_mod, "get_setting_typed", None)
-    builders_mod.get_setting_typed = fake_get_setting_typed
+    orig = builders_mod.get_setting_typed_for_city
+    builders_mod.get_setting_typed_for_city = fake_get_setting_typed_for_city
     try:
-        asyncio.run(builders_mod.get_source_kb())
+        asyncio.run(builders_mod.get_source_kb("spb"))
     finally:
-        if had_attr:
-            builders_mod.get_setting_typed = orig_get_setting_typed
-        else:
-            del builders_mod.get_setting_typed
+        builders_mod.get_setting_typed_for_city = orig
 
-    assert "source_options" in calls, (
-        "get_source_kb did not resolve source_options via get_setting_typed — still "
-        "using the old local parse"
+    assert ("source_options", "spb") in calls, (
+        "get_source_kb did not resolve source_options via get_setting_typed_for_city(key, city) — "
+        f"calls={calls!r}"
     )
 
 
@@ -329,22 +341,22 @@ def test_payment_enabled_gate_equiv(tmp_path):
 
     calls = []
 
-    async def fake_typed(key):
-        calls.append(key)
+    async def fake_typed(key, city):
+        calls.append((key, city))
         return "off"
 
-    had_attr = hasattr(pay_mod, "get_setting_typed")
-    orig = getattr(pay_mod, "get_setting_typed", None)
-    pay_mod.get_setting_typed = fake_typed
+    asyncio.run(db.update_user_answers(
+        800001, {"event_city": "spb"}, allowed_columns=["event_city"],
+    ))
+    orig = pay_mod.get_setting_typed_for_city
+    pay_mod.get_setting_typed_for_city = fake_typed
     try:
         asyncio.run(pay_mod.should_offer_receipt_upload(800001))
     finally:
-        if had_attr:
-            pay_mod.get_setting_typed = orig
-        else:
-            del pay_mod.get_setting_typed
-    assert "payment_enabled" in calls, (
-        "should_offer_receipt_upload did not resolve payment_enabled via get_setting_typed"
+        pay_mod.get_setting_typed_for_city = orig
+    assert ("payment_enabled", "spb") in calls, (
+        "should_offer_receipt_upload did not resolve payment_enabled for the delegate city — "
+        f"calls={calls!r}"
     )
 
 
@@ -407,21 +419,25 @@ def test_payment_reminders_gate_equiv(tmp_path):
     # old `get_setting(...) or "on"` idiom).
     calls = []
 
-    async def fake_typed(key):
-        calls.append(key)
-        return "on"
+    async def fake_typed(key, city):
+        calls.append((key, city))
+        return "off"
 
-    orig = sched_mod.get_setting_typed
+    asyncio.run(db.update_user_answers(
+        810001, {"event_city": "spb"}, allowed_columns=["event_city"],
+    ))
+    orig = sched_mod.get_setting_typed_for_city
     fake_bot2 = _FakeBot()
     sched_mod._bot = fake_bot2
-    sched_mod.get_setting_typed = fake_typed
+    sched_mod.get_setting_typed_for_city = fake_typed
     try:
         asyncio.run(sched_mod.send_payment_reminder(810001))
     finally:
-        sched_mod.get_setting_typed = orig
+        sched_mod.get_setting_typed_for_city = orig
         sched_mod._bot = None
-    assert "payment_reminders_enabled" in calls, (
-        "send_payment_reminder did not resolve payment_reminders_enabled via get_setting_typed"
+    assert ("payment_reminders_enabled", "spb") in calls, (
+        "send_payment_reminder did not resolve payment_reminders_enabled for the delegate city — "
+        f"calls={calls!r}"
     )
 
 
@@ -667,8 +683,12 @@ def test_registration_mode_and_reg_university_mode_equiv(tmp_path):
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2 "
         "moved the short/full fork to _resolve_track at flow start)"
     )
-    assert 'get_setting_typed("registration_mode")' in finalize_src, (
-        "finalize_data does not resolve registration_mode via get_setting_typed"
+    assert 'get_setting_typed_for_city("registration_mode"' not in process_src, (
+        "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2 "
+        "moved the short/full fork to _resolve_track at flow start)"
+    )
+    assert _for_city_arg(finalize_src, "registration_mode") == "app_city", (
+        "finalize_data must read registration_mode for the application's city"
     )
 
     calls = []
@@ -714,8 +734,8 @@ def test_full_approval_gate_equiv(tmp_path):
     # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
     # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
     finalize_src = inspect.getsource(reg_finalize_mod._finalize_data_impl)
-    assert 'get_setting_typed("full_approval")' in finalize_src, (
-        "finalize_data does not resolve full_approval via get_setting_typed (BLOCKER-1)"
+    assert _for_city_arg(finalize_src, "full_approval") == "app_city", (
+        "finalize_data does not resolve full_approval for the application's city (BLOCKER-1)"
     )
 
 
@@ -757,11 +777,11 @@ def test_short_approval_and_party_approval_equiv(tmp_path):
     # _finalize_data_impl) — литеральные get_setting_typed-вызовы, которые проверяет этот
     # тест, теперь живут в _finalize_data_impl (тело перенесено без изменений).
     finalize_src = inspect.getsource(reg_finalize_mod._finalize_data_impl)
-    assert 'get_setting_typed("short_approval")' in finalize_src, (
-        "finalize_data does not resolve short_approval via get_setting_typed"
+    assert _for_city_arg(finalize_src, "short_approval") == "app_city", (
+        "finalize_data does not resolve short_approval for the application's city"
     )
-    assert 'get_setting_typed("party_approval")' in finalize_src, (
-        "finalize_data does not resolve party_approval via get_setting_typed"
+    assert _for_city_arg(finalize_src, "party_approval") == "app_city", (
+        "finalize_data does not resolve party_approval for the application's city"
     )
 
 
@@ -785,8 +805,8 @@ def test_pending_notify_mode_gate_equiv(tmp_path):
     # job share this one notify path now).
     from services.registration import reg_finalize as reg_finalize_mod
     finalize_src = inspect.getsource(reg_finalize_mod.post_finalize)
-    assert 'get_setting_typed("pending_notify_mode")' in finalize_src, (
-        "post_finalize does not resolve pending_notify_mode via get_setting_typed"
+    assert _for_city_arg(finalize_src, "pending_notify_mode") == 'full.get("event_city")', (
+        "post_finalize does not resolve pending_notify_mode for the application's city"
     )
 
 
@@ -847,7 +867,10 @@ def test_raw_read_sites_preserved(tmp_path):
     assert 'get_setting_typed("registration_mode")' not in process_src, (
         "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2)"
     )
-    assert 'get_setting_typed("party_approval")' in finalize_src, (
-        "finalize_data should migrate the raw party_approval read (RAW-read rule: "
+    assert 'get_setting_typed_for_city("registration_mode"' not in process_src, (
+        "process_full_name should no longer read registration_mode at all (Phase 7, 07-01 Task 2)"
+    )
+    assert _for_city_arg(finalize_src, "party_approval") == "app_city", (
+        "finalize_data should read party_approval for the application's city (RAW-read rule: "
         "domain.regform.engine.decide_status's own `party_setting or \"manual\"` fallback matches the enum default)"
     )

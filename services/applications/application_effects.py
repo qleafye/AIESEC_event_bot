@@ -131,7 +131,11 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
             # класс дыры, что у approve_text в handlers/reg/reg_schema.py).
             from services.i18n.i18n import context as _i18n_context
             lang, tr_map = await _i18n_context(telegram_id)
-            text = await reject_message_text(reason, lang, tr_map)
+            from database.db import get_user
+            person = await get_user(telegram_id)
+            text = await reject_message_text(
+                reason, lang, tr_map, city_code=(person or {}).get("event_city"),
+            )
             send_err = await send_with_retry(
                 lambda: bot.send_message(telegram_id, text, parse_mode="HTML"),
             )
