@@ -15,7 +15,7 @@ from tests._dbtpl import fast_init_db
 
 ADMIN_ID = 1
 AMB_ROWS = ("admin_amb_entry", "admin_amb_candidates", "admin_amb_points", "admin_amb_tiers",
-            "admin_game_waves", "ambt_excl_list:0", "admin_amb_attach", "settings_group:amb")
+            "admin_game_waves", "ambt_excl_list:0", "admin_amb_attach")
 
 
 def _run(coro):
@@ -55,10 +55,11 @@ def test_on_section_shows_everything_and_game_has_no_waves(tmp_path):
     text, kb = _run(sec.section_screen(ADMIN_ID, "amb"))
     # 09.10: строки сгруппированы подзаголовками «Общее» / «Команда и волны» / «Ступени».
     assert _callbacks(kb)[:len(AMB_ROWS) + 3] == [
-        "amb_sep", "admin_amb_points", "ambt_excl_list:0", "admin_amb_attach", "settings_group:amb",
+        "amb_sep", "admin_amb_points", "ambt_excl_list:0", "admin_amb_attach",
         "amb_sep", "admin_amb_entry", "admin_amb_candidates", "admin_game_waves",
         "amb_sep", "admin_amb_tiers",
     ]
+    assert "settings_group:amb" not in _callbacks(kb)
     assert set(AMB_ROWS) <= set(_callbacks(kb))
     seps = [b.text for row in kb.inline_keyboard for b in row if b.callback_data == "amb_sep"]
     assert seps == ["── Общее ──", "── Команда и волны ──", "── Ступени ──"]
@@ -85,6 +86,7 @@ def test_off_section_hidden_but_waves_and_tiers_reachable_from_game(tmp_path):
         assert hidden not in cbs
     for shown in ("admin_amb_points", "ambt_excl_list:0", "admin_amb_attach"):
         assert shown in cbs
+    assert "settings_group:amb" not in cbs
     assert _run(sec.owner_back_button("admin_amb_points")).callback_data == "admin_sec:game"
     back = _run(sec.owner_back_button("admin_game_waves"))
     assert back.callback_data == "admin_sec:game"
