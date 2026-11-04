@@ -1491,23 +1491,36 @@ async function renderSection(root, code, ctx, targetKey) {
     sectionsWrap.append(h("div", { class: "flat-list" }, row), box);
   }
 
+  function closeSeasonNotice(source) {
+    if (!source) return "";
+    if (source.text) return source.text;
+    const errors = source.errors;
+    if (!errors || typeof errors !== "object") return "";
+    const values = Object.values(errors);
+    return values.length ? (values[0] || "") : "";
+  }
+
   async function closeSeason() {
     let resp;
     try {
-      resp = await api("/admin/settings/batch", {
+      resp = await api("/admin/settings/close-season", {
         method: "POST",
+        quiet: true,
         body: {
           changes: [{ key: "setup_wizard_dismissed", value: "off" }],
           base: {},
           confirm: [],
         },
       });
-    } catch (_) {
+    } catch (err) {
+      showToast(closeSeasonNotice(err && err.payload), "warn");
       return;
     }
-    const saved = resp && resp.saved;
-    if (!saved || !saved.includes("setup_wizard_dismissed")) return;
-    navigate("#/hub");
+    if (resp && resp.ok === true) {
+      navigate("#/hub");
+      return;
+    }
+    showToast(closeSeasonNotice(resp), "warn");
   }
 
   // Квик 260915-skg (P5): развернуть группу-владельца ключа и подсветить строку тем же

@@ -709,6 +709,79 @@ def test_sheets_forms_router_does_not_close_the_season():
         ))
 
 
+CLOSE_SEASON_PATH = "/app/api/admin/settings/close-season"
+SETUP_PATH = "/app/api/admin/setup"
+OTHER_CITY_ID = 900812
+BOGUS_CITY_ID = 900813
+
+
+def test_city_manager_close_season_returns_tile_only_for_his_city(tmp_path, monkeypatch):
+    """Городской менеджер пишет off только в свой составной ключ. Общий остаётся on,
+    чужой город плитку не видит, суперадмин городской ключ не заводит."""
+    from config import config
+    from domain.cities import per_city_key
+    from domain.settings.ops import COMMON_DENIED_TEXT
+
+    monkeypatch.setattr(config, "ADMIN_IDS", [1])
+    client = _sheets_client(tmp_path, "close_season_city.db")
+    _seed(staff=[
+        (CITY_WRITER_ID, "reg_manager", "spb"),
+        (OTHER_CITY_ID, "reg_manager", "msk"),
+        (BOGUS_CITY_ID, "reg_manager", "no-such-city"),
+    ])
+    _set("role_caps_reg_manager", "settings")
+    _set("event_city_enabled", "on")
+    _set("setup_wizard_dismissed", "on")
+    spb_key = per_city_key("setup_wizard_dismissed", "spb")
+    msk_key = per_city_key("setup_wizard_dismissed", "msk")
+    tyumen_key = per_city_key("setup_wizard_dismissed", "tyumen")
+    assert spb_key == "setup_wizard_dismissed__city__spb"
+    before = _user_count()
+
+    closed = client.post(CLOSE_SEASON_PATH, headers=_hdr(CITY_WRITER_ID))
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["ok"] is True
+    assert _raw_setting("setup_wizard_dismissed") == "on"
+    assert _raw_setting(spb_key) == "off"
+    assert _raw_setting(msk_key) in (None, "")
+    assert _user_count() == before
+
+    own = client.get(SETUP_PATH, headers=_hdr(CITY_WRITER_ID))
+    assert own.status_code == 200, own.text
+    assert own.json()["done_count"] < own.json()["total"]
+    assert own.json()["show_tile"] is True
+    foreign = client.get(SETUP_PATH, headers=_hdr(OTHER_CITY_ID))
+    assert foreign.status_code == 200, foreign.text
+    assert foreign.json()["show_tile"] is False
+    wide = client.get(SETUP_PATH, headers=_hdr(ADMIN_ID))
+    assert wide.status_code == 200, wide.text
+    assert wide.json()["show_tile"] is False
+
+    denied = client.post(CLOSE_SEASON_PATH, headers=_hdr(BOGUS_CITY_ID))
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["text"] == COMMON_DENIED_TEXT
+    assert _raw_setting("setup_wizard_dismissed") == "on"
+    assert _raw_setting(spb_key) == "off"
+    assert _user_count() == before
+
+    admin = client.post(CLOSE_SEASON_PATH, headers=_hdr(ADMIN_ID))
+    assert admin.status_code == 200, admin.text
+    assert admin.json()["ok"] is True
+    assert _raw_setting("setup_wizard_dismissed") == "off"
+    assert _raw_setting(spb_key) == "off"
+    assert _raw_setting(msk_key) in (None, "")
+    assert _raw_setting(tyumen_key) in (None, "")
+    assert _user_count() == before
+
+    _set(spb_key, "on")
+    hidden = client.get(SETUP_PATH, headers=_hdr(CITY_WRITER_ID))
+    assert hidden.json()["show_tile"] is False
+    assert client.get(SETUP_PATH, headers=_hdr(ADMIN_ID)).json()["show_tile"] is True
+    _set(spb_key, "")
+    fallback = client.get(SETUP_PATH, headers=_hdr(CITY_WRITER_ID))
+    assert fallback.json()["show_tile"] is True
+
+
 # ── Итог сезона: четыре числа после окна форума города ──────────────────────────────────
 
 RECAP_PATH = "/app/api/stats/season-recap"
