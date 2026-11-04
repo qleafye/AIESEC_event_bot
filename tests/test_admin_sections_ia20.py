@@ -1107,16 +1107,42 @@ def test_first_setup_within_three_taps():
         assert sec.section_of(target) is None, f"{name}: «{target}» снова в разделе"
 
 
+# Путь вёл на снятую кнопку раздела. Префикс «В приложении» разрешён только им.
+_GUIDE_IN_APP = {
+    "reg_q_resume": "Вопросы анкеты",
+    "pending_reminder_enabled": "Запись и напоминания",
+    "nudge_enabled": "Запись и напоминания",
+    "wave_prize_places": "Амбассадоры",
+    "wave_start_message_text": "Амбассадоры",
+    "amb_tier1_threshold": "Амбассадоры",
+    "amb_tier2_threshold": "Амбассадоры",
+    "amb_tier3_threshold": "Амбассадоры",
+    "amb_o2o_quota": "Амбассадоры",
+    "amb_count_deadline": "Амбассадоры",
+}
+
+
 def test_settings_guide_where_starts_with_a_real_section():
     """T-20-14: «📖 Справка по настройкам» печатает менеджеру, ГДЕ менять каждую настройку.
     Путь обязан начинаться с подписи существующего раздела — переименуют раздел, забыв про
-    справку, и этот тест покраснеет раньше, чем менеджер уткнётся в несуществующую кнопку."""
+    справку, и этот тест покраснеет раньше, чем менеджер уткнётся в несуществующую кнопку.
+    Записи, чей путь вёл на снятую кнопку, начинаются с «В приложении» и называют режим
+    «Настройки» и строку. Остальным этот префикс запрещён."""
     labels = [label for _token, label, _rows in sec.SECTIONS]
+    seen_app: set[str] = set()
     for _title, _subtitle, entries in roles.SETTINGS_GUIDE_SECTIONS:
         for entry in entries:
             where = entry["where"]
             assert "⚙️ Настройки →" not in where, entry["key"]
+            row = _GUIDE_IN_APP.get(entry["key"])
+            if row is not None:
+                seen_app.add(entry["key"])
+                assert where.startswith("В приложении"), (entry["key"], where)
+                assert "«Настройки»" in where and f"«{row}»" in where, (entry["key"], where)
+                continue
+            assert not where.startswith("В приложении"), (entry["key"], where)
             assert any(where.startswith(label) for label in labels), (entry["key"], where)
+    assert seen_app == set(_GUIDE_IN_APP)
 
 
 def test_cheatsheet_covers_every_section():

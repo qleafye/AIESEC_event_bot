@@ -96,16 +96,36 @@ def test_amb_group_reachable_with_module_on_and_off(tmp_path):
     assert "toggle_amb_team_selection" in game_cbs  # модуль включается оттуда же
 
 
+# Группа amb снята с раздела: эти ключи справки смотрят в строку приложения «Амбассадоры».
+_AMB_GUIDE_IN_APP = {
+    "wave_prize_places",
+    "wave_start_message_text",
+    "amb_tier1_threshold",
+    "amb_tier2_threshold",
+    "amb_tier3_threshold",
+    "amb_o2o_quota",
+    "amb_count_deadline",
+}
+
+
 def test_guide_entries_for_amb_keys_point_to_ambassador_section():
     from handlers.access.admin_roles import SETTINGS_GUIDE_SECTIONS
     seen = 0
+    seen_app: set[str] = set()
     for _title, _hint, entries in SETTINGS_GUIDE_SECTIONS:
         for e in entries:
             spec = SETTINGS_SCHEMA.get(e["key"])
             if spec and spec["group"] == "amb":
                 seen += 1
-                assert e["where"].startswith("🤝 Амбассадоры"), e["key"]
+                where = e["where"]
+                if e["key"] in _AMB_GUIDE_IN_APP:
+                    seen_app.add(e["key"])
+                    assert where.startswith("В приложении"), e["key"]
+                    assert "«Настройки»" in where and "«Амбассадоры»" in where, e["key"]
+                else:
+                    assert where.startswith("🤝 Амбассадоры"), e["key"]
     assert seen
+    assert seen_app == _AMB_GUIDE_IN_APP
 
 
 def test_guide_describes_new_phase_settings():
