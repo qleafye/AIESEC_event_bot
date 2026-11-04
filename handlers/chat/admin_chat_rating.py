@@ -1,7 +1,8 @@
 """Квик 260927: экран «🏆 Рейтинг чата» (раздел «🔧 Управление»).
 
 Менеджер города выбирает, как считать рейтинг чата делегатов — «📈 По формуле активности»
-(общая калиброванная формула, веса в группе «💬 Чат делегатов») или «🪙 По правилам города»
+(общая калиброванная формула; веса — в приложении, режим «Настройки», если задан публичный
+адрес) или «🪙 По правилам города»
 (пресет СПб «коины»: комментарии под постами команды, приглашённые, упоминания в соцсетях, дни
 форума). Суммы правил вводятся числом, задания для «упоминаний» отмечаются галочками по
 названиям — коды ключей, городов и режимов на экране не появляются (бот для людей).
@@ -21,9 +22,10 @@ import logging
 from aiogram import F, types
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 import shared.chat_score as chat_score
+from config import config
 from domain.cities import (
     ALL_CITIES,
     admin_selected_city,
@@ -132,12 +134,29 @@ async def render_chat_rating_screen(admin_id: int) -> tuple[str, InlineKeyboardM
     title = "🏆 <b>Рейтинг чата</b>"
     if header:
         title = f"🏆 <b>Рейтинг чата — {html_module.escape(header)}</b>"
+    weights_button = None
+    try:
+        raw = config.DASHBOARD_PUBLIC_URL
+        if isinstance(raw, str) and raw.strip():
+            weights_button = InlineKeyboardButton(
+                text="⚖️ Веса формулы",
+                web_app=WebAppInfo(url=raw.rstrip("/") + "/app?open=settings"),
+            )
+    except Exception:
+        logger.error("chat rating weights button skipped")
+        weights_button = None
+
     lines = [title, "", f"Как считаем: <b>{html_module.escape(_MODE_LABELS[mode])}</b>"]
     if mode == "formula":
-        lines.append(
-            "Общий балл за сообщения, ответы, реакции и регулярность. Веса формулы одни на все "
-            "города — кнопка «⚖️ Веса формулы»."
-        )
+        if weights_button is not None:
+            lines.append(
+                "Общий балл за сообщения, ответы, реакции и регулярность. Веса одни на все "
+                "города и меняются в приложении, режим «Настройки»."
+            )
+        else:
+            lines.append(
+                "Общий балл за сообщения, ответы, реакции и регулярность. Веса одни на все города."
+            )
     else:
         lines.append("")
         lines.extend(
@@ -182,7 +201,8 @@ async def render_chat_rating_screen(admin_id: int) -> tuple[str, InlineKeyboardM
     from handlers.chat.admin_chat_rating_post import toggle_row
     rows.extend(await toggle_row(code, header))
     rows.append([InlineKeyboardButton(text="📥 Загрузить историю чата", callback_data="chimp:open")])
-    rows.append([InlineKeyboardButton(text="⚖️ Веса формулы", callback_data="settings_group:chat")])
+    if weights_button is not None:
+        rows.append([weights_button])
     if header:
         rows.append([InlineKeyboardButton(text="🏙 Сменить город", callback_data="admin_city_switch:manage")])
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_sec:manage")])

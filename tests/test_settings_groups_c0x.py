@@ -129,7 +129,7 @@ def test_group_pay_shows_configured_and_unconfigured_flags(tmp_path):
     assert "✏️ задано" in text
     assert "не задано" in text
     assert "settings_edit:payment_options" in flat
-    assert "admin_sec:pay" in flat  # Phase 20 (20-04): «Назад» ведёт в раздел-владелец группы, а не на исчезнувший плоский лендинг
+    assert "admin_menu" in flat  # группа pay снята с раздела: «Назад» ведёт в корень, не в «💳 Оплата»
 
 
 def test_group_event_contains_photo_and_file_callbacks(tmp_path):
@@ -760,7 +760,7 @@ def test_render_snapshot_pay(tmp_path):
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat
-    assert "admin_sec:pay" in flat
+    assert "admin_menu" in flat  # settings_group:pay больше не строка раздела
 
 
 def test_render_snapshot_party(tmp_path):
@@ -799,7 +799,7 @@ def test_render_snapshot_consent(tmp_path):
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat
-    assert "admin_sec:form" in flat
+    assert "admin_menu" in flat  # settings_group:consent больше не строка раздела «📝 Анкета»
 
 
 # ── Phase 6 plan 06-04 (REG-01/REG-02, D-06/D-12): toggle wave — reg_q_* toggles +

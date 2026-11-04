@@ -206,13 +206,14 @@ def test_new_labels_have_own_group_in_translation_corpus():
 
 def test_labels_group_in_chat_settings():
     from handlers.settings import admin_settings
-    from handlers.settings.admin_sections import SECTIONS, section_of
+    from handlers.settings.admin_sections import SECTIONS, back_button, section_of
 
     keys = admin_settings._settings_group_keys("menu_labels")
     assert keys == list(MENU_LABEL_KEYS.values())
-    assert section_of("settings_group:menu_labels") == "event"
-    event_rows = next(rows for tok, _l, rows in SECTIONS if tok == "event")
-    assert ("group", "menu_labels") in event_rows
+    assert section_of("settings_group:menu_labels") is None
+    assert back_button("settings_group:menu_labels").callback_data == "admin_menu"
+    for _tok, _label, rows in SECTIONS:
+        assert ("group", "menu_labels") not in rows
     for key in keys:
         assert admin_settings._group_of_setting_key(key) == "menu_labels"
 

@@ -87,8 +87,13 @@ def _find(kb, prefix):
     return [cd for cd in _cbs(kb) if cd and cd.startswith(prefix)]
 
 
-def test_screen_for_city_shows_city_and_selected_mode_without_codes(tmp_path):
+def _weights_buttons(kb):
+    return [b for row in kb.inline_keyboard for b in row if "Веса формулы" in (b.text or "")]
+
+
+def test_screen_for_city_shows_city_and_selected_mode_without_codes(tmp_path, monkeypatch):
     _ready(tmp_path)
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test/")
     text, kb = _run(scr.render_chat_rating_screen(ADMIN))
     assert _run(cities.city_label("spb")) in text
     assert "✅ 📈 По формуле активности" in _texts(kb)
@@ -96,8 +101,20 @@ def test_screen_for_city_shows_city_and_selected_mode_without_codes(tmp_path):
     shown = text + "\n".join(_texts(kb))
     for code in ("chat_rules", "chat_rating", "formula", "rules", "spb"):
         assert code not in shown, code
-    assert "settings_group:chat" in _cbs(kb)  # веса формулы — в группе «💬 Чат делегатов»
+    assert "settings_group:chat" not in _cbs(kb)
     assert "admin_sec:manage" in _cbs(kb)
+    weights = _weights_buttons(kb)
+    assert len(weights) == 1 and weights[0].web_app is not None
+    url = weights[0].web_app.url
+    assert url.endswith("/app?open=settings") and "#" not in url
+    assert "приложении" in text and "Настройки" in text
+
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
+    text_empty, kb_empty = _run(scr.render_chat_rating_screen(ADMIN))
+    assert "settings_group:chat" not in _cbs(kb_empty)
+    assert _weights_buttons(kb_empty) == []
+    assert not any(b.web_app for row in kb_empty.inline_keyboard for b in row)
+    assert "Веса формулы" not in text_empty and "кнопка" not in text_empty
 
 
 def test_tap_rules_and_formula_write_city_mode(tmp_path):

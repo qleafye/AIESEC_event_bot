@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from config import config
 from database import db
 import domain.cities as cities
 from handlers.regform import admin_reg_config as regcfg
@@ -34,8 +35,6 @@ from handlers.settings import admin_sections as sec
 from handlers.settings import admin_settings as st
 from handlers.sheets import admin_sheets  # module-size split: rebuild/sync moved out of admin_settings.py
 from handlers.access.admin_caps import role_caps_key
-from handlers.settings.admin_settings import settings_toggle_rows
-
 from tests.test_roles_phase8 import (
     ADMIN_ID,
     MANAGER_ID,
@@ -137,6 +136,26 @@ FROZEN_BEFORE = frozenset({
     "settings_group:system",
 })
 
+# Сняты с разделов: те же экраны уже открывает Mini App (коды row-* в settings.js).
+# Хендлеры живы, в реестре разделов этих callback больше нет.
+MOVED_TO_MINI_APP = frozenset({
+    "toggle_payment_enabled",
+    "toggle_payment_reminders",
+    "toggle_pending_reminder",
+    "toggle_nudge_enabled",
+    "admin_reg_questions",
+    "admin_reg_prompts",
+    "admin_menu_buttons",
+    "settings_group:pay",
+    "settings_group:consent",
+    "settings_group:system",
+})
+
+_SETTINGS_ROW_CODES = (
+    "row-menu", "row-texts", "row-questions", "row-reminders",
+    "row-pay", "row-chat", "row-amb", "row-rare",
+)
+
 _GROUPS_BEFORE = frozenset(cb for cb in FROZEN_BEFORE if cb.startswith("settings_group:"))
 
 
@@ -178,25 +197,34 @@ def _after_callbacks(tmp_path) -> set:
 
 
 def test_coverage_frozen_before_is_fully_reachable(tmp_path):
-    """Каждая кнопка, достижимая до фазы 20, достижима и после — ни одна не потерялась при
-    переезде в разделы."""
+    """Каждая кнопка, достижимая до фазы 20, достижима и после — кроме тех, что уехали
+    в Mini App. Уехавшие не возвращаются строкой раздела; их код владельца есть в settings.js."""
     after = _after_callbacks(tmp_path)
-    missing = sorted(FROZEN_BEFORE - after)
+    missing = sorted((FROZEN_BEFORE - MOVED_TO_MINI_APP) - after)
     assert not missing, f"кнопки пропали при переезде в разделы: {missing}"
+    leaked = sorted(MOVED_TO_MINI_APP & _structural_callbacks())
+    assert not leaked, f"уехавшие в Mini App снова объявлены в разделах: {leaked}"
+    js = (REPO_ROOT / "miniapp" / "static" / "js" / "screens" / "settings.js").read_text(encoding="utf-8")
+    absent = [code for code in _SETTINGS_ROW_CODES if code not in js]
+    assert not absent, absent
 
 
 def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
-    """Допустимые добавления сверх старого набора групп — «📋 Заявки» и (квик 260927)
-    «💬 Чат делегатов» с весами рейтинга чата, «🤝 Амбассадоры» (настройки амбассадорки), раздел «🔧 Управление»,
-    «✏️ Подписи кнопок меню» (09.10) в «🎪 Событие»."""
+    """Группы, которые остались в разделах. chat, amb, menu_labels, pay, consent и system
+    уехали в Mini App и в объединении их нет."""
     after = _after_callbacks(tmp_path)
     groups_after = {cb for cb in after if cb.startswith("settings_group:")}
-    assert groups_after == _GROUPS_BEFORE | {
-        "settings_group:apps", "settings_group:chat", "settings_group:amb", "settings_group:menu_labels",
+    left_for_app = {
+        "settings_group:chat", "settings_group:amb", "settings_group:menu_labels",
+        "settings_group:pay", "settings_group:consent", "settings_group:system",
+    }
+    assert groups_after == (_GROUPS_BEFORE - left_for_app) | {
+        "settings_group:apps",
         # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
     }
+    assert not (left_for_app & groups_after)
 
 
 def test_coverage_regmode_reset_comes_only_from_the_render_pass(tmp_path):
@@ -258,7 +286,8 @@ def test_sections_are_the_nine_delegate_flow_steps():
     # обратный индекс выведен из реестра, а не из второго словаря-литерала
     assert sec.section_of("apps") == "apps"
     assert sec.section_of("sheets") == "data"
-    assert sec.section_of("system") == "manage"
+    # Группа system снята с «🔧 Управление»: владелец больше не выводится из SECTIONS.
+    assert sec.section_of("system") is None
     assert sec.section_of("misc") == "manage"
     assert sec.section_of("нет-такой-группы") is None
 
@@ -314,7 +343,11 @@ def test_settings_holder_sees_every_settings_section(tmp_path):
     # visible_sections выше). Тумблер учёта чата теперь строка «🔧 Управление» (там уже была
     # видна держателю `settings`) — новый список короче на «comms».
     # 10.10: в «📢 Общение» снова есть строка под `settings` — тексты «🔕 Не присылать сегодня».
-    assert tokens == ["event", "form", "apps", "pay", "comms", "game", "amb", "data", "manage"]
+    # Оплата для одного права settings пуста: чеки требуют moderate_receipts, а тумблеры
+    # и группа pay уехали в приложение.
+    # Амбассадоры для одного права settings пусты: экраны раздела требуют moderate_game,
+    # а группа amb уехала в приложение.
+    assert tokens == ["event", "form", "apps", "comms", "game", "data", "manage"]
 
 
 def test_stranger_sees_no_sections(tmp_path):
@@ -371,29 +404,20 @@ def test_admin_sos_row_is_not_an_orphan(tmp_path, caplog):
 
 
 def test_quiet_hours_entry_row_is_declared_once_right_after_its_toggle():
-    """Quick 260911-805 (W4-03, D-04): строка-вход на экран «🌙 Тихие часы» объявлена ровно
-    один раз в разделе «apps», сразу после строки тумблера — той же строкой раздела, а не
-    второй картой."""
-    rows = sec._declared_rows("apps")
-    callbacks = [sec.row_callback(r) for r in rows]
-    assert callbacks.count("admin_quiet_hours") == 1
-    toggle_idx = callbacks.index("toggle_quiet_hours")
-    entry_idx = callbacks.index("admin_quiet_hours")
-    assert entry_idx == toggle_idx + 1
-
-    # ни один другой раздел эту строку не объявляет — второй карты «кнопка -> раздел» нет.
-    for token, _label, section_rows_ in sec.SECTIONS:
-        if token == "apps":
-            continue
-        assert "admin_quiet_hours" not in [sec.row_callback(r) for r in section_rows_]
+    """Тихие часы уехали в приложение. Вход и тумблер не объявлены ни в одном разделе,
+    включая «apps», и снова соседними их не ставим."""
+    for token, _label, _rows in sec.SECTIONS:
+        callbacks = [sec.row_callback(r) for r in sec._declared_rows(token)]
+        assert "admin_quiet_hours" not in callbacks, token
+        assert "toggle_quiet_hours" not in callbacks, token
 
 
 def test_quiet_hours_back_button_targets_apps_section():
-    """`back_button("admin_quiet_hours")` целит в `admin_sec:apps` — раздел-владелец строки
-    выводится из SECTIONS, второй карты «экран -> раздел» не заводим."""
+    """Владельца в SECTIONS больше нет: живой `back_button` ведёт в корень, не в «apps»."""
     from handlers.settings import admin_sections as sec_mod
+    assert sec_mod.section_of("admin_quiet_hours") is None
     btn = sec_mod.back_button("admin_quiet_hours")
-    assert btn.callback_data == "admin_sec:apps"
+    assert btn.callback_data == "admin_menu"
 
 
 def test_season_reset_row_is_superadmin_only():
@@ -543,66 +567,126 @@ def test_unknown_section_token_answers_alert_without_editing(tmp_path):
 
 
 def test_toggle_rows_are_shared_with_the_settings_screen(tmp_path):
-    """Тумблеры раздела приходят из того же settings_toggle_rows, что и старый экран —
-    одна подпись, а не две разные копии одного тумблера."""
+    """Тумблеры оплаты уехали в приложение: на разделе «💳 Оплата» их нет, и в структурном
+    обходе разделов тоже. Хелпер settings_toggle_rows их ещё собирает — это не повод вернуть строку."""
     _roles_ready(tmp_path)
-    rows = asyncio.run(settings_toggle_rows(ADMIN_ID))
     kb = asyncio.run(sec.build_section_keyboard("pay", ADMIN_ID))
     texts = {b.callback_data: b.text for row in kb.inline_keyboard for b in row}
+    structural = _structural_callbacks()
     for cb_data in ("toggle_payment_enabled", "toggle_payment_reminders"):
-        assert texts[cb_data] == rows[cb_data][0][0].text
+        assert cb_data not in texts
+        assert cb_data not in structural
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # (5) Корень переключён на разделы (20-03, ADMIN-IA-01)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-def test_root_shows_at_most_ten_rows(tmp_path):
-    """Критерий успеха №1: шапка города + не больше девяти кнопок-разделов. До фазы 20 на
-    корне было 22 строки, и менеджер искал нужную глазами. 30.09: девятый раздел
-    «🤝 Амбассадоры» — у команды амбассадоров свой вход, лимит и списки, в «🎮 Геймификации»
-    они терялись среди заданий и монет."""
+def _root_section_tokens(*, amb: bool) -> list[str]:
+    return [token for token, _label, _rows in sec.SECTIONS if amb or token != "amb"]
+
+
+def _settings_webapp(kb):
+    found = [b for row in kb.inline_keyboard for b in row if b.web_app is not None]
+    return found
+
+
+def test_root_shows_at_most_ten_rows(tmp_path, monkeypatch):
+    """Корень: шапка города, если модуль включён, плюс видимые разделы, плюс не больше одной
+    WebApp. Лимит «не больше десяти строк» больше не договор: девять разделов, шапка и кнопка
+    «Настройки» вместе длиннее. Пустой адрес кнопки не рисует, разделы остаются."""
     _roles_ready(tmp_path)
     _enable_cities()
     from handlers.settings.admin_core import admin_keyboard_for
 
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert len(kb.inline_keyboard) <= 10, _flat_callback_data(kb)
     # «🤝 Амбассадоры» — только при включённом модуле «🤝 Отбор амбассадоров» (по умолчанию выкл).
-    assert len(kb.inline_keyboard) == len(sec.SECTIONS)
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False))
+    assert _settings_webapp(kb) == []
     asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert len(kb.inline_keyboard) == len(sec.SECTIONS) + 1  # суперадмину доступны все девять
+    assert len(kb.inline_keyboard) == 1 + len(sec.SECTIONS)
+    assert _settings_webapp(kb) == []
+
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test/")
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert len(kb.inline_keyboard) == 1 + len(sec.SECTIONS) + 1
+    assert len(_settings_webapp(kb)) == 1
+    asyncio.run(db.set_setting("amb_team_selection_enabled", "off"))
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False)) + 1
+    assert len(_settings_webapp(kb)) == 1
+
+    class _BadUrl(str):
+        def rstrip(self, chars=None):
+            raise RuntimeError("unusable public url")
+
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", _BadUrl("https://dash.example.test"))
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False))
+    assert _settings_webapp(kb) == []
 
 
-def test_root_rows_are_only_sections(tmp_path):
-    """Ни одной старой операции на корне не осталось: всё, кроме шапки города, — разделы,
-    и их порядок задаёт реестр (путь делегата), а не история появления фаз."""
+def test_root_rows_are_only_sections(tmp_path, monkeypatch):
+    """Кроме шапки города на корне только разделы в порядке реестра и, при праве settings и
+    непустом адресе, одна последняя кнопка «Настройки». Операций и callback work/settings/forum нет."""
     _roles_ready(tmp_path)
     _enable_cities()
     from handlers.settings.admin_core import admin_keyboard_for
 
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
     flat = _flat_callback_data(asyncio.run(admin_keyboard_for(ADMIN_ID)))
     assert flat[0] == "admin_city_switch"
-    assert flat[1:] == [f"admin_sec:{token}" for token, _label, _rows in sec.SECTIONS
-                        if token != "amb"]
+    assert flat[1:] == [f"admin_sec:{token}" for token in _root_section_tokens(amb=False)]
+    for banned in ("work", "settings", "forum"):
+        assert banned not in flat
+        assert f"admin_sec:{banned}" not in flat
+
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test")
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    rows = kb.inline_keyboard
+    assert rows[0][0].callback_data == "admin_city_switch"
+    assert [row[0].callback_data for row in rows[1:-1]] == [
+        f"admin_sec:{token}" for token in _root_section_tokens(amb=False)
+    ]
+    last = rows[-1][0]
+    assert last.text == "Настройки"
+    assert last.callback_data is None
+    assert getattr(last, "style", None) is None
+    url = last.web_app.url
+    assert "open=settings" in url
+    assert url.endswith("/app?open=settings")
+    assert "#/settings" not in url and "#/hub" not in url and "#" not in url
+    cbs = [b.callback_data for row in rows for b in row if b.callback_data]
+    for banned in ("work", "settings", "forum"):
+        assert banned not in cbs
+        assert f"admin_sec:{banned}" not in cbs
 
 
-def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path):
+def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path, monkeypatch):
     """Критерий успеха №2, сквозной (не только на уровне visible_sections): одно право —
-    один раздел на корне, и никакого «пустого» экрана вокруг него."""
+    один раздел на корне, и никакого «пустого» экрана вокруг него. Права settings у роли нет,
+    поэтому кнопка приложения не появляется даже при непустом адресе."""
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     _only_caps("reg_manager", "moderate_reg")
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test")
+    from handlers.access.admin_caps import resolve_capabilities
     from handlers.settings.admin_core import build_admin_keyboard
 
-    flat = _flat_callback_data(asyncio.run(build_admin_keyboard(MANAGER_ID)))
-    assert flat == ["admin_sec:apps", "admin_sec:data"]  # 09.10: + «📊 Данные» (список участников)
+    caps = asyncio.run(resolve_capabilities(MANAGER_ID))
+    assert "settings" not in caps
+    kb = asyncio.run(build_admin_keyboard(MANAGER_ID))
+    assert _flat_callback_data(kb) == ["admin_sec:apps", "admin_sec:data"]  # 09.10: + «📊 Данные»
+    assert _settings_webapp(kb) == []
 
 
-def test_root_of_a_stranger_stays_empty(tmp_path):
-    """T-20-09: у человека без прав корень пуст — чужой список разделов не утекает."""
+def test_root_of_a_stranger_stays_empty(tmp_path, monkeypatch):
+    """T-20-09: у человека без прав корень пуст — чужой список разделов не утекает,
+    и кнопка «Настройки» ему не достаётся, даже если публичный адрес задан."""
     _roles_ready(tmp_path)
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test")
     from handlers.settings.admin_core import build_admin_keyboard
 
     assert asyncio.run(build_admin_keyboard(STRANGER_ID)).inline_keyboard == []
@@ -616,9 +700,6 @@ BACK_TARGETS = {
     "admin_dashboard_settings": "data",
     "admin_miniapp_settings": "manage",
     "admin_roles": "manage",
-    "admin_reg_prompts": "form",
-    "admin_reg_questions": "form",
-    "admin_menu_buttons": "event",
     "admin_consent_pdfs": "form",
     "settings_toggle_reg": "form",
     "settings_group:apps": "apps",
@@ -641,6 +722,10 @@ def test_every_screen_back_target_is_its_section():
     bad = {cb: sec.section_of(cb) for cb, token in BACK_TARGETS.items()
            if sec.section_of(cb) != token}
     assert not bad, bad
+    # Эти три экрана сняты с разделов: «Назад» ведёт в корень, вторую карту не заводим.
+    for cb in ("admin_menu_buttons", "admin_reg_questions", "admin_reg_prompts"):
+        assert sec.section_of(cb) is None, cb
+        assert sec.back_button(cb).callback_data == "admin_menu", cb
 
 
 def test_season_wizards_cancel_through_the_registry_not_a_literal():
@@ -763,9 +848,7 @@ def _assert_is_group_screen(kb, token: str):
 
 @pytest.mark.parametrize("handler_name,callback_data,section", [
     ("toggle_full_approval", "settings_toggle_full_approval", "apps"),
-    ("toggle_nudge_enabled", "toggle_nudge_enabled", "apps"),
     ("toggle_uni_mode", "toggle_uni_mode", "form"),
-    ("toggle_payment_enabled", "toggle_payment_enabled", "pay"),
     ("toggle_bonus", "settings_toggle_bonus", "event"),
 ])
 def test_toggle_inside_section_redraws_that_section(tmp_path, handler_name, callback_data, section):
@@ -783,6 +866,25 @@ def test_toggle_inside_section_redraws_that_section(tmp_path, handler_name, call
     assert cb.message.edit_calls == 1
     assert sec.section_of(callback_data) == section  # раздел выведен из реестра, не задан
     _assert_is_section_screen(cb.message.markup, section)
+
+
+@pytest.mark.parametrize("handler_name,callback_data", [
+    ("toggle_nudge_enabled", "toggle_nudge_enabled"),
+    ("toggle_payment_enabled", "toggle_payment_enabled"),
+])
+def test_removed_toggles_redraw_the_root(tmp_path, handler_name, callback_data):
+    """Снятый тумблер владельца в SECTIONS не имеет: settings_return_screen рисует корень,
+    а не раздел pay или apps. Хендлер ради старого раздела не переписываем."""
+    _roles_ready(tmp_path)
+    from handlers.settings.admin_core import admin_keyboard_for
+
+    cb = FakeCallback(callback_data)
+    asyncio.run(getattr(st, handler_name)(cb))
+    assert sec.section_of(callback_data) is None
+    root = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert _cbs(cb.message.markup) == _cbs(root)
+    assert _cbs(cb.message.markup) != _cbs(asyncio.run(sec.build_section_keyboard("pay", ADMIN_ID)))
+    assert _cbs(cb.message.markup) != _cbs(asyncio.run(sec.build_section_keyboard("apps", ADMIN_ID)))
 
 
 # Ревью фазы 20: тумблеры перерисовку получили, а ОПЕРАЦИИ — нет. Экран результата любой из
@@ -897,17 +999,21 @@ def test_photo_and_file_return_to_event_group(tmp_path):
 
 
 def test_reg_config_exits_land_in_their_sections(tmp_path):
-    """BLOCKER 2. Эти два выхода вызывают перерисовку ФУНКЦИЕЙ, а не кнопкой, поэтому греп по
-    кнопкам их не видел вовсе — сторож нужен именно здесь."""
+    """Выход с экранов вопросов и кнопок меню больше не ищет снятую строку раздела:
+    владельца в SECTIONS нет, settings_return_screen рисует корень. Хендлеры живы."""
     _roles_ready(tmp_path)
+    from handlers.settings.admin_core import admin_keyboard_for
 
+    root = _cbs(asyncio.run(admin_keyboard_for(ADMIN_ID)))
     cb_q = FakeCallback("reg_q_back")
     asyncio.run(regpercity.reg_questions_back(cb_q))
-    _assert_is_section_screen(cb_q.message.markup, "form")
+    assert sec.section_of("admin_reg_questions") is None
+    assert _cbs(cb_q.message.markup) == root
 
     cb_m = FakeCallback("menu_back")
     asyncio.run(regcfg.menu_buttons_back(cb_m))
-    _assert_is_section_screen(cb_m.message.markup, "event")
+    assert sec.section_of("admin_menu_buttons") is None
+    assert _cbs(cb_m.message.markup) == root
 
 
 def test_no_handler_redraws_the_flat_settings_screen():
@@ -952,10 +1058,14 @@ FIRST_SETUP: list[tuple[str, str]] = [
     ("Фото приветствия", "settings_photo:start"),
     ("Инфо о форуме (дата, время, место, адрес)", "settings_edit:event_date"),
     ("Контакты", "settings_edit:contact_person"),
-    ("Кнопки меню делегата", "admin_menu_buttons"),
-    ("Тексты вопросов анкеты", "admin_reg_prompts"),
     ("Текст после одобрения", "settings_edit:approve_text"),
     ("Текст при отклонении", "settings_edit:reject_text"),
+]
+
+# Эти два пункта шпаргалки больше не ищутся внутри SECTIONS: их меняют в приложении.
+FIRST_SETUP_IN_APP: list[tuple[str, str]] = [
+    ("Кнопки меню делегата", "admin_menu_buttons"),
+    ("Тексты вопросов анкеты", "admin_reg_prompts"),
 ]
 
 
@@ -985,26 +1095,54 @@ def test_first_setup_within_three_taps():
     глубже трёх нажатий от /admin. Проверяется по SECTIONS, поэтому это утверждение, за
     которое отвечает раскладка, а не обещание в тексте: блок «Первая настройка события» в
     docs/ADMIN_CHEATSHEET.md только пересказывает менеджеру то, что посчитано здесь."""
-    assert len(FIRST_SETUP) == 11, (
-        "девять пунктов шпаргалки в боте (первый — три кнопки: аватар, имя, описание) + "
-        "приложение (дата отсчёта) = десять в шпаргалке"
+    assert len(FIRST_SETUP) + len(FIRST_SETUP_IN_APP) == 11, (
+        "пункты шпаргалки в боте (первый — три кнопки: аватар, имя, описание) "
+        "плюс два переехавших в приложение"
     )
     for name, target in FIRST_SETUP:
         taps, token = _taps_from_admin(target)
         assert token is not None, f"{name}: «{target}» не объявлена ни в одном разделе"
         assert taps <= 3, f"{name}: {taps} нажатий до «{target}» (раздел {token})"
+    for name, target in FIRST_SETUP_IN_APP:
+        assert sec.section_of(target) is None, f"{name}: «{target}» снова в разделе"
+
+
+# Путь вёл на снятую кнопку раздела. Префикс «В приложении» разрешён только им.
+_GUIDE_IN_APP = {
+    "reg_q_resume": "Вопросы анкеты",
+    "pending_reminder_enabled": "Запись и напоминания",
+    "nudge_enabled": "Запись и напоминания",
+    "wave_prize_places": "Амбассадоры",
+    "wave_start_message_text": "Амбассадоры",
+    "amb_tier1_threshold": "Амбассадоры",
+    "amb_tier2_threshold": "Амбассадоры",
+    "amb_tier3_threshold": "Амбассадоры",
+    "amb_o2o_quota": "Амбассадоры",
+    "amb_count_deadline": "Амбассадоры",
+}
 
 
 def test_settings_guide_where_starts_with_a_real_section():
     """T-20-14: «📖 Справка по настройкам» печатает менеджеру, ГДЕ менять каждую настройку.
     Путь обязан начинаться с подписи существующего раздела — переименуют раздел, забыв про
-    справку, и этот тест покраснеет раньше, чем менеджер уткнётся в несуществующую кнопку."""
+    справку, и этот тест покраснеет раньше, чем менеджер уткнётся в несуществующую кнопку.
+    Записи, чей путь вёл на снятую кнопку, начинаются с «В приложении» и называют режим
+    «Настройки» и строку. Остальным этот префикс запрещён."""
     labels = [label for _token, label, _rows in sec.SECTIONS]
+    seen_app: set[str] = set()
     for _title, _subtitle, entries in roles.SETTINGS_GUIDE_SECTIONS:
         for entry in entries:
             where = entry["where"]
             assert "⚙️ Настройки →" not in where, entry["key"]
+            row = _GUIDE_IN_APP.get(entry["key"])
+            if row is not None:
+                seen_app.add(entry["key"])
+                assert where.startswith("В приложении"), (entry["key"], where)
+                assert "«Настройки»" in where and f"«{row}»" in where, (entry["key"], where)
+                continue
+            assert not where.startswith("В приложении"), (entry["key"], where)
             assert any(where.startswith(label) for label in labels), (entry["key"], where)
+    assert seen_app == set(_GUIDE_IN_APP)
 
 
 def test_cheatsheet_covers_every_section():
@@ -1045,7 +1183,7 @@ def test_group_button_inside_section_never_repeats_section_label(tmp_path):
                 renamed.add(token)
             else:
                 assert text == group_label, (token, row[1])
-    assert renamed == {"apps", "pay", "game", "amb"}
+    assert renamed == {"apps", "game"}
 
 
 def test_guide_and_cheatsheet_spell_group_path_with_new_label():
