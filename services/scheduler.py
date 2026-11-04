@@ -2189,7 +2189,9 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         # Отметка ДО рассылки: лучше недослать одному при сбое, чем разослать всем дважды.
         await mark_task_deadline_reminded(task_id, task.get("deadline_at") or "")
         title = task_title(task)
-        deadline_txt = await game_labels.task_deadline_text(task)
+        # В карточке делегату — только день. В напоминании нужен час: иначе «12.10» не говорит,
+        # что день ещё входит до 23:59. Подсказка настройки обещает в {deadline} дату и время.
+        deadline_txt = game_labels.task_deadline_admin(task)
 
         for uid in recipients:
             # CR-05: сбой у ОДНОГО получателя (например, кривой src в i18n) не должен
@@ -2203,6 +2205,11 @@ async def send_task_deadline_reminder(task_id: int) -> None:
                 )
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
+                # Тихие часы откладывают текст на утро. Если утро уже после дедлайна,
+                # «скоро срок» приходит задним числом — не ставим в очередь.
+                due = await quiet_hours.defer_until(now, uid)
+                if due is not None and due >= deadline:
+                    continue
                 lang, tr_map = await i18n.context(uid)
                 template = i18n.tr(template_raw, lang, tr_map)
                 text = game_labels.fill_template(
