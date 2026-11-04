@@ -19,6 +19,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_setting
 from handlers.admin import router
 from handlers.states import EditSetting
+from domain.cities import admin_selected_city
 from domain.settings.ops import preview_samples, preview_text
 from domain.settings.placeholders import TOKEN_RE, check, hint, problem_text
 from domain.settings.schema import SETTINGS_SCHEMA
@@ -113,5 +114,7 @@ async def send_preview(message: types.Message, key: str, value: str) -> None:
     """«Так увидит делегат:» — только если в тексте есть подстановки."""
     if not isinstance(value, str) or not TOKEN_RE.search(value):
         return
-    shown = preview_text(key, value, samples=await preview_samples())
+    # Шапка админа: None (модуль выключен) и «*» (все города) preview_samples оставляет общими.
+    city = await admin_selected_city(message.from_user.id)
+    shown = preview_text(key, value, samples=await preview_samples(city))
     await message.answer("Так увидит делегат:\n\n" + shown)

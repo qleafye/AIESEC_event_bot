@@ -31,15 +31,32 @@ def _setting(conn, key: str) -> str | None:
     return row[0] if row is not None else None
 
 
+# Образ дашборда не содержит `domain`. Без реестра городскими остаются только ключи,
+# которые этот дашборд сам читает через `setting_for_city_scope`: четыре настройки ступеней
+# и порог/квота/тумблер квоты ступеней 1–5 (`shared.amb_tier_keys.tier_key`). Иной ключ,
+# включая `event_season`, без пакета — общее значение.
+_DASHBOARD_CITY_KEYS = frozenset({
+    "amb_qualified_program",
+    "amb_tiers_count",
+    "amb_team_selection_enabled",
+    "amb_slots_limit",
+    *(
+        tier_key(n, kind)
+        for n in range(1, MAX_TIERS + 1)
+        for kind in ("threshold", "quota", "quota_on")
+    ),
+})
+
+
 def _schema_per_city(key: str) -> bool:
     """`SETTINGS_SCHEMA[key]["per_city"] is True`. Статический импорт `domain` в дашборд
     нельзя: образ содержит только `dashboard/` и `shared/`, а реестр тянет `database.db`.
-    Если пакета нет — ключ считаем городским: выключенный модуль всё равно отдаёт общее."""
+    Если пакета нет — городской только ключ из `_DASHBOARD_CITY_KEYS`."""
     try:
         import importlib
         schema = importlib.import_module("domain.settings.schema").SETTINGS_SCHEMA
     except ImportError:
-        return True
+        return key in _DASHBOARD_CITY_KEYS
     return bool(schema.get(key, {}).get("per_city"))
 
 
