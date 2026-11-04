@@ -239,6 +239,18 @@ def require_cap(cap: str):
     return _dep
 
 
+def require_any_cap(*caps: str):
+    """Хватает любого из прав. Отказ называет первое: его ждут старые тесты сканера."""
+    needed = tuple(caps)
+
+    def _dep(p: Principal = Depends(principal)) -> Principal:
+        if p.caps.intersection(needed):
+            return p
+        raise HTTPException(403, {"reason": "no_cap", "cap": needed[0]})
+
+    return _dep
+
+
 def require_section(section: str):
     if section not in SECTIONS:
         raise ValueError(f"unknown miniapp section: {section!r}")

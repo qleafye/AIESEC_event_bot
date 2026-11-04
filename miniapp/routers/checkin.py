@@ -82,7 +82,7 @@ from services.access.person_search import search_people
 from domain.settings.schema import get_setting_typed
 from services.forum.program import checkin_session_points
 
-from miniapp.deps import Principal, require_cap, require_section
+from miniapp.deps import Principal, require_any_cap, require_cap, require_section
 from miniapp.outbox import enqueue
 
 router = APIRouter()
@@ -423,7 +423,7 @@ async def _with_city_label(res: dict) -> dict:
 @router.post("/app/api/checkin/scan")
 async def checkin_scan(
     body: ScanBody, request: Request,
-    p: Principal = Depends(require_cap(_CAP)),
+    p: Principal = Depends(require_any_cap(_CAP, "moderate_game")),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
     res = await _with_city_label(await _scan(body, request, p))
@@ -433,6 +433,9 @@ async def checkin_scan(
 
 async def _scan(body: ScanBody, request: Request, p: Principal) -> dict:
     point = body.point or ENTRY_POINT
+    # Менеджер геймификации сканирует только магазин. Отметки входа и сессий ему не выданы.
+    if _CAP not in p.caps and point != "shop":
+        raise HTTPException(403, {"reason": "no_cap", "cap": _CAP})
     parsed = parse_qr_payload(body.payload)
     # Бэклог чек-ина №7: учебный QR в любой точке — только учебная плашка, ничего не пишется.
     training = await checkin_training.resolve_training(parsed.get("token"), point=point, source="miniapp")
@@ -675,7 +678,7 @@ async def checkin_search(
 @router.get("/app/api/checkin/points")
 async def checkin_points(
     request: Request, city: str | None = None,
-    p: Principal = Depends(require_cap(_CAP)),
+    p: Principal = Depends(require_any_cap(_CAP, "moderate_game")),
     _: Principal = Depends(require_section(_SECTION)),
 ) -> dict:
     """Форум-ночь п.5 (D-18/D-20): точки отметки для сканера — «Вход» + сессии СЕГОДНЯ города
@@ -683,6 +686,14 @@ async def checkin_points(
     `/stats` выше: привязанный менеджер получает свой город сразу (без выбора), суперадмин/
     непривязанный менеджер — список городов на выбор (`?city=`, отдаётся в `cities`), модуль
     выключен — единственный (дефолтный) город без выбора вовсе."""
+    if _CAP not in p.caps:
+        from miniapp.routers import checkin_shop
+        shop = await checkin_shop.point_entry(p.caps)
+        return {
+            "city": None, "cities": None,
+            "points": [shop] if shop else [],
+            "onsite_enabled": False, "onsite_can_approve": False,
+        }
     bound = await _bound_city(request, p)
     resolved = await _resolve_scanner_city(bound)
     cities_payload = None

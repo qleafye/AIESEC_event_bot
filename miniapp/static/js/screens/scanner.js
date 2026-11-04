@@ -335,7 +335,12 @@ export async function render(root, params, ctx) {
       cityField.classList.add("hidden");
     }
     pointsData = data.points || [];
-    if (!pointsData.some((pt) => pt.point === selectedPoint)) selectedPoint = ENTRY_POINT;
+    // Входа в списке может не быть: менеджер геймификации видит только магазин.
+    if (!pointsData.some((pt) => pt.point === selectedPoint)) {
+      selectedPoint = pointsData.some((pt) => pt.point === ENTRY_POINT)
+        ? ENTRY_POINT
+        : (pointsData[0] ? pointsData[0].point : ENTRY_POINT);
+    }
     renderPointChips();
     onsiteEnabled = Boolean(data.onsite_enabled);
     onsiteCanApprove = Boolean(data.onsite_can_approve);
