@@ -469,7 +469,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "asos_delay_custom:*": "settings",
     "asos_settings_edit:*": "settings",
     "cmd:create_link": ("moderate_reg", "source_links"),
-    "cmd:find": "moderate_reg",
+    "cmd:find": "moderate_reg", "state:FindPerson:*": "moderate_reg",
     "special:question_reply": "moderate_reg",
     "state:Approval:*": "moderate_reg",
 

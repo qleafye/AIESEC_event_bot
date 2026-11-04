@@ -32,6 +32,7 @@ from database.db import (
     get_staff_roles,
     get_user,
     list_staff,
+    record_admin_action,
     remove_staff,
     set_staff_city,
     set_staff_expiry,
@@ -1026,7 +1027,8 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
     # другого города роль не выдаётся — иначе любая роль, хоть с «⚙️ Настройками», действовала бы
     # за пределами города выдающего. Выбор города при выдаче — только у суперадмина, ниже.
     issuer_city = await _issuer_city(callback)
-    if await get_staff_roles(tid) and await _foreign_person_denied(
+    previous_roles = await get_staff_roles(tid)
+    if previous_roles and await _foreign_person_denied(
         callback, issuer_city, tid, ROLES_ALL_CITIES_TARGET_TEXT, ROLES_OTHER_CITY_TARGET_TEXT,
     ):
         return
@@ -1045,6 +1047,17 @@ async def roles_assign(callback: types.CallbackQuery, bot: Bot):
     # (сама роль его несёт СЕЙЧАС), — шпаргалка волонтёра; в канун/день форума — с отметкой
     # «отправлено» (services/checkin_volunteer_broadcast.py::greet_new_holder). `created` —
     # только на НОВОЕ назначение (повторное «Уже был в этой роли» шпаргалку не шлёт).
+    if created:
+        try:
+            await record_admin_action(
+                actor_id=callback.from_user.id,
+                subject_id=tid,
+                action="grant_role",
+                before={"role": previous_roles[0] if previous_roles else None},
+                after={"role": role, "city": issuer_city},
+            )
+        except Exception as e:
+            logger.warning("roles_assign: журнал выдачи роли %s не записан: %s", tid, e)
     if created and await has_capability(tid, "checkin"):
         await greet_new_holder(bot, tid)
 

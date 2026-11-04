@@ -23,7 +23,6 @@ from database.db import (
     export_users_csv,
     get_user,
     get_user_by_username,
-    get_reg_started_by_username,  # Phase 33 (задача 2): фоллбэк /find на «только /start»
     get_monthly_registration_stats,
     get_source_stats,
     get_setting,
@@ -104,7 +103,6 @@ from services.scheduler import (
 from services.access.allowlist import refresh_allowlist, allowlist_size
 from services.registration import source_links
 from services.infra.background import spawn as _spawn
-from services.applications import decision_delivery
 from services.game.game_sync import request_resync as _request_game_resync, set_rebuild as _set_game_rebuild
 from handlers.states import Broadcast, EditSetting, Approval, ReceiptReview, StaffAdd, GameTaskCreate, GameReview, CoinsManual, CityForm, SeasonReset, SeasonImport, clear_admin_flow_state
 from handlers.access.admin_caps import ALL_CAPABILITIES, CAP_LABELS, ROLES, role_caps_key, role_enabled_key, CapabilityMiddleware, required_capability, has_capability, resolve_capabilities, ANY_CAPABILITY, capability_holders, _holds
@@ -463,173 +461,10 @@ async def cmd_coins(message: types.Message, bot: Bot):
         parse_mode="HTML",
     )
 
-def _find_email_line(user) -> str:
-    """Строка «Email» карточки /find — только когда он есть: прочерк «-» (заглушка финала анкеты
-    на событиях без вопроса про почту) и пустое значение не показываем."""
-    email = str(user['email'] or '').strip()
-    if email in ('', '-'):
-        return ""
-    return f"Email: {html_module.escape(email)}\n"
-
-
 @router.message(Command("find"))
-async def cmd_find_user(message: types.Message):
-    args = message.text.split()
-    if len(args) < 2:
-        await message.answer("⚠️ Используйте формат: /find @username")
-        return
-
-    username = args[1]
-    user = await get_user_by_username(username)
-
-    if user:
-        text = (
-            f"👤 <b>Пользователь найден:</b>\n"
-            f"ID: <code>{user['telegram_id']}</code>\n"
-            f"Имя: {html_module.escape(str(user['full_name'] or ''))}\n"
-            f"Username: {html_module.escape(str(user['username'] or ''))}\n"
-            f"{_find_email_line(user)}"
-            f"Регистрация: {user['registration_date']}"
-        )
-        from services.applications.delegate_card import ext_forms_card_lines, status_city_season_lines  # 01.10
-        text += await status_city_season_lines(user)
-        forms_line, has_forms = await ext_forms_card_lines(user['telegram_id'])
-        text += forms_line
-        # Форум-ночь B1 (идея №10): перевыпуск QR — подтверждение/сама операция живут в
-        # handlers/forum/admin_checkin.py (checkin_reissue*), здесь только кнопка на карточке.
-        # Phase 33 (delegate-card admin actions): рядом — «Перевести в город», сама операция и
-        # подтверждение живут в handlers/cities/admin_city_move.py (citymv_*), здесь тоже только кнопка.
-        rows = [
-            [InlineKeyboardButton(
-                text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
-            )],
-            [InlineKeyboardButton(
-                text="🏙 Перевести в город", callback_data=f"citymv_start:{user['telegram_id']}",
-            )],
-        ]
-        if has_forms:
-            rows.append([InlineKeyboardButton(
-                text="📝 Ответы форм", callback_data=f"extf_view:{user['telegram_id']}",
-            )])
-        # Phase 33: «↩️ Вернуть в ожидание» — видна только для решённой заявки (одобрена/
-        # отклонена), для ожидающей возвращать не с чего (services/applications/revert_pending.py
-        # REVERTIBLE_STATUSES). Подтверждение и сама операция — handlers/applications/admin_revert_pending.py.
-        if user.get("status") in ("approved", "rejected"):
-            rows.append([InlineKeyboardButton(
-                text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
-            )])
-        # «📨 Отправить решение заново» — для решённой заявки; если письмо не дошло, причина
-        # строкой в карточке (services/applications/decision_delivery.py::failure_line). Шов — handlers/
-        # admin_resend_decision.py.
-        if user.get("status") in ("approved", "rejected"):
-            text += decision_delivery.failure_line(user)
-            rows.append([InlineKeyboardButton(
-                text="📨 Отправить решение заново", callback_data=f"decresend_start:{user['telegram_id']}",
-            )])
-        # Phase 33 (задача 2): «🔁 Разрешить повторную подачу» — видна только для отклонённой
-        # заявки (services/reg_edit_policy.resubmit_gate — единственный гейт, которому это
-        # исключение вообще что-то меняет). Уже активное исключение — строкой в тексте карточки
-        # + кнопка «отозвать» вместо кнопки выдачи (не обе разом).
-        from services.applications import delegate_overrides
-        if user.get("status") == "rejected":
-            resubmit_override = await delegate_overrides.active_override(
-                user["telegram_id"], delegate_overrides.KIND_RESUBMIT,
-            )
-            if resubmit_override:
-                granted_by_user = await get_user(resubmit_override["granted_by"])
-                granted_by_label = html_module.escape(str(
-                    (granted_by_user or {}).get("full_name") or resubmit_override["granted_by"]
-                ))
-                text += (
-                    f"\n\n🔁 Разрешена повторная подача — выдал {granted_by_label}, "
-                    f"{resubmit_override['granted_at']}"
-                )
-                rows.append([InlineKeyboardButton(
-                    text="🔁 Отозвать разрешение", callback_data=f"resubg_revoke:{user['telegram_id']}",
-                )])
-            else:
-                rows.append([InlineKeyboardButton(
-                    text="🔁 Разрешить повторную подачу", callback_data=f"resubg_start:{user['telegram_id']}",
-                )])
-        # Phase 33 (задача 3): «✏️ Открыть правку после решения» — видна только для одобренной
-        # заявки (services/reg_edit_policy.edit_gate гейтит ТОЛЬКО status == "approved", см. её
-        # докстринг Р-1/Р-2). Та же пара «строка + кнопка отозвать» / «кнопка выдачи».
-        if user.get("status") == "approved":
-            edit_override = await delegate_overrides.active_override(
-                user["telegram_id"], delegate_overrides.KIND_EDIT,
-            )
-            if edit_override:
-                granted_by_user = await get_user(edit_override["granted_by"])
-                granted_by_label = html_module.escape(str(
-                    (granted_by_user or {}).get("full_name") or edit_override["granted_by"]
-                ))
-                text += (
-                    f"\n\n✏️ Открыта правка — выдал {granted_by_label}, "
-                    f"{edit_override['granted_at']}"
-                )
-                rows.append([InlineKeyboardButton(
-                    text="✏️ Отозвать разрешение", callback_data=f"editg_revoke:{user['telegram_id']}",
-                )])
-            else:
-                rows.append([InlineKeyboardButton(
-                    text="✏️ Открыть правку после решения", callback_data=f"editg_start:{user['telegram_id']}",
-                )])
-        # Phase 33 (задача 1): «🧹 Сбросить зависшую анкету» — видна, только когда есть
-        # незавершённый черновик (services/registration/reg_stuck_reset.py::preview_stuck_reset); для
-        # одобренной/отклонённой заявки БЕЗ открытой правки черновика нет — кнопка не
-        # показывается вовсе (незачем звать экран подтверждения, который тут же откажет).
-        from services.registration.reg_stuck_reset import preview_stuck_reset
-        if await preview_stuck_reset(user["telegram_id"]) is not None:
-            rows.append([InlineKeyboardButton(
-                text="🧹 Сбросить зависшую анкету", callback_data=f"regreset_start:{user['telegram_id']}",
-            )])
-        # Phase 33 (задача 3): «📎 Заменить резюме» — только для поданной анкеты (users-строка
-        # уже есть); человека из reg_started (ветка ниже) резюме ещё не касалось вовсе.
-        rows.append([InlineKeyboardButton(
-            text="📎 Заменить резюме", callback_data=f"resumerep_start:{user['telegram_id']}",
-        )])
-        kb = InlineKeyboardMarkup(inline_keyboard=rows)
-        await message.answer(text, parse_mode="HTML", reply_markup=kb)
-        return
-
-    # Phase 33 (задача 2): фоллбэк на reg_started — человек нажал /start, но анкету не подал
-    # (users_row_only_on_submit, память проекта), поэтому его не было в users, но он всё
-    # равно существует в базе бота. `services/access/person_search.py` это уже умеет для мастера
-    # выдачи ролей (`handlers/access/admin_roles.py::roles_add_person`) — здесь та же фактическая
-    # проверка, только напрямую по username (без части ФИО — /find сам всегда искал только
-    # @username).
-    started = await get_reg_started_by_username(username)
-    if started:
-        city_code = started.get("event_city")
-        city_text = await city_label(city_code) if city_code else "-"
-        text = (
-            f"👤 <b>Пользователь найден (анкету не подавал(а)):</b>\n"
-            f"ID: <code>{started['telegram_id']}</code>\n"
-            f"Username: {html_module.escape(str(started.get('username') or ''))}\n"
-            f"Начал(а) регистрацию: {started.get('started_at') or '-'}\n"
-            f"Город (по анкете): {html_module.escape(str(city_text))}\n\n"
-            "<i>Нажимал(а) /start, анкету пока не подавал(а) — записи делегата в базе нет.</i>"
-        )
-        # Ревью part2: «roles_addfor:*» требует `settings` (ADMIN_CAPS) — модератор без этого
-        # права раньше видел кнопку, которая в ответ на тап отказывала бы (CapabilityMiddleware
-        # молча съедает нажатие «не туда»); показываем кнопку только тем, кто реально может ею
-        # воспользоваться (CLAUDE.md: ошибка объясняет, что делать — лучший вариант «объяснения»
-        # тут просто не показать бесполезную кнопку).
-        rows = []
-        if await has_capability(message.from_user.id, "settings"):
-            rows.append([InlineKeyboardButton(
-                text="👥 Выдать роль", callback_data=f"roles_addfor:{started['telegram_id']}",
-            )])
-        from services.registration.reg_stuck_reset import preview_stuck_reset
-        if await preview_stuck_reset(started["telegram_id"]) is not None:
-            rows.append([InlineKeyboardButton(
-                text="🧹 Сбросить зависшую анкету", callback_data=f"regreset_start:{started['telegram_id']}",
-            )])
-        kb = InlineKeyboardMarkup(inline_keyboard=rows)
-        await message.answer(text, parse_mode="HTML", reply_markup=kb)
-        return
-
-    await message.answer(f"❌ Пользователь {username} не найден в базе данных.")
+async def cmd_find_user(message: types.Message, state: FSMContext | None = None):
+    """Карточка делегата. Разбор ввода — handlers/applications/admin_find.py."""
+    await admin_find.handle_find_command(message, state)
 
 
 @router.message(Command("create_link"))
@@ -1218,3 +1053,5 @@ from handlers.forum import admin_certificates  # noqa: E402,F401 — «🎓 Се
 from handlers.game import admin_shop  # noqa: E402,F401 — «🛍 Магазин баллов» в «🎮 Геймификации» и /shop, golden append
 from handlers.chat import admin_city_chat_summary  # noqa: E402,F401 — кнопки сводки чата города
 from handlers.chat import admin_city_chat  # noqa: E402,F401 — экран «Чат города»
+from handlers.applications import admin_find  # noqa: E402,F401 — /find: id, пересылка, чужой город
+_find_email_line = admin_find._find_email_line

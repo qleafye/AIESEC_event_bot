@@ -75,7 +75,7 @@ async def _enable_cities_module():
 
 async def _disable_sheet_logs_autosync():
     """Только для тестов, что патчат `gspread.service_account` напрямую (Part B2 ниже):
-    `record_answer_history` (перевод города пишет её при смене event_city) сама планирует
+    прямая запись `record_answer_history` (перевод города её больше не делает) сама планирует
     фоновую синхронизацию листа «История правок» (`services/sheets/sheet_logs.py::
     schedule_sheet_logs_sync`, дефолт настройки `sheet_logs_autosync` — "on") — фоновая
     корутина летит на ТОМ ЖЕ event loop и гоняется за нашим же fake-gspread клиентом,
@@ -347,16 +347,49 @@ def test_move_updates_users_event_city_and_records_history(tmp_path, monkeypatch
     assert "users" in report["db_changes"]
 
     history = _run(db.get_answer_history(DELEGATE_ID))
-    assert history, "record_answer_history(source='admin') должен оставить запись"
-    assert history[0]["source"] == "admin"
-    cols = {c["column"] for c in history[0]["changes"]}
-    assert "event_city" in cols
+    assert history == []
+    actions = _run(db.list_admin_actions(DELEGATE_ID))
+    assert len(actions) == 1
+    assert actions[0]["action"] == "city_move"
+    assert actions[0]["actor_id"] == SUPERADMIN_ID
+    assert actions[0]["before"]["event_city"] == "spb"
+    assert actions[0]["after"]["event_city"] == "msk"
 
 
-def test_move_records_custom_history_source(tmp_path, monkeypatch):
-    """Решение координатора (4, forum-regions-msk): `history_source` — необязательный параметр,
-    дефолт остаётся `"admin"` (тест выше), вызывающий (`services/regional_noshow_move.py::
-    apply_move`) может передать свой маркер."""
+def test_move_writes_admin_action_not_answer_history(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short", status="approved")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест Тестов"]])
+        store.seed(new_tab, [])
+        report = await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        history = await db.get_answer_history(DELEGATE_ID)
+        return report, actions, history
+
+    report, actions, history = _run(scenario())
+    assert report["ok"] is True
+    assert history == []
+    assert len(actions) == 1
+    row = actions[0]
+    assert row["action"] == "city_move"
+    assert row["actor_id"] == SUPERADMIN_ID
+    assert row["before"]["event_city"] == "spb"
+    assert row["after"]["event_city"] == "msk"
+    assert row["before"]["status"] == "approved"
+    assert set(row["before"]) == {"event_city", "status", "participant_type"}
+    assert set(row["after"]) == {"event_city", "status", "participant_type", "sheet_moved"}
+    assert row["after"]["sheet_moved"] is True
+
+
+def test_regional_source_is_separate_action(tmp_path, monkeypatch):
     _db_ready(tmp_path)
     store = _install_fake_sheets(monkeypatch)
 
@@ -367,39 +400,37 @@ def test_move_records_custom_history_source(tmp_path, monkeypatch):
         new_tab = await _resolve_tabs("msk", "short")
         store.seed(old_tab, [[DELEGATE_ID, "Тест Тестов"]])
         store.seed(new_tab, [])
-        return await move_user_city(
+        report = await move_user_city(
             DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=0,
             history_source="system:regional_offer",
         )
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        history = await db.get_answer_history(DELEGATE_ID)
+        return report, actions, history
 
-    report = _run(scenario())
+    report, actions, history = _run(scenario())
     assert report["ok"] is True
+    assert history == []
+    assert len(actions) == 1
+    assert actions[0]["action"] == "city_move_regional"
+    assert actions[0]["actor_id"] is None
 
-    history = _run(db.get_answer_history(DELEGATE_ID))
-    assert history
-    assert history[0]["source"] == "system:regional_offer"
 
-
-def test_edit_history_screen_does_not_crash_on_unfamiliar_source(tmp_path, monkeypatch):
-    """Экран «История правок» (`handlers/applications/admin_moderation.py::appr_history`) строит подпись
-    источника через `_EDITED_SOURCE_LABELS.get(source, html_escape(source))` — незнакомый
-    `source` (не `"admin"`/`"miniapp"`) не роняет построение, просто печатается сырым текстом."""
+def test_edit_history_label_fallback_does_not_depend_on_city_move(tmp_path, monkeypatch):
+    """Подпись незнакомого source проверяется прямой строкой истории ответов.
+    Перевод города туда больше не пишет."""
     import html as html_module
     from services.applications.applications import EDITED_SOURCE_LABELS
 
     _db_ready(tmp_path)
-    store = _install_fake_sheets(monkeypatch)
+    _install_fake_sheets(monkeypatch)
 
     async def scenario():
-        await _enable_cities_module()
-        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
-        old_tab = await _resolve_tabs("spb", "short")
-        new_tab = await _resolve_tabs("msk", "short")
-        store.seed(old_tab, [[DELEGATE_ID, "Тест Тестов"]])
-        store.seed(new_tab, [])
-        await move_user_city(
-            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=0,
-            history_source="system:regional_offer",
+        await _seed_user(DELEGATE_ID, city="spb")
+        await db.record_answer_history(
+            DELEGATE_ID,
+            [{"column": "event_city", "old": "spb", "new": "msk"}],
+            source="system:regional_offer",
         )
         return await db.get_answer_history(DELEGATE_ID, limit=5)
 
@@ -407,8 +438,6 @@ def test_edit_history_screen_does_not_crash_on_unfamiliar_source(tmp_path, monke
     assert rows
     source = rows[0]["source"]
     assert source == "system:regional_offer"
-    # То же построение подписи, что появляется в handlers/applications/admin_moderation.py::appr_history —
-    # незнакомый source не бросает исключение, отдаёт экранированный сырой текст.
     label = EDITED_SOURCE_LABELS.get(source, html_module.escape(str(source or "")))
     assert label == "system:regional_offer"
 
@@ -685,6 +714,165 @@ def test_move_same_city_refuses(tmp_path, monkeypatch):
 
     report = _run(scenario())
     assert report["ok"] is False
+
+
+def test_move_refusal_writes_neither_journal(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    _install_fake_sheets(monkeypatch)
+
+    async def counts():
+        history = await db.get_answer_history(DELEGATE_ID)
+        async with db._connect() as conn:
+            async with conn.execute("SELECT COUNT(*) FROM admin_actions") as cur:
+                actions = (await cur.fetchone())[0]
+        return history, actions
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb")
+        missing = await move_user_city(
+            424242, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        unknown = await move_user_city(
+            DELEGATE_ID, "nonexistent", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        same = await move_user_city(
+            DELEGATE_ID, "spb", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        history, actions = await counts()
+        return missing, unknown, same, history, actions
+
+    missing, unknown, same, history, actions = _run(scenario())
+    assert missing["ok"] is False
+    assert unknown["ok"] is False
+    assert same["ok"] is False
+    assert history == []
+    assert actions == 0
+
+
+def test_move_journal_failure_keeps_new_city(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def boom(**_kwargs):
+        raise RuntimeError("journal down")
+
+    monkeypatch.setattr("services.cities.city_move.record_admin_action", boom)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        report = await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        async with db._connect() as conn:
+            async with conn.execute("SELECT COUNT(*) FROM admin_actions") as cur:
+                actions = (await cur.fetchone())[0]
+        return report, actions
+
+    report, actions = _run(scenario())
+    assert report["ok"] is True
+    user = _run(db.get_user(DELEGATE_ID))
+    assert user["event_city"] == "msk"
+    assert actions == 0
+
+
+def test_move_keeps_home_city_payment_and_coins(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET city = ?, payment_status = ?, payment_option = ? "
+                "WHERE telegram_id = ?",
+                ("Казань", "paid", "card", DELEGATE_ID),
+            )
+            await conn.commit()
+        await db.add_coins(DELEGATE_ID, 40, reason="тест")
+        balance_before = await db.get_balance(DELEGATE_ID)
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        user = await db.get_user(DELEGATE_ID)
+        balance_after = await db.get_balance(DELEGATE_ID)
+        return user, balance_before, balance_after
+
+    user, balance_before, balance_after = _run(scenario())
+    assert user["event_city"] == "msk"
+    assert user["city"] == "Казань"
+    assert user["payment_status"] == "paid"
+    assert user["payment_option"] == "card"
+    assert balance_after == balance_before == 40
+
+
+def test_move_does_not_rewrite_reg_events(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        async with db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO reg_events (telegram_id, event, event_city, season, ts) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (DELEGATE_ID, "start", "spb", None, "2026-01-01 00:00:00"),
+            )
+            await conn.commit()
+            async with conn.execute(
+                "SELECT telegram_id, event, event_city, season, ts FROM reg_events"
+            ) as cur:
+                before = tuple(await cur.fetchone())
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        async with db._connect() as conn:
+            async with conn.execute(
+                "SELECT telegram_id, event, event_city, season, ts FROM reg_events"
+            ) as cur:
+                after = tuple(await cur.fetchone())
+        return before, after
+
+    before, after = _run(scenario())
+    assert before[2] == "spb"
+    assert after == before
+
+
+def test_move_to_moderation_logs_new_status_once(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short", status="approved")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_TO_MODERATION, by_admin=SUPERADMIN_ID,
+        )
+        return await db.list_admin_actions(DELEGATE_ID)
+
+    rows = _run(scenario())
+    assert len(rows) == 1
+    assert rows[0]["before"]["status"] == "approved"
+    assert rows[0]["after"]["status"] == "pending"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════

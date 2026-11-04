@@ -21,7 +21,7 @@ import asyncio
 import logging
 import os
 
-from database.db import get_user, record_answer_history, update_user_answers
+from database.db import get_user, record_admin_action, update_user_answers
 from domain.regform.engine import RESUME_MAX_BYTES, is_allowed_resume, resume_too_large
 from services.registration.reg_finalize import _apply_resume_url, _resume_file_stem, _resume_filename_mode
 
@@ -70,13 +70,15 @@ async def replace_resume(
         telegram_id, {"resume_file_id": file_id}, allowed_columns=["resume_file_id"],
     )
     try:
-        await record_answer_history(
-            telegram_id,
-            [{"column": "resume_file_id", "old": bool(old_file_id), "new": True}],
-            source=f"admin:{by_admin}",
+        await record_admin_action(
+            actor_id=by_admin,
+            subject_id=telegram_id,
+            action="replace_resume",
+            before={"had_file": bool(old_file_id)},
+            after={"had_file": True},
         )
     except Exception as e:
-        logger.warning(f"replace_resume: record_answer_history({telegram_id}) failed: {e}")
+        logger.warning(f"replace_resume: журнал действия ({telegram_id}) не записан: {e}")
 
     report: dict = {
         "ok": True, "error": None,

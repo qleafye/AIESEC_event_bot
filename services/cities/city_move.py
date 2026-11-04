@@ -5,7 +5,8 @@ msk «как есть, одобренной»). Единая точка прав
 (`scripts/move_city_dry_run.py`).
 
 Объём (SEED «Зависимости города»):
-  - `users.event_city` через `update_user_answers` + `record_answer_history(source="admin")`
+  - `users.event_city` через `update_user_answers`. Успешный перевод пишет одну строку
+    `admin_actions` (`city_move` или `city_move_regional`), не историю ответов.
     (`users.city` — родной город делегата из анкеты, НЕ трогаем, инвариант зафиксирован в самом
     SEED). Трек (`participant_type`) НЕ трогаем НИКОГДА, ни для party, ни для short/full —
     решение координатора 25.09 отменяет прежнее авто-переключение short↔full: прецедент 23.09
@@ -20,8 +21,8 @@ msk «как есть, одобренной»). Единая точка прав
     добавление в новую, ПОТОМ удаление из старой (сбой между шагами оставляет данные ДВАЖДЫ,
     что безопаснее потери — см. `memory/standalone-script-sheet-traps.md` и прецедент 23.09).
     Целевая вкладка = (новый город, СТАРЫЙ трек, `_resolve_sheet_targets`) — вкладка НЕ
-    создаётся НИКОГДА (ревью 🔴: `append_to_named_sheet` создаёт вкладку сама, здесь запрещено
-    — пишем через `services.sheets.sheets.append_to_existing_named_sheet`). Нет такой вкладки среди
+    создаётся НИКОГДА (вызов, который сам заводит вкладку, здесь запрещён — пишем через
+    `append_to_existing_named_sheet`). Нет такой вкладки среди
     РЕАЛЬНЫХ (`spreadsheet.worksheets()`) — падаем на главную вкладку города; нет и её — не
     пишем вовсе, отчёт называет проблему словами. Сбой листа НЕ откатывает уже применённую
     БД-часть — переезд БД важнее одной отстающей строки таблицы, которую менеджер потом сверит
@@ -39,7 +40,7 @@ import logging
 from domain.cities import get_city, get_setting_typed_for_city, normalize_city
 from database.db import (
     get_user,
-    record_answer_history,
+    record_admin_action,
     revert_user_to_pending,
     update_reg_draft_city,
     update_reg_started_city,
@@ -189,14 +190,10 @@ async def move_user_city(
     модерацию (`database.db.revert_user_to_pending`, тот же примитив, что
     `services/applications/reject_journal.py::return_to_moderation`), no-op если статус уже `pending`.
 
-    `history_source` — `source` записи `reg_answer_history` (решение координатора 25.09):
-    дефолт `"admin"` — ручной перевод менеджером карточкой (`handlers/cities/admin_city_move.py`,
-    `scripts/move_city_dry_run.py`, вызовы без этого параметра не меняются). Трек «региональные
-    форумы → Москва» (`services/regional_noshow_move.py::apply_move`) передаёт свой маркер
-    (`"system:regional_offer"`) — перенос инициирован делегатом по кнопке предложения, не
-    менеджером карточкой; экран истории правок показывает `source` как есть (см. `_EDITED_
-    SOURCE_LABELS.get(source, source)` в `services/applications/applications.py`), незнакомое значение не
-    роняет экран, просто печатается сырым текстом."""
+    `history_source` остаётся у вызывающих. `"system:regional_offer"` — действие
+    `city_move_regional` без автора: перенос инициирован делегатом по кнопке предложения.
+    Любой другой source, включая дефолт `"admin"`, — действие `city_move`, автор `by_admin`
+    (ноль значит автора нет). В историю ответов параметр больше не попадает."""
     if status_mode not in STATUS_MODES:
         return {"ok": False, "error": f"Неизвестный режим статуса: {status_mode!r}", "dry_run": dry_run}
 
@@ -347,8 +344,6 @@ async def move_user_city(
     patch = {"event_city": new_city}
     written = await update_user_answers(telegram_id, patch, allowed_columns=list(patch.keys()))
     if written:
-        changes = [{"column": k, "old": user.get(k), "new": v} for k, v in patch.items()]
-        await record_answer_history(telegram_id, changes, source=history_source)
         report["db_changes"].append("users")
 
     # ── 3. БД: reg_drafts / reg_started / digest-очереди ────────────────────────────────────
@@ -388,6 +383,33 @@ async def move_user_city(
             report["status_note"] = (
                 "статус успели изменить параллельно — перевод города применён, "
                 "возврат на модерацию не сработал"
+            )
+
+    if written:
+        # «Было» снято до UPDATE: после возврата на модерацию в карточке статус уже новый.
+        action = "city_move_regional" if history_source == "system:regional_offer" else "city_move"
+        actor_id = None if action == "city_move_regional" or not by_admin else by_admin
+        try:
+            await record_admin_action(
+                actor_id=actor_id,
+                subject_id=telegram_id,
+                action=action,
+                before={
+                    "event_city": report["before"]["event_city"],
+                    "status": report["before"]["status"],
+                    "participant_type": report["before"]["participant_type"],
+                },
+                after={
+                    "event_city": report["after"]["event_city"],
+                    "status": report["after"]["status"],
+                    "participant_type": report["after"]["participant_type"],
+                    "sheet_moved": bool(report["sheet"]["moved"]),
+                },
+            )
+        except Exception as e:
+            logger.error(
+                "city_move: журнал действия не записан, город уже сменён, telegram_id=%s: %s",
+                telegram_id, e,
             )
 
     return report

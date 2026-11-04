@@ -28,12 +28,9 @@ QR чек-ина «перестаёт пускать» БЕЗ отдельног
 'approved'»), возврат в `pending` сам закрывает пропуск. Монеты/реф-баллы за одобрение НЕ
 трогаются нигде в этом модуле — только читаются для превью (см. `preview_revert_pending`).
 
-Журнал: `record_answer_history(..., source=f"admin:{admin_id}")` — тот же маркер «кто и когда»,
-что у `services/cities/city_move.py` (координатор 25.09). Колонка снимка — `"status"`: экран «🕓
-История» (`handlers/applications/admin_moderation.py::appr_history`) пропускает записи с этой колонкой
-намеренно (статус уже показан отдельной строкой карточки) — сама запись при этом остаётся в
-`reg_answer_history`/листе «История правок» (оба читают `.get(source, source)`, незнакомый
-префикс `admin:<id>` печатается как есть, экран не ломает).
+Журнал: одна строка `admin_actions` с действием `revert_pending` (кто вернул, какой
+статус был и что стал `pending`). Это не правка анкеты и в историю ответов не попадает.
+Сбой записи журнала не откатывает уже возвращённый статус.
 
 Сообщение делегату — ОПЦИОНАЛЬНО (тумблер на экране подтверждения, дефолт — не сообщать,
 в отличие от `city_move`, где сообщения нет вовсе ни при каком положении): решение владельца
@@ -48,7 +45,7 @@ from __future__ import annotations
 import html as html_module
 import logging
 
-from database.db import get_balance, get_user, record_answer_history, revert_user_to_pending
+from database.db import get_balance, get_user, record_admin_action, revert_user_to_pending
 from domain.regform.labels import STATUS_LABELS
 from services.scheduler import cancel_payment_reminders
 from services.sheets.sheets import update_status_in_sheet
@@ -147,10 +144,16 @@ async def revert_to_pending(
         except Exception as e:
             logger.warning(f"revert_to_pending: cancel_payment_reminders({telegram_id}) failed: {e}")
 
-    await record_answer_history(
-        telegram_id, [{"column": "status", "old": old_status, "new": "pending"}],
-        source=f"admin:{by_admin}" if history_source == "admin" else history_source,
-    )
+    try:
+        await record_admin_action(
+            actor_id=by_admin,
+            subject_id=telegram_id,
+            action="revert_pending",
+            before={"status": old_status},
+            after={"status": "pending"},
+        )
+    except Exception as e:
+        logger.warning(f"revert_to_pending: журнал действия ({telegram_id}) не записан: {e}")
 
     try:
         report["sheet_updated"] = await update_status_in_sheet(telegram_id, STATUS_LABELS["pending"])

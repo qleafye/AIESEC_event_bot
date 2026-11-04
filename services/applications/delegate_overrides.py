@@ -9,7 +9,7 @@
 Инвариант «не больше одной активной строки на (telegram_id, kind)» держит `grant_override`
 здесь (проверяет `active_override` ДО вставки) — таблица append-only, повторная выдача после
 отзыва/использования заводит НОВУЮ строку, не перезаписывает старую (история выдач видна
-целиком, тот же приём, что у `reg_answer_history`).
+целиком, как у остальных журналов, куда строки только добавляют).
 
 `services/registration/reg_edit_policy.py::resubmit_gate`/`edit_gate` — ЕДИНСТВЕННЫЕ читатели
 `active_override` на пути делегата (peek, не consume: гейт может дёрнуться много раз за один
@@ -31,7 +31,7 @@ from database.db import (
     consume_delegate_override,
     get_active_delegate_override,
     grant_delegate_override,
-    record_answer_history,
+    record_admin_action,
     revoke_delegate_override,
 )
 from services.infra.timeutil import msk_now
@@ -70,10 +70,17 @@ async def grant_override(telegram_id: int, kind: str, admin_id: int) -> dict:
     if override_id is None:
         existing = await get_active_delegate_override(telegram_id, kind)
         return {"ok": False, "error": "Исключение уже выдано — сначала отзовите его.", "existing": existing}
-    await record_answer_history(
-        telegram_id, [{"column": f"{kind}_override", "old": None, "new": "granted"}],
-        source=f"admin:{admin_id}",
-    )
+    action = "grant_resubmit" if kind == KIND_RESUBMIT else "grant_edit"
+    try:
+        await record_admin_action(
+            actor_id=admin_id,
+            subject_id=telegram_id,
+            action=action,
+            before={"active": False},
+            after={"active": True},
+        )
+    except Exception as e:
+        logger.warning(f"grant_override: журнал действия ({telegram_id}) не записан: {e}")
     return {"ok": True, "id": override_id, "granted_at": now}
 
 
@@ -84,10 +91,17 @@ async def revoke_override(telegram_id: int, kind: str, admin_id: int) -> dict:
     revoked = await revoke_delegate_override(telegram_id, kind, admin_id, now)
     if not revoked:
         return {"ok": False, "error": "Исключения уже нет — возможно, его отозвали или делегат успел им воспользоваться."}
-    await record_answer_history(
-        telegram_id, [{"column": f"{kind}_override", "old": "granted", "new": "revoked"}],
-        source=f"admin:{admin_id}",
-    )
+    action = "revoke_resubmit" if kind == KIND_RESUBMIT else "revoke_edit"
+    try:
+        await record_admin_action(
+            actor_id=admin_id,
+            subject_id=telegram_id,
+            action=action,
+            before={"active": True},
+            after={"active": False},
+        )
+    except Exception as e:
+        logger.warning(f"revoke_override: журнал действия ({telegram_id}) не записан: {e}")
     return {"ok": True}
 
 
