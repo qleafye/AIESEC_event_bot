@@ -696,19 +696,28 @@ def _with_survey_links(block: dict, bot_username: str | None) -> dict:
 
 def build_feedback_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict,
-    *, event_code: str | None = None,
+    *, event_code: str | None = None, day: str | None = None,
 ) -> dict:
-    """Страница «Опросы и фидбек» — KPI + таблица форм за сегодня (МСК), те же цифры,
-    что `/feedback.json` для автообновления."""
+    """Страница «Опросы и фидбек» — один день программы. Те же цифры, что `/feedback.json`."""
     flags = queries.dashboard_flags(conn)
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
-    block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
-    q = urlencode({
-        k: v for k, v in (("city", scope.city), ("season", scope.season), ("event", event_code)) if v
-    })
+    program_days = queries.feedback_program_days(conn, scope)
+    selected = queries.resolve_feedback_day(
+        day, program_days, queries.msk_now().strftime("%Y-%m-%d"),
+    )
+    block = _with_survey_links(
+        queries.feedback_day(conn, scope, day=selected), cfg.bot_username,
+    )
+    q_parts = {
+        k: v for k, v in (
+            ("city", scope.city), ("season", scope.season),
+            ("event", event_code), ("day", selected),
+        ) if v
+    }
+    q = urlencode(q_parts)
     csv_summary_href = "/feedback.csv" + (f"?{q}" if q else "")
-    csv_answers_href = "/feedback.csv?part=answers" + (f"&{q}" if q else "")
+    csv_answers_href = "/feedback.csv?" + urlencode({**q_parts, "part": "answers"})
     return {
         "event_name": flags.get("event_name"),
         "event_season": scope.season or flags.get("event_season"),
@@ -724,6 +733,7 @@ def build_feedback_context(
         "csv_summary_href": csv_summary_href,
         "csv_answers_href": csv_answers_href,
         "event_code": event_code,
+        "day_options": program_days,
         **block,
     }
 
@@ -1342,20 +1352,27 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
 
         return templates.TemplateResponse(request, "sources.html", context)
 
+    def _feedback_selected(conn, scope, raw: str | None) -> str:
+        return queries.resolve_feedback_day(
+            raw, queries.feedback_program_days(conn, scope),
+            queries.msk_now().strftime("%Y-%m-%d"),
+        )
+
     @app.get("/feedback", response_class=HTMLResponse)
     def feedback_page(
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
         event: Optional[str] = None,
+        day: Optional[str] = None,
     ):
-        """Заполнение опросов и фидбека за сегодня. Периметр — копия `/` (редирект
+        """Заполнение опросов и фидбека за выбранный день. Периметр — копия `/` (редирект
         супердашборда, сессия/логин, пересверка `stats` на каждый запрос)."""
         if multi_mode(cfg.events):
             return _html_event(
                 request, event, "feedback.html",
                 lambda conn, scope, viewer, source: build_feedback_context(
-                    conn, cfg, scope, viewer, event_code=source.code,
+                    conn, cfg, scope, viewer, event_code=source.code, day=day,
                 ),
                 city=city, season=season,
             )
@@ -1384,7 +1401,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
                 "telegram_id": telegram_id,
                 "bound_city": staff_city(conn, telegram_id),
             }
-            context = build_feedback_context(conn, cfg, scope, viewer)
+            context = build_feedback_context(conn, cfg, scope, viewer, day=day)
 
         return templates.TemplateResponse(request, "feedback.html", context)
 
@@ -1394,13 +1411,17 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         city: Optional[str] = None,
         season: Optional[str] = None,
         event: Optional[str] = None,
+        day: Optional[str] = None,
     ):
         """Тот же агрегат, что HTML-страница — для polling без перезагрузки."""
         if multi_mode(cfg.events):
             return _data_event(
                 request, event,
                 lambda conn, scope, source: _with_survey_links(
-                    queries.feedback_day(conn, scope), cfg.bot_username,
+                    queries.feedback_day(
+                        conn, scope, day=_feedback_selected(conn, scope, day),
+                    ),
+                    cfg.bot_username,
                 ),
                 city=city, season=season,
             )
@@ -1413,7 +1434,10 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             if not has_stats(conn, telegram_id, cfg.admin_ids):
                 return JSONResponse({"error": "no_access"}, status_code=403)
             scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
-            block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
+            block = _with_survey_links(
+                queries.feedback_day(conn, scope, day=_feedback_selected(conn, scope, day)),
+                cfg.bot_username,
+            )
         return block
 
     @app.get("/feedback.csv")
@@ -1423,6 +1447,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         season: Optional[str] = None,
         part: Optional[str] = None,
         event: Optional[str] = None,
+        day: Optional[str] = None,
     ):
         """Сводка форм или детализация ответов. Та же сессия, что у `/feedback`, не публичный
         `/export`. `part=answers` — распределение и открытые ответы без ФИО со страницы."""
@@ -1430,7 +1455,9 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             kind = "answers" if (part or "") == "answers" else "summary"
             return _data_event(
                 request, event,
-                lambda conn, scope, source: queries.feedback_csv(conn, scope, part=kind),
+                lambda conn, scope, source: queries.feedback_csv(
+                    conn, scope, part=kind, day=_feedback_selected(conn, scope, day),
+                ),
                 city=city, season=season, csv_part=kind,
             )
 
@@ -1443,7 +1470,9 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             if not has_stats(conn, telegram_id, cfg.admin_ids):
                 return JSONResponse({"error": "no_access"}, status_code=403)
             scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
-            data, filename = queries.feedback_csv(conn, scope, part=kind)
+            data, filename = queries.feedback_csv(
+                conn, scope, part=kind, day=_feedback_selected(conn, scope, day),
+            )
         ascii_name = "feedback-answers.csv" if kind == "answers" else "feedback.csv"
         return Response(
             data,

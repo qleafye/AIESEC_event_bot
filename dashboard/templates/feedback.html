@@ -32,11 +32,11 @@
       <span class="switchers-label">Город:</span>
       <a class="switch-link{% if not scope.city %} active{% endif %}"
          {% if not scope.city %}aria-current="page"{% endif %}
-         href="?{% if event_code %}event={{ event_code | urlencode }}{% if scope.season %}&{% endif %}{% endif %}{% if scope.season %}season={{ scope.season }}{% endif %}">Все города</a>
+         href="?{% if event_code %}event={{ event_code | urlencode }}{% if scope.season or day %}&{% endif %}{% endif %}{% if scope.season %}season={{ scope.season }}{% endif %}{% if scope.season and day %}&{% endif %}{% if day %}day={{ day }}{% endif %}">Все города</a>
       {% for city in city_options %}
       <a class="switch-link{% if scope.city == city.code %} active{% endif %}"
          {% if scope.city == city.code %}aria-current="page"{% endif %}
-         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}">{{ city.label }}</a>
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}{% if day %}&day={{ day }}{% endif %}">{{ city.label }}</a>
       {% endfor %}
     </nav>
     {% elif viewer.bound_city %}
@@ -50,9 +50,21 @@
       {% set is_active = (scope.season and scope.season == season.value) or (not scope.season and season.current) %}
       <a class="switch-link{% if is_active %} active{% endif %}"
          {% if is_active %}aria-current="page"{% endif %}
-         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}">{{ season.label }}</a>
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}{% if day %}&day={{ day }}{% endif %}">{{ season.label }}</a>
       {% endfor %}
     </nav>
+    {% endif %}
+
+    {% if day_options|length > 1 %}
+    <nav class="switchers" aria-label="День форума">
+      <span class="switchers-label">День:</span>
+      {% for d in day_options %}
+      <a class="switch-link{% if d.day == day %} active{% endif %}"
+         {% if d.day == day %}aria-current="page"{% endif %}
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}{% if scope.city %}city={{ scope.city }}&{% endif %}{% if scope.season %}season={{ scope.season }}&{% endif %}day={{ d.day }}">{{ d.label }}</a>
+      {% endfor %}
+    </nav>
+    <p class="empty-note">Открытые анкеты пока видны на каждом дне. К какому дню какая анкета относится, ещё не решено.</p>
     {% endif %}
 
     <div class="updated-note" id="updated-note">
