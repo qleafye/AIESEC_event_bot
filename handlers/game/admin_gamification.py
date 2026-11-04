@@ -43,6 +43,7 @@ from aiogram.types import (
 
 from config import config
 from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city
 from services.infra.ru_plural import points_word  # «1 балл», «5 баллов» в текстах менеджеру
 from database.db import (
     GAME_CATEGORIES,
@@ -99,7 +100,6 @@ from domain.game.labels import (  # Phase 32 (32-07, D-25/D-27/D-35): срок/�
     task_has_deadline,
 )
 from services.game.game_award import award_for  # Phase 32 (фикс, CR-02): единая формула штрафа —
-# та же функция, что зовёт Mini App (miniapp/routers/review.py::review_approve), больше не
 # собственная копия здесь.
 from handlers.game.game_review_render import (  # Phase 16 (16-04): pure renders/keyboards (no router) -- shared
     _CARD_MAX, _CARD_PART_MAX, _GAME_PROOF_LABELS, _MEDIA_CAPTION_MAX, MEDIA_GROUP_MAX,  # noqa: F401
@@ -1362,18 +1362,18 @@ async def _show_current_submission(target: types.Message, state: FSMContext):
     # synchronous), same shape as city_labels above. limit==0/None (falsy) -> attempt stays
     # None -> _render_submission_card renders byte-identical to pre-phase.
     attempt = None
-    limit = await get_setting_typed("game_resubmit_limit")
+    limit = await get_setting_typed_for_city("game_resubmit_limit", current.get("user_event_city"))
     if limit:
         rejected = await count_rejected_submissions(current["task_id"], current["user_id"])
         attempt = (rejected + 1, limit)
     # Phase 16 (16-04, Экран 5): RU-категория и подпись типов подтверждения -- из реестра
     # (game_labels), «Осталось: N» -- из позиции; всё резолвится здесь, рендер синхронный.
-    category_label_text = await category_label(current["task_category"])
-    proof_label_text = await _registry_proof_types_label(current.get("task_proof_type"))
+    category_label_text = await category_label(current["task_category"], current.get("user_event_city"))
+    proof_label_text = await _registry_proof_types_label(current.get("task_proof_type"), current.get("user_event_city"))
     remaining = total - position
     # Phase 32 (32-07, D-25): резолвится здесь (тот же приём, что city_labels/attempt выше) —
     # рендер карточки остаётся синхронным.
-    penalty_percent = await get_setting_typed("game_late_penalty_percent")
+    penalty_percent = await get_setting_typed_for_city("game_late_penalty_percent", current.get("user_event_city"))
     card = _render_submission_card(
         current, position, total, parts, city_labels, attempt,
         category_label_text=category_label_text, remaining=remaining,

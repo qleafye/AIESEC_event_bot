@@ -36,7 +36,7 @@ from handlers.admin import router
 from handlers.access.admin_caps import has_capability
 from services.amb import amb_status, amb_tiers
 from services.infra.timeutil import msk_now
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city, is_per_city
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +300,10 @@ async def _notify(bot, tid: int, key: str) -> bool | None:
         from services.scheduler import _now_moscow_naive
 
         lang, tr_map = await i18n_context(tid)
-        text = i18n_tr(await get_setting_typed(key) or "", lang, tr_map)
+        city = None
+        if is_per_city(key):
+            city = (await _db.get_user(tid) or {}).get("event_city")
+        text = i18n_tr(await get_setting_typed_for_city(key, city) or "", lang, tr_map)
         if "{link}" in text:
             me = await bot.get_me()
             text = text.replace("{link}", build_referral_link(me.username, tid))
@@ -436,7 +439,7 @@ async def remove_confirm(callback: types.CallbackQuery):
         slot_note = "Место освободится — можно взять следующего из запаса."
     else:
         slot_note = "Места у него нет — счётчик мест не изменится."
-    message_text = html.escape(await get_setting_typed("amb_removed_text") or "")
+    message_text = html.escape(await get_setting_typed_for_city("amb_removed_text", user.get("event_city")) or "")
     text = (
         f"<b>Вывести {_name(user)} из команды?</b>\n\n{slot_note}\n\n"
         f"Ему придёт сообщение: «{message_text}»\n\n"

@@ -117,7 +117,7 @@ async def precheck_bot_name(value: str | None) -> str | None:
     """Проверка `bot_name` до записи (`settings_ops.cross_setting_error`): только длина и
     пустота, Telegram не зовём (см. докстринг модуля)."""
     if value is not None and not value.strip():
-        return "Имя бота не может быть пустым. Пришлите имя текстом, например «Юлид’26 · регистрация»."
+        return "Имя бота не может быть пустым. Пришлите имя текстом, например «Форум'26 · регистрация»."
     return name_length_error(value)
 
 

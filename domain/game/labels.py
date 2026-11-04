@@ -30,7 +30,7 @@ from datetime import datetime
 from database.db import GAME_CATEGORIES, GAME_PROOF_TYPES, NO_DEADLINE_AT, parse_proof_types, task_title
 from services.infra.ru_plural import agree_placeholder
 from services.infra.timeutil import msk_now
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city
 
 # code (GAME_CATEGORIES) -> registry key name (game_category_label_{light,medium,hard,
 # referral,special}) — один код на один ключ, порядок не важен (lookup by dict, not order).
@@ -55,23 +55,24 @@ _PROOF_TYPE_KEY: dict[str, str] = {
 }
 
 
-async def category_label(code: str) -> str:
-    """RU-подпись категории задания. Код не найден в _CATEGORY_KEY -> код без изменений."""
+async def category_label(code: str, city: str | None = None) -> str:
+    """RU-подпись категории задания. Код не найден в _CATEGORY_KEY -> код без изменений.
+    `city` — event_city человека, которому показывается подпись; без города — общее значение."""
     key = _CATEGORY_KEY.get(code)
     if key is None:
         return code
-    return await get_setting_typed(key)
+    return await get_setting_typed_for_city(key, city)
 
 
-async def proof_types_label(raw: str | None) -> str:
+async def proof_types_label(raw: str | None, city: str | None = None) -> str:
     """Пустой список типов -> `game_proof_type_unspecified_text` («не важно» по умолчанию);
     иначе RU-подписи через « + », в порядке GAME_PROOF_TYPES (не порядке ввода) —
     byte-identical к admin_gamification.py's _proof_types_label для того же входа, пока
     менеджер не переопределил подписи в настройках."""
     codes = parse_proof_types(raw)
     if not codes:
-        return await get_setting_typed("game_proof_type_unspecified_text")
-    labels = [await get_setting_typed(_PROOF_TYPE_KEY[c]) for c in codes]
+        return await get_setting_typed_for_city("game_proof_type_unspecified_text", city)
+    labels = [await get_setting_typed_for_city(_PROOF_TYPE_KEY[c], city) for c in codes]
     return " + ".join(labels)
 
 
@@ -121,7 +122,7 @@ def task_deadline_short(task: dict) -> tuple[str, bool]:
     return dt.strftime("%d.%m"), dt <= msk_now()
 
 
-async def task_deadline_text(task: dict) -> str:
+async def task_deadline_text(task: dict, city: str | None = None) -> str:
     """Phase 32 (32-04, D-27): срок ДЕЛЕГАТУ человеческими словами — короткая дата (как и
     раньше), а при отсутствии срока текст из реестра `game_task_no_deadline_text` («без
     срока» по умолчанию) вместо пустой строки/служебной метки. Единственное место, где текст
@@ -130,7 +131,7 @@ async def task_deadline_text(task: dict) -> str:
     short, _overdue = task_deadline_short(task)
     if short:
         return short
-    return await get_setting_typed("game_task_no_deadline_text")
+    return await get_setting_typed_for_city("game_task_no_deadline_text", city)
 
 
 def task_deadline_admin(task: dict, fmt: str = "%d.%m %H:%M") -> str:
@@ -210,24 +211,26 @@ def penalized_coins(coins: int, percent: int) -> int:
     return max(0, coins - coins * percent // 100)
 
 
-async def penalty_hint_line(task: dict) -> str | None:
+async def penalty_hint_line(task: dict, city: str | None = None) -> str | None:
     """Phase 32 (32-04, D-25): строка штрафа ДО сдачи — «после дедлайна — 70 баллов вместо
     100». `None`, если у задания нет срока (штраф без дедлайна бессмыслен) ИЛИ
     `game_late_penalty_percent` равен 0 — на событиях без штрафа (дефолт на каждом живом
     событии) карточка не меняется вовсе."""
     if not task_has_deadline(task):
         return None
-    percent = await get_setting_typed("game_late_penalty_percent")
+    percent = await get_setting_typed_for_city("game_late_penalty_percent", city)
     if not percent:
         return None
     dt = task_deadline(task)
     coins = task["coins"]
     penalized = penalized_coins(coins, percent)
-    template = await get_setting_typed("game_task_penalty_hint_text")
+    template = await get_setting_typed_for_city("game_task_penalty_hint_text", city)
     return fill_template(template, deadline=dt.strftime("%d.%m %H:%M"), penalized=penalized, coins=coins)
 
 
-async def render_task_card_text(task: dict, status_line: str, attempt: int | None) -> str:
+async def render_task_card_text(
+    task: dict, status_line: str, attempt: int | None, city: str | None = None,
+) -> str:
     """Phase 16 (16-01, GAME-UI-01): the task CARD shown when a delegate taps a task's button
     on the list -- title, RU category/coins/deadline, a composed status/attempt line, a
     proof-type hint, and the full description in a `<blockquote expandable>` (HTML-escaped
@@ -243,23 +246,23 @@ async def render_task_card_text(task: dict, status_line: str, attempt: int | Non
     строка штрафа `penalty_hint_line`, когда та не `None`. При проценте штрафа 0 и наличии
     срока вторая строка и остальной рендер байт-в-байт равны поведению до этого плана."""
     title = html.escape(task_title(task))
-    category = await category_label(task["category"])
+    category = await category_label(task["category"], city)
     deadline, overdue = task_deadline_short(task)
     if deadline:
         deadline_line = f"{category} · {task['coins']}🪙 · до {deadline}"
     else:
-        deadline_line = f"{category} · {task['coins']}🪙 · {await task_deadline_text(task)}"
+        deadline_line = f"{category} · {task['coins']}🪙 · {await task_deadline_text(task, city)}"
     lines = [f"<b>{title}</b>", deadline_line]
     if overdue:
         # A-05 (созвон 13.08): дедлайн мягкий, сдача разрешена, решение по коинам остаётся за
         # менеджером. Phase 17.1 (17.1-01): сама формулировка — в реестре.
-        lines.append(await get_setting_typed("game_task_overdue_hint_text"))
-    penalty_line = await penalty_hint_line(task)
+        lines.append(await get_setting_typed_for_city("game_task_overdue_hint_text", city))
+    penalty_line = await penalty_hint_line(task, city)
     if penalty_line is not None:
         lines.append(penalty_line)
-    status_label = await get_setting_typed("game_task_detail_status_label")
+    status_label = await get_setting_typed_for_city("game_task_detail_status_label", city)
     lines.append(status_label.format(status=status_line))
-    lines.append(f"Нужно прислать: {await proof_types_label(task.get('proof_type'))}")
+    lines.append(f"Нужно прислать: {await proof_types_label(task.get('proof_type'), city)}")
     lines.append("")
     lines.append(f"<blockquote expandable>{html.escape(str(task['text']))}</blockquote>")
     return "\n".join(lines)

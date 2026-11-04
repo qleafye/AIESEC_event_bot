@@ -42,7 +42,7 @@ from shared.amb_tier_keys import MAX_TIERS, tier_key
 from database import amb_tiers_db
 from database import db as _db
 from services.infra.timeutil import msk_now
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city, is_per_city
 
 logger = logging.getLogger(__name__)
 
@@ -68,13 +68,13 @@ def can_earn_tiers(user: dict | None, season: str, *, require_approved: bool = T
     return user.get("status") == "approved" and (user.get("season") or "") == (season or "")
 
 
-async def program_on() -> bool:
-    return await get_setting_typed("amb_qualified_program") == "on"
+async def program_on(city: str | None = None) -> bool:
+    return await get_setting_typed_for_city("amb_qualified_program", city) == "on"
 
 
-async def require_approved_on() -> bool:
+async def require_approved_on(city: str | None = None) -> bool:
     """Галочка события «ступени только амбассадору с одобренной заявкой» (по умолчанию включена)."""
-    return await get_setting_typed("amb_tiers_require_approved") != "off"
+    return await get_setting_typed_for_city("amb_tiers_require_approved", city) != "off"
 
 
 @dataclass(frozen=True)
@@ -89,20 +89,20 @@ class TierCfg:
     next_key: str
 
 
-async def tiers_count() -> int:
-    raw = int(await get_setting_typed("amb_tiers_count"))
+async def tiers_count(city: str | None = None) -> int:
+    raw = int(await get_setting_typed_for_city("amb_tiers_count", city))
     return max(1, min(MAX_TIERS, raw))
 
 
-async def tiers_config() -> list[TierCfg]:
+async def tiers_config(city: str | None = None) -> list[TierCfg]:
     """Ступени 1..`amb_tiers_count` по возрастанию."""
     result: list[TierCfg] = []
-    for n in range(1, await tiers_count() + 1):
-        quota_on = await get_setting_typed(tier_key(n, "quota_on")) == "on"
-        quota = int(await get_setting_typed(tier_key(n, "quota"))) if quota_on else None
+    for n in range(1, await tiers_count(city) + 1):
+        quota_on = await get_setting_typed_for_city(tier_key(n, "quota_on"), city) == "on"
+        quota = int(await get_setting_typed_for_city(tier_key(n, "quota"), city)) if quota_on else None
         result.append(TierCfg(
             n=n,
-            threshold=int(await get_setting_typed(tier_key(n, "threshold"))),
+            threshold=int(await get_setting_typed_for_city(tier_key(n, "threshold"), city)),
             text_key=tier_key(n, "text"),
             quota=quota,
             waitlist_key=tier_key(n, "waitlist"),
@@ -111,13 +111,13 @@ async def tiers_config() -> list[TierCfg]:
     return result
 
 
-async def thresholds() -> tuple[int, int, int]:
+async def thresholds(city: str | None = None) -> tuple[int, int, int]:
     """Пороги ступеней 1/2/3 (int реестра: мусор и ≤0 уже дают дефолт). Совместимость для
     вызовов, которым нужны ровно три порога."""
     return (
-        int(await get_setting_typed("amb_tier1_threshold")),
-        int(await get_setting_typed("amb_tier2_threshold")),
-        int(await get_setting_typed("amb_tier3_threshold")),
+        int(await get_setting_typed_for_city("amb_tier1_threshold", city)),
+        int(await get_setting_typed_for_city("amb_tier2_threshold", city)),
+        int(await get_setting_typed_for_city("amb_tier3_threshold", city)),
     )
 
 
@@ -125,14 +125,14 @@ async def current_season() -> str:
     return ((await _db.get_setting("event_season")) or "").strip()
 
 
-async def deadline_passed(now: datetime | None = None) -> bool:
+async def deadline_passed(now: datetime | None = None, city: str | None = None) -> bool:
     """Прошёл ли дедлайн выдачи ступеней (МСК). Пусто = дедлайна нет. Значение, записанное
     в обход валидатора и не разбираемое, тоже = дедлайна нет (с предупреждением в лог):
     опечатка менеджера не должна лишать амбассадоров ступеней.
 
     Минута дедлайна входит целиком: «23:59» значит «до 23:59:59 включительно» — так это
     понимает менеджер, а `msk_now()` с секундами иначе закрывал бы приём в 23:59:00."""
-    raw = ((await get_setting_typed("amb_count_deadline")) or "").strip()
+    raw = ((await get_setting_typed_for_city("amb_count_deadline", city)) or "").strip()
     if not raw:
         return False
     try:
@@ -169,6 +169,12 @@ def _left_to_next(cfg: list[TierCfg], qualified: int) -> int:
     return (min(pending) - qualified) if pending else 0
 
 
+async def _tier_rules(city: str | None):
+    cfg = await tiers_config(city)
+    quotas = {c.n: c.quota for c in cfg if c.quota is not None}
+    return cfg, quotas, await require_approved_on(city)
+
+
 async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None = None,
                       force: bool = False) -> list[dict]:
     """Выдаёт амбассадорам достигнутые ступени. Возвращает только НОВЫЕ:
@@ -183,13 +189,15 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
     Так «старшая + каждая ступень с квотой среди новых»; остальные младшие ступени
     помечаются уведомлёнными сразу, без сообщения: иначе человек получил бы «до следующей
     осталось 0» следом за «слот за тобой»."""
-    if not force and not await program_on():
-        return []
-    if await deadline_passed(now):
-        return []
-    cfg = await tiers_config()
-    quotas = {c.n: c.quota for c in cfg if c.quota is not None}
-    require_approved = await require_approved_on()
+    per_city = is_per_city("amb_qualified_program")
+    shared_rules = None
+    if not per_city:
+        if not force and not await program_on():
+            return []
+        if await deadline_passed(now):
+            return []
+        shared_rules = await _tier_rules(None)
+    rules_cache: dict = {}
     season = await current_season()
     stamp = (now or msk_now()).strftime(_STAMP)
 
@@ -205,6 +213,19 @@ async def check_tiers(referrer_ids, *, notify: bool = True, now: datetime | None
         seen.add(rid)
         try:
             referrer = await _db.get_user(rid)
+            if per_city:
+                city = (referrer or {}).get("event_city")
+                if not force and not await program_on(city):
+                    continue
+                if await deadline_passed(now, city):
+                    continue
+                rules = rules_cache.get(city)
+                if rules is None:
+                    rules = await _tier_rules(city)
+                    rules_cache[city] = rules
+            else:
+                rules = shared_rules
+            cfg, quotas, require_approved = rules
             if not can_earn_tiers(referrer, season, require_approved=require_approved):
                 continue
             counts = await amb_tiers_db.referral_counts(rid, season)
@@ -247,7 +268,7 @@ async def check_tiers_for_invitees(invitee_ids) -> None:
     одобренных, если они амбассадоры) и зовёт `check_tiers`. Никогда не бросает. При выключенной программе — одно чтение
     настройки и выход, без запросов к пользователям."""
     try:
-        if not await program_on():
+        if not is_per_city("amb_qualified_program") and not await program_on():
             return
         referrers: list[int] = []
         for raw_id in invitee_ids or ():
@@ -275,7 +296,7 @@ async def check_tiers_for_new_ambassador(telegram_id) -> None:
     пришли бы только со следующим одобрением — а его может и не быть. Никогда не бросает;
     при выключенной программе — одно чтение настройки."""
     try:
-        if not await program_on():
+        if not is_per_city("amb_qualified_program") and not await program_on():
             return
         await check_tiers([int(telegram_id)])
     except Exception:
@@ -328,10 +349,14 @@ async def promote_waitlist(tier: int, *, by: int | None) -> str:
     logger.info("admin=%s amb_tier_promote tid=%s tier=%s", by, promoted, tier)
     try:
         counts = await amb_tiers_db.referral_counts(promoted, await current_season())
+        left_cfg = await tiers_config()
+        if is_per_city("amb_qualified_program"):
+            promoted_user = await _db.get_user(promoted)
+            left_cfg = await tiers_config((promoted_user or {}).get("event_city"))
         await _db.enqueue_miniapp_outbox(
             TIER_EVENT_KIND,
             {"telegram_id": promoted, "tier": tier,
-             "left": _left_to_next(await tiers_config(), counts["qualified"])},
+             "left": _left_to_next(left_cfg, counts["qualified"])},
             stamp,
         )
     except Exception:
@@ -358,7 +383,7 @@ async def reconcile_tiers() -> dict:
     поставлено заново}`."""
     result = {"granted": 0, "requeued": 0}
     try:
-        if not await program_on():
+        if not is_per_city("amb_qualified_program") and not await program_on():
             return result
         season = await current_season()
         ids = await amb_tiers_db.active_ambassadors_with_invitees(season)
@@ -366,16 +391,26 @@ async def reconcile_tiers() -> dict:
             result["granted"] = len(await check_tiers(ids, notify=True))
         stamp_now = msk_now()
         older = (stamp_now - timedelta(minutes=STALE_NOTIFY_MINUTES)).strftime(_STAMP)
+        per_city = is_per_city("amb_qualified_program")
         cfg = await tiers_config()
+        cfg_cache: dict = {None: cfg}
         for row in await amb_tiers_db.stale_unnotified(older):
             try:
                 rid, tier = int(row["telegram_id"]), int(row["tier"])
                 if await amb_tiers_db.has_pending_tier_event(TIER_EVENT_KIND, rid, tier):
                     continue
+                left_cfg = cfg
+                if per_city:
+                    person = await _db.get_user(rid)
+                    city = (person or {}).get("event_city")
+                    left_cfg = cfg_cache.get(city)
+                    if left_cfg is None:
+                        left_cfg = await tiers_config(city)
+                        cfg_cache[city] = left_cfg
                 counts = await amb_tiers_db.referral_counts(rid, season)
                 await _db.enqueue_miniapp_outbox(
                     TIER_EVENT_KIND,
-                    {"telegram_id": rid, "tier": tier, "left": _left_to_next(cfg, counts["qualified"])},
+                    {"telegram_id": rid, "tier": tier, "left": _left_to_next(left_cfg, counts["qualified"])},
                     stamp_now.strftime(_STAMP),
                 )
                 result["requeued"] += 1
@@ -400,11 +435,16 @@ async def preview_backfill() -> list[dict]:
 
     Элемент: `{"telegram_id", "username", "qualified", "tiers": [{"tier", "o2o_status",
     "exists"}]}` — `exists=True` у ступеней, которые уже выданы. Дедлайн прошёл — `[]`."""
-    if await deadline_passed():
-        return []
-    cfg = await tiers_config()
-    quotas = {c.n: c.quota for c in cfg if c.quota is not None}
-    require_approved = await require_approved_on()
+    per_city = is_per_city("amb_qualified_program")
+    shared_cfg = None
+    shared_quotas = None
+    shared_require = None
+    if not per_city:
+        if await deadline_passed():
+            return []
+        shared_cfg = await tiers_config()
+        shared_quotas = {c.n: c.quota for c in shared_cfg if c.quota is not None}
+        shared_require = await require_approved_on()
     season = await current_season()
     times = await amb_tiers_db.qualified_approval_times(season)
     existing: dict[int, dict[int, dict]] = {}
@@ -412,13 +452,31 @@ async def preview_backfill() -> list[dict]:
         existing.setdefault(int(row["telegram_id"]), {})[int(row["tier"])] = row
 
     floors = await amb_tiers_db.revoked_floors(season)
-    first_threshold = cfg[0].threshold
+    rules_cache: dict = {}
     candidates = []
     for rid, approvals in times.items():
         qualified = len(approvals)
-        if qualified < first_threshold:
-            continue
-        user = await _db.get_user(rid)
+        if not per_city:
+            cfg, quotas, require_approved = shared_cfg, shared_quotas, shared_require
+            if qualified < cfg[0].threshold:
+                continue
+            user = await _db.get_user(rid)
+        else:
+            user = await _db.get_user(rid)
+            city = (user or {}).get("event_city")
+            if await deadline_passed(city=city) or not await program_on(city):
+                continue
+            rules = rules_cache.get(city)
+            if rules is None:
+                cfg = await tiers_config(city)
+                quotas = {c.n: c.quota for c in cfg if c.quota is not None}
+                require_approved = await require_approved_on(city)
+                rules = (cfg, quotas, require_approved)
+                rules_cache[city] = rules
+            else:
+                cfg, quotas, require_approved = rules
+            if not cfg or qualified < cfg[0].threshold:
+                continue
         if not can_earn_tiers(user, season, require_approved=require_approved):
             continue
         floor = floors.get(rid)
@@ -427,14 +485,14 @@ async def preview_backfill() -> list[dict]:
         if all(t in have for t in reached):
             continue
         quoted = [c for c in cfg if c.n in quotas and qualified >= c.threshold]
-        key_threshold = quoted[0].threshold if quoted else first_threshold
-        candidates.append((approvals[key_threshold - 1], rid, user, qualified, reached, have))
+        key_threshold = quoted[0].threshold if quoted else cfg[0].threshold
+        candidates.append((approvals[key_threshold - 1], rid, user, qualified, reached, have, quotas))
     candidates.sort(key=lambda c: (c[0], c[1]))
 
     summary = await amb_tiers_db.quota_summary()
-    granted = {t: summary.get(t, {}).get("granted", 0) for t in quotas}
+    granted: dict[int, int] = {}
     result = []
-    for _, rid, user, qualified, reached, have in candidates:
+    for _, rid, user, qualified, reached, have, quotas in candidates:
         tiers = []
         for tier in reached:
             if tier in have:
@@ -442,6 +500,8 @@ async def preview_backfill() -> list[dict]:
                 continue
             status = None
             if tier in quotas:
+                if tier not in granted:
+                    granted[tier] = summary.get(tier, {}).get("granted", 0)
                 status = "granted" if granted[tier] < quotas[tier] else "waitlist"
                 if status == "granted":
                     granted[tier] += 1

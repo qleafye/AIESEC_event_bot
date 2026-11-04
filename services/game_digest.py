@@ -25,7 +25,7 @@ import html
 import logging
 from datetime import datetime, timedelta
 
-from domain.cities import cities_module_on, normalize_city
+from domain.cities import cities_module_on, get_setting_typed_for_city, is_per_city, normalize_city
 from database.db import (
     enqueue_game_digest, get_user, list_unsent_game_digest, mark_game_digest_sent,
 )
@@ -116,13 +116,20 @@ async def notify_submission(bot, *, submission_id: int, user_id: int, task_id: i
     и в уведомлении менеджеру читался как обрезанная простыня."""
     from handlers.access.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
     city = await resolve_submitter_city(user_id)
-    mode = await get_setting_typed("game_submit_notify_mode")
+    raw_city = None
+    if is_per_city("game_submit_notify_mode"):
+        try:
+            user = await get_user(user_id)
+            raw_city = user.get("event_city") if user else None
+        except Exception:
+            raw_city = None
+    mode = await get_setting_typed_for_city("game_submit_notify_mode", raw_city)
     if mode == "digest":
         await enqueue_game_digest(
             submission_id, user_id, task_id, city,
             msk_now().strftime("%Y-%m-%d %H:%M:%S"),
         )
-        minutes = await get_setting_typed("game_submit_digest_minutes")
+        minutes = await get_setting_typed_for_city("game_submit_digest_minutes", raw_city)
         arm_digest_job(city, minutes)
         return
     await notify_by_capability(
@@ -163,9 +170,9 @@ async def rearm_pending_digests() -> list[str | None]:
         rows = await list_unsent_game_digest(all_cities=True)
         if not rows:
             return armed
-        minutes = await get_setting_typed("game_submit_digest_minutes")
         sched = _sched.get_scheduler()
         for city in dict.fromkeys(r["city"] for r in rows):
+            minutes = await get_setting_typed_for_city("game_submit_digest_minutes", city)
             if sched.get_job(digest_job_id(city)) is None:
                 arm_digest_job(city, minutes)
                 armed.append(city)
