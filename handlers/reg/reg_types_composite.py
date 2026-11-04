@@ -79,7 +79,7 @@ async def maybe_show_recap(step_key: str, message: types.Message, state: FSMCont
         toggle_step = _COMPOSITE_TOGGLE_STEP.get(group)
         studying = True
         if toggle_step and toggle_step in parts:
-            studying = is_studying(data.get(toggle_step, ""), await studying_statuses())
+            studying = is_studying(data.get(toggle_step, ""), await studying_statuses(city_code))
         relevant = [sk for sk in parts if sk == toggle_step or studying]
         if not relevant:
             continue
@@ -111,7 +111,7 @@ async def _send_recap(group: str, relevant: list[str], message: types.Message, s
     for part in relevant:
         col = STEP_TO_COLUMN.get(part, part)
         raw_value = data.get(col) or "-"
-        value = await reg_i18n.display_value_for_step(part, raw_value, lang, tr_map)
+        value = await reg_i18n.display_value_for_step(part, raw_value, lang, tr_map, data.get("event_city"))
         label = reg_i18n.tr_text(label_for(part), lang, tr_map)
         lines.append(f"<i>{html.escape(str(label))}</i>: <b>{html.escape(str(value))}</b>")
     text = "\n".join(lines)

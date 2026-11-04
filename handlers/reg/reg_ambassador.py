@@ -65,7 +65,7 @@ async def offer_ref_link(message: types.Message, telegram_id: int, event_city: s
             state = "open"
         if state == "candidate":
             # Подтверждение обещает ссылку («уже твоя») — она идёт следом, как после кнопки.
-            ack = await get_setting_typed("amb_candidate_ack_text")
+            ack = await get_setting_typed_for_city("amb_candidate_ack_text", event_city)
             if ack:
                 await reg_i18n.say(message, ack)
             await _send_link_and_note(message, message.bot, telegram_id)
@@ -137,7 +137,7 @@ async def regamb_want(callback: types.CallbackQuery):
     result = await amb_status.request_join(uid, source="button_bot")
     outcome = result.outcome
     if outcome in ("full", "declined"):
-        text = await reg_i18n.tr_for(callback, await get_setting_typed("amb_slots_full_text") or "")
+        text = await reg_i18n.tr_for(callback, await get_setting_typed_for_city("amb_slots_full_text", (await get_user(uid) or {}).get("event_city")) or "")
         await callback.answer(_alert_text(text), show_alert=True)
         await _hide_keyboard(callback)
         if len(text) > _ALERT_MAX:
@@ -148,7 +148,7 @@ async def regamb_want(callback: types.CallbackQuery):
     if outcome == "no_user":
         return
     if outcome in ("candidate", "already_candidate"):
-        ack = await get_setting_typed("amb_candidate_ack_text")
+        ack = await get_setting_typed_for_city("amb_candidate_ack_text", (await get_user(uid) or {}).get("event_city"))
         if ack:
             await reg_i18n.say(callback.message, ack)
     await _send_link_and_note(callback.message, callback.bot, uid)

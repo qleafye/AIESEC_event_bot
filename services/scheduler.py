@@ -22,6 +22,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from config import config
 from database.db import get_setting
+from domain.cities import get_setting_typed_for_city
 from domain.settings.schema import get_setting_typed
 from services.infra.timeutil import MOSCOW_TZ, msk_now
 
@@ -1158,13 +1159,15 @@ async def send_payment_reminder(user_id: int):
         from database.db import get_user
         # Gated at FIRE time (not scheduling) so the admin toggle takes effect live — even
         # on reminders already sitting in the jobstore. Default on = prior behaviour.
-        if await get_setting_typed("payment_reminders_enabled") != "on":  # REG-02: registry-backed
-            return
+        # Город человека: текст и тумблер читаются после загрузки пользователя.
         user = await get_user(user_id)
         if not user or user.get("payment_status") in ("paid", "receipt_sent", None):
             return
         if user.get("delegation_answer_id"):
             return  # делегату вуза оплата не нужна — напоминание ему не уходит
+        pay_city = user.get("event_city")
+        if await get_setting_typed_for_city("payment_reminders_enabled", pay_city) != "on":
+            return
         from services.comms import quiet_hours
         now = _now_moscow_naive()
         due = await quiet_hours.defer_until(now, user_id)
@@ -1174,7 +1177,7 @@ async def send_payment_reminder(user_id: int):
                 id=f"pay_reminder_{user_id}_quiet_hours_shift", replace_existing=True,
             )
             return
-        text = await get_setting("payment_reminder_text") or (
+        text = await get_setting_typed_for_city("payment_reminder_text", pay_city) or (
             "⏰ Напоминание об оплате участия!\n\n"
             "Срок оплаты истекает скоро. Загрузи чек оплаты через бота."
         )
@@ -1264,15 +1267,8 @@ async def sweep_payment_overdue():
     single-shot budget that a queued send would spend for nothing)."""
     try:
         from database.db import _connect
-        # REG-02: read through the registry accessor — byte-identical to the previous
-        # get_setting + _parse_schedule_dt pair (see tests/test_settings_consumers_phase6.py).
-        deadline = await get_setting_typed("payment_deadline")
-        if not deadline:
-            return
-        # TZFIX-260816: payment_deadline is admin-entered ДД.ММ.ГГГГ ЧЧ:ММ meaning Moscow
-        # wall-clock time, so compare against Moscow wall-clock, not the container clock (UTC).
-        if _now_moscow_naive() < deadline:
-            return
+        # Дедлайн и текст — у каждого получателя свой город. Сравнение с московскими часами
+        # (TZFIX-260816): payment_deadline вводит менеджер как ДД.ММ.ГГГГ ЧЧ:ММ.
         select_where = (
             "payment_status='not_paid' "
             "AND (payment_option IS NOT NULL OR payment_due IS NOT NULL) "
@@ -1282,30 +1278,36 @@ async def sweep_payment_overdue():
         )
         async with _connect() as db:
             cursor = await db.execute(
-                f"SELECT telegram_id FROM users WHERE {select_where}"
+                f"SELECT telegram_id, event_city FROM users WHERE {select_where}"
             )
-            overdue_ids = [row[0] for row in await cursor.fetchall()]
-            await db.execute(
-                f"UPDATE users SET payment_status='overdue' WHERE {select_where}"
-            )
-            await db.commit()
-        # One final ping to each user we just flipped to 'overdue'. The status change
-        # means the next sweep won't re-select them, so this fires exactly once. The
-        # status flip above always runs (feeds the «неоплатившие» broadcast segment); only
-        # the ping respects the auto-reminders toggle.
-        if overdue_ids and await get_setting_typed("payment_reminders_enabled") == "on":  # REG-02: registry-backed
-            text = await get_setting("payment_overdue_text") or (
+            owing = [(row[0], row[1]) for row in await cursor.fetchall()]
+        now = _now_moscow_naive()
+        from services.comms import quiet_hours
+        for tid, city in owing:
+            deadline = await get_setting_typed_for_city("payment_deadline", city)
+            if not deadline or now < deadline:
+                continue
+            async with _connect() as db:
+                await db.execute(
+                    "UPDATE users SET payment_status='overdue' "
+                    "WHERE telegram_id = ? AND payment_status = 'not_paid'",
+                    (tid,),
+                )
+                await db.commit()
+            # Статус меняется сразу (сегмент «неоплатившие»). Пинг — только если напоминания
+            # этого города включены. Следующий прогон человека уже не выберет.
+            if await get_setting_typed_for_city("payment_reminders_enabled", city) != "on":
+                continue
+            text = await get_setting_typed_for_city("payment_overdue_text", city) or (
                 "⚠️ Срок оплаты участия истёк.\n\n"
                 "Если ты ещё планируешь участвовать — загрузи чек через бота "
                 "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
             )
-            from services.comms import quiet_hours
-            for tid in overdue_ids:
-                await quiet_hours.send_or_queue_text(
-                    _now_moscow_naive(), tid, text,
-                    sender=lambda cid=tid, txt=text: _send_delegate_message(cid, txt),
-                )
-                await asyncio.sleep(0.05)
+            await quiet_hours.send_or_queue_text(
+                now, tid, text,
+                sender=lambda cid=tid, txt=text: _send_delegate_message(cid, txt),
+            )
+            await asyncio.sleep(0.05)
     except Exception as e:
         logger.error(f"sweep_payment_overdue failed: {e}")
 
@@ -1584,22 +1586,18 @@ async def nudge_incomplete_registrations():
     заново на КАЖДОГО кандидата внутри цикла (`_nudge_remaining_for`), сам `text`
     (общий, прочитанный один раз) не перезаписывается."""
     try:
-        from database.db import get_nudge_candidates, mark_nudged
-        if not _nudge_enabled(await get_setting("nudge_enabled")):
-            return
-        after_minutes = _int_or_default(await get_setting("nudge_after_minutes"), 120)
-        # Quick 260912-mcj: инверсия TZFIX-260816. Раньше `reg_started.started_at` писался
-        # часами контейнера (UTC на проде) и обе стороны сравнения намеренно держали на
-        # container clock. С этого квика колонка пишется московским `msk_now()`, а все старые
-        # строки сдвинуты одноразовой миграцией на +3 часа — значит и «сейчас» здесь обязано
-        # быть московским, иначе разъезд на 3 часа возникнет в обратную сторону. См.
-        # `_nudge_cutoff` и `_now_moscow_naive` выше.
-        cutoff = _nudge_cutoff(_now_moscow_naive(), after_minutes)
+        from database.db import (
+            get_nudge_candidates, mark_nudged, get_reg_started_by_id, get_reg_draft,
+        )
+        # Quick 260912-mcj: `reg_started.started_at` пишется московским `msk_now()`.
+        # Широкое окно в SQL (1 минута), чтобы короткий городской срок не потерялся.
+        # Минуты, тумблер и текст каждого человека проверяются внутри цикла: и старт, и
+        # черновик сверяются с ЕГО порогом, иначе недавняя правка анкеты не защитит.
+        now_for_cutoff = _now_moscow_naive()
+        cutoff = _nudge_cutoff(now_for_cutoff, 1)
         candidates = await get_nudge_candidates(cutoff)
         if not candidates:
             return
-        text = await get_setting("nudge_text") or DEFAULT_NUDGE_TEXT
-        has_remaining_placeholder = "{remaining}" in text
         # Phase 21 (21-09, D-21): вторая поверхность — «в чате» (deep-link ?start=continue) и
         # «📱 в приложении» (web_app, только при включённом разделе «📝 Анкета» и самом Mini
         # App). Построены ОДИН раз на весь прогон джобы, не на каждого делегата — get_me()/
@@ -1613,6 +1611,24 @@ async def nudge_incomplete_registrations():
         now = _now_moscow_naive()
         tr_maps: dict[str, dict] = {}
         for tid in candidates:
+            started = await get_reg_started_by_id(tid)
+            if not started:
+                continue
+            nudge_city = started.get("event_city")
+            if not _nudge_enabled(await get_setting_typed_for_city("nudge_enabled", nudge_city)):
+                continue
+            minutes = _int_or_default(
+                await get_setting_typed_for_city("nudge_after_minutes", nudge_city), 120,
+            )
+            city_cutoff = _nudge_cutoff(now_for_cutoff, minutes)
+            if (started.get("started_at") or "") >= city_cutoff:
+                continue
+            draft = await get_reg_draft(tid)
+            draft_touch = (draft or {}).get("updated_at") or ""
+            if draft_touch >= city_cutoff:
+                continue
+            text = await get_setting_typed_for_city("nudge_text", nudge_city) or DEFAULT_NUDGE_TEXT
+            has_remaining_placeholder = "{remaining}" in text
             if await quiet_hours.defer_until(now, tid) is not None:
                 continue  # тихие часы -- пропуск без mark_nudged, заберёт следующий тик
             # Делегат, выбравший английский до обрыва анкеты, получал напоминание и кнопки
@@ -1928,15 +1944,18 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         # амбассадор видел их русскими, хотя весь остальной текст ЛС переведён.
         coins_word = i18n.tr("баллов", lang, tr_map)
         deadline_prefix = i18n.tr("до", lang, tr_map)
+        # Тот же `event_city` получателя, что ниже уходит в шаблон волны как `wave_city`.
+        # «без срока» — городской ключ реестра; пользователь уже загружен.
+        wave_city = user.get("event_city")
         lines = []
         for t in tasks:
             # WR-12: `game_labels.task_deadline_text` уже возвращает готовое «без срока» для
             # задания без дедлайна — приклеивать «до » нужно ТОЛЬКО когда срок реально есть,
             # иначе делегат видит «до без срока».
             if game_labels.task_has_deadline(t):
-                deadline_tail = f"{deadline_prefix} {await game_labels.task_deadline_text(t)}"
+                deadline_tail = f"{deadline_prefix} {await game_labels.task_deadline_text(t, wave_city)}"
             else:
-                deadline_tail = await game_labels.task_deadline_text(t)
+                deadline_tail = await game_labels.task_deadline_text(t, wave_city)
             amount = game_labels.fill_template("{n} " + coins_word, n=int(t["coins"]))  # «1 балл»
             lines.append(f"• {html.escape(str(task_title(t)))} — {amount}, {deadline_tail}")
         tasks_block = "\n".join(lines)
@@ -1960,14 +1979,18 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         # CR-05: подстановка в текст, который правит менеджер, — цепочкой `.replace`
         # (`game_labels.fill_template`), НЕ `.format()`: посторонний `{`/`}` в тексте
         # менеджера не должен ронять рассылку целиком (T-073-03-05).
-        template = i18n.tr(await get_setting_typed("wave_start_message_text"), lang, tr_map)
+        template = i18n.tr(
+            await get_setting_typed_for_city("wave_start_message_text", wave_city), lang, tr_map,
+        )
         text = game_labels.fill_template(
             template, wave=wave["number"], ends=ends_txt, intro=intro_block, tasks=tasks_block,
         )
         if not intro:
             text = text.replace("\n\n\n", "\n\n")
 
-        button_text = i18n.tr(await get_setting_typed("wave_start_button_text"), lang, tr_map)
+        button_text = i18n.tr(
+            await get_setting_typed_for_city("wave_start_button_text", wave_city), lang, tr_map,
+        )
         markup = InlineKeyboardMarkup(inline_keyboard=[[
             # Переиспользуем существующий делегатский экран списка заданий (page 0) —
             # handlers/user_actions.py::F.data.startswith("gtasks_page:") — вместо нового
@@ -2161,7 +2184,6 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         else:
             recipients = await _task_out_of_wave_recipients(task)
 
-        template_raw = await get_setting_typed("wave_deadline_reminder_text")
         game_open = await _game_open_filter()
         from database.db import mark_task_deadline_reminded
         # Отметка ДО рассылки: лучше недослать одному при сбое, чем разослать всем дважды.
@@ -2173,8 +2195,12 @@ async def send_task_deadline_reminder(task_id: int) -> None:
             # CR-05: сбой у ОДНОГО получателя (например, кривой src в i18n) не должен
             # обрывать напоминание остальным несдавшим — тот же приём, что в `send_wave_results`.
             try:
-                if not game_open(await get_user(uid) or {}):
+                recipient = await get_user(uid) or {}
+                if not game_open(recipient):
                     continue  # задания ему закрыты (отклонён, ждёт решения, прошлый сезон)
+                template_raw = await get_setting_typed_for_city(
+                    "wave_deadline_reminder_text", recipient.get("event_city"),
+                )
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
                 lang, tr_map = await i18n.context(uid)
@@ -2251,7 +2277,7 @@ async def send_wave_end_ping(wave_id: int) -> None:
 
         # CR-05: `.replace`-подстановка (fill_template), не `.format()` — менеджерский текст
         # может содержать посторонний `{`/`}`.
-        template = await get_setting_typed("wave_end_manager_text")
+        template = await get_setting_typed_for_city("wave_end_manager_text", city)
         text = game_labels.fill_template(
             template, wave=wave.get("number"), top=top_txt, pending=summary["pending"],
         )
@@ -2316,7 +2342,9 @@ async def send_wave_results(wave_id: int) -> None:
     получателя (CR-05) — сбой одного (кривой src в i18n, блокировка бота) не обрывает рассылку
     остальным."""
     try:
-        from database.db import get_wave, get_wave_results, get_display_names, mark_wave_result_notified
+        from database.db import (
+            get_wave, get_wave_results, get_display_names, mark_wave_result_notified, get_user,
+        )
         import domain.game.labels as game_labels
         from services.comms import quiet_hours
         from services.i18n import i18n
@@ -2338,9 +2366,6 @@ async def send_wave_results(wave_id: int) -> None:
             for w in winners
         ) or "—"
 
-        announce_raw = await get_setting_typed("wave_results_announce_text")
-        winner_raw = await get_setting_typed("wave_results_winner_text")
-        prize_raw = await get_setting_typed("wave_results_prize_text")
         wave_number = wave.get("number")
         now = _now_moscow_naive()
 
@@ -2356,6 +2381,10 @@ async def send_wave_results(wave_id: int) -> None:
                 ):
                     continue  # отметил параллельный тик той же джобы — не шлём вторично
 
+                person_city = (await get_user(user_id) or {}).get("event_city")
+                announce_raw = await get_setting_typed_for_city("wave_results_announce_text", person_city)
+                winner_raw = await get_setting_typed_for_city("wave_results_winner_text", person_city)
+                prize_raw = await get_setting_typed_for_city("wave_results_prize_text", person_city)
                 lang, tr_map = await i18n.context(user_id)
                 text = game_labels.fill_template(
                     i18n.tr(announce_raw, lang, tr_map),

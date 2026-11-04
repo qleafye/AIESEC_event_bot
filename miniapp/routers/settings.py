@@ -904,7 +904,8 @@ async def settings_preview(
     `.replace`-цепочками, что у консьюмеров бота; результат — plain-текст для DOM."""
     if _editable_target(key) is None:
         raise HTTPException(403, {"reason": "not_editable", "key": key})
-    samples = await settings_ops.preview_samples()
+    selected = await admin_selected_city(p.telegram_id)
+    samples = await settings_ops.preview_samples(None if selected in (None, ALL_CITIES) else selected)
     return {"text": settings_ops.preview_text(key, value, samples=samples)}
 
 

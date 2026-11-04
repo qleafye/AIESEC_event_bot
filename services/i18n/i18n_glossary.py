@@ -79,8 +79,6 @@ logger = logging.getLogger(__name__)
 # утверждённому списку 8 дефолтных городов domain/regform/engine.py::SELECT_CONFIG["city"]).
 DNT: dict[str, str] = {
     "АЙСЕК": "AIESEC",
-    "Юлид": "YouLead",
-    "РеалТок": "RealTalk",
     # Города — утверждённый дефолтный список анкеты (domain/regform/engine.py, "city"), фиксированные
     # соответствия вместо MT (27-PROBE-REPORT.md, «Рекомендация» п.4 — MT даёт нижний регистр).
     "Москва и МО": "Moscow and MO",

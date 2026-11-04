@@ -13,14 +13,16 @@ fail-soft edit; хендлеры остаются в `handlers/user_actions.py` 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city, is_per_city
 from services.i18n import i18n as i18n_service
 
 PART_KIND_ORDER = ("photo", "document", "text", "link")
 PART_KIND_EMOJI = {"photo": "📸", "document": "📄", "text": "✍️", "link": "🔗"}
 
 
-async def game_counter_text(parts: list[dict], lang: str = "ru", tr_map: dict | None = None) -> str:
+async def game_counter_text(
+    parts: list[dict], lang: str = "ru", tr_map: dict | None = None, city: str | None = None,
+) -> str:
     # Ленивый импорт: handlers.i18n.reg_i18n импортирует handlers.registration лениво внутри say()
     # (не на уровне модуля) — цикла нет, но держим импорт рядом с использованием, как и другие
     # швы этого файла (docstring модуля: чистый рендер, минимум связей).
@@ -34,7 +36,7 @@ async def game_counter_text(parts: list[dict], lang: str = "ru", tr_map: dict | 
     breakdown = " ".join(
         f"{PART_KIND_EMOJI[kind]}{counts[kind]}" for kind in PART_KIND_ORDER if counts[kind]
     )
-    template = await get_setting_typed("game_proof_collected_template")
+    template = await get_setting_typed_for_city("game_proof_collected_template", city)
     template = reg_i18n.tr_text(template, lang, tr_map)
     try:
         text = template.format(count=len(parts), breakdown=breakdown)
@@ -46,18 +48,20 @@ async def game_counter_text(parts: list[dict], lang: str = "ru", tr_map: dict | 
     return text
 
 
-async def game_counter_kb(parts: list[dict], lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:
+async def game_counter_kb(
+    parts: list[dict], lang: str = "ru", tr_map: dict | None = None, city: str | None = None,
+) -> InlineKeyboardMarkup:
     """Ряд 1: «✅ Готово» (+ «🗑 Убрать последнее», только когда есть что убирать);
     ряд 2: «❌ Отмена» — тот же литерал, что у reply-клавиатуры get_cancel_kb()."""
     from handlers.i18n import reg_i18n
     tr_map = tr_map or {}
     row = [InlineKeyboardButton(
-        text=reg_i18n.tr_text(await get_setting_typed("game_proof_done_button"), lang, tr_map),
+        text=reg_i18n.tr_text(await get_setting_typed_for_city("game_proof_done_button", city), lang, tr_map),
         callback_data="gs_done",
     )]
     if parts:
         row.append(InlineKeyboardButton(
-            text=reg_i18n.tr_text(await get_setting_typed("game_proof_remove_last_button"), lang, tr_map),
+            text=reg_i18n.tr_text(await get_setting_typed_for_city("game_proof_remove_last_button", city), lang, tr_map),
             callback_data="gs_remove_last",
         ))
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -78,16 +82,24 @@ async def edit_counter(bot: Bot, data: dict, parts: list[dict], telegram_id: int
     чтобы не завязываться на конкретный ключ FSM)."""
     lang, tr_map = "ru", {}
     resolve_id = telegram_id if telegram_id is not None else data.get("gs_counter_chat_id")
+    city = None
     if resolve_id is not None:
         try:
             lang, tr_map = await i18n_service.context(resolve_id)
         except Exception:
             lang, tr_map = "ru", {}
+        if is_per_city("game_proof_collected_template"):
+            try:
+                from database.db import get_user
+                user = await get_user(int(resolve_id))
+                city = (user or {}).get("event_city")
+            except Exception:
+                city = None
     try:
         await bot.edit_message_text(
             chat_id=data["gs_counter_chat_id"], message_id=data["gs_counter_msg_id"],
-            text=await game_counter_text(parts, lang, tr_map),
-            reply_markup=await game_counter_kb(parts, lang, tr_map),
+            text=await game_counter_text(parts, lang, tr_map, city),
+            reply_markup=await game_counter_kb(parts, lang, tr_map, city),
         )
     except Exception:
         pass

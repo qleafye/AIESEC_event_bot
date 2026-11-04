@@ -80,7 +80,7 @@ SETTINGS_SCHEMA = {
         "type": "int", "group": "event", "label": "🗓 Сколько дней идёт форум",
         "prompt": (
             "Сколько дней идёт форум, считая день начала.\n\n"
-            "1 — однодневный форум (регионы), 2 — Москва 30–31.10.\n\n"
+            "1 — однодневный форум, 2 — форум 12–13 сентября 2026.\n\n"
             "От этого числа зависят кнопка «🆘 SOS», меню дня форума, отчёт за день и опрос "
             "тех, кто не пришёл."
         ),
@@ -212,7 +212,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "event", "label": "🎪 Название мероприятия",
         "prompt": (
             "Как мероприятие называется — показывается в шапке дашборда и приложения. "
-            "Например: «СкиллАп 5», «Юлид», «РилТолк»."
+            "Например: «Форум'26»."
         ),
         "default": None,
     },
@@ -224,7 +224,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "event", "label": "🎪 Название в родительном падеже",
         "prompt": (
             "Название мероприятия в родительном падеже — подставляется во фразы вида «Что ты "
-            "ожидаешь от …?». Например: «форума СкиллАп», «конференции РилТолк». Если не "
+            "ожидаешь от …?». Например: «форума». Если не "
             "задать — бот возьмёт обычное название."
         ),
         "default": None,
@@ -235,7 +235,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "event", "label": "🎉 Сезон события",
         "prompt": (
             "Название текущего сезона — им помечаются все новые регистрации.\n\n"
-            "Например: Юлид'26 · СкиллАп'26 · РилТолк'27\n\n"
+            "Например: Форум'26\n\n"
             "Пока не задано — бот работает как раньше: прошлыми считаются только "
             "отклонённые заявки."
         ),
@@ -249,7 +249,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "event", "label": "🤖 Имя бота",
         "prompt": (
             "Как бот называется в Telegram — в списке чатов и в шапке переписки. Например:\n"
-            "«Юлид’26 · регистрация»\n\nДо 64 символов. Применяется сразу после сохранения. "
+            "«Форум'26 · регистрация»\n\nДо 64 символов. Применяется сразу после сохранения. "
             "Telegram разрешает менять имя лишь несколько раз подряд — если откажет, бот "
             "скажет, через сколько попробовать снова.\n\nЕсли очистить поле, имя в Telegram "
             "останется последним заданным."
@@ -260,8 +260,8 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "event", "label": "🪪 Описание бота (до /start)",
         "prompt": (
             "Текст, который человек видит в пустом чате с ботом ДО нажатия «Старт» — что это "
-            "за бот и куда ещё подписаться. Например:\n«Бот регистрации на РилТолк’Медиа "
-            "Форум. Новости — t.me/канал_форума, ВК — vk.com/группа_форума»\n\nДо 512 "
+            "за бот и куда ещё подписаться. Например:\n«Бот регистрации на Форум'26. "
+            "Новости — t.me/канал_форума, ВК — vk.com/группа_форума»\n\nДо 512 "
             "символов, обычным текстом без разметки (ссылки Telegram сделает кликабельными сам). Применяется "
             "сразу после сохранения."
         ),
@@ -1239,6 +1239,7 @@ SETTINGS_SCHEMA = {
             "Пусто = стандартный список («Соцсети АЙСЕК», «Университетские каналы» и т.п.)."
         ),
         "default": None,
+        "per_city": True,
     },
     "reg_complete_text": {
         "type": "text", "group": "reg", "label": "✅ После регистрации",
@@ -1275,6 +1276,7 @@ SETTINGS_SCHEMA = {
             "твоя заявка отклонена.»"
         ),
         "default": "К сожалению, твоя заявка отклонена.",
+        "per_city": True,
     },
     # Phase 31 (31-03, D-18): текст «заявку пересмотрят» — делегат видит его, когда менеджер
     # вернул заявку из журнала автоотказов на обычную модерацию (план 31-08+). Рядом с
@@ -1290,6 +1292,7 @@ SETTINGS_SCHEMA = {
             "принимает человек). Оставьте пустым — стандартный текст."
         ),
         "default": "Твою заявку вернули на обычную модерацию — её посмотрит менеджер.",
+        "per_city": True,
     },
     # Phase 17.1 (17.1-01): гейт «заявка ещё на модерации» — сосед reject_text выше уже был
     # ключом, а pending-ветка того же `_gate_decision` оставалась литералом в
@@ -1303,6 +1306,7 @@ SETTINGS_SCHEMA = {
             "жмёт любую кнопку меню. Поддерживается HTML."
         ),
         "default": "⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.",
+        "per_city": True,
     },
     "waitlist_delegate_text": {
         "type": "text", "group": "reg", "label": "📋 Текст: лист ожидания",
@@ -1392,6 +1396,7 @@ SETTINGS_SCHEMA = {
             "120 = 2 часа (по умолчанию)\n60 = 1 час\n1440 = сутки"
         ),
         "default": 120,
+        "per_city": True,
     },
     # Quick 260820-rms: окно, в котором бот считает вернувшегося человека тем же самым, кто
     # бросил анкету — и подставляет его прежний город/трек молча, без вопроса. Строка
@@ -1422,6 +1427,7 @@ SETTINGS_SCHEMA = {
             "👋 Ты начал(а) регистрацию, но не закончил(а). "
             "Нажми кнопку ниже или отправь /start — это займёт пару минут."
         ),
+        "per_city": True,
     },
     # Phase 28 (28-09, SU-09, T-28-09-04): человеческое слово вместо числа в {remaining},
     # когда черновик не прочитался или остаток посчитать не удалось — делегат не должен
@@ -1444,6 +1450,7 @@ SETTINGS_SCHEMA = {
             "Кнопка «Другое» добавится сама. Оставьте пустым — будет стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     "study_field_options": {
         "type": "list", "group": "reg", "label": "🎯 Направления обучения (варианты)",
@@ -1452,6 +1459,7 @@ SETTINGS_SCHEMA = {
             "строке.\n\nПусто = стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     "goal_options": {
         "type": "list", "group": "reg", "label": "🎯 Цель участия (варианты)",
@@ -1460,6 +1468,7 @@ SETTINGS_SCHEMA = {
             "Каждый — на отдельной строке.\n\nПусто = стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     "formats_options": {
         "type": "list", "group": "reg", "label": "📋 Форматы форума (варианты)",
@@ -1468,6 +1477,7 @@ SETTINGS_SCHEMA = {
             "отдельной строке.\n\nПусто = стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     "university_options": {
         "type": "list", "group": "reg", "label": "🏫 Список ВУЗов",
@@ -1476,6 +1486,7 @@ SETTINGS_SCHEMA = {
             "Кнопка «Другое» добавится сама. Пусто = свободный ввод: делегат напишет вуз сам."
         ),
         "default": None,
+        "per_city": True,
     },
     # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5, R-A3 CONTEXT): четыре редактируемых списка
     # вариантов — менеджер правит стек/опыт/готовность/статусы образования кнопками, без
@@ -1489,6 +1500,7 @@ SETTINGS_SCHEMA = {
             "Пусто = стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     "experience_options": {
         "type": "list", "group": "reg", "label": "💼 Опыт (варианты)",
@@ -1499,6 +1511,7 @@ SETTINGS_SCHEMA = {
             "Пусто = стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     "readiness_options": {
         "type": "list", "group": "reg", "label": "🚀 Готовность (варианты)",
@@ -1509,6 +1522,7 @@ SETTINGS_SCHEMA = {
             "Пусто = стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     "education_status_options": {
         "type": "list", "group": "reg", "label": "🎓 Статусы образования (варианты)",
@@ -1520,6 +1534,7 @@ SETTINGS_SCHEMA = {
             "Пусто = стандартный список."
         ),
         "default": None,
+        "per_city": True,
     },
     # Phase 28 (28-01, SU-03, R-A3 CONTEXT): множество статусов, при которых `course`/
     # `university`/`specialty`/`study_field` считаются условными по «учится» — пусто = прежнее
@@ -1531,6 +1546,7 @@ SETTINGS_SCHEMA = {
             "каждый на отдельной строке. Пусто = как раньше (все статусы, начинающиеся с «Да»)."
         ),
         "default": None,
+        "per_city": True,
     },
     # Phase 28 (28-01, SU-08, СкиллАп 5): пояснение под заголовком экрана кейс-чемпионата
     # (Body-роль, не Label) — per_city, как остальные тексты, обращённые к делегату.
@@ -2609,6 +2625,7 @@ SETTINGS_SCHEMA = {
             "вечеринки:\nВход на вечеринку|1000|с ночёвкой, без ночёвки"
         ),
         "default": None,
+        "per_city": True,
     },
     "payment_requisites": {
         "type": "text", "group": "pay", "label": "💰 Реквизиты оплаты",
@@ -2617,6 +2634,7 @@ SETTINGS_SCHEMA = {
             "ЛК участника не задана своя карта (см. «💳 Реквизиты по ЛК»). Обычный текст."
         ),
         "default": None,
+        "per_city": True,
     },
     "payment_requisites_by_lc": {
         "type": "list", "group": "pay", "label": "💳 Реквизиты по ЛК",
@@ -2629,6 +2647,7 @@ SETTINGS_SCHEMA = {
             "— покажутся общие «💰 Реквизиты оплаты»."
         ),
         "default": None,
+        "per_city": True,
     },
     "payment_deadline": {
         "type": "date", "group": "pay", "label": "📅 Дедлайн оплаты",
@@ -2637,6 +2656,7 @@ SETTINGS_SCHEMA = {
             "\n\nПо этому сроку бот сам пришлёт участнику напоминания за 3 дня и за 1 день."
         ),
         "default": None,
+        "per_city": True,
     },
     "payment_reminder_text": {
         "type": "text", "group": "pay", "label": "⏰ Текст напоминания об оплате",
@@ -2645,6 +2665,7 @@ SETTINGS_SCHEMA = {
             "\n\nОставьте пустым — будет стандартный текст."
         ),
         "default": None,
+        "per_city": True,
     },
     "payment_overdue_text": {
         "type": "text", "group": "pay", "label": "⌛ Текст «оплата просрочена»",
@@ -2653,6 +2674,7 @@ SETTINGS_SCHEMA = {
             "загружен.\n\nОставьте пустым — будет стандартный текст."
         ),
         "default": None,
+        "per_city": True,
     },
     "penalty_schedule": {
         "type": "list", "group": "pay", "label": "⚠️ Штрафы за отмену",
@@ -2662,6 +2684,7 @@ SETTINGS_SCHEMA = {
             "штрафов нет."
         ),
         "default": None,
+        "per_city": True,
     },
     # Phase 17.1 (17.1-02): делегатские экраны платёжного потока (handlers/payment.py) —
     # раньше литералы, менеджер не мог их поменять. Дефолты байт-в-байт равны прежним
@@ -2675,6 +2698,7 @@ SETTINGS_SCHEMA = {
             "Ниже бот сам добавит реквизиты, если они заданы. Поддерживается HTML."
         ),
         "default": "💳 Выбери вариант участия:",
+        "per_city": True,
     },
     "payment_details_template_text": {
         "type": "text", "group": "pay", "label": "💰 Экран оплаты: шаблон",
@@ -2695,6 +2719,7 @@ SETTINGS_SCHEMA = {
             "💰 <b>Оплата участия</b>\n\nВариант: {option}\nСумма: {amount} ₽\n\n"
             "{requisites}{deadline}{penalties}📎 Загрузи чек оплаты (PDF-документ или скриншот)."
         ),
+        "per_city": True,
     },
     "payment_pay_later_text": {
         "type": "text", "group": "pay", "label": "⏭ «Оплачу позже»: ответ",
@@ -2703,6 +2728,7 @@ SETTINGS_SCHEMA = {
             "(если заданы) и подсказку про кнопку «💳 Оплата» в меню. Поддерживается HTML."
         ),
         "default": "Ок! Оплатишь позже.",
+        "per_city": True,
     },
     "payment_pay_later_menu_hint_text": {
         "type": "text", "group": "pay", "label": "⏭ «Оплачу позже»: подсказка про меню",
@@ -2711,6 +2737,7 @@ SETTINGS_SCHEMA = {
             "Поддерживается HTML."
         ),
         "default": "Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.",
+        "per_city": True,
     },
     "payment_receipt_received_text": {
         "type": "text", "group": "pay", "label": "✅ Чек получен: подтверждение",
@@ -2719,6 +2746,7 @@ SETTINGS_SCHEMA = {
             "Поддерживается HTML."
         ),
         "default": "✅ Чек получен! Менеджер проверит его в ближайшее время.",
+        "per_city": True,
     },
 
     # ── REG-01/REG-03 (06-02): "party" group ("🎉 Party") ───────────────────────────────
@@ -2779,6 +2807,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "consent", "label": "✅ Текст кнопки согласия",
         "prompt": "Надпись на кнопке согласия (по умолчанию «Согласен(-на)»).",
         "default": None,
+        "per_city": True,
     },
     "consent_list": {
         "type": "list", "group": "consent", "label": "📋 Список согласий",
@@ -2793,6 +2822,7 @@ SETTINGS_SCHEMA = {
             "PDF в разделе «🧾 PDF согласий»."
         ),
         "default": None,
+        "per_city": True,
     },
     "consent_broadcast_list": {
         "type": "list", "group": "consent", "label": "📸 Согласия только для рассылки",
@@ -2813,6 +2843,7 @@ SETTINGS_SCHEMA = {
             "текста или PDF согласия: так в заявке видно, кто подписал старую редакцию."
         ),
         "default": DEFAULT_CONSENT_VERSION,
+        "per_city": True,
     },
     "consent_recollect_text": {
         "type": "text", "group": "consent", "label": "🔁 Текст просьбы пересогласиться",
@@ -2824,6 +2855,7 @@ SETTINGS_SCHEMA = {
             "Мы обновили текст согласия на обработку данных. Пожалуйста, прочитайте "
             "его ещё раз и подтвердите."
         ),
+        "per_city": True,
     },
 
     # ── REG-01/REG-02 (06-04, D-06/D-12): "reg_questions" group — every reg_q_* toggle.
@@ -2910,14 +2942,17 @@ SETTINGS_SCHEMA = {
     "payment_enabled": {
         "type": "enum", "group": "toggles", "label": "💳 Модуль оплаты",
         "options": ["on", "off"], "prompt": None, "default": "off",
+        "per_city": True,
     },
     "consent_enabled": {
         "type": "enum", "group": "toggles", "label": "📋 Модуль согласий",
         "options": ["on", "off"], "prompt": None, "default": "off",
+        "per_city": True,
     },
     "payment_reminders_enabled": {
         "type": "enum", "group": "toggles", "label": "⏰ Автонапоминания об оплате",
         "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
     },
     # Quick 260819 (schema-completeness): два фоновых напоминания, раньше читались только
     # через `get_setting(...) != "off"` (дефолт on) и менеджеру были недоступны. Enum on/off
@@ -2929,6 +2964,7 @@ SETTINGS_SCHEMA = {
     "nudge_enabled": {
         "type": "enum", "group": "toggles", "label": "⏰ Догонялка брошенных анкет",
         "options": ["on", "off"], "prompt": None, "default": "on",
+        "per_city": True,
     },
     # Quick 260904-dq1: «🌙 Тихие часы» — не будить делегата ночью решением по заявке/сдачей
     # задания/напоминанием. Один тумблер на событие (не per_city — сама фича либо есть, либо
@@ -2996,6 +3032,7 @@ SETTINGS_SCHEMA = {
     "consent_recollect_enabled": {
         "type": "enum", "group": "toggles", "label": "🔁 Просить пересогласие при новой редакции",
         "options": ["on", "off"], "prompt": None, "default": "off",
+        "per_city": True,
     },
     "edu_conditional": {
         "type": "enum", "group": "toggles", "label": "🎓 Условный вопрос об образовании",
@@ -4012,24 +4049,28 @@ SETTINGS_SCHEMA = {
         "options": ["instant", "batched"],
         "option_labels": {"instant": "О каждой", "batched": "Сводкой по таймеру"},
         "prompt": None, "default": "batched",
+        "per_city": True,
     },
     "full_approval": {
         "type": "enum", "group": "toggles", "label": "✅ Модерация (полная форма)",
         "options": ["manual", "auto"],
         "option_labels": {"manual": "Вручную", "auto": "Автоматически"},
         "prompt": None, "default": "manual",
+        "per_city": True,
     },
     "short_approval": {
         "type": "enum", "group": "toggles", "label": "✅ Модерация (краткая форма)",
         "options": ["manual", "auto"],
         "option_labels": {"manual": "Вручную", "auto": "Автоматически"},
         "prompt": None, "default": "auto",
+        "per_city": True,
     },
     "party_approval": {
         "type": "enum", "group": "toggles", "label": "✅ Модерация вечеринки",
         "options": ["manual", "auto"],
         "option_labels": {"manual": "Вручную", "auto": "Автоматически"},
         "prompt": None, "default": "manual",
+        "per_city": True,
     },
     # Phase 07.1 (CITY-01): master gate for the city-selection screen/deep-links. Type
     # "enum" (NOT "toggle" — REG_DEFAULTS/preset auto-overwrite only "toggle"-typed keys,
@@ -4160,6 +4201,7 @@ SETTINGS_SCHEMA = {
             "отмеченный тип подтверждения). Оставьте пустым — вернётся текст по умолчанию."
         ),
         "default": "Пришли скриншот/фото:",
+        "per_city": True,
     },
     "game_proof_prompt_pdf": {
         "type": "text", "group": "game", "label": "🎮 Промпт: файл",
@@ -4168,6 +4210,7 @@ SETTINGS_SCHEMA = {
             "тип подтверждения). Оставьте пустым — вернётся текст по умолчанию."
         ),
         "default": "Пришли файл (PDF):",
+        "per_city": True,
     },
     "game_proof_prompt_text": {
         "type": "text", "group": "game", "label": "🎮 Промпт: текст",
@@ -4176,6 +4219,7 @@ SETTINGS_SCHEMA = {
             "тип подтверждения). Оставьте пустым — вернётся текст по умолчанию."
         ),
         "default": "Напиши текстом:",
+        "per_city": True,
     },
     "game_proof_prompt_link": {
         "type": "text", "group": "game", "label": "🎮 Промпт: ссылка",
@@ -4184,6 +4228,7 @@ SETTINGS_SCHEMA = {
             "тип подтверждения). Оставьте пустым — вернётся текст по умолчанию."
         ),
         "default": "Пришли ссылку:",
+        "per_city": True,
     },
     "game_proof_prompt_any": {
         "type": "text", "group": "game", "label": "🎮 Промпт: несколько типов / не важно",
@@ -4193,6 +4238,7 @@ SETTINGS_SCHEMA = {
             "текст по умолчанию."
         ),
         "default": "Пришли подтверждение:",
+        "per_city": True,
     },
     "game_proof_done_hint": {
         "type": "text", "group": "game", "label": "🎮 Подсказка «жми Готово»",
@@ -4201,11 +4247,13 @@ SETTINGS_SCHEMA = {
             "делегату, что финализирует сдачу только кнопка «✅ Готово», не таймаут."
         ),
         "default": "Когда всё прислал — нажми «✅ Готово».",
+        "per_city": True,
     },
     "game_proof_done_button": {
         "type": "text", "group": "game", "label": "🎮 Подпись кнопки «Готово»",
         "prompt": "Текст инлайн-кнопки, которой делегат финализирует сдачу.",
         "default": "✅ Готово",
+        "per_city": True,
     },
     "game_proof_empty_hint": {
         "type": "text", "group": "game", "label": "🎮 Подсказка: пустая сдача",
@@ -4214,11 +4262,13 @@ SETTINGS_SCHEMA = {
             "хоть одну часть — единственная серверная валидация сдачи."
         ),
         "default": "Сначала пришли хотя бы одну часть — фото, файл, текст или ссылку.",
+        "per_city": True,
     },
     "game_submit_accepted_text": {
         "type": "text", "group": "game", "label": "🎮 Текст «Принято!»",
         "prompt": "Что увидит делегат сразу после успешной финализации сдачи.",
         "default": "Принято! Менеджер проверит и начислит баллы.",
+        "per_city": True,
     },
     # Phase 16 (16-02, GAME-UI-02): Экран 3 -- одно служебное сообщение-счётчик сдачи,
     # редактируемое на каждую часть, и кнопка «Убрать последнее» на нём.
@@ -4231,6 +4281,7 @@ SETTINGS_SCHEMA = {
             "{count} · {breakdown}»."
         ),
         "default": "Частей: {count} · {breakdown}",
+        "per_city": True,
     },
     "game_proof_remove_last_button": {
         "type": "text", "group": "game", "label": "🎮 Кнопка «Убрать последнее»",
@@ -4239,6 +4290,7 @@ SETTINGS_SCHEMA = {
             "присланную часть из черновика (до нажатия «✅ Готово»)."
         ),
         "default": "🗑 Убрать последнее",
+        "per_city": True,
     },
 
     # Phase 14 (GAME-10): resubmit-limit after rejection, int precedent =
@@ -4253,6 +4305,7 @@ SETTINGS_SCHEMA = {
             "Меняется на лету, перезапуск не нужен."
         ),
         "default": 0,
+        "per_city": True,
     },
 
     # Quick 260819-gtl (CONTEXT.md decision 8): title/photo wizard step prompts — new keys,
@@ -4265,6 +4318,7 @@ SETTINGS_SCHEMA = {
             "переносы строк заменяются на пробел)."
         ),
         "default": "Название задания (коротко, до 60 символов):",
+        "per_city": True,
     },
     "game_task_photo_prompt": {
         "type": "text", "group": "game", "label": "🎮 Промпт: фото-обложка задания",
@@ -4273,6 +4327,7 @@ SETTINGS_SCHEMA = {
             "Показывается и при создании, и при замене фото у существующего задания."
         ),
         "default": "📷 Пришли фото-обложку или нажми ⏭ Пропустить.",
+        "per_city": True,
     },
 
     # Phase 16 (16-03, GAME-UI-03): менеджерские экраны заданий — заголовок превью «как видит
@@ -4285,6 +4340,7 @@ SETTINGS_SCHEMA = {
             "идёт карточка задания ровно в том виде, в каком её увидит делегат."
         ),
         "default": "👁 Так увидит делегат в списке заданий:",
+        "per_city": True,
     },
     "game_wizard_preview_title": {
         "type": "text", "group": "game", "label": "🎮 Визард: заголовок превью",
@@ -4293,11 +4349,13 @@ SETTINGS_SCHEMA = {
             "делегат» и кнопкой публикации). Поддерживается HTML."
         ),
         "default": "👁 <b>Так увидит делегат</b>",
+        "per_city": True,
     },
     "game_wizard_publish_btn": {
         "type": "text", "group": "game", "label": "🎮 Визард: кнопка публикации",
         "prompt": "Подпись кнопки, которой менеджер публикует новое задание на финальном шаге.",
         "default": "✅ Опубликовать",
+        "per_city": True,
     },
 
     # Phase 16 (16-01, GAME-UI-01): RU-подписи категорий (единственный источник —
@@ -4307,31 +4365,37 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🎮 Категория «Light» (RU)",
         "prompt": "Как категория «Light» подписывается делегату в списке заданий и карточке.",
         "default": "Лёгкое",
+        "per_city": True,
     },
     "game_category_label_medium": {
         "type": "text", "group": "game", "label": "🎮 Категория «Medium» (RU)",
         "prompt": "Как категория «Medium» подписывается делегату в списке заданий и карточке.",
         "default": "Среднее",
+        "per_city": True,
     },
     "game_category_label_hard": {
         "type": "text", "group": "game", "label": "🎮 Категория «Hard» (RU)",
         "prompt": "Как категория «Hard» подписывается делегату в списке заданий и карточке.",
         "default": "Сложное",
+        "per_city": True,
     },
     "game_category_label_referral": {
         "type": "text", "group": "game", "label": "🎮 Категория «Referral» (RU)",
         "prompt": "Как категория «Referral» подписывается делегату в списке заданий и карточке.",
         "default": "Реферальное",
+        "per_city": True,
     },
     "game_category_label_special": {
         "type": "text", "group": "game", "label": "🎮 Категория «Special» (RU)",
         "prompt": "Как категория «Special» подписывается делегату в списке заданий и карточке.",
         "default": "Особое",
+        "per_city": True,
     },
     "game_task_list_empty": {
         "type": "text", "group": "game", "label": "🎮 Список заданий: пусто",
         "prompt": "Что видит делегат в «🎯 Задания», если активных заданий сейчас нет.",
         "default": "Активных заданий сейчас нет. Загляни попозже!",
+        "per_city": True,
     },
     "game_task_list_page_label": {
         "type": "text", "group": "game", "label": "🎮 Список заданий: подпись страницы",
@@ -4341,6 +4405,7 @@ SETTINGS_SCHEMA = {
             "Слова в фигурных скобках не удалять — бот сам подставит значения."
         ),
         "default": "стр. {page}/{total}",
+        "per_city": True,
     },
     "game_task_detail_status_label": {
         "type": "text", "group": "game", "label": "🎮 Карточка задания: статус",
@@ -4352,6 +4417,7 @@ SETTINGS_SCHEMA = {
             "Слово в фигурных скобках не удалять."
         ),
         "default": "Статус: {status}",
+        "per_city": True,
     },
     "balance_screen_header": {
         "type": "text", "group": "game", "label": "🪙 Баланс: заголовок",
@@ -4361,21 +4427,25 @@ SETTINGS_SCHEMA = {
             "{total} — сколько всего человек в рейтинге\n\nСлова в фигурных скобках не удалять."
         ),
         "default": "🪙 Баланс: {balance} баллов\nМесто в общем рейтинге: {rank} из {total}",
+        "per_city": True,
     },
     "balance_history_empty": {
         "type": "text", "group": "game", "label": "🪙 Баланс: пустая история",
         "prompt": "Что видит делегат на экране баланса, если у него ещё не было ни одной операции.",
         "default": "Пока не было ни одной операции.",
+        "per_city": True,
     },
     "balance_source_manual_label": {
         "type": "text", "group": "game", "label": "🪙 Баланс: подпись источника «вручную»",
         "prompt": "Подпись источника операции в истории баланса, когда причина не указана и баллы начислены/списаны вручную менеджером.",
         "default": "вручную",
+        "per_city": True,
     },
     "balance_source_task_label": {
         "type": "text", "group": "game", "label": "🪙 Баланс: подпись источника «задание»",
         "prompt": "Подпись источника операции в истории баланса, когда причина не указана и баллы начислены за задание.",
         "default": "задание",
+        "per_city": True,
     },
     # Phase 32 (32-06, D-36): третий источник монет рядом с manual/task — авто-начисление
     # амбассадору за одобренного приглашённого (claim_referral_credit, план 32-01).
@@ -4383,6 +4453,7 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🪙 Баланс: подпись источника «приглашённый»",
         "prompt": "Подпись источника операции в истории баланса, когда баллы начислены автоматически за одобренного приглашённого амбассадором.",
         "default": "за приглашённого",
+        "per_city": True,
     },
 
     # Phase 17.1 (17.1-01): экраны «🏆 Рейтинг», «📜 История монет» и рефералка — последние
@@ -4397,21 +4468,25 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "game", "label": "🎮 Тип подтверждения «фото» (RU)",
         "prompt": "Как тип подтверждения «фото/скриншот» подписывается делегату в карточке задания.",
         "default": "📷 Скриншот/фото",
+        "per_city": True,
     },
     "game_proof_type_label_pdf": {
         "type": "text", "group": "game", "label": "🎮 Тип подтверждения «PDF» (RU)",
         "prompt": "Как тип подтверждения «PDF-файл» подписывается делегату в карточке задания.",
         "default": "📄 PDF",
+        "per_city": True,
     },
     "game_proof_type_label_text": {
         "type": "text", "group": "game", "label": "🎮 Тип подтверждения «текст» (RU)",
         "prompt": "Как тип подтверждения «текст» подписывается делегату в карточке задания.",
         "default": "✍️ Текст",
+        "per_city": True,
     },
     "game_proof_type_label_link": {
         "type": "text", "group": "game", "label": "🎮 Тип подтверждения «ссылка» (RU)",
         "prompt": "Как тип подтверждения «ссылка» подписывается делегату в карточке задания.",
         "default": "🔗 Ссылка",
+        "per_city": True,
     },
     "game_proof_type_unspecified_text": {
         "type": "text", "group": "game", "label": "🎮 Тип подтверждения не задан",
@@ -4420,6 +4495,7 @@ SETTINGS_SCHEMA = {
             "подтверждения (принимается что угодно)."
         ),
         "default": "не важно",
+        "per_city": True,
     },
     "game_task_overdue_hint_text": {
         "type": "text", "group": "game", "label": "⏰ Карточка задания: срок вышел",
@@ -4428,16 +4504,19 @@ SETTINGS_SCHEMA = {
             "задание всё ещё можно, решение по баллам остаётся за менеджером."
         ),
         "default": "⏰ Срок вышел — отправить можно, баллы решит менеджер",
+        "per_city": True,
     },
     "leaderboard_header_text": {
         "type": "text", "group": "game", "label": "🏆 Рейтинг: заголовок",
         "prompt": "Первая строка экрана «🏆 Рейтинг» (и команды /рейтинг). Поддерживается HTML.",
         "default": "🏆 <b>Рейтинг по баллам</b>",
+        "per_city": True,
     },
     "leaderboard_empty_text": {
         "type": "text", "group": "game", "label": "🏆 Рейтинг: пусто",
         "prompt": "Что видит делегат в рейтинге, пока ни у кого нет баллов.",
         "default": "Пока ни у кого нет баллов.",
+        "per_city": True,
     },
     "leaderboard_rank_line_text": {
         "type": "text", "group": "game", "label": "🏆 Рейтинг: строка «твоё место»",
@@ -4449,6 +4528,7 @@ SETTINGS_SCHEMA = {
             "Поддерживается HTML."
         ),
         "default": "Твоё место: <b>{rank}</b> · баланс: <b>{balance}</b>",
+        "per_city": True,
     },
     "balance_history_header_text": {
         "type": "text", "group": "game", "label": "📜 История баллов: заголовок",
@@ -4457,6 +4537,7 @@ SETTINGS_SCHEMA = {
             "Поддерживается HTML."
         ),
         "default": "📜 <b>История баллов</b>",
+        "per_city": True,
     },
     "referral_link_prompt_text": {
         "type": "text", "group": "amb", "label": "🔗 Реферальная ссылка: текст",
@@ -4466,6 +4547,7 @@ SETTINGS_SCHEMA = {
             "Слово в фигурных скобках не удалять — иначе делегат не увидит саму ссылку."
         ),
         "default": "Отправь эту ссылку друзьям, чтобы пригласить их с собой!\n\n{link}",
+        "per_city": True,
     },
     "referral_list_header_text": {
         "type": "text", "group": "amb", "label": "👥 Приглашённые: заголовок списка",
@@ -4475,6 +4557,7 @@ SETTINGS_SCHEMA = {
             "Слово в фигурных скобках не удалять. Поддерживается HTML."
         ),
         "default": "👥 <b>Твои приглашённые ({count}):</b>",
+        "per_city": True,
     },
     "referral_list_empty_text": {
         "type": "text", "group": "amb", "label": "👥 Приглашённые: пусто",
@@ -4487,6 +4570,7 @@ SETTINGS_SCHEMA = {
             "Пока никто не зарегистрировался по твоей ссылке.\n\n"
             "Поделись ей с друзьями:\n{link}"
         ),
+        "per_city": True,
     },
     "amb_invite_threshold": {
         "type": "int", "group": "amb", "label": "👥 Порог приглашённых",
@@ -4560,6 +4644,7 @@ SETTINGS_SCHEMA = {
             "Сообщение уходит сразу после подтверждения операции."
         ),
         "default": "🪙 Баланс изменён: {delta} баллов.\nПричина: {reason}\nТекущий баланс: {balance}",
+        "per_city": True,
     },
     # Phase 16 (16-04, GAME-UI-03, Экран 8): quick-pick сумм на шаге «Сколько монет?» --
     # разбирается fail-soft (не-числа пропускаются), свободный ввод остаётся всегда.
@@ -4571,6 +4656,7 @@ SETTINGS_SCHEMA = {
             "действию.\n\nПример: 5,10,20"
         ),
         "default": "5,10,20",
+        "per_city": True,
     },
     # Quick 260822: уведомления менеджеру о сдачах — каждую отдельно или дайджестом по окну
     # тишины. Enum без текстового ввода: на экране «🎮 Геймификация» это тумблер
@@ -4585,6 +4671,7 @@ SETTINGS_SCHEMA = {
         "option_labels": {"each": "Каждую сдачу отдельно", "digest": "Пачкой (дайджест)"},
         "prompt": None,
         "default": "each",
+        "per_city": True,
     },
     "game_submit_digest_minutes": {
         "type": "int", "group": "game", "label": "📥 Дайджест сдач: окно тишины (мин)",
@@ -4594,6 +4681,7 @@ SETTINGS_SCHEMA = {
             "отправку ещё на столько минут, сводка уходит, когда поток стихает."
         ),
         "default": 15,
+        "per_city": True,
     },
 
     # ── Phase 32 (32-02, D-21/D-35/D-18/D-29): амбассадорский слой — числа и тумблеры.
@@ -4611,6 +4699,7 @@ SETTINGS_SCHEMA = {
             "Меняется на лету, перезапуск не нужен."
         ),
         "default": 0,
+        "per_city": True,
     },
     "game_late_penalty_percent": {
         "type": "int", "group": "game", "label": "⏰ Штраф за сдачу после дедлайна, %",
@@ -4623,6 +4712,7 @@ SETTINGS_SCHEMA = {
             "«Одобрить».\n\nМеняется на лету, перезапуск не нужен."
         ),
         "default": 0,
+        "per_city": True,
     },
     "wave_prize_places": {
         "type": "int", "group": "amb", "label": "🏅 Призовых мест в волне",
@@ -4634,6 +4724,7 @@ SETTINGS_SCHEMA = {
             "много, победа перестаёт что-то значить.\n\nМеняется на лету, перезапуск не нужен."
         ),
         "default": 3,
+        "per_city": True,
     },
     # Тумблер «одной кнопкой» (D-29, must_haves): редактируется дедикейтед-хендлером
     # `toggle_wave_rating_show_names` (handlers/settings/admin_settings.py), а НЕ через общий ввод
@@ -4650,6 +4741,7 @@ SETTINGS_SCHEMA = {
             "Выключайте для маленьких волн или если участники жалуются на давление рейтинга."
         ),
         "default": "on",
+        "per_city": True,
     },
 
     # ── Ступени амбассадоров СкиллАп (квалифицированная амбассадорка): засчитываются только
@@ -4657,7 +4749,7 @@ SETTINGS_SCHEMA = {
     # себя как раньше. Тумблер правится кнопкой на экране «🎓 Ступени амбассадоров», поэтому
     # в `_GAME_FIELD_ORDER` его нет (тот же приём, что у `wave_rating_show_names`).
     "amb_qualified_program": {
-        "type": "enum", "group": "amb", "label": "🎓 Ступени амбассадоров СкиллАп",
+        "type": "enum", "group": "amb", "label": "🎓 Ступени амбассадоров",
         "options": ["on", "off"],
         "prompt": (
             "Включено — амбассадору засчитываются только приглашённые, прошедшие отбор, и за "
@@ -4666,6 +4758,7 @@ SETTINGS_SCHEMA = {
             "Выключено — ступеней нет, бот работает как раньше."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_tier1_threshold": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 1: сколько прошедших отбор",
@@ -4676,6 +4769,7 @@ SETTINGS_SCHEMA = {
         ),
         "min": 1,
         "default": 1,
+        "per_city": True,
     },
     "amb_tier2_threshold": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 2 (разбор резюме): сколько прошедших",
@@ -4685,6 +4779,7 @@ SETTINGS_SCHEMA = {
         ),
         "min": 1,
         "default": 3,
+        "per_city": True,
     },
     "amb_tier3_threshold": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 3 (нетворкинг): сколько прошедших",
@@ -4694,6 +4789,7 @@ SETTINGS_SCHEMA = {
         ),
         "min": 1,
         "default": 7,
+        "per_city": True,
     },
     "amb_o2o_quota": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 2: сколько наград",
@@ -4709,6 +4805,7 @@ SETTINGS_SCHEMA = {
         # 0 здесь — осмысленное «наград нет», а не «вернуть 15» (общее правило int ниже).
         "allow_zero": True,
         "default": 15,
+        "per_city": True,
     },
     "amb_count_deadline": {
         "type": "text", "format": "msk_datetime", "group": "amb",
@@ -4720,6 +4817,7 @@ SETTINGS_SCHEMA = {
             "Пусто или «нет» — без дедлайна (так по умолчанию)."
         ),
         "default": "",
+        "per_city": True,
     },
     "amb_tier1_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 1",
@@ -4733,6 +4831,7 @@ SETTINGS_SCHEMA = {
             "Твой первый приглашённый прошёл отбор — это первая ступень! До следующей "
             "осталось {left}."
         ),
+        "per_city": True,
     },
     "amb_tier2_granted_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 2, награда есть",
@@ -4744,6 +4843,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до второй ступени — твои приглашённые прошли отбор. Награда за тобой, "
             "детали пришлём в личку."
         ),
+        "per_city": True,
     },
     "amb_tier2_waitlist_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 2, лист ожидания",
@@ -4755,6 +4855,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до второй ступени, спасибо. Награды этой ступени уже разобрали, ты в "
             "листе ожидания и первым получишь место, если кто-то откажется."
         ),
+        "per_city": True,
     },
     "amb_tier3_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 3",
@@ -4766,6 +4867,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до третьей ступени — спасибо, что приводишь к нам людей! Детали "
             "награды напишем в личку."
         ),
+        "per_city": True,
     },
     # Обобщённые ступени 1–5: число ступеней, галочка «только с одобренной заявкой», квота на
     # любой ступени. Ступень 2 и следующий шаг 2/3 живут под прежними ключами (карта tier_key в
@@ -4781,6 +4883,7 @@ SETTINGS_SCHEMA = {
         "min": 1,
         "max": 5,
         "default": 3,
+        "per_city": True,
     },
     "amb_tiers_require_approved": {
         "type": "enum", "group": "amb",
@@ -4792,6 +4895,7 @@ SETTINGS_SCHEMA = {
             "собственной заявки не требуется."
         ),
         "default": "on",
+        "per_city": True,
     },
     "amb_tier4_threshold": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 4: сколько прошедших отбор",
@@ -4802,6 +4906,7 @@ SETTINGS_SCHEMA = {
         ),
         "min": 1,
         "default": 10,
+        "per_city": True,
     },
     "amb_tier5_threshold": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 5: сколько прошедших отбор",
@@ -4812,6 +4917,7 @@ SETTINGS_SCHEMA = {
         ),
         "min": 1,
         "default": 15,
+        "per_city": True,
     },
     "amb_tier1_quota_on": {
         "type": "enum", "group": "amb", "label": "🎓 Ступень 1: ограничить число наград",
@@ -4821,6 +4927,7 @@ SETTINGS_SCHEMA = {
             "остальные попадут в лист ожидания.\n\nВыключено — награда без ограничения."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_tier2_quota_on": {
         "type": "enum", "group": "amb", "label": "🎓 Ступень 2: ограничить число наград",
@@ -4830,6 +4937,7 @@ SETTINGS_SCHEMA = {
             "остальные попадут в лист ожидания.\n\nВыключено — награда без ограничения."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_tier3_quota_on": {
         "type": "enum", "group": "amb", "label": "🎓 Ступень 3: ограничить число наград",
@@ -4839,6 +4947,7 @@ SETTINGS_SCHEMA = {
             "остальные попадут в лист ожидания.\n\nВыключено — награда без ограничения."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_tier4_quota_on": {
         "type": "enum", "group": "amb", "label": "🎓 Ступень 4: ограничить число наград",
@@ -4848,6 +4957,7 @@ SETTINGS_SCHEMA = {
             "остальные попадут в лист ожидания.\n\nВыключено — награда без ограничения."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_tier5_quota_on": {
         "type": "enum", "group": "amb", "label": "🎓 Ступень 5: ограничить число наград",
@@ -4857,6 +4967,7 @@ SETTINGS_SCHEMA = {
             "остальные попадут в лист ожидания.\n\nВыключено — награда без ограничения."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_tier1_quota": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 1: сколько наград",
@@ -4869,6 +4980,7 @@ SETTINGS_SCHEMA = {
         ),
         "allow_zero": True,
         "default": 15,
+        "per_city": True,
     },
     "amb_tier3_quota": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 3: сколько наград",
@@ -4881,6 +4993,7 @@ SETTINGS_SCHEMA = {
         ),
         "allow_zero": True,
         "default": 15,
+        "per_city": True,
     },
     "amb_tier4_quota": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 4: сколько наград",
@@ -4893,6 +5006,7 @@ SETTINGS_SCHEMA = {
         ),
         "allow_zero": True,
         "default": 15,
+        "per_city": True,
     },
     "amb_tier5_quota": {
         "type": "int", "group": "amb", "label": "🎓 Ступень 5: сколько наград",
@@ -4905,6 +5019,7 @@ SETTINGS_SCHEMA = {
         ),
         "allow_zero": True,
         "default": 15,
+        "per_city": True,
     },
     "amb_tier1_waitlist_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 1, мест нет — лист ожидания",
@@ -4916,6 +5031,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до ступени 1, спасибо. Награды этой ступени уже разобрали, ты в листе "
             "ожидания и первым получишь место, если кто-то откажется."
         ),
+        "per_city": True,
     },
     "amb_tier3_waitlist_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 3, мест нет — лист ожидания",
@@ -4927,6 +5043,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до ступени 3, спасибо. Награды этой ступени уже разобрали, ты в листе "
             "ожидания и первым получишь место, если кто-то откажется."
         ),
+        "per_city": True,
     },
     "amb_tier4_waitlist_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 4, мест нет — лист ожидания",
@@ -4938,6 +5055,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до ступени 4, спасибо. Награды этой ступени уже разобрали, ты в листе "
             "ожидания и первым получишь место, если кто-то откажется."
         ),
+        "per_city": True,
     },
     "amb_tier5_waitlist_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 5, мест нет — лист ожидания",
@@ -4949,6 +5067,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до ступени 5, спасибо. Награды этой ступени уже разобрали, ты в листе "
             "ожидания и первым получишь место, если кто-то откажется."
         ),
+        "per_city": True,
     },
     "amb_tier4_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 4",
@@ -4959,6 +5078,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до ступени 4 — спасибо, что приводишь к нам людей! Детали награды "
             "напишем в личку."
         ),
+        "per_city": True,
     },
     "amb_tier5_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 5",
@@ -4969,6 +5089,7 @@ SETTINGS_SCHEMA = {
             "Ты дошёл до ступени 5 — спасибо, что приводишь к нам людей! Детали награды "
             "напишем в личку."
         ),
+        "per_city": True,
     },
     "amb_tier1_next_label": {
         "type": "text", "group": "amb", "label": "🎓 Текст: сколько до ступени 1",
@@ -4977,6 +5098,7 @@ SETTINGS_SCHEMA = {
             "{n} — сколько ещё прошедших отбор нужно. Пример: До ступени 1: {n}"
         ),
         "default": "",
+        "per_city": True,
     },
     "amb_tier4_next_label": {
         "type": "text", "group": "amb", "label": "🎓 Текст: сколько до ступени 4",
@@ -4985,6 +5107,7 @@ SETTINGS_SCHEMA = {
             "{n} — сколько ещё прошедших отбор нужно. Пример: До ступени 4: {n}"
         ),
         "default": "До ступени 4: {n}",
+        "per_city": True,
     },
     "amb_tier5_next_label": {
         "type": "text", "group": "amb", "label": "🎓 Текст: сколько до ступени 5",
@@ -4993,6 +5116,7 @@ SETTINGS_SCHEMA = {
             "{n} — сколько ещё прошедших отбор нужно. Пример: До ступени 5: {n}"
         ),
         "default": "До ступени 5: {n}",
+        "per_city": True,
     },
     # Экраны амбассадора: прогресс цифрами и скрытие имён приглашённых (services/amb/amb_progress.py).
     # Тумблер скрытия правится кнопкой на экране «🎓 Ступени амбассадоров», в `_GAME_FIELD_ORDER`
@@ -5007,6 +5131,7 @@ SETTINGS_SCHEMA = {
             "Выключено — имена видны, как раньше."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_progress_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: прогресс амбассадора",
@@ -5017,6 +5142,7 @@ SETTINGS_SCHEMA = {
             "награды (тексты ниже)\n\nСлова в фигурных скобках не удалять."
         ),
         "default": "По твоей ссылке: {total}. Прошли отбор: {qualified}. {next_step}",
+        "per_city": True,
     },
     "amb_next_step_o2o_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: сколько до ступени 2",
@@ -5025,6 +5151,7 @@ SETTINGS_SCHEMA = {
             "{n} — сколько ещё прошедших отбор нужно. Пример: До ступени 2: {n}"
         ),
         "default": "До ступени 2: {n}",
+        "per_city": True,
     },
     "amb_next_step_networking_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: сколько до ступени 3",
@@ -5033,11 +5160,13 @@ SETTINGS_SCHEMA = {
             "{n} — сколько ещё прошедших отбор нужно. Пример: До ступени 3: {n}"
         ),
         "default": "До ступени 3: {n}",
+        "per_city": True,
     },
     "amb_next_step_done_text": {
         "type": "text", "group": "amb", "label": "🎓 Текст: все ступени пройдены",
         "prompt": "Подставляется в прогресс, когда амбассадор получил все ступени.",
         "default": "Все ступени твои",
+        "per_city": True,
     },
     "amb_invitees_counts_text": {
         "type": "text", "group": "amb", "label": "🙈 Текст: «Мои приглашённые» без имён",
@@ -5047,6 +5176,7 @@ SETTINGS_SCHEMA = {
             "{qualified} — прошли отбор\n\nСлова в фигурных скобках не удалять."
         ),
         "default": "Всего по твоей ссылке: {total}\nНа рассмотрении: {pending}\nПрошли отбор: {qualified}",
+        "per_city": True,
     },
     "amb_invitee_masked_label_text": {
         "type": "text", "group": "amb", "label": "🙈 Текст: приглашённый без имени в истории баллов",
@@ -5055,6 +5185,7 @@ SETTINGS_SCHEMA = {
             "{n} — порядковый номер приглашённого. Пример: Приглашённый №{n}"
         ),
         "default": "Приглашённый №{n}",
+        "per_city": True,
     },
     "amb_referral_reversal_reason_text": {
         "type": "text", "group": "amb", "label": "↩️ Текст: списание баллов при исключении приглашённого",
@@ -5064,6 +5195,7 @@ SETTINGS_SCHEMA = {
             "Пример: Снят с зачёта приглашённый: {name}"
         ),
         "default": "Снят с зачёта приглашённый: {name}",
+        "per_city": True,
     },
     # Владелец 09.10: при «✅ Взять» кандидата дозачитываются баллы за приглашённых, одобренных
     # пока он был кандидатом (services/amb_status.take), — одной строкой истории монет.
@@ -5076,6 +5208,7 @@ SETTINGS_SCHEMA = {
             "{count} — сколько таких приглашённых. Пример: За приглашённых до вступления: {count}"
         ),
         "default": "За приглашённых до вступления: {count}",
+        "per_city": True,
     },
     "amb_referral_restore_reason_text": {
         "type": "text", "group": "amb", "label": "↪️ Текст: возврат баллов при возврате приглашённого в зачёт",
@@ -5085,6 +5218,7 @@ SETTINGS_SCHEMA = {
             "Пример: Возвращён в зачёт приглашённый: {name}"
         ),
         "default": "Возвращён в зачёт приглашённый: {name}",
+        "per_city": True,
     },
 
     # ── Вход в команду амбассадоров: режим, лимит мест («пакетов») и тексты делегату. Правила
@@ -5108,6 +5242,7 @@ SETTINGS_SCHEMA = {
             "кнопке «Хочу свою ссылку», без лимита и без кандидатов."
         ),
         "default": "off",
+        "per_city": True,
     },
     "amb_join_mode": {
         "type": "enum", "group": "amb", "label": "🚪 Как становятся амбассадорами",
@@ -5123,6 +5258,7 @@ SETTINGS_SCHEMA = {
             "на форуме всего 17 пакетов амбассадора."
         ),
         "default": "instant",
+        "per_city": True,
     },
     "amb_slots_limit": {
         "type": "int", "group": "amb", "label": "🎁 Мест в команде амбассадоров (пакетов)",
@@ -5136,6 +5272,7 @@ SETTINGS_SCHEMA = {
         # 0 — осмысленное «без лимита», а не «вернуть дефолт».
         "allow_zero": True,
         "default": 0,
+        "per_city": True,
     },
     "amb_candidate_ack_text": {
         "type": "text", "group": "amb", "label": "🗳 Текст: заявка в амбассадоры принята",
@@ -5147,11 +5284,13 @@ SETTINGS_SCHEMA = {
             "Заявка в команду амбассадоров принята! Менеджер свяжется с тобой. А ссылка уже "
             "твоя — можешь делиться ею прямо сейчас."
         ),
+        "per_city": True,
     },
     "amb_status_candidate_text": {
         "type": "text", "group": "amb", "label": "🗳 Текст: статус кандидата на «Моя ссылка»",
         "prompt": "Строка на экране «Моя ссылка» у делегата, чья заявка в амбассадоры ещё рассматривается.",
         "default": "🕓 Твоя заявка в команду амбассадоров рассматривается.",
+        "per_city": True,
     },
     "amb_slots_full_text": {
         "type": "text", "group": "amb", "label": "🎁 Текст: места в команде заняты",
@@ -5163,6 +5302,7 @@ SETTINGS_SCHEMA = {
             "Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём — "
             "следи за новостями!"
         ),
+        "per_city": True,
     },
     "amb_status_pack_text": {
         "type": "text", "group": "amb", "label": "🎁 Текст: «пакет за тобой» на «Моя ссылка»",
@@ -5171,6 +5311,7 @@ SETTINGS_SCHEMA = {
             "Показывается только на событиях с лимитом мест."
         ),
         "default": "🎁 Ты в команде амбассадоров — пакет амбассадора за тобой.",
+        "per_city": True,
     },
     "amb_status_no_pack_text": {
         "type": "text", "group": "amb", "label": "🎁 Текст: «без пакета» на «Моя ссылка»",
@@ -5182,6 +5323,7 @@ SETTINGS_SCHEMA = {
             "Ты в команде амбассадоров. Пакет амбассадора закрепляется за теми, чья заявка "
             "одобрена, пока есть места."
         ),
+        "per_city": True,
     },
     "amb_referral_points_text": {
         "type": "text", "group": "amb", "label": "💰 Текст: баллы за приглашённых на «Моя ссылка»",
@@ -5191,6 +5333,7 @@ SETTINGS_SCHEMA = {
             "Слова в фигурных скобках не удалять."
         ),
         "default": "💰 Баллы за приглашённых: {points}",
+        "per_city": True,
     },
     "amb_wave_place_text": {
         "type": "text", "group": "amb", "label": "🌊 Текст: место в волне на «Моя ссылка»",
@@ -5200,6 +5343,7 @@ SETTINGS_SCHEMA = {
             "{total} — сколько всего участников\n\nСлова в фигурных скобках не удалять."
         ),
         "default": "🌊 {wave}: ты на {place} месте из {total}",
+        "per_city": True,
     },
     "amb_taken_text": {
         "type": "text", "group": "amb", "label": "🎉 Текст: тебя взяли в амбассадоры",
@@ -5211,6 +5355,7 @@ SETTINGS_SCHEMA = {
             "🎉 Ты в команде амбассадоров! Вот твоя ссылка для приглашений: {link}\n"
             "Всё про задания и прогресс — в разделе «Моя ссылка»."
         ),
+        "per_city": True,
     },
     "amb_removed_text": {
         "type": "text", "group": "amb", "label": "👋 Текст: выведен из команды амбассадоров",
@@ -5219,6 +5364,7 @@ SETTINGS_SCHEMA = {
             "Ты больше не в команде амбассадоров. Спасибо за помощь! Твоя ссылка "
             "для приглашений продолжает работать, а баллы остаются за тобой."
         ),
+        "per_city": True,
     },
     "amb_decline_all_text": {
         "type": "text", "group": "amb", "label": "🙏 Текст: вежливый отказ кандидатам",
@@ -5230,6 +5376,7 @@ SETTINGS_SCHEMA = {
             "Спасибо, что откликнулся! Места в команде амбассадоров уже заняты, но мы всё равно "
             "тебя очень ждём — следи за новостями."
         ),
+        "per_city": True,
     },
 
     # Phase 32 (32-02, D-04): делегатские тексты волн — русские дефолты из «Message Patterns»
@@ -5249,11 +5396,13 @@ SETTINGS_SCHEMA = {
             "Волна {wave} началась и продлится до {ends}.\n{intro}\n\nЗадания волны:\n{tasks}"
             "\n\nСдать можно и позже дедлайна — баллов будет меньше."
         ),
+        "per_city": True,
     },
     "wave_start_button_text": {
         "type": "text", "group": "amb", "label": "🌊 Старт волны: кнопка",
         "prompt": "Подпись кнопки под сообщением о старте волны — ведёт в список заданий.",
         "default": "Открыть задания",
+        "per_city": True,
     },
     "wave_deadline_reminder_text": {
         "type": "text", "group": "amb", "label": "🌊 Напоминание о дедлайне",
@@ -5267,6 +5416,7 @@ SETTINGS_SCHEMA = {
             "Скоро дедлайн ({deadline}), а у тебя ещё не сдано: «{task}» ({coins} баллов). "
             "Успей сдать до дедлайна, чтобы получить баллы."
         ),
+        "per_city": True,
     },
     # Ночь 10.10 (бэклог «🛠», P1): срок напоминания был зашит — 24 ч. Новое значение
     # переставляет уже стоящие напоминания сразу (services/scheduler.py::on_setting_written).
@@ -5278,6 +5428,7 @@ SETTINGS_SCHEMA = {
             "48 = за двое суток\n\nНовое значение действует сразу и для уже заведённых заданий."
         ),
         "default": 24, "min": 1, "max": 168,
+        "per_city": True,
     },
     "wave_results_announce_text": {
         "type": "text", "group": "amb", "label": "🌊 Итоги волны: объявление всем",
@@ -5293,6 +5444,7 @@ SETTINGS_SCHEMA = {
             "Волна {wave} завершена. Призёры: {winners} — поздравляем!\n"
             "Твоё место — {place}-е из {total}, {points} баллов за волну."
         ),
+        "per_city": True,
     },
     "wave_results_winner_text": {
         "type": "text", "group": "amb", "label": "🌊 Итоги волны: поздравление призёру",
@@ -5311,6 +5463,7 @@ SETTINGS_SCHEMA = {
             "Ты среди призёров волны {wave} — {place}-е место, {points} баллов!\n{prize}"
             "\nСпасибо за работу в этой волне."
         ),
+        "per_city": True,
     },
     "wave_results_prize_text": {
         "type": "text", "group": "amb", "label": "🌊 Приз: текст в итогах",
@@ -5321,11 +5474,13 @@ SETTINGS_SCHEMA = {
             "«худи АЙСЕК и проходка на афтепати»."
         ),
         "default": "Твой приз найдёт тебя отдельно — считай это счастливым билетом 🎟",
+        "per_city": True,
     },
     "wave_rating_header_text": {
         "type": "text", "group": "amb", "label": "🌊 Рейтинг волны: заголовок",
         "prompt": "Первая строка экрана рейтинга ТЕКУЩЕЙ волны. Поддерживается HTML.",
         "default": "🏅 <b>Рейтинг волны</b>",
+        "per_city": True,
     },
     "wave_rating_own_line_text": {
         "type": "text", "group": "amb", "label": "🌊 Рейтинг волны: строка «твоё место»",
@@ -5338,21 +5493,25 @@ SETTINGS_SCHEMA = {
             "Слова в фигурных скобках не удалять."
         ),
         "default": "Ты {rank}-й из {total}. До призового места ({place}-е) — {gap} баллов.",
+        "per_city": True,
     },
     "wave_rating_closed_text": {
         "type": "text", "group": "amb", "label": "🌊 Рейтинг волны: волна не идёт",
         "prompt": "Что видит амбассадор на экране рейтинга волны, пока активной волны нет.",
         "default": "Сейчас нет активной волны амбассадоров — рейтинг появится, когда волна начнётся.",
+        "per_city": True,
     },
     "ambassador_block_header_text": {
         "type": "text", "group": "amb", "label": "🤝 Амбассадорский блок: заголовок",
         "prompt": "Заголовок раздела заданий амбассадоров (отдельно от обычных заданий волны).",
         "default": "Задания амбассадоров",
+        "per_city": True,
     },
     "game_task_no_deadline_text": {
         "type": "text", "group": "game", "label": "🌊 Карточка задания: без срока",
         "prompt": "Что показывается вместо даты у задания без собственного дедлайна.",
         "default": "без срока",
+        "per_city": True,
     },
     "game_task_penalty_hint_text": {
         "type": "text", "group": "game", "label": "🌊 Карточка задания: строка штрафа",
@@ -5366,31 +5525,37 @@ SETTINGS_SCHEMA = {
             "После дедлайна ({deadline}) — {penalized} баллов вместо {coins}. Штраф "
             "фиксированный, не зависит от того, насколько поздно."
         ),
+        "per_city": True,
     },
     "ambassador_path_prompt_text": {
         "type": "text", "group": "amb", "label": "🤝 Путь амбассадора: вопрос",
         "prompt": "Вопрос, каким путём амбассадор хочет приносить пользу (выбор кнопками).",
         "default": "Как тебе больше нравится помогать как амбассадору?",
+        "per_city": True,
     },
     "ambassador_path_label_invite": {
         "type": "text", "group": "amb", "label": "🤝 Путь: «Зову людей»",
         "prompt": "Подпись кнопки-варианта «зову людей на мероприятие».",
         "default": "Зову людей",
+        "per_city": True,
     },
     "ambassador_path_label_content": {
         "type": "text", "group": "amb", "label": "🤝 Путь: «Делаю контент»",
         "prompt": "Подпись кнопки-варианта «делаю контент для соцсетей».",
         "default": "Делаю контент",
+        "per_city": True,
     },
     "ambassador_path_label_none": {
         "type": "text", "group": "amb", "label": "🤝 Путь: «Пока не выбрал»",
         "prompt": "Подпись кнопки-варианта «пока не определился с путём».",
         "default": "Пока не выбрал",
+        "per_city": True,
     },
     "ambassador_leave_button_text": {
         "type": "text", "group": "amb", "label": "🤝 Кнопка «Перестать быть амбассадором»",
         "prompt": "Подпись кнопки выхода из амбассадорского блока.",
         "default": "Перестать быть амбассадором",
+        "per_city": True,
     },
     "ambassador_leave_confirm_text": {
         "type": "text", "group": "amb", "label": "🤝 Выход из амбассадоров: подтверждение",
@@ -5402,11 +5567,13 @@ SETTINGS_SCHEMA = {
             "Точно хочешь перестать быть амбассадором?\n\nРассылки волны прекратятся, из "
             "рейтинга текущей волны ты исчезнешь, а уже набранные баллы останутся."
         ),
+        "per_city": True,
     },
     "ambassador_leave_done_text": {
         "type": "text", "group": "amb", "label": "🤝 Выход из амбассадоров: готово",
         "prompt": "Что видит делегат сразу после подтверждённого выхода из амбассадоров.",
         "default": "Готово — ты больше не амбассадор. Спасибо за работу!",
+        "per_city": True,
     },
     # Менеджерский текст (НЕ делегатский) — см. services/i18n/i18n_sources.py::_ADMIN_ONLY_GAME_KEYS.
     "wave_end_manager_text": {
@@ -5424,6 +5591,7 @@ SETTINGS_SCHEMA = {
             "Волна {wave} закончилась. Топ: {top}. На проверке ещё {pending} сдач — итог "
             "может измениться, если проверить их сейчас."
         ),
+        "per_city": True,
     },
 
     # ── Phase 14 (CFG-01): group "system" — тайминги прокси переехали из .env. Оба значения
@@ -7877,9 +8045,9 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "apps", "label": "🎟 Метка события в QR чек-ина",
         "prompt": (
             "Короткая метка форума внутри QR-кода делегата — по ней будущий сканер отличит "
-            "«свой» QR от чужого. Например: Юлид26, СкиллАп5 (без пробелов и апострофа).\n\n"
+            "«свой» QR от чужого. Например: Форум26 (без пробелов и апострофа).\n\n"
             "Не задано — бот возьмёт «🎉 Сезон события» и уберёт из него апостроф и пробелы "
-            "(«Юлид'26» → «Юлид26»)."
+            "(«Форум'26» → «Форум26»)."
         ),
         "default": None,
     },
@@ -7980,7 +8148,7 @@ SETTINGS_SCHEMA = {
     "menu_info_label": {
         "type": "text", "group": "menu_labels", "label": "🔘 Подпись кнопки «ℹ️ Информация о форуме»",
         "prompt": (
-            "Как кнопка подписана в главном меню делегата. Эмодзи в начале можно сменить или убрать. Пока поле пустое, на конференции кнопка сама называется «ℹ️ О конференции».\n\nПример: ℹ️ О Юлиде"
+            "Как кнопка подписана в главном меню делегата. Эмодзи в начале можно сменить или убрать. Пока поле пустое, на конференции кнопка сама называется «ℹ️ О конференции».\n\nПример: ℹ️ О Форум'26"
         ),
         "default": "ℹ️ Информация о форуме",
         "per_city": True,
@@ -8617,7 +8785,7 @@ SETTINGS_SCHEMA = {
     },
     "regional_noshow_offer_time": {
         "type": "text", "group": "system",
-        "label": "🚌 Перенос в Москву: во сколько (день после форума)",
+        "label": "🚌 Перенос в другой город: во сколько (день после форума)",
         "prompt": (
             "Во сколько НА СЛЕДУЮЩИЙ ДЕНЬ после последнего дня форума слать предложение "
             "переноса неявившимся одобренным этого города. Формат <code>ЧЧ:ММ</code>, "
@@ -8636,7 +8804,7 @@ SETTINGS_SCHEMA = {
     # move._target_city_for`) — код города НИКОГДА не хардкожен как "msk" ни здесь, ни в сервисе.
     "regional_noshow_target_city": {
         "type": "text", "group": "system",
-        "label": "🚌 Перенос в Москву: город назначения",
+        "label": "🚌 Перенос в другой город: город назначения",
         "prompt": None, "default": None,
         "per_city": True,
     },
@@ -8644,7 +8812,7 @@ SETTINGS_SCHEMA = {
     # — НЕ в `_APPS_FIELD_ORDER` (та же причина, что у target_city выше).
     "regional_noshow_move_status": {
         "type": "enum", "group": "system",
-        "label": "🚌 Перенос в Москву: статус после переноса",
+        "label": "🚌 Перенос в другой город: статус после переноса",
         "options": ["keep", "to_moderation"], "prompt": None, "default": "keep",
         "option_labels": {
             "keep": "✅ Остаётся одобренным",
@@ -8654,7 +8822,7 @@ SETTINGS_SCHEMA = {
     },
     "regional_noshow_offer_text": {
         "type": "text", "group": "reg",
-        "label": "🚌 Перенос в Москву: текст предложения",
+        "label": "🚌 Перенос в другой город: текст предложения",
         "prompt": (
             "Сообщение одобренному делегату регионального форума, которого не видели ни на "
             "входе, ни на сессиях. Доступны <code>{city}</code> (город, где не получилось "
@@ -9320,6 +9488,18 @@ del _W, _R
 from domain.settings.ui_text_fields import UI_TEXT_SCHEMA as _UI_TEXT_SCHEMA  # noqa: E402
 
 SETTINGS_SCHEMA.update(_UI_TEXT_SCHEMA)
+# Кнопки баланса и рейтинга волны живут в UI_TEXT_SCHEMA (группы game/amb) и вливаются
+# сюда тем же словарём. Флаг на нём: тот модуль реестр не импортирует.
+for _ui_key in (
+    "balance_history_button_text",
+    "balance_top_button_text",
+    "balance_back_button_text",
+    "balance_history_prev_button_text",
+    "balance_history_next_button_text",
+    "wave_rating_button_text",
+):
+    _UI_TEXT_SCHEMA[_ui_key]["per_city"] = True
+del _ui_key
 
 
 # ── Phase 25 (CITYQ-01): группа "reg_prompts" — тексты вопросов анкеты, переопределяемые по
@@ -9600,17 +9780,29 @@ def option_label(key: str, code: str) -> str:
     return option_labels(key).get(code, code)
 
 
-async def get_setting_typed(key: str):
+async def get_setting_typed(key: str, city_code: str | None = None):
     """Thin async accessor (D-05) — raw read via the existing `get_setting` (database.db,
     unchanged, D-07) then dispatch through the pure `_parse_setting`. Does not duplicate
     raw I/O; calls `get_setting` exactly once.
 
     `default_free` у записи реестра — заводской текст под бесплатное участие: берётся вместо
     `default`, только если своего значения менеджера нет ВОВСЕ (строки в `bot_settings` нет) и
-    модуль оплаты выключен. Сохранённое значение, даже пустое, всегда сильнее обоих наборов."""
+    модуль оплаты выключен. `city_code` — город, который вызывающий уже знает: тогда тумблер
+    `payment_enabled` читается для него. Делегата у функции нет, без города остаётся общий
+    тумблер (Москву не подставляем). Сохранённое значение, даже пустое, всегда сильнее обоих
+    наборов."""
     raw = await get_setting(key)
     if raw is None:
         free = (SETTINGS_SCHEMA.get(key) or {}).get("default_free")
-        if free is not None and await get_setting_typed("payment_enabled") != "on":
+        if free is not None and await _payment_enabled_for_free_text(city_code) != "on":
             return free
     return _parse_setting(key, raw)
+
+
+async def _payment_enabled_for_free_text(city_code: str | None):
+    """Тумблер оплаты для выбора `default_free`. Пустой город — общий ключ, не Москва."""
+    if not city_code:
+        return await get_setting_typed("payment_enabled")
+    from domain.cities import get_setting_typed_for_city
+
+    return await get_setting_typed_for_city("payment_enabled", city_code)

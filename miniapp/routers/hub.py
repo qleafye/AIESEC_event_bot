@@ -25,7 +25,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Request
 
 from domain.cities import get_setting_typed_for_city
-from database.db import get_checkin_status, get_referrals, get_setting, get_user, settings_snapshot
+from database.db import get_checkin_status, get_referrals, get_user, settings_snapshot
 from domain.payment import parse_options
 import domain.regform.engine as reg_engine
 from services.amb import amb_progress, amb_screen, invite_threshold
@@ -64,13 +64,20 @@ _STATUS_SCREEN_EXTRAS_OFF: dict = {
 }
 
 
-async def _next_steps(prefix: str, lang: str, tr_map: dict[str, str]) -> list[dict]:
+async def _next_steps(
+    prefix: str, lang: str, tr_map: dict[str, str], event_city: str | None,
+) -> list[dict]:
     """Три шага «Что дальше» одного состояния — `reg_status_{prefix}_step{1..3}_title_text`/
-    `_body_text`, тот же реестровый шаблон для review/approved (30-UI-SPEC.md таблицы)."""
+    `_body_text`, тот же реестровый шаблон для review/approved (30-UI-SPEC.md таблицы).
+    Город — тот же `event_city`, что у карточки оплаты на этом экране."""
     steps = []
     for i in (1, 2, 3):
-        title = await i18n.tr_setting(f"reg_status_{prefix}_step{i}_title_text", lang, tr_map)
-        body = await i18n.tr_setting(f"reg_status_{prefix}_step{i}_body_text", lang, tr_map)
+        title = await i18n.tr_setting_for_city(
+            f"reg_status_{prefix}_step{i}_title_text", event_city, lang, tr_map,
+        )
+        body = await i18n.tr_setting_for_city(
+            f"reg_status_{prefix}_step{i}_body_text", event_city, lang, tr_map,
+        )
         if title or body:
             steps.append({"title": title, "body": body})
     return steps
@@ -83,7 +90,8 @@ async def _payment_card(user: dict, lang: str, tr_map: dict[str, str]) -> dict |
     `payment_options` (корневой `payment_options.parse_options`, без aiogram-зависимости —
     `handlers/payment.py` держит `_parse_options` как реэкспорт оттуда же) — новой логики
     оплаты не пишем."""
-    if await get_setting_typed("payment_enabled") != "on":
+    pay_city = user.get("event_city")
+    if await get_setting_typed_for_city("payment_enabled", pay_city) != "on":
         return None
     option_label = user.get("payment_option")
     payment_due = user.get("payment_due")
@@ -91,7 +99,9 @@ async def _payment_card(user: dict, lang: str, tr_map: dict[str, str]) -> dict |
         return None
 
     amount = None
-    for label, price, _tracks in parse_options(await get_setting("payment_options") or ""):
+    raw_opts = await get_setting_typed_for_city("payment_options", pay_city)
+    opts_text = "\n".join(raw_opts) if isinstance(raw_opts, list) else (raw_opts or "")
+    for label, price, _tracks in parse_options(opts_text):
         if label == option_label:
             amount = price
             break
@@ -152,15 +162,21 @@ async def _amb_lines(
         view = await amb_screen.delegate_view(telegram_id, user=user, need_state=False)
         status = None
         if view.get("status_key"):
-            status = await i18n.tr_setting(view["status_key"], lang, tr_map) or None
+            status = await i18n.tr_setting_for_city(
+                view["status_key"], (user or {}).get("event_city"), lang, tr_map,
+            ) or None
         points = None
         if view.get("referral_points") is not None:
-            tpl = await i18n.tr_setting("amb_referral_points_text", lang, tr_map)
+            tpl = await i18n.tr_setting_for_city(
+                "amb_referral_points_text", (user or {}).get("event_city"), lang, tr_map,
+            )
             points = _fill(tpl, points=view["referral_points"]) if tpl else None
         wave_text = None
         wp = view.get("wave_place")
         if wp:
-            tpl = await i18n.tr_setting("amb_wave_place_text", lang, tr_map)
+            tpl = await i18n.tr_setting_for_city(
+                "amb_wave_place_text", (user or {}).get("event_city"), lang, tr_map,
+            )
             wave = i18n.tr(str(wp["wave"]), lang, tr_map)
             wave_text = _fill(tpl, wave=wave, place=wp["place"], total=wp["total"]) if tpl else None
         return status, points, wave_text
@@ -198,7 +214,7 @@ async def _referral_block(
     if not bot_username:
         return None
     async def tr_key(key: str) -> str:  # колбэк перевода для services.amb.amb_progress
-        return await i18n.tr_setting(key, lang, tr_map or {})
+        return await i18n.tr_setting_for_city(key, event_city, lang, tr_map or {})
 
     # Ступени амбассадоров СкиллАп: амбассадору вместо счётчика — прогресс цифрами (часть блока
     # ссылки, поэтому от `menu_invites` не зависит). Программа выключена — прежний счётчик.
@@ -352,7 +368,7 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             "title": await i18n.tr_setting("reg_status_review_title_text", lang, tr_map),
             "screen_body": await i18n.tr_setting("reg_status_review_body_text", lang, tr_map),
             "next_steps_eyebrow": await i18n.tr_setting("reg_status_next_eyebrow_text", lang, tr_map),
-            "next_steps": await _next_steps("review", lang, tr_map),
+            "next_steps": await _next_steps("review", lang, tr_map, event_city),
             "edit_button_text": await i18n.tr_setting("reg_status_edit_button_text", lang, tr_map),
             "payment": None, "pay_button_text": None,
             "reason_eyebrow": None, "reason_text": None, "reason_date": None,
@@ -439,7 +455,7 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
                 дата=event_dates, город=event_place,
             ),
             "next_steps_eyebrow": await i18n.tr_setting("reg_status_next_eyebrow_text", lang, tr_map),
-            "next_steps": await _next_steps("approved", lang, tr_map),
+            "next_steps": await _next_steps("approved", lang, tr_map, event_city),
             "edit_button_text": None,
             "payment": payment,
             "pay_button_text": (

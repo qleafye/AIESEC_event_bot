@@ -30,7 +30,7 @@ from shared.amb_tier_keys import tier_key
 from database import amb_tiers_db
 from database import db as _db
 from services.amb import amb_tiers
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city, is_per_city
 
 logger = logging.getLogger(__name__)
 
@@ -55,18 +55,24 @@ async def progress_view(user_id: int) -> dict | None:
     (пустая подпись ступень пропускает; `None` — все взяты), `n` — сколько ещё прошедших
     нужно до неё. `next_kind` оставлен для старых потребителей: "o2o" (ступень 2),
     "networking" (ступень 3), "tier{N}" для остальных, "done" — все взяты."""
-    if not await amb_tiers.program_on():
+    city = None
+    user = None
+    if is_per_city("amb_qualified_program"):
+        user = await _db.get_user(user_id)
+        city = (user or {}).get("event_city")
+    if not await amb_tiers.program_on(city):
         return None
-    user = await _db.get_user(user_id)
+    if user is None:
+        user = await _db.get_user(user_id)
     if not (user and user.get("is_ambassador")):
         return None
     counts = await amb_tiers_db.referral_counts(user_id, await amb_tiers.current_season())
     qualified = counts["qualified"]
     next_tier, n = None, 0
-    for cfg in await amb_tiers.tiers_config():
+    for cfg in await amb_tiers.tiers_config(city):
         if qualified >= cfg.threshold:
             continue
-        if not ((await get_setting_typed(cfg.next_key)) or "").strip():
+        if not ((await get_setting_typed_for_city(cfg.next_key, city)) or "").strip():
             continue
         next_tier, n = cfg.n, cfg.threshold - qualified
         break
@@ -87,8 +93,8 @@ async def render_progress(user_id: int, tr_key: TrKey) -> str | None:
     )
 
 
-async def hide_names_on() -> bool:
-    return await get_setting_typed("amb_hide_invitee_names") == "on"
+async def hide_names_on(city: str | None = None) -> bool:
+    return await get_setting_typed_for_city("amb_hide_invitee_names", city) == "on"
 
 
 async def render_invitee_counts(user_id: int, tr_key: TrKey) -> str:
@@ -106,7 +112,11 @@ _MASKED_SOURCES = ("referral", "referral_reversal")
 async def mask_referral_coin_rows(user_id: int, rows: list[dict], tr_key: TrKey) -> list[dict]:
     """При выключенном тумблере — `rows` как есть (тот же объект). При включённом — копии строк,
     у referral-строк `reason` = «Приглашённый №N»; прочие строки не меняются."""
-    if not rows or not await hide_names_on():
+    city = None
+    if is_per_city("amb_hide_invitee_names"):
+        user = await _db.get_user(user_id)
+        city = (user or {}).get("event_city")
+    if not rows or not await hide_names_on(city):
         return rows
     if not any(row.get("source") in _MASKED_SOURCES for row in rows):
         return [dict(row) for row in rows]

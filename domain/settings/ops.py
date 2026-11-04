@@ -40,8 +40,8 @@ from dataclasses import dataclass
 
 from config import config
 from domain.cities import (
-    PER_CITY_SEP, city_codes, city_label, city_tab_base, normalize_city, split_per_city_key,
-    tab_suffix,
+    PER_CITY_SEP, city_codes, city_label, city_tab_base, get_setting_typed_for_city,
+    normalize_city, split_per_city_key, tab_suffix,
 )
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from domain.regform.presets import apply_reg_preset
@@ -1123,7 +1123,7 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # Приёмка 17.09: минимум вариантов мультивыбора и подпись раздела реф-ссылки в приложении.
     "min": "1",
     "section": "🔗 Моя реферальная ссылка",
-    "season": "Юлид'25",
+    "season": "Форум'26",
     "deadline": "15.10.2026",
     "requisites": "Сбербанк, 2202 2000 0000 0000, Иван И.",
     "amount": "3500",
@@ -1152,7 +1152,7 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "step": "4",
     "date": "02.09.2026 14:30",
     "rank": "5",
-    "link": "https://t.me/YouLead_bot?start=amb_123",
+    "link": "https://t.me/forum_bot?start=amb_123",
     "breakdown": "📷 1 фото, ✍️ 1 текст",
     "page": "1",
     "status": "на проверке",
@@ -1218,16 +1218,19 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # regional_noshow_offer_text («Приезжай на {event}: {target_city}{dates}») — `{dates}` уже
     # несёт ведущий пробел и скобки (см. `services.regional_noshow_move._dates_label_for`).
     "target_city": "Москва",
-    "dates": " (30.10–31.10)",
+    "dates": " (12–13 сентября 2026)",
     # Название мероприятия (`services.comms.text_fill.event_label`): без «🎪 Название мероприятия» —
     # нейтральное слово, с ним — настоящее название (подменяется в `preview_samples`).
     "event": "мероприятие",
 }
 
 
-async def preview_samples() -> dict[str, str]:
+async def preview_samples(city_code: str | None = None) -> dict[str, str]:
     """Образцы для превью: поверх заглушек — реальные значения мероприятия из реестра/БД
-    (сезон, дедлайн оплаты, реквизиты), чтобы менеджер видел свой текст, а не абстрактный."""
+    (сезон, дедлайн оплаты, реквизиты), чтобы менеджер видел свой текст, а не абстрактный.
+
+    Дедлайн и реквизиты — город шапки, если он выбран. Без города остаются общими.
+    Само значение, которое менеджер сейчас правит, в этот словарь не входит."""
     samples = dict(PREVIEW_SAMPLES)
     event_title = await get_setting("event_name")
     if event_title and event_title.strip():
@@ -1235,10 +1238,12 @@ async def preview_samples() -> dict[str, str]:
     season = await get_setting_typed("event_season")
     if season:
         samples["season"] = str(season)
-    deadline = await get_setting("payment_deadline")
-    if deadline:
-        samples["deadline"] = deadline.split()[0]
-    requisites = await get_setting_typed("payment_requisites")
+    deadline = await get_setting_typed_for_city("payment_deadline", city_code)
+    if hasattr(deadline, "strftime"):
+        samples["deadline"] = deadline.strftime("%d.%m.%Y")
+    elif deadline:
+        samples["deadline"] = str(deadline).split()[0]
+    requisites = await get_setting_typed_for_city("payment_requisites", city_code)
     if requisites:
         samples["requisites"] = str(requisites)
     return samples

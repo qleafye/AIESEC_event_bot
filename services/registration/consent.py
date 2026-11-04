@@ -12,8 +12,8 @@
 import html
 import logging
 
-from database.db import current_consent_version, get_user_consent_versions
-from domain.settings.schema import get_setting_typed
+from database.db import current_consent_version, get_user, get_user_consent_versions
+from domain.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,8 @@ async def consent_card_line(user_id: int) -> str | None:
     if not rows:
         return None
     latest = rows[-1][1]
-    current = await current_consent_version()
+    user = await get_user(user_id)
+    current = await current_consent_version((user or {}).get("event_city") if user else None)
     if latest is None:
         line = "📝 Согласие: до версионирования"
     else:
@@ -56,12 +57,13 @@ async def consent_card_line(user_id: int) -> str | None:
     return line
 
 
-async def recollect_gate_on() -> bool:
+async def recollect_gate_on(city_code: str | None = None) -> bool:
     """Пересогласие показываем только если включён И модуль согласий, И сам гейт
-    (`consent_recollect_enabled`, дефолт off — поведение /start без него не меняется)."""
+    (`consent_recollect_enabled`, дефолт off — поведение /start без него не меняется).
+    `city_code` — город мероприятия человека."""
     return (
-        await get_setting_typed("consent_enabled") == "on"
-        and await get_setting_typed("consent_recollect_enabled") == "on"
+        await get_setting_typed_for_city("consent_enabled", city_code) == "on"
+        and await get_setting_typed_for_city("consent_recollect_enabled", city_code) == "on"
     )
 
 
@@ -88,10 +90,11 @@ def tapped_button_text(callback) -> str | None:
 
 
 async def outstanding_consents(
-    user_id: int, entries: list[tuple[str, str]]
+    user_id: int, entries: list[tuple[str, str]], city_code: str | None = None,
 ) -> list[tuple[str, str]]:
     """Согласия из `entries` ([(label, key)]), у которых нет подписи ТЕКУЩЕЙ редакции.
-    Строка до версионирования (NULL) или старой версии — считается неподписанной."""
-    current = await current_consent_version()
+    Строка до версионирования (NULL) или старой версии — считается неподписанной.
+    `city_code` — город мероприятия человека; без него редакция общая."""
+    current = await current_consent_version(city_code)
     signed = {key for key, ver in await get_user_consent_versions(user_id) if ver == current}
     return [(label, key) for label, key in entries if key not in signed]

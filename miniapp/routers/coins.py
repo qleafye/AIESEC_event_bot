@@ -14,13 +14,13 @@ from database.db import (
     count_coin_entries_for_user,
     get_balance,
     get_leaderboard,
+    get_user,
     get_user_rank,
     list_coin_entries_for_user,
 )
+from domain.cities import is_per_city
 from services.amb import amb_progress
 from services.i18n import i18n
-from domain.settings.schema import get_setting_typed
-
 from miniapp.deps import Principal, game_gate, require_section
 from miniapp.routers.tasks import parse_page
 
@@ -42,6 +42,23 @@ def display_name(row: dict) -> str:
     return str(row.get("full_name") or row.get("username") or row.get("user_id"))
 
 
+_COIN_TEXT_KEYS = (
+    "balance_source_manual_label",
+    "balance_source_task_label",
+    "balance_source_referral_label",
+    "balance_history_empty",
+    "leaderboard_empty_text",
+)
+
+
+async def _viewer_city(telegram_id: int) -> str | None:
+    """Сырой event_city. Пока подписи не городские — без чтения пользователя."""
+    if not any(is_per_city(key) for key in _COIN_TEXT_KEYS):
+        return None
+    user = await get_user(telegram_id)
+    return (user or {}).get("event_city")
+
+
 @router.get("/app/api/coins/balance")
 async def balance(p: Principal = Depends(game_gate),
                   _: Principal = Depends(require_section("coins"))) -> dict:
@@ -59,20 +76,22 @@ async def history(offset: str | None = None, limit: str | None = None,
     off, lim = parse_page(offset, limit)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
+    city = await _viewer_city(p.telegram_id)
     total = await count_coin_entries_for_user(p.telegram_id)
     rows = await list_coin_entries_for_user(p.telegram_id, limit=lim, offset=off)
+    city = (await get_user(p.telegram_id) or {}).get("event_city")
 
     async def tr_key(key: str) -> str:  # колбэк перевода для services.amb.amb_progress
-        return await i18n.tr_setting(key, lang, tr_map)
+        return await i18n.tr_setting_for_city(key, city, lang, tr_map)
 
     # Тумблер «Скрывать имена приглашённых»: «Приглашённый №N» вместо имени, БД не трогаем.
     rows = await amb_progress.mask_referral_coin_rows(p.telegram_id, rows, tr_key)
-    manual_label = await i18n.tr_setting("balance_source_manual_label", lang, tr_map)
-    task_label = await i18n.tr_setting("balance_source_task_label", lang, tr_map)
+    manual_label = await i18n.tr_setting_for_city("balance_source_manual_label", city, lang, tr_map)
+    task_label = await i18n.tr_setting_for_city("balance_source_task_label", city, lang, tr_map)
     # Phase 32 (32-06, D-36): начисление за приглашённого (`claim_referral_credit`, план 32-01)
     # подписано по-человечески, как manual/task — иначе делегат видит служебный код source или
     # пустую подпись «—» вместо понятной причины.
-    referral_label = await i18n.tr_setting("balance_source_referral_label", lang, tr_map)
+    referral_label = await i18n.tr_setting_for_city("balance_source_referral_label", city, lang, tr_map)
     items = []
     for row in rows:
         source = row.get("source")
@@ -94,7 +113,7 @@ async def history(offset: str | None = None, limit: str | None = None,
     return {
         "items": items, "total": total, "limit": lim, "offset": off,
         "empty_text": (
-            await i18n.tr_setting("balance_history_empty", lang, tr_map) if total == 0 else None
+            await i18n.tr_setting_for_city("balance_history_empty", city, lang, tr_map) if total == 0 else None
         ),
     }
 
@@ -105,7 +124,9 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(game_gate
     _, lim = parse_page(0, limit, default_limit=LEADERBOARD_MAX, max_limit=LEADERBOARD_MAX)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
+    city = await _viewer_city(p.telegram_id)
     rows = await get_leaderboard(lim)
+    city = (await get_user(p.telegram_id) or {}).get("event_city")
     items = [
         {
             "rank": i,
@@ -123,6 +144,6 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(game_gate
         # баланса в хабе, переведённая на язык делегата; форму под число выбирает `unitFor`.
         "unit": await i18n.tr_setting("miniapp_hub_balance_unit", lang, tr_map),
         "empty_text": (
-            await i18n.tr_setting("leaderboard_empty_text", lang, tr_map) if not rows else None
+            await i18n.tr_setting_for_city("leaderboard_empty_text", city, lang, tr_map) if not rows else None
         ),
     }
