@@ -1425,6 +1425,54 @@ def test_season_recap_card_says_players_are_all_cities():
     assert "…" in card
 
 
+def test_season_recap_card_mounts_on_slot_only_after_show_and_dismiss_ok():
+    """Карточка не вставляется в DOM до show === true и не снимается до ok === true.
+
+    На 553ad750 root.append(card) стоит раньше запроса, а card.remove() в onClick —
+    раньше POST dismiss. Пустая точка между подсказками и сегментом заменяется
+    карточкой только после ответа; отсоединённая точка второй карточки не получает.
+    """
+    body = _manager_hub_body()
+    block = body[body.index('if (hasCap("stats"))'):body.index("Режим менеджера")]
+    show_at = block.find("show !== true")
+    assert show_at != -1
+    assert "root.append(card)" not in block[:show_at], (
+        "карточка попадает в DOM до проверки show === true"
+    )
+    assert 'class: "card"' not in block[:show_at]
+    assert "replaceWith(card)" not in block[:show_at]
+    dismiss_at = block.find('api("/stats/season-recap/dismiss"')
+    then_at = block.find(".then(", dismiss_at)
+    ok_at = block.find("ok === true", then_at)
+    remove_at = block.find("card.remove()", ok_at if ok_at != -1 else 0)
+    next_then = block.find(".then(", then_at + 1) if then_at != -1 else -1
+    assert (
+        dismiss_at != -1
+        and then_at != -1
+        and ok_at != -1
+        and remove_at != -1
+        and next_then != -1
+        and dismiss_at < then_at < ok_at < remove_at < next_then
+        and block.count(".remove()") == 1
+    ), "карточку снимают до ответа dismiss с ok === true"
+    slot_at = block.find('const slot = h("div")')
+    append_slot = block.find("root.append(slot)")
+    request_at = block.find('api("/stats/season-recap", { quiet: true })')
+    connected_at = block.find("!slot.isConnected")
+    card_at = block.find('class: "card"')
+    replace_at = block.find("slot.replaceWith(card)")
+    assert 0 <= slot_at < append_slot < request_at
+    assert "card" not in block[slot_at:block.find("\n", slot_at)]
+    assert "class" not in block[slot_at:block.find("\n", slot_at)]
+    assert 0 <= connected_at < show_at < card_at < replace_at
+    assert "return" in block[connected_at:card_at]
+    assert "return" in block[show_at:card_at]
+    assert "root.append(card)" not in block
+    assert block.count('class: "card"') == 1
+    dismiss_call = block[dismiss_at:then_at]
+    assert 'method: "POST"' in dismiss_call and "quiet: true" in dismiss_call
+
+
 def test_manager_hub_dashboard_tile_driven_by_registry_not_literal():
     """Quick 260903: плитка «Дашборд» — адрес и подпись из ctx.me (/app/api/me), не литерал.
     hub.js уже проходит общий сторож «нет https:///http://» (test_hub_screen_exports_render_

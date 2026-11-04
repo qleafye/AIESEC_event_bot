@@ -583,13 +583,20 @@ async function renderManagerHub(root, ctx, opts = {}) {
   }
 
   // Карточка сезона — между подсказками и сегментом. Список режимов её не ждёт.
-  // До ответа, при show !== true и при ошибке карточки на экране нет.
+  // Пустая точка без класса карточки стоит сразу. Ответ с show === true ставит карточку
+  // на её место; отказ, ошибка и show !== true карточку не создают. Скрытие — только
+  // после ok === true. Новый рендер отсоединяет точку, и старый then ничего не дописывает.
   if (hasCap("stats")) {
-    const dismissSeasonRecap = () => api("/stats/season-recap/dismiss", {
+    const slot = h("div");
+    root.append(slot);
+    const dismissSeasonRecap = (card) => api("/stats/season-recap/dismiss", {
       method: "POST",
       quiet: true,
-    });
+    }).then((res) => {
+      if (res && res.ok === true) card.remove();
+    }).catch(() => {});
     api("/stats/season-recap", { quiet: true }).then((data) => {
+      if (!slot.isConnected) return;
       if (!data || data.show !== true) return;
       const card = h("div", { class: "card" });
       const grid = h("div", { class: "stats" });
@@ -610,11 +617,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
         type: "button",
         class: "muted",
         text: "Скрыть итог",
-        onClick: () => {
-          dismissSeasonRecap().then((res) => {
-            if (res && res.ok === true) card.remove();
-          }).catch(() => {});
-        },
+        onClick: () => dismissSeasonRecap(card),
       });
       hide.style.marginTop = "var(--sp-4)";
       hide.style.background = "transparent";
@@ -624,7 +627,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
       hide.style.font = "inherit";
       hide.style.cursor = "pointer";
       card.append(h("h1", { text: "Сезон прошёл" }), grid, hide);
-      root.append(card);
+      slot.replaceWith(card);
       if (!seasonRecapCelebrated) {
         seasonRecapCelebrated = true;
         confetti(card);
