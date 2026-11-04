@@ -189,19 +189,20 @@ async def reconcile_city(code: str) -> None:
 def rating_keyboard(
     session_id: int, lang: str = "ru", tr_map: dict | None = None,
 ) -> InlineKeyboardMarkup:
-    """Оценки 1–5 в два ряда (3+2): цифра и одна звезда. «Пропустить» снимает клавиатуру.
-    Ленивый импорт `tr_text` — модуль остаётся aiogram-free на импорте `handlers.*`."""
+    """Пять оценок двумя рядами: «1⭐»…«5⭐». Один ряд из `⭐`×n Telegram обрезает, число
+    не читается. «Не сейчас» закрывает приглашение без оценки. Комментарий сюда не входит —
+    он вторым шагом, после оценки (`comment_offer_keyboard`)."""
     from handlers.i18n.reg_i18n import tr_text
 
-    rates = [
-        InlineKeyboardButton(text=f"{n} ⭐", callback_data=f"sfb:r:{session_id}:{n}")
+    stars = [
+        InlineKeyboardButton(text=f"{n}⭐", callback_data=f"sfb:r:{session_id}:{n}")
         for n in range(_RATING_MIN, _RATING_MAX + 1)
     ]
-    skip = InlineKeyboardButton(
-        text=tr_text("Пропустить", lang, tr_map or {}),
+    dismiss = InlineKeyboardButton(
+        text=tr_text("Не сейчас", lang, tr_map or {}),
         callback_data=f"sfb:x:{session_id}",
     )
-    return InlineKeyboardMarkup(inline_keyboard=[rates[:3], rates[3:], [skip]])
+    return InlineKeyboardMarkup(inline_keyboard=[stars[:3], stars[3:], [dismiss]])
 
 
 def comment_offer_keyboard(
