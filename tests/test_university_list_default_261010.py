@@ -24,6 +24,21 @@ def test_config_has_no_spb_universities():
     assert not hasattr(config, "UNIVERSITIES")
 
 
+def test_spbgeu_is_the_economic_university_alias():
+    import json
+
+    from tests._paths import REPO_ROOT
+
+    data = json.loads((REPO_ROOT / "data/lookup/universities_ru.json").read_text(encoding="utf-8"))
+    hits = [
+        item for item in data["items"]
+        if "СПбГЭУ" in (item.get("aliases") or []) or item.get("canonical") == "СПбГЭУ"
+    ]
+    assert [item["canonical"] for item in hits] == [
+        "Санкт-Петербургский государственный экономический университет",
+    ]
+
+
 def test_empty_list_in_list_mode_is_free_text(tmp_path):
     _fresh(tmp_path, {"reg_university_mode": "list"})
     assert _run(reg_engine.options("university")) == []

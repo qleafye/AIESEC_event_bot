@@ -450,3 +450,15 @@ def test_write_yes_sets_mode_before_tab(tmp_path, sheet, monkeypatch):
     monkeypatch.setattr(ef, "set_form_mirror", tab)
     _run(mod.dlg_write_yes(_FakeCallback("dlg_write_yes"), st))
     assert order == ["mode", "tab"]
+
+
+def test_sheet_failure_log_includes_google_status():
+    class _Resp:
+        status_code = 429
+
+    class _ApiError(Exception):
+        def __init__(self):
+            self.response = _Resp()
+
+    assert mod._exc_label(_ApiError()) == "_ApiError 429"
+    assert mod._exc_label(RuntimeError("сеть")) == "RuntimeError"
