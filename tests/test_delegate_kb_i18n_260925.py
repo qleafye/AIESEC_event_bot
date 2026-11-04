@@ -56,6 +56,16 @@ def test_session_feedback_comment_button_english():
     assert _texts(sf.comment_offer_keyboard(7)) == ["✍️ Написать"]
 
 
+def test_session_feedback_stars_are_readable_and_dismissable():
+    from services import session_feedback as sf
+    kb = sf.rating_keyboard(7)
+    assert _texts(kb) == ["1⭐", "2⭐", "3⭐", "4⭐", "5⭐", "Не сейчас"]
+    assert [len(row) for row in kb.inline_keyboard] == [3, 2, 1]
+    assert _texts(sf.rating_keyboard(7, "en", _TR_MAP))[-1] == "Not now"
+    callbacks = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert callbacks == ["sfb:r:7:1", "sfb:r:7:2", "sfb:r:7:3", "sfb:r:7:4", "sfb:r:7:5", "sfb:x:7"]
+
+
 def test_nudge_keyboard_english():
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
     from services import scheduler

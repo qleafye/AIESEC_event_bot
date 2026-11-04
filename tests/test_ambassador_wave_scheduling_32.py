@@ -173,6 +173,24 @@ def test_send_wave_start_dm_skips_joined_after_wave_started(tmp_path, monkeypatc
     assert bot.sent == []
 
 
+def test_send_wave_start_dm_skips_rejected(tmp_path, monkeypatch):
+    """Задания — только одобренным. Отклонённый амбассадор старт волны не получает."""
+    _ready(tmp_path, "t_rejected_wave.db")
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+
+    async def _reject():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE users SET status = 'rejected' WHERE telegram_id = 1")
+            await conn.commit()
+    _run(_reject())
+
+    _run(sched.send_wave_start_dm(wave_id, 1))
+    assert bot.sent == []
+
+
 def test_send_wave_start_dm_skips_draft_wave(tmp_path, monkeypatch):
     _ready(tmp_path)
     bot = _with_bot(monkeypatch)
@@ -523,6 +541,47 @@ def test_send_task_deadline_reminder_rejected_submission_counts_as_not_submitted
     monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 12, 0, 0))
     _run(sched.send_task_deadline_reminder(task_id))
     assert [c[0] for c in bot.sent] == [1]  # отклонённая сдача — не сдал, напоминание уходит
+
+
+def test_send_task_deadline_reminder_quiet_hours_past_deadline_does_not_queue(tmp_path, monkeypatch):
+    """«Скоро дедлайн» не должно уехать утром, если тихие часы кончаются уже после срока."""
+    _ready(tmp_path, "t2quiet.db")
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    task_id = _run(db.create_task(
+        "QuietDue", "Light", 10, "photo", "2026-10-05 12:00:00", None, wave_id=wave_id,
+    ))
+
+    async def _after_deadline(now, user_id):
+        return datetime(2026, 10, 5, 12, 0, 0)
+
+    monkeypatch.setattr(quiet_hours, "defer_until", _after_deadline)
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 12, 0, 0))
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert bot.sent == []
+    assert _run(db.count_pending_delayed_notifications()) == 0
+
+
+def test_send_task_deadline_reminder_quiet_hours_before_deadline_still_queues(tmp_path, monkeypatch):
+    _ready(tmp_path, "t2quietok.db")
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    task_id = _run(db.create_task(
+        "QuietOk", "Light", 10, "photo", "2026-10-05 12:00:00", None, wave_id=wave_id,
+    ))
+
+    async def _before_deadline(now, user_id):
+        return datetime(2026, 10, 5, 9, 0, 0)
+
+    monkeypatch.setattr(quiet_hours, "defer_until", _before_deadline)
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 12, 0, 0))
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert bot.sent == []
+    assert _run(db.count_pending_delayed_notifications()) == 1
 
 
 def test_send_task_deadline_reminder_deadline_already_passed_sends_nothing(tmp_path, monkeypatch):

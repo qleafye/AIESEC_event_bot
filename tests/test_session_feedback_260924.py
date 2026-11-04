@@ -449,7 +449,7 @@ def test_deliver_feedback_prompts_only_to_marked_delegates(tmp_path, monkeypatch
     assert _run(db.get_session_feedback(DELEGATE2_ID, sid)) is None
     markup = bot.sent[0][2]["reply_markup"]
     assert [len(row) for row in markup.inline_keyboard] == [3, 2, 1]
-    assert markup.inline_keyboard[0][0].text == "1 ⭐"
+    assert markup.inline_keyboard[0][0].text == "1⭐"
     assert markup.inline_keyboard[2][0].callback_data == f"sfb:x:{sid}"
 
 
@@ -487,7 +487,7 @@ def test_deliver_feedback_prompts_respects_quiet_hours(tmp_path, monkeypatch):
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
-# Клавиатура оценки: два ряда 3+2, одна звезда, выход «Пропустить»
+# Клавиатура оценки: два ряда 3+2, «1⭐», выход «Не сейчас»
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
 def test_rating_keyboard_two_rows_digit_and_one_star():
@@ -498,14 +498,15 @@ def test_rating_keyboard_two_rows_digit_and_one_star():
     for n, btn in enumerate(buttons, start=1):
         assert str(n) in btn.text
         assert btn.text.count("⭐") == 1
-        assert btn.text == f"{n} ⭐"
+        assert btn.text == f"{n}⭐"
         assert btn.callback_data == f"sfb:r:42:{n}"
     skip = rows[2][0]
-    assert skip.text == "Пропустить"
+    assert skip.text == "Не сейчас"
     assert skip.callback_data == "sfb:x:42"
 
     en = sf.rating_keyboard(42, "en", {})
-    assert en.inline_keyboard[2][0].text == "Skip"
+    # Без карты переводов кнопка остаётся русской: «Не сейчас» не служебное слово яруса A.
+    assert en.inline_keyboard[2][0].text == "Не сейчас"
     assert [b.callback_data for row in en.inline_keyboard for b in row] == [
         b.callback_data for row in rows for b in row
     ]
@@ -549,6 +550,21 @@ def test_sfb_rate_marks_rating_and_offers_comment(tmp_path):
     assert "пару слов" in cb.message.text
 
 
+def test_sfb_dismiss_writes_nothing(tmp_path):
+    _ready(tmp_path)
+    sid = _run(_make_session())
+    _run(db.record_session_checkin(DELEGATE_ID, sid, [], source="miniapp"))
+    stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    _run(db.create_session_feedback_prompt(DELEGATE_ID, sid, stamp))
+
+    cb = FakeCallback(f"sfb:x:{sid}", user_id=DELEGATE_ID)
+    _run(sf_handlers.sfb_dismiss(cb))
+
+    row = _run(db.get_session_feedback(DELEGATE_ID, sid))
+    assert row["rating"] is None
+    assert "без оценки" in cb.message.text
+
+
 def test_sfb_rate_retap_changes_rating_not_duplicate_row(tmp_path):
     _ready(tmp_path)
     sid = _run(_make_session())
@@ -564,7 +580,7 @@ def test_sfb_rate_retap_changes_rating_not_duplicate_row(tmp_path):
 
 
 def test_sfb_skip_dismisses_keyboard_without_writing_rating(tmp_path):
-    """Приглашение уже создано (строка есть), «Пропустить» оценку не пишет и не открывает комментарий."""
+    """Приглашение уже создано (строка есть), «Не сейчас» оценку не пишет и не открывает комментарий."""
     _ready(tmp_path)
     sid = _run(_make_session())
     _run(db.record_session_checkin(DELEGATE_ID, sid, [], source="miniapp"))
@@ -575,7 +591,7 @@ def test_sfb_skip_dismisses_keyboard_without_writing_rating(tmp_path):
 
     cb = FakeCallback(f"sfb:x:{sid}", user_id=DELEGATE_ID)
     cb.message.text = prompt
-    _run(sf_handlers.sfb_skip(cb))
+    _run(sf_handlers.sfb_dismiss(cb))
 
     row = _run(db.get_session_feedback(DELEGATE_ID, sid))
     assert row is not None
@@ -583,7 +599,7 @@ def test_sfb_skip_dismisses_keyboard_without_writing_rating(tmp_path):
     assert not row.get("comment")
     assert _run(state.get_state()) is None
     assert cb.answers == [(None, False)]
-    assert cb.message.text == prompt
+    assert "без оценки" in cb.message.text
     assert cb.message.edit_kwargs["reply_markup"] is None
     assert "Написать" not in cb.message.text
 
@@ -596,11 +612,11 @@ def test_sfb_skip_unmarked_does_not_alert_or_create_row(tmp_path):
     sid = _run(_make_session())
     cb = FakeCallback(f"sfb:x:{sid}", user_id=DELEGATE_ID)
     cb.message.text = "Как тебе сессия?"
-    _run(sf_handlers.sfb_skip(cb))
+    _run(sf_handlers.sfb_dismiss(cb))
 
     assert cb.answers == [(None, False)]
     assert _run(db.get_session_feedback(DELEGATE_ID, sid)) is None
-    assert cb.message.text == "Как тебе сессия?"
+    assert "без оценки" in cb.message.text
     assert cb.message.edit_kwargs["reply_markup"] is None
 
 
@@ -608,9 +624,9 @@ def test_sfb_skip_without_message_text_only_answers(tmp_path):
     _ready(tmp_path)
     sid = _run(_make_session())
     cb = FakeCallback(f"sfb:x:{sid}", user_id=DELEGATE_ID)
-    _run(sf_handlers.sfb_skip(cb))
+    _run(sf_handlers.sfb_dismiss(cb))
     assert cb.answers == [(None, False)]
-    assert not hasattr(cb.message, "edit_kwargs")
+    assert "без оценки" in cb.message.text
 
 
 def test_sfb_offer_comment_rejects_unmarked_delegate(tmp_path):

@@ -75,17 +75,15 @@ async def sfb_rate(callback: types.CallbackQuery):
 
 
 @delegate_router.callback_query(F.data.startswith("sfb:x:"))
-async def sfb_skip(callback: types.CallbackQuery):
-    """Выход без оценки: кнопки снимаются, в базу и FSM ничего не пишется."""
-    session_id = int(callback.data.split(":", 2)[2])
+async def sfb_dismiss(callback: types.CallbackQuery):
+    """«Не сейчас» — оценка не пишется, комментарий не открывается, кнопки снимаются."""
+    lang, tr_map = await reg_i18n.ctx_for(callback)
     await callback.answer()
-    text = callback.message.text if callback.message is not None else None
-    if not text:
-        return
+    text = reg_i18n.tr_text("Ок, без оценки.", lang, tr_map)
     try:
         await callback.message.edit_text(text, reply_markup=None)
     except Exception as e:
-        logger.info("sfb_skip: edit_text failed for session=%s: %s", session_id, e)
+        logger.info("sfb_dismiss: edit_text failed: %s", e)
 
 
 @delegate_router.callback_query(F.data.startswith("sfb:c:"))
