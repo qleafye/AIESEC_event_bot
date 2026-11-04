@@ -51,6 +51,7 @@ from handlers.states import AmbAppoint
 from services.amb import amb_status
 from services.access import person_search
 from services.infra.background import spawn
+from domain.cities import get_setting_typed_for_city
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -290,7 +291,7 @@ async def _appoint_confirm(tid: int, scope) -> tuple[str, InlineKeyboardMarkup] 
         bits.append(html.escape(city))
     bits.append("заявка: " + APP_STATUS_LABELS.get(user.get("status") or "", "—"))
     now = AMB_STATUS_LABELS.get(st.get("status") or "none", "—")
-    taken = html.escape((await get_setting_typed("amb_taken_text") or "")
+    taken = html.escape((await get_setting_typed_for_city("amb_taken_text", user.get("event_city")) or "")
                         .replace("{link}", "[его ссылка для приглашений]"))
     text = (
         f"<b>Сделать амбассадором:</b> {' · '.join(bits)}?\n"

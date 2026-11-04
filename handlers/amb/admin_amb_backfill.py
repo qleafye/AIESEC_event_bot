@@ -59,9 +59,12 @@ async def _global_only(callback: types.CallbackQuery) -> bool:
 
 
 async def _show_preview(callback: types.CallbackQuery) -> None:
-    from domain.settings.schema import get_setting_typed
+    from domain.cities import get_setting_typed_for_city, is_per_city
 
-    if int(await get_setting_typed("ambassador_referral_coins") or 0) <= 0:
+    if (
+        not is_per_city("ambassador_referral_coins")
+        and int(await get_setting_typed_for_city("ambassador_referral_coins", None) or 0) <= 0
+    ):
         await _edit(
             callback,
             "<b>🔁 Начислить за прошлых приглашённых</b>\n\n"

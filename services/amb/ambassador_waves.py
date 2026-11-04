@@ -29,6 +29,7 @@ from database.db import (
     create_task,
     create_wave,
     get_display_names,
+    get_user,
     get_pending_submissions,
     get_pending_submissions_count,
     get_wave,
@@ -44,6 +45,7 @@ from database.db import (
     waves_overlapping,
 )
 from services.infra.timeutil import msk_now
+from domain.cities import get_setting_typed_for_city, is_per_city
 from domain.settings.schema import get_setting_typed
 
 
@@ -238,7 +240,11 @@ async def wave_rating_view(wave_id: int, viewer_id: int) -> dict:
         }
         break
 
-    show_names = await get_setting_typed("wave_rating_show_names")
+    city = None
+    if is_per_city("wave_rating_show_names"):
+        viewer = await get_user(viewer_id)
+        city = (viewer or {}).get("event_city")
+    show_names = await get_setting_typed_for_city("wave_rating_show_names", city)
     return {
         "own": own,
         "prize_places": prize_places,
@@ -312,7 +318,7 @@ async def prize_places_for(wave: dict) -> int:
     единице — волна без единого призового места не имеет смысла."""
     raw = (wave or {}).get("prize_places")
     if not raw:
-        raw = await get_setting_typed("wave_prize_places")
+        raw = await get_setting_typed_for_city("wave_prize_places", (wave or {}).get("event_city"))
     try:
         n = int(raw or 0)
     except (TypeError, ValueError):

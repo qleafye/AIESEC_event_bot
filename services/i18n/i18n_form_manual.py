@@ -257,7 +257,7 @@ _OPTIONS_EN = {
     "🎉 Гости с ночёвкой": "🎉 Guests with overnight stay",
     "🎉 Гости без ночёвки": "🎉 Guests without overnight stay",
     # DEFAULT_SOURCE_OPTIONS («Другое» уже в UI_EN)
-    "Соцсети Юлид": "YouLead social media",
+    "Соцсети Юлид": "Social media",
     "Соцсети АЙСЕК": "AIESEC social media",
     "Университетские каналы": "University channels",
     "Рассказал друг/знакомый": "A friend/acquaintance told me",
