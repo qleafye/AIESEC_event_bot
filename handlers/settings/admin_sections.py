@@ -44,9 +44,8 @@ logger = logging.getLogger(__name__)
 SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ("event", "🎪 Событие", [
         ("group", "event"),
-        ("screen", "admin_menu_buttons", "🔘 Кнопки меню"),
-        # Подписи тех же кнопок — тексты (settings_group:menu_labels), сразу под тумблерами.
-        ("group", "menu_labels"),
+        # Кнопки меню и их подписи правятся в приложении (строки «Кнопки меню делегата»
+        # и «Тексты делегату»), в разделе их больше нет.
         # 09.10: аватар бота без BotFather (handlers/settings/admin_bot_avatar.py), капа `settings`.
         ("screen", "admin_bot_avatar", "🖼 Аватар бота"),
         ("toggle", "settings_toggle_bonus"),
@@ -56,8 +55,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ]),
     ("form", "📝 Анкета", [
         ("screen", "admin_event_preset", "🎛 Тип события (пресет)"),
-        ("screen", "admin_reg_questions", "📋 Вопросы регистрации"),
-        ("screen", "admin_reg_prompts", "✏️ Тексты вопросов"),
+        # Вопросы и тексты вопросов — строка приложения «Вопросы анкеты», не этот раздел.
         ("toggle", "settings_toggle_reg"),
         ("toggle", "toggle_uni_mode"),
         ("toggle", "toggle_edu_conditional"),
@@ -102,7 +100,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Кнопки и ответы анкеты в чате, раньше правившиеся только в приложении.
         ("group", "reg_chat"),
         ("group", "party"),
-        ("group", "consent"),
+        # «📋 Согласия» — строка приложения «Оплата и согласия». «🧾 PDF согласий» остаётся выше.
     ]),
     ("apps", "📋 Заявки", [
         ("op", "admin_applications"),
@@ -152,8 +150,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # подряд, сначала «сообщать ли», потом «как именно».
         ("toggle", "toggle_reg_submit_notify"),
         ("toggle", "toggle_preselect_enabled"),
-        ("toggle", "toggle_pending_reminder"),
-        ("toggle", "toggle_nudge_enabled"),
+        # Сводка о заявках и догонялка анкет — строка приложения «Запись и напоминания».
         # Квик 260911-w2m: «можно ли делегату сейчас править анкету» — СРАЗУ ПЕРЕД
         # «что делать с правкой» (toggle_reg_edit_remoderation): читается парой, сначала
         # разрешение, потом последствие правки.
@@ -164,11 +161,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # тройке, но своя пара с ней не рвётся: обе идут ДО remoderation).
         ("toggle", "toggle_reg_resubmit_after_reject"),
         ("toggle", "toggle_reg_edit_remoderation"),
-        ("toggle", "toggle_quiet_hours"),
-        # Quick 260911-805 (W4-03): вход на экран «🌙 Тихие часы» — СРАЗУ ПОД строкой тумблера
-        # (D-04): менеджер, включивший тишину, тут же видит, где задать «с»/«до», а не ищет
-        # поле времени в обезличенной «⚙️ Тексты и настройки».
-        ("screen", "admin_quiet_hours", "🌙 Когда молчим: «с» и «до»"),
+        # Тихие часы — та же строка приложения «Запись и напоминания», не раздел заявок.
         # Phase 28 (28-07, SU-08): главный выключатель автоскоринга — рядом с прочими
         # тумблерами очереди заявок; сами правила (множества/пороги) — в группе "apps" ниже.
         ("toggle", "toggle_reg_scoring_enabled"),
@@ -187,9 +180,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
     ]),
     ("pay", "💳 Оплата", [
         ("op", "admin_receipts"),
-        ("toggle", "toggle_payment_enabled"),
-        ("toggle", "toggle_payment_reminders"),
-        ("group", "pay"),
+        # Тарифы, реквизиты и тумблеры оплаты — строка приложения «Оплата и согласия».
     ]),
     ("comms", "📢 Общение", [
         ("op", "admin_broadcast"),
@@ -219,7 +210,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("screen", "admin_game_waves", "🌊 Волны"),
         ("screen", "ambt_excl_list:0", "🚫 Исключения из зачёта"),
         ("screen", "admin_amb_attach", "📎 Закрепить приглашённого"),
-        ("group", "amb"),
+        # Тексты и пороги группы amb — строка приложения «Амбассадоры».
     ]),
     ("data", "📊 Данные", [
         ("op", "admin_stats"),
@@ -265,29 +256,14 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # визарда, потому что стейл-клавиатура в чате живёт вечно.
         ("screen_admin", "admin_season_reset", "🔄 Новый сезон"),
         ("screen", "admin_season_import", "📥 Импорт прошлого события"),
-        # Правка 15.09 (владелец, «привязка через личку админа»): экран «💬 Чат» снесён —
-        # тумблер учёта переехал сюда, в общий список тумблеров раздела, тем же способом,
-        # что payment_enabled/consent_enabled выше по файлу (та же общая функция
-        # `settings_toggle_rows`/`_toggle_module_setting`). Состояние привязки (какой чат к
-        # какому городу) видно строкой в тексте группы «🔧 Система» — id/название чата
-        # руками не вводятся, экрана для них по-прежнему нет (D-11).
-        ("toggle", "toggle_chat_tracking_enabled"),
-        # Квик 260916: «📊 Итоги дня» — вечерняя сводка МЕНЕДЖЕРАМ, а не делегатам, поэтому
-        # живёт в менеджерском хвосте разделов, рядом с учётом чата и по той же схеме: сам
-        # тумблер строкой раздела, его время (daily_digest_time) — ключом группы «🔧 Система»
-        # ниже, вместе с остальными таймингами фоновых джоб.
-        ("toggle", "toggle_daily_digest"),
-        # Квик 260927: рейтинг чата — экран режима/правил по городу и группа весов формулы
-        # «💬 Чат делегатов». Стоят ПОСЛЕ «📊 Итоги дня»: пара тумблеров учёта чата и итогов
-        # дня остаётся соседней (сторож test_daily_digest_260916).
+        # Учёт чата, итоги дня и группы «чат»/«система» — приложение, режим «Настройки»
+        # (строки «Чат города» и «Редкое»). Рейтинг выбирает задания галочками и остаётся.
         ("screen", "admin_chat_rating", "🏆 Рейтинг чата"),
         # Квик 260927: автоочистка служебных уведомлений в чатах делегатов — рядом с рейтингом.
         ("screen", "admin_chat_cleanup", "🧹 Служебные сообщения в чате"),
         # 29.09: сверка состава всех привязанных чатов по кнопке (колонка «В чате» в таблице,
         # экраны «не в чате»); работает и при выключенном учёте — явное действие менеджера.
         ("screen", "admin_chat_reconcile", "🔄 Сверить состав чата"),
-        ("group", "chat"),
-        ("group", "system"),
     ]),
 ]
 
@@ -389,7 +365,7 @@ def back_button(callback_data: str, text: str = "← Назад") -> InlineKeybo
 # логика кнопок та же. Группа без единой доступной строки не рисуется вместе с заголовком.
 AMB_SEPARATOR_CALLBACK = "amb_sep"
 _AMB_SUBGROUPS = (
-    ("Общее", ("admin_amb_points", "ambt_excl_list:0", "admin_amb_attach", "settings_group:amb")),
+    ("Общее", ("admin_amb_points", "ambt_excl_list:0", "admin_amb_attach")),
     ("Команда и волны", ("admin_amb_entry", "admin_amb_candidates", "admin_game_waves")),
     ("Ступени", ("admin_amb_tiers",)),
 )
@@ -411,7 +387,7 @@ def _amb_rows_with_separators(rows: list[tuple]) -> list[tuple]:
 
 
 _AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers", "admin_amb_points", "ambt_excl_list:0",
-                      "admin_amb_attach", "settings_group:amb")  # порядок = порядок в «🎮 Геймификации»
+                      "admin_amb_attach")  # порядок = порядок в «🎮 Геймификации»
 
 
 async def owner_back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:
