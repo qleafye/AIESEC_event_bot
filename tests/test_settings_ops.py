@@ -259,6 +259,16 @@ def test_editable_keys_count_matches_formula():
     assert len(settings_ops.editable_keys()) == len(SETTINGS_SCHEMA) - len(_web_excluded_keys())
 
 
+def test_season_recap_dismissed_is_not_a_web_toggle():
+    entry = SETTINGS_SCHEMA["season_recap_dismissed"]
+    assert (entry["type"], entry["group"], entry["default"], entry["options"]) == (
+        "enum", "miniapp", "off", ["on", "off"],
+    )
+    assert "служебный" in entry["label"]
+    assert "season_recap_dismissed" in settings_ops.EXCLUDED_KEYS
+    assert "season_recap_dismissed" not in settings_ops.editable_keys()
+
+
 def test_form_slots_and_delegation_human_keys_are_not_web_editable():
     """Служебные указатели форм и человеческие ключи делегаций не листаются в вебе.
     Формула длины editable_keys() остаётся len(схемы) - len(исключений), не числом."""
