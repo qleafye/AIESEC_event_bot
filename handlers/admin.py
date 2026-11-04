@@ -1216,3 +1216,5 @@ from handlers.sheets import admin_sheet_target  # noqa: E402,F401 — «🔗 К�
 from handlers.settings import admin_setup_wizard  # noqa: E402,F401 — «🚀 Первая настройка» в «🔧 Управление», golden append
 from handlers.forum import admin_certificates  # noqa: E402,F401 — «🎓 Сертификаты» в «🎪 Форум: функции», golden append
 from handlers.game import admin_shop  # noqa: E402,F401 — «🛍 Магазин баллов» в «🎮 Геймификации» и /shop, golden append
+from handlers.chat import admin_city_chat_summary  # noqa: E402,F401 — кнопки сводки чата города
+from handlers.chat import admin_city_chat  # noqa: E402,F401 — экран «Чат города»

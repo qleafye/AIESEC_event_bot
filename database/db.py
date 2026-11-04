@@ -2628,6 +2628,8 @@ async def init_db():
         # Монеты из чата: «+N» ответом гейм-менеджера, перенос старых баллов из таблицы.
         from database import chat_coins_db
         await chat_coins_db.ensure_schema(db)
+        from database import city_chat_db
+        await city_chat_db.ensure_schema(db)
         # Запись на сессии программы: треки, компетенции, записи, подтверждение расписания.
         from database import session_enroll_db
         await session_enroll_db.ensure_schema(db)

@@ -304,6 +304,16 @@ _ALBUM_MEDIA_CLASSES = {
 }
 
 
+async def _render_broadcast(bot, chat_id: int, text):
+    """Подпись или текст, который собрал бот, проходит подстановку {chat} на этого получателя."""
+    from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+    from services.city_chat_link import render_for_delegate
+
+    return await render_for_delegate(
+        text, chat_id, client_from_bot(bot), notify=notify_if_bot_ready,
+    )
+
+
 def _media_from_album_dicts(album: list[dict], important_prefix_text: str | None = None) -> list:
     """Форум-ночь п.7 (переделка): `bot.send_media_group` не принимает `reply_markup` — единственное
     место встроить пометку важности альбома — подпись ПЕРВОГО элемента (`important_prefix_text`,
@@ -608,7 +618,15 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     if bc_album:
         async def send_one(chat_id):
             media = _media_from_album_dicts(bc_album, important_prefix_text if important else None)
-            results = await bot.send_media_group(chat_id, media)
+            rendered = []
+            for item in media:
+                cap = item.caption
+                if isinstance(cap, str):
+                    fresh = await _render_broadcast(bot, chat_id, cap)
+                    if fresh is not cap:
+                        item = item.model_copy(update={"caption": fresh})
+                rendered.append(item)
+            results = await bot.send_media_group(chat_id, rendered)
             message_ids = [m.message_id for m in results]
             extra_mid = await send_mute_offer_if_eligible(bot, chat_id, important, langs)
             if extra_mid is not None:
@@ -622,6 +640,7 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
         async def send_one(chat_id):
             markup = await recipient_markup(chat_id, important, bc_base_markup, langs)
             text = apply_important_prefix(bc_content_html, important, important_prefix_text)
+            text = await _render_broadcast(bot, chat_id, text)
             result = await bot.send_message(chat_id, text, reply_markup=markup)
             return [result.message_id]
     else:
@@ -631,6 +650,8 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
             # копируемого сообщения байт-в-байт (никакого риска расхождения форматирования на
             # самой частой, неважной ветке); подмена нужна ТОЛЬКО чтобы вписать пометку важности.
             caption = apply_important_prefix(bc_content_html, important, important_prefix_text) if important else None
+            if isinstance(caption, str):
+                caption = await _render_broadcast(bot, chat_id, caption)
             result = await bot.copy_message(
                 chat_id, from_chat_id=bc_chat_id, message_id=bc_message_id,
                 caption=caption, reply_markup=markup,
