@@ -31,15 +31,33 @@ def _setting(conn, key: str) -> str | None:
     return row[0] if row is not None else None
 
 
+def _schema_per_city(key: str) -> bool:
+    """`SETTINGS_SCHEMA[key]["per_city"] is True`. Статический импорт `domain` в дашборд
+    нельзя: образ содержит только `dashboard/` и `shared/`, а реестр тянет `database.db`.
+    Если пакета нет — ключ считаем городским: выключенный модуль всё равно отдаёт общее."""
+    try:
+        import importlib
+        schema = importlib.import_module("domain.settings.schema").SETTINGS_SCHEMA
+    except ImportError:
+        return True
+    return bool(schema.get(key, {}).get("per_city"))
+
+
 def setting_for_city_scope(conn, key: str, scope) -> str | None:
-    """Один город в скоупе — непустой оверрайд `{key}__city__{code}`, иначе общее.
-    Флага per_city дашборд не видит: пустая запись значит «как везде»."""
+    """Лестница городского чтения на этом соединении. Общее значение, если модуль городов
+    не `on`, у ключа нет `per_city`, город пустой или `*`, либо оверрайд пустой."""
+    general = _setting(conn, key)
+    if _setting(conn, "event_city_enabled") != "on":
+        return general
+    if not _schema_per_city(key):
+        return general
     city = getattr(scope, "city", None) if scope is not None else None
-    if city and city != "*":
-        override = _setting(conn, f"{key}__city__{city}")
-        if override is not None and str(override).strip() != "":
-            return override
-    return _setting(conn, key)
+    if not city or city == "*":
+        return general
+    override = _setting(conn, f"{key}__city__{city}")
+    if override is None or str(override).strip() == "":
+        return general
+    return override
 
 
 def _int_setting(conn, key: str, default: int, *, allow_zero: bool = False) -> int:

@@ -1146,8 +1146,15 @@ def test_payment_row_hidden_when_payment_module_off():
     сервер шлёт пустой payment_status_label при payment_enabled=off (profile.py), а профиль
     рисует строку «Оплата» только при непустой подписи; хаб уже падает на «профиль»."""
     server = (Path("miniapp/routers/profile.py")).read_text(encoding="utf-8")
-    assert 'get_setting_typed("payment_enabled")' in server, (
-        "/app/api/profile обязан сверяться с тумблером payment_enabled"
+    pay_city = re.search(
+        r'get_setting_typed_for_city\(\s*"payment_enabled"\s*,\s*((?:[^()]|\([^()]*\))*)\)',
+        server,
+    )
+    assert pay_city, (
+        "/app/api/profile обязан читать payment_enabled через get_setting_typed_for_city(key, city)"
+    )
+    assert pay_city.group(1).strip() == 'user.get("event_city")', (
+        "/app/api/profile обязан сверять тумблер payment_enabled с городом делегата, не выбрасывая его"
     )
     js = (SCREENS_DIR / "profile.js").read_text(encoding="utf-8")
     # Phase 23.1-05: чип оплаты собирается веткой `if (me.payment_status_label)` (плита с
