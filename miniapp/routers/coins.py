@@ -18,6 +18,7 @@ from database.db import (
     get_user_rank,
     list_coin_entries_for_user,
 )
+from domain.cities import is_per_city
 from services.amb import amb_progress
 from services.i18n import i18n
 from miniapp.deps import Principal, game_gate, require_section
@@ -41,6 +42,23 @@ def display_name(row: dict) -> str:
     return str(row.get("full_name") or row.get("username") or row.get("user_id"))
 
 
+_COIN_TEXT_KEYS = (
+    "balance_source_manual_label",
+    "balance_source_task_label",
+    "balance_source_referral_label",
+    "balance_history_empty",
+    "leaderboard_empty_text",
+)
+
+
+async def _viewer_city(telegram_id: int) -> str | None:
+    """Сырой event_city. Пока подписи не городские — без чтения пользователя."""
+    if not any(is_per_city(key) for key in _COIN_TEXT_KEYS):
+        return None
+    user = await get_user(telegram_id)
+    return (user or {}).get("event_city")
+
+
 @router.get("/app/api/coins/balance")
 async def balance(p: Principal = Depends(game_gate),
                   _: Principal = Depends(require_section("coins"))) -> dict:
@@ -58,6 +76,7 @@ async def history(offset: str | None = None, limit: str | None = None,
     off, lim = parse_page(offset, limit)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
+    city = await _viewer_city(p.telegram_id)
     total = await count_coin_entries_for_user(p.telegram_id)
     rows = await list_coin_entries_for_user(p.telegram_id, limit=lim, offset=off)
     city = (await get_user(p.telegram_id) or {}).get("event_city")
@@ -105,6 +124,7 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(game_gate
     _, lim = parse_page(0, limit, default_limit=LEADERBOARD_MAX, max_limit=LEADERBOARD_MAX)
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
+    city = await _viewer_city(p.telegram_id)
     rows = await get_leaderboard(lim)
     city = (await get_user(p.telegram_id) or {}).get("event_city")
     items = [

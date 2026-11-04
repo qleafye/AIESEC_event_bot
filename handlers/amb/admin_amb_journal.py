@@ -26,7 +26,7 @@ from handlers.amb.admin_amb_candidates import _alert, _name
 from handlers.states import AmbAttach
 from services.amb import amb_journal
 from services.access import person_search
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +161,8 @@ async def _confirm_screen(data: dict) -> tuple[str, InlineKeyboardMarkup] | None
     if invitee.get("status") == "approved":
         coins = 0
         if int(referrer.get("is_ambassador") or 0) == 1:
-            coins = max(int(await get_setting_typed("ambassador_referral_coins") or 0), 0)
+            coins = max(int(await get_setting_typed_for_city(
+                "ambassador_referral_coins", referrer.get("event_city")) or 0), 0)
         effect = (f"Заявка {_name(invitee)} одобрена — {_name(referrer)} засчитается приглашённый"
                   + (f" и {coins} баллов." if coins else "."))
     else:

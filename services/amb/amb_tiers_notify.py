@@ -29,7 +29,8 @@ import re
 from shared.amb_tier_keys import tier_key
 from database import amb_tiers_db
 from services.infra.timeutil import msk_now
-from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.cities import get_setting_typed_for_city, is_per_city
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +83,11 @@ async def deliver_tier_notification(bot, telegram_id: int, tier: int, left: int 
         logger.warning("amb_tiers_notify: неизвестная ступень %s (tid=%s)", tier, telegram_id)
         return False
     try:
-        template = await get_setting_typed(key) or SETTINGS_SCHEMA[key]["default"]
+        city = None
+        if is_per_city(key):
+            from database.db import get_user
+            city = (await get_user(telegram_id) or {}).get("event_city")
+        template = await get_setting_typed_for_city(key, city) or SETTINGS_SCHEMA[key]["default"]
         lang, tr_map = "ru", {}
         try:
             from services.i18n.i18n import context as i18n_context

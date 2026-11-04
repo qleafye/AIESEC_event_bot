@@ -97,15 +97,13 @@ async def _ambassador_gate(user_id: int) -> tuple[dict | None, object, bool, set
     return user, scope, is_ambassador, wave_ids, open_ids
 
 
-async def submission_state(task_id: int, user_id: int) -> dict:
+async def submission_state(task_id: int, user_id: int, city: str | None = None) -> dict:
     """Статус задания для делегата: `new` (сдачи нет) · `pending` · `approved` · `rejected`
     (нет активной, но есть отклонённые — с номером попытки). `can_submit` — нет неотклонённой
     сдачи и не исчерпан `game_resubmit_limit` (как у бота: лимит 0/пусто = без лимита)."""
     active = await get_active_submission(task_id, user_id)
     rejected = await count_rejected_submissions(task_id, user_id)
-    limit = await get_setting_typed_for_city(
-        "game_resubmit_limit", (await get_user(user_id) or {}).get("event_city"),
-    ) or 0
+    limit = await get_setting_typed_for_city("game_resubmit_limit", city) or 0
     if active is not None and active["status"] == "pending":
         status, can_submit = "pending", False
     elif active is not None and active["status"] == "approved":
@@ -124,15 +122,17 @@ async def submission_state(task_id: int, user_id: int) -> dict:
     }
 
 
-async def _list_item(task: dict, user_id: int, lang: str = "ru", tr_map: dict | None = None) -> dict:
+async def _list_item(
+    task: dict, user_id: int, lang: str = "ru", tr_map: dict | None = None, city: str | None = None,
+) -> dict:
     tr_map = tr_map or {}
     deadline_short, overdue = task_deadline_short(task)
-    state = await submission_state(task["id"], user_id)
+    state = await submission_state(task["id"], user_id, city)
     return {
         "id": task["id"],
         "title": task_title(task),
         "category": task["category"],
-        "category_label": i18n.tr(await category_label(task["category"]), lang, tr_map),
+        "category_label": i18n.tr(await category_label(task["category"], city), lang, tr_map),
         "coins": task["coins"],
         "deadline_at": task["deadline_at"],
         "deadline_short": deadline_short,
@@ -140,7 +140,7 @@ async def _list_item(task: dict, user_id: int, lang: str = "ru", tr_map: dict | 
         # (короткая дата ИЛИ «без срока» из реестра, тем же путём перевода, что category_label
         # выше) — фронт больше не собирает «до …» сам и не видит служебную метку.
         "has_deadline": task_has_deadline(task),
-        "deadline_text": i18n.tr(await task_deadline_text(task), lang, tr_map),
+        "deadline_text": i18n.tr(await task_deadline_text(task, city), lang, tr_map),
         "overdue": overdue,
         "photo_file_id": task.get("photo_file_id"),
         **state,
@@ -161,9 +161,10 @@ async def tasks_progress(user_id: int, city_scope) -> tuple[int, int]:
     all_tasks = visible_tasks_for(
         all_tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids, open_wave_ids=open_ids,
     )
+    city = _user.get("event_city") if _user else None
     done = 0
     for task in all_tasks:
-        state = await submission_state(task["id"], user_id)
+        state = await submission_state(task["id"], user_id, city)
         if state["status"] == "approved":
             done += 1
     return done, len(all_tasks)
@@ -195,15 +196,14 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
         all_tasks, is_ambassador=is_ambassador, path=user.get("ambassador_path") if user else None,
     )
     page = all_tasks[off:off + lim]
+    city = user.get("event_city") if user else None
     return {
-        "items": [await _list_item(t, p.telegram_id, lang, tr_map) for t in page],
+        "items": [await _list_item(t, p.telegram_id, lang, tr_map, city) for t in page],
         "total": len(all_tasks),
         "limit": lim,
         "offset": off,
         "empty_text": (
-            await i18n.tr_setting_for_city(
-                "game_task_list_empty", (user or {}).get("event_city"), lang, tr_map,
-            ) if not all_tasks else None
+            await i18n.tr_setting_for_city("game_task_list_empty", city, lang, tr_map) if not all_tasks else None
         ),
     }
 
@@ -239,7 +239,8 @@ async def task_card(task_id: int, p: Principal = Depends(game_gate),
         raise HTTPException(404, {"reason": "task_not_found"})
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
-    item = await _list_item(task, p.telegram_id, lang, tr_map)
+    city = _user_for_gate.get("event_city") if _user_for_gate else None
+    item = await _list_item(task, p.telegram_id, lang, tr_map, city)
     # Строка статуса — дословно как в боте (`mytask_open`) на РУССКОМ (card_text — общий с
     # ботом рендер, из этой задачи не переводится, T-19-15 держит JS на структурных полях, не
     # на card_text). Структурное поле `status_line` ниже переводится ОТДЕЛЬНО от card_text:
@@ -275,15 +276,14 @@ async def task_card(task_id: int, p: Principal = Depends(game_gate),
     item.update({
         "text": task["text"],
         "proof_type": task.get("proof_type"),
-        "proof_hint": i18n.tr(await proof_types_label(task.get("proof_type")), lang, tr_map),
+        "proof_hint": i18n.tr(await proof_types_label(task.get("proof_type"), city), lang, tr_map),
         "status_line": status_line_tpl,
         # Готовый HTML-текст карточки (как в боте) — для паритета и тестов; фронт рисует
         # структурные поля через textContent (innerHTML запрещён, T-19-15).
-        "card_text": await render_task_card_text(task, status_line, attempt),
+        "card_text": await render_task_card_text(task, status_line, attempt, city),
         "overdue_hint": (
-            await i18n.tr_setting_for_city(
-                "game_task_overdue_hint_text", (_user_for_gate or {}).get("event_city"), lang, tr_map,
-            ) if item["overdue"] else None
+            await i18n.tr_setting_for_city("game_task_overdue_hint_text", city, lang, tr_map)
+            if item["overdue"] else None
         ),
         "deadline_left_text": deadline_left_text,
         "todo_eyebrow": await i18n.tr_setting("miniapp_task_todo_eyebrow", lang, tr_map),

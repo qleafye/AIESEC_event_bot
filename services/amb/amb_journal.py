@@ -21,7 +21,7 @@ import logging
 from database import amb_journal_db
 from database import db as _db
 from services.amb.ambassador_waves import current_wave_for_city_raw, wave_eligible
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city, is_per_city
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,8 @@ async def _record_one(invitee_id: int, *, changed_by: int | None, source: str) -
         coins = 0
         wave_id: int | None = None
         if was_ambassador and not excluded:
-            coins = max(int(await get_setting_typed("ambassador_referral_coins") or 0), 0)
+            coins = max(int(await get_setting_typed_for_city(
+                "ambassador_referral_coins", referrer.get("event_city")) or 0), 0)
         if coins > 0:
             wave = await current_wave_for_city_raw(referrer.get("event_city"))
             if wave and wave_eligible(referrer, wave):
@@ -172,11 +173,26 @@ def _fill(template: str, name: str) -> str:
     return (template or "").replace("{name}", name)
 
 
+async def _referrer_city(invitee_id: int, key: str) -> str | None:
+    """Город пригласившего — в его историю монет попадёт причина. Пока ключ не городской, None."""
+    if not is_per_city(key):
+        return None
+    invitee = await _db.get_user(int(invitee_id))
+    referrer_id = (invitee or {}).get("referrer_id")
+    if not referrer_id:
+        return None
+    referrer = await _db.get_user(int(referrer_id))
+    return (referrer or {}).get("event_city")
+
+
 async def exclude(invitee_id: int, *, by: int | None, reason: str) -> bool:
     """Исключение за накрутку: причина, отметка в журнале, баллы списываются обратной строкой
     монет. Ступени не трогает («Снять ступень» — отдельная кнопка). False — уже исключён."""
     name = await _name_of(invitee_id)
-    template = await get_setting_typed("amb_referral_reversal_reason_text")
+    template = await get_setting_typed_for_city(
+        "amb_referral_reversal_reason_text",
+        await _referrer_city(invitee_id, "amb_referral_reversal_reason_text"),
+    )
     result = await amb_journal_db.exclude_atomic(
         int(invitee_id), reason=reason, by=by, at=_stamp(),
         reversal_reason=_fill(template, name),
@@ -191,7 +207,10 @@ async def exclude(invitee_id: int, *, by: int | None, reason: str) -> bool:
 async def unexclude(invitee_id: int, *, by: int | None) -> bool:
     """Возврат в зачёт: баллы возвращаются новой строкой. False — уже возвращён."""
     name = await _name_of(invitee_id)
-    template = await get_setting_typed("amb_referral_restore_reason_text")
+    template = await get_setting_typed_for_city(
+        "amb_referral_restore_reason_text",
+        await _referrer_city(invitee_id, "amb_referral_restore_reason_text"),
+    )
     result = await amb_journal_db.unexclude_atomic(
         int(invitee_id), by=by, at=_stamp(), restore_reason=_fill(template, name),
     )

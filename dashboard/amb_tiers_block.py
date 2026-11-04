@@ -31,9 +31,30 @@ def _setting(conn, key: str) -> str | None:
     return row[0] if row is not None else None
 
 
+def setting_for_city_scope(conn, key: str, scope) -> str | None:
+    """Один город в скоупе — непустой оверрайд `{key}__city__{code}`, иначе общее.
+    Флага per_city дашборд не видит: пустая запись значит «как везде»."""
+    city = getattr(scope, "city", None) if scope is not None else None
+    if city and city != "*":
+        override = _setting(conn, f"{key}__city__{city}")
+        if override is not None and str(override).strip() != "":
+            return override
+    return _setting(conn, key)
+
+
 def _int_setting(conn, key: str, default: int, *, allow_zero: bool = False) -> int:
     try:
         value = int(_setting(conn, key) or default)
+    except ValueError:
+        return default
+    if value < 0 or (value == 0 and not allow_zero):
+        return default
+    return value
+
+
+def _int_setting_scope(conn, key: str, scope, default: int, *, allow_zero: bool = False) -> int:
+    try:
+        value = int(setting_for_city_scope(conn, key, scope) or default)
     except ValueError:
         return default
     if value < 0 or (value == 0 and not allow_zero):
@@ -51,17 +72,19 @@ def amb_tiers_block(conn, scope) -> "dict | None":
     from dashboard.queries import _city_sql
 
     try:
-        if (_setting(conn, "amb_qualified_program") or "off") != "on":
+        if (setting_for_city_scope(conn, "amb_qualified_program", scope) or "off") != "on":
             return None
-        count = max(1, min(MAX_TIERS, _int_setting(conn, "amb_tiers_count", 3)))
+        count = max(1, min(MAX_TIERS, _int_setting_scope(conn, "amb_tiers_count", scope, 3)))
         cfg = []
         for n in range(1, count + 1):
-            quota_on = (_setting(conn, tier_key(n, "quota_on")) or "off") == "on"
+            quota_on = (setting_for_city_scope(conn, tier_key(n, "quota_on"), scope) or "off") == "on"
             cfg.append({
                 "tier": n,
-                "threshold": _int_setting(conn, tier_key(n, "threshold"), _DEFAULT_THRESHOLDS[n]),
-                "quota": (_int_setting(conn, tier_key(n, "quota"), _QUOTA_DEFAULT, allow_zero=True)
-                          if quota_on else None),
+                "threshold": _int_setting_scope(conn, tier_key(n, "threshold"), scope, _DEFAULT_THRESHOLDS[n]),
+                "quota": (
+                    _int_setting_scope(conn, tier_key(n, "quota"), scope, _QUOTA_DEFAULT, allow_zero=True)
+                    if quota_on else None
+                ),
             })
 
         season = scope.season if getattr(scope, "season", None) else (_setting(conn, "event_season") or "")

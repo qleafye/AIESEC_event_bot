@@ -16,7 +16,7 @@ import logging
 
 from database import db as _db
 from services.amb import amb_status
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 
@@ -58,10 +58,10 @@ async def _state(telegram_id: int) -> str:
         return "open"  # fail-open: кнопка вступления, `request_join` перепроверит
 
 
-async def _points(telegram_id: int) -> int | None:
+async def _points(telegram_id: int, city: str | None = None) -> int | None:
     try:
         total = await referral_points_sum(telegram_id)
-        if total == 0 and int(await get_setting_typed("ambassador_referral_coins") or 0) == 0:
+        if total == 0 and int(await get_setting_typed_for_city("ambassador_referral_coins", city) or 0) == 0:
             return None
         return total
     except Exception:
@@ -102,10 +102,11 @@ async def delegate_view(telegram_id: int, user: dict | None = None, need_state: 
     else:
         user = dict(user)
     is_amb = bool(user.get("is_ambassador"))
+    city = user.get("event_city")
     view = {"state": None, "status_key": None, "referral_points": None,
             "wave_place": None, "is_ambassador": is_amb}
     try:
-        enabled = await amb_status.selection_enabled()
+        enabled = await amb_status.selection_enabled(city)
     except Exception:
         logger.exception("amb_screen: строка статуса не собрана (tid=%s)", tid)
         enabled = False
@@ -114,12 +115,12 @@ async def delegate_view(telegram_id: int, user: dict | None = None, need_state: 
     try:
         if not enabled:
             return view
-        view["status_key"] = _status_key(view["state"], await amb_status.slots_limit())
+        view["status_key"] = _status_key(view["state"], await amb_status.slots_limit(city))
     except Exception:
         logger.exception("amb_screen: строка статуса не собрана (tid=%s)", tid)
         return view
     if is_amb:
-        view["referral_points"] = await _points(tid)
+        view["referral_points"] = await _points(tid, city)
         user.setdefault("telegram_id", tid)
         view["wave_place"] = await _wave_place(user)
     return view

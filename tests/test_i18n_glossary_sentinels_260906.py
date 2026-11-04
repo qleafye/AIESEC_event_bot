@@ -97,14 +97,14 @@ def test_apply_tolerates_trailing_period_after_sentinel():
     """Тот же класс артефакта, что дал «Fio.» вместо «ФИО» до DNT-фикса (докстринг
     `services/i18n/i18n_glossary.py`): движок иногда завершает одинокий ASCII-токен точкой, как
     аббревиатуру. Точка должна поглощаться, а не оставаться в переводе."""
-    text = "Юлид"
+    text = "АЙСЕК"
     protected, mapping = protect(text)
     token = next(iter(mapping))
     fake_mt_output = token + "."
 
     result = apply(text, fake_mt_output, mapping)
 
-    assert result == "YouLead"
+    assert result == "AIESEC"
     assert "." not in result
 
 

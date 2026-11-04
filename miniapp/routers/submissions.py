@@ -502,12 +502,11 @@ async def create_submission_route(
     ):
         raise HTTPException(404, {"reason": "task_not_found"})
 
+    city = (user or {}).get("event_city")
     if not body.parts:
         raise HTTPException(400, {
             "reason": "empty",
-            "hint": await i18n.tr_setting_for_city(
-                "game_proof_empty_hint", (user or {}).get("event_city"), lang, tr_map,
-            ),
+            "hint": await i18n.tr_setting_for_city("game_proof_empty_hint", city, lang, tr_map),
         })
     if len(body.parts) > MAX_PARTS:
         raise HTTPException(400, {"reason": "too_many_parts", "limit": MAX_PARTS})
@@ -522,7 +521,7 @@ async def create_submission_route(
                 raise HTTPException(403, {"reason": "bad_part_token"})
         parts.append(part)
 
-    state = await submission_state(task["id"], p.telegram_id)
+    state = await submission_state(task["id"], p.telegram_id, city)
     if state["status"] in ("pending", "approved"):
         raise HTTPException(409, {"reason": "already_submitted"})
     if not state["can_submit"]:
@@ -553,7 +552,5 @@ async def create_submission_route(
     })
     return {
         "submission_id": submission_id,
-        "accepted_text": await i18n.tr_setting_for_city(
-            "game_submit_accepted_text", (user or {}).get("event_city"), lang, tr_map,
-        ),
+        "accepted_text": await i18n.tr_setting_for_city("game_submit_accepted_text", city, lang, tr_map),
     }

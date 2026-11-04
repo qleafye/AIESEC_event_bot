@@ -29,7 +29,7 @@ import logging
 from aiogram import F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from domain.cities import city_label_or_none, get_setting_typed_for_city
+from domain.cities import city_label_or_none, get_setting_typed_for_city, is_per_city
 from database import amb_status_db, amb_tiers_db
 from database import db as _db
 from handlers.admin import router
@@ -299,11 +299,10 @@ async def _notify(bot, tid: int, key: str) -> bool | None:
         from services.scheduler import _now_moscow_naive
 
         lang, tr_map = await i18n_context(tid)
-        person = await _db.get_user(tid)
-        text = i18n_tr(
-            await get_setting_typed_for_city(key, (person or {}).get("event_city")) or "",
-            lang, tr_map,
-        )
+        city = None
+        if is_per_city(key):
+            city = (await _db.get_user(tid) or {}).get("event_city")
+        text = i18n_tr(await get_setting_typed_for_city(key, city) or "", lang, tr_map)
         if "{link}" in text:
             me = await bot.get_me()
             text = text.replace("{link}", build_referral_link(me.username, tid))
