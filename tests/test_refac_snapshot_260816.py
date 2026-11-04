@@ -1754,6 +1754,7 @@ admin|callback_query|prog_srmmin|prog_srmmin:*
 admin|callback_query|prog_srmtx|prog_srmtx:*
 admin|callback_query|prog_srmtm|prog_srmtm:*
 admin|callback_query|prog_srmex|prog_srmex:*
+admin|callback_query|prog_srmaud|prog_srmaud:*
 admin|callback_query|prog_qz|prog_qz:*
 admin|callback_query|prog_qzcancel|prog_qzcancel
 admin|callback_query|prog_qzsw|prog_qzsw:*
@@ -2688,7 +2689,8 @@ def test_snapshot_total_handler_count_is_292():
     # certadm_yes/certadm_rm сразу после certadm_ppl.
     # 04.11 (список людей файлом): +2 admin.message certadm_ppl_file/certadm_ppl_other
     # сразу после certadm_ppl_input. Вместе: 1406 + 4 = 1410.
-    assert len(GOLDEN_SNAPSHOT) == 1410
+    # Кнопки аудитории напоминания: +1 admin.callback_query prog_srmaud сразу после prog_srmex (1410 -> 1411).
+    assert len(GOLDEN_SNAPSHOT) == 1411
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
