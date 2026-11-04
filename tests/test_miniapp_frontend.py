@@ -261,6 +261,10 @@ EXPECTED_ROUTES = {
     "#/program": "screens/program.js",
     # Указатель рассылки, SOS и находок — один модуль на три темы.
     "#/chat/{topic}": "screens/chat_pointer.js",
+    # Папка входов дня форума.
+    "#/forum-day": "screens/forum_day.js",
+    # Папка баллов и стойки магазина.
+    "#/coins-shop": "screens/coins_shop.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -294,7 +298,8 @@ def test_route_table_matches_phase_plan_exactly():
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
     # Первая из пяти пар плана: "#/chat/{topic}" (24 -> 25). Итог будет 29.
-    assert len(routes) == 25
+    # Ещё две пары папок: "#/forum-day", "#/coins-shop" (25 -> 27).
+    assert len(routes) == 27
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -351,6 +356,36 @@ def test_chat_pointer_source_contains_ui_spec_copy():
     assert "callback" not in lowered
     assert "textarea" not in lowered
     assert "input" not in lowered
+
+
+def test_forum_folders_source_contains_ui_spec_copy():
+    """Сторож папок читает forum_day.js и coins_shop.js, не список ожидания в тесте."""
+    day = _exported_render_body(SCREENS_DIR / "forum_day.js")
+    shop = _exported_render_body(SCREENS_DIR / "coins_shop.js")
+    empty_title = "В этом режиме пусто"
+    empty_body = (
+        "Для вашей роли здесь нет строк. Если дело пропало, попросите того, кто выдаёт доступ, проверить права."
+    )
+    for literal in (
+        "Сборка дня без программиста появится отдельно. Здесь только входы.",
+        "Пока в чате",
+        "Сканер QR",
+        "Расписание",
+        "Отметки",
+        empty_title,
+        empty_body,
+    ):
+        assert literal in day, literal
+    for literal in (
+        "Товары и витрина остаются в чате.",
+        "Отметить выдачу.",
+        empty_title,
+        empty_body,
+    ):
+        assert literal in shop, literal
+    assert "moderate_game" in shop
+    assert "staffOnly" not in shop
+    assert "is_delegate" not in shop
 
 
 def test_route_modules_are_lazily_imported():

@@ -88,6 +88,10 @@ export const ROUTES = [
   ["#/scanner", "screens/scanner.js"],
   // Указатель рассылки, SOS и находок — один модуль, тема в hash.
   ["#/chat/{topic}", "screens/chat_pointer.js"],
+  // Папка входов дня форума — не конструктор сценариев.
+  ["#/forum-day", "screens/forum_day.js"],
+  // Папка «Баллы» и стойки магазина — витрины здесь нет.
+  ["#/coins-shop", "screens/coins_shop.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
