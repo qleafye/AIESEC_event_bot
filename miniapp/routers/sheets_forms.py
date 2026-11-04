@@ -4,7 +4,10 @@
 Вопрос делегаций берётся из свежего list_columns по индексу, не из строки клиента.
 Смена формы делегаций гасит включение и три выбранных вопроса (пустая строка, ключ остаётся).
 Включение: вопроса нет или его нет в колонках этой формы — ничего не пишем и sweep не зовём;
-иначе просмотр числа, затем delegation_armed_form_id, затем sweep. Сезон эта ручка не закрывает.
+иначе просмотр числа, затем delegation_armed_form_id, затем sweep.
+Смена вопроса при уже включённых делегациях, если три ключа есть в колонках этой формы:
+тот же просмотр числа, затем sweep. Иначе sweep нет, включение не трогаем.
+Сезон эта ручка не закрывает.
 """
 from __future__ import annotations
 
@@ -217,6 +220,11 @@ async def sheets_forms_question(
     if body.index < 0 or body.index >= len(columns):
         raise HTTPException(400, {"reason": "bad_index"})
     await set_setting_by_admin(p.telegram_id, key, str(columns[body.index]["qkey"]))
+    # Уже включено и три ключа (с новым qkey) есть в колонках этой формы — как у «on».
+    # Не armed или ключ не из этой формы: sweep нет, armed id и остальные слоты не трогаем.
+    if await delegations.is_armed() and _questions_selected(await delegations.field_keys(), columns):
+        await delegations.preview_reevaluate()
+        await delegations.sweep_pending(reevaluate=True)
     return await _card()
 
 

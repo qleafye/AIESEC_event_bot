@@ -524,6 +524,65 @@ def test_sheets_forms_question_uses_column_index_not_client_qkey(tmp_path):
     assert _LEAK_QKEY not in bad.text
 
 
+def test_armed_question_change_sweeps_once_same_form(tmp_path, monkeypatch):
+    """Форма уже включена и три qkey от неё. Смена одного вопроса на другую колонку
+    той же формы зовёт sweep один раз. Пока armed id пуст — не зовёт. qkey клиента игнорируется."""
+    import miniapp.routers.sheets_forms as sheets_forms
+
+    client = _sheets_client(tmp_path, "sheets_question_armed.db")
+    columns = [
+        ("col-name", "ФИО"),
+        ("col-uni", "Вуз"),
+        ("col-course", "Курс"),
+        ("col-course-2", "Курс другой"),
+    ]
+    fid = _run(_make_form(
+        "Делегации вузов", secret=_LEAK_SECRET, external_id=_LEAK_EXTERNAL, columns=columns,
+    ))
+    _set("delegation_form_id", str(fid))
+    _set("delegation_armed_form_id", str(fid))
+    _set("delegation_q_fullname", "col-name")
+    _set("delegation_q_university", "col-uni")
+    _set("delegation_q_course", "col-course")
+    _set("delegation_q_email", "keep-mail")
+    calls: list = []
+
+    async def _preview():
+        calls.append("preview")
+        return 0
+
+    async def _sweep(*_a, **_k):
+        calls.append("sweep")
+        return {"evaluated": 0, "linked": 0, "rechecked": 0}
+
+    monkeypatch.setattr(sheets_forms.delegations, "preview_reevaluate", _preview)
+    monkeypatch.setattr(sheets_forms.delegations, "sweep_pending", _sweep)
+    changed = client.post(
+        QUESTION_PATH,
+        json={"which": "course", "index": 3, "qkey": _LEAK_QKEY},
+        headers=_hdr(ADMIN_ID),
+    )
+    assert changed.status_code == 200, changed.text
+    assert calls == ["preview", "sweep"]
+    assert _raw_setting("delegation_q_course") == "col-course-2"
+    assert _raw_setting("delegation_q_email") == "keep-mail"
+    assert _raw_setting("delegation_armed_form_id") == str(fid)
+    assert _LEAK_QKEY not in changed.text
+
+    _set("delegation_armed_form_id", "")
+    again = client.post(
+        QUESTION_PATH,
+        json={"which": "course", "index": 2, "qkey": _LEAK_QKEY},
+        headers=_hdr(ADMIN_ID),
+    )
+    assert again.status_code == 200, again.text
+    assert calls == ["preview", "sweep"]
+    assert _raw_setting("delegation_q_course") == "col-course"
+    assert _raw_setting("delegation_armed_form_id") == ""
+    assert _raw_setting("delegation_q_email") == "keep-mail"
+    assert _LEAK_QKEY not in again.text
+
+
 def test_sheets_forms_city_manager_cannot_write_common(tmp_path, monkeypatch):
     from config import config
 
