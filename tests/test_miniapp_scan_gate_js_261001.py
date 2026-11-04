@@ -146,6 +146,23 @@ def test_camera_callback_never_closes_popup_itself(result):
     assert result["returns"] == [False, False, False]
 
 
+def test_scan_refreshes_points_before_opening_the_camera():
+    """После паузы выбранная сессия может быть уже не сегодня. Камера открывается
+    только когда список точек перечитан, иначе первый QR красный, а повтор — нет."""
+    text = SCANNER_JS.read_text(encoding="utf-8")
+    start = text.index("async function startScan")
+    body = text[start:text.index("function onScanPopupClosed")]
+    assert body.index("await loadPoints") < body.index("showScanQrPopup")
+    assert "visibilitychange" in text
+
+
+def test_scan_retries_once_when_the_network_does_not_answer():
+    text = SCANNER_JS.read_text(encoding="utf-8")
+    body = text[text.index("async function submitScan"):text.index("const scanGate")]
+    assert body.count("await postScan(") == 2
+    assert "await loadPoints" not in body
+
+
 def test_scanner_wires_gate_and_does_not_await_counters_in_scan():
     text = SCANNER_JS.read_text(encoding="utf-8")
     assert 'from "../scan_gate.js"' in text
