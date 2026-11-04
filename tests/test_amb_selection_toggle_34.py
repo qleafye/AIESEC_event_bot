@@ -167,14 +167,20 @@ def _base_link_text(uid):
 def test_my_link_non_ambassador_sees_join_button_as_before(off, amb):
     _seed(10, status="pending", amb=amb)
     text, kb = _screen(10)
-    assert text == _base_link_text(10)
+    assert text == (
+        _base_link_text(10) + "\n\n"
+        "По твоей ссылке анкету завершили: 0. До порога 5 осталось 5."
+    )
     assert _datas(kb) == ["ambjoin"]
 
 
 def test_my_link_active_sees_path_and_leave_as_before(off):
     _seed(11, amb="active")
     text, kb = _screen(11)
-    assert text == _base_link_text(11) + "\n\n" + _default("ambassador_path_prompt_text")
+    assert text == (
+        _base_link_text(11) + "\n\n" + _default("ambassador_path_prompt_text") + "\n\n"
+        "По твоей ссылке анкету завершили: 0. До порога 5 осталось 5."
+    )
     datas = _datas(kb)
     assert datas == ["ambpath:invite", "ambpath:content", "ambpath:none", "ambleave"]
 

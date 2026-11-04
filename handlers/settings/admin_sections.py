@@ -143,6 +143,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Делегации вузов на Москву: экран «🏫 Делегации» внутри «📋 Заявки», своего раздела
         # не заводим — девять разделов зафиксированы (капа `moderate_reg`, как у заявок).
         ("screen", "admin_delegations", "🏫 Делегации"),
+        ("screen", "admin_interviews", "🗓 Интервью"),
         ("toggle", "settings_toggle_full_approval"),
         ("toggle", "settings_toggle_short_approval"),
         ("toggle", "settings_toggle_party_approval"),
@@ -153,6 +154,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("toggle", "toggle_reg_submit_notify"),
         ("toggle", "toggle_preselect_enabled"),
         ("toggle", "toggle_pending_reminder"),
+        ("toggle", "toggle_apps_waitlist"),
         ("toggle", "toggle_nudge_enabled"),
         # Квик 260911-w2m: «можно ли делегату сейчас править анкету» — СРАЗУ ПЕРЕД
         # «что делать с правкой» (toggle_reg_edit_remoderation): читается парой, сначала
@@ -236,6 +238,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("screen_admin", "admin_sheet_target", "🔗 Какая таблица"),
         ("screen", "admin_export_participants", "👥 Список участников"),
         ("op", "admin_export_csv"),
+        ("op", "admin_export_partner"),
         ("op", "admin_export_incomplete"),
         ("op", "admin_sync_sheet"),
         ("op", "admin_rebuild_sheet"),
@@ -772,3 +775,7 @@ from handlers.applications import admin_reject_retro  # noqa: E402,F401
 # Форум-ночь п.4 (расписание форума в боте): шов «🗓 Программа форума» — импорт СРАЗУ ПОСЛЕ
 # admin_reject_reports, тот же хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
 from handlers.forum import admin_program  # noqa: E402,F401
+
+# Лист ожидания заявок — тот же хвостовой приём, снимок хендлеров только дописывается.
+from handlers.applications import admin_waitlist  # noqa: E402,F401
+from handlers import admin_interviews  # noqa: E402,F401

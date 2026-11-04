@@ -677,6 +677,7 @@ admin|message|prog_speaker_step|state:ProgramSessionField:*
 admin|message|prog_description_step|state:ProgramSessionField:*
 admin|message|prog_hallname_cancel|state:ProgramHallName:*
 admin|message|prog_hallname_step|state:ProgramHallName:*
+admin|message|interview_admin_value|state:InterviewAdmin:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -1082,10 +1083,15 @@ admin|callback_query|prog_copy_pick_day|prog_copysrc:*
 admin|callback_query|prog_copy_confirm|prog_copyday:*
 admin|callback_query|prog_copy_go|prog_copygo:*
 admin|callback_query|prog_wretime|prog_wretime
+admin|callback_query|appr_waitlist|appr_waitlist:*
+admin|callback_query|toggle_apps_waitlist|toggle_apps_waitlist
+admin|callback_query|open_interviews|admin_interviews
+admin|callback_query|interview_admin_tap|ivadm:*
 admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
 admin|callback_query|settings_edit_all|settings_edit_all:*
+admin|callback_query|show_partner_export|admin_export_partner
 admin|callback_query|sync_sheet|admin_sync_sheet
 admin|callback_query|rebuild_sheet_confirm|admin_rebuild_sheet
 admin|callback_query|rebuild_sheet|admin_rebuild_sheet_go
@@ -1159,6 +1165,11 @@ admin|callback_query|enrf_session_pick|enrf_pick:*
 admin|callback_query|enrf_cancel|enrf_cancel
 admin|callback_query|bcstatus_only|bcstatus_only
 admin|callback_query|bcstatus_filter|bcstatus_filter
+admin|callback_query|bciv_toggle|bciv_toggle
+admin|callback_query|bc_consent_open|bc_consent_open
+admin|callback_query|bc_consent_long|bc_consent_long
+admin|callback_query|bc_consent_pick|bc_consent:*
+admin|callback_query|bc_consent_clear|bc_consent_clear
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -2028,6 +2039,11 @@ user_actions|callback_query|regional_noshow_move_confirm|rnm_confirm
 user_actions|callback_query|regional_noshow_move_decline|rnm_decline
 user_actions|callback_query|mute_broadcasts_today|bc_mute_today
 user_actions|callback_query|unmute_broadcasts_today|bc_unmute_today
+user_actions|callback_query|interview_open|iv_open
+user_actions|callback_query|interview_pick|iv_pick:*
+user_actions|callback_query|interview_move|iv_move
+user_actions|callback_query|interview_move_to|iv_moveto:*
+user_actions|callback_query|consent_tap|cns:*
 """.strip("\n").splitlines()
 
 
@@ -2656,7 +2672,19 @@ def test_snapshot_total_handler_count_is_292():
     # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
     # 03.11 (экран чата города): +18 admin.router, чистая вставка (1369 -> 1387).
-    assert len(GOLDEN_SNAPSHOT) == 1387
+    # Лист ожидания: +2 admin.callback_query (appr_waitlist, toggle_apps_waitlist) сразу после
+    # prog_wretime и перед phchk_save.
+    # Запись на интервью: +1 admin.message interview_admin_value после prog_hallname_step,
+    # +2 admin.callback_query (open_interviews, interview_admin_tap) сразу после
+    # toggle_apps_waitlist, +1 admin.callback_query bciv_toggle сразу после bcstatus_filter,
+    # +4 user_actions.callback_query в хвосте после unmute_broadcasts_today.
+    # Партнёрский CSV: +1 admin.callback_query show_partner_export сразу после
+    # settings_edit_all (хвост admin_settings.py).
+    # Кнопка согласия в рассылке: +4 admin.callback_query (bc_consent_open/long/pick/clear)
+    # сразу после bciv_toggle и перед admin_event_preset, +1 user_actions.callback_query
+    # consent_tap в хвосте после iv_moveto.
+    # Вместе с чатом города: 1369 + 18 + 16 = 1403.
+    assert len(GOLDEN_SNAPSHOT) == 1403
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

@@ -542,6 +542,14 @@ _STATUS_COLORS = [
     ("Одобрена", (0.72, 0.88, 0.70)),
     ("Отклонена", (0.96, 0.78, 0.78)),
 ]
+_WAITLIST_COLOR = ("Лист ожидания", (0.85, 0.85, 0.85))
+
+
+def status_dropdown_values(enabled: bool) -> list[str]:
+    """Три старых значения остаются на тех же местах. Четвёртое — только при включённом тумблере."""
+    if enabled:
+        return [*STATUS_DROPDOWN, "Лист ожидания"]
+    return list(STATUS_DROPDOWN)
 
 
 # Форум-ночь B2 (идея №17): точка прихода — та же колонка-точечное-обновление, что «Статус»,
@@ -575,11 +583,14 @@ def _status_col_index(sheet) -> int:
         return -1
 
 
-def _apply_status_formatting_sync(sheet, num_rows: int):
+def _apply_status_formatting_sync(sheet, num_rows: int, dropdown=None):
     """Выпадашка (data validation ONE_OF_LIST) + условное форматирование (цвета) на
     колонку «Статус». strict=False — ручные/IMPORTRANGE-значения не блокируются.
     IN-08: удаляем существующие conditional-format правила перед добавлением, чтобы
-    повторные «Пересобрать таблицу» не копили дубли."""
+    повторные «Пересобрать таблицу» не копили дубли.
+
+    `dropdown is None` — прежний список из трёх значений. Серый для «Лист ожидания»
+    добавляется только вместе с этим значением и не сдвигает три старых цвета."""
     col0 = _status_col_index(sheet)
     if col0 < 0:
         return
@@ -606,20 +617,24 @@ def _apply_status_formatting_sync(sheet, num_rows: int):
         {"deleteConditionalFormatRule": {"sheetId": sheet.id, "index": i}}
         for i in range(existing_rules - 1, -1, -1)
     ]
+    values = STATUS_DROPDOWN if dropdown is None else list(dropdown)
+    colors = list(_STATUS_COLORS)
+    if "Лист ожидания" in values:
+        colors.append(_WAITLIST_COLOR)
     requests.append({
         "setDataValidation": {
             "range": grid,
             "rule": {
                 "condition": {
                     "type": "ONE_OF_LIST",
-                    "values": [{"userEnteredValue": v} for v in STATUS_DROPDOWN],
+                    "values": [{"userEnteredValue": v} for v in values],
                 },
                 "showCustomUi": True,
                 "strict": False,
             },
         }
     })
-    for idx, (val, (r, g, b)) in enumerate(_STATUS_COLORS):
+    for idx, (val, (r, g, b)) in enumerate(colors):
         requests.append({
             "addConditionalFormatRule": {
                 "index": idx,
@@ -1153,7 +1168,7 @@ def _bulk_update_status_sync(id_to_label: dict[str, str], tab_by_id: dict[str, s
     return total
 
 
-def _rebuild_main_sheet_sync(headers: list[str], rows: list[list]) -> int:
+def _rebuild_main_sheet_sync(headers: list[str], rows: list[list], dropdown=None) -> int:
     """Полная пересборка листа данных: очистить, записать шапку + все строки в текущем
     порядке колонок, применить выпадашку/цвета к «Статус». Выравнивает старые строки после
     смены порядка колонок."""
@@ -1164,7 +1179,7 @@ def _rebuild_main_sheet_sync(headers: list[str], rows: list[list]) -> int:
     values = [headers] + [list(r) for r in rows]
     sheet.update(values=values, range_name="A1", value_input_option=_RAW)
     try:
-        _apply_status_formatting_sync(sheet, len(rows))
+        _apply_status_formatting_sync(sheet, len(rows), dropdown)
     except Exception as e:
         logger.warning(f"apply_status_formatting failed (skipping): {e}")
     return len(rows)
@@ -1234,8 +1249,18 @@ async def rebuild_main_sheet(headers: list[str], rows: list[list]) -> int:
     if not await _tab_explicitly_configured():
         logger.warning("rebuild_main_sheet refused: main tab not set (bot_settings.main_sheet_tab / GOOGLE_SHEET_TAB)")
         return REFUSED_UNPINNED_TAB
+    dropdown = None
     try:
-        n = await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows)
+        from database.db import get_setting
+        if await get_setting("apps_waitlist_enabled") == "on":
+            dropdown = status_dropdown_values(True)
+    except Exception as e:
+        logger.warning(f"rebuild_main_sheet: тумблер листа ожидания не прочитан ({e})")
+    try:
+        if dropdown is None:
+            n = await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows)
+        else:
+            n = await asyncio.to_thread(_rebuild_main_sheet_sync, headers, rows, dropdown)
         _note_write(True)
         return n
     except Exception as e:

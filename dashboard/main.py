@@ -39,6 +39,7 @@ import shared.web_theme as web_theme
 from shared.secret_redact import install_log_redaction, register_secret
 from dashboard import chat_rating
 from dashboard import queries
+from dashboard import skillup_block
 from dashboard import sources_daily
 from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
@@ -255,7 +256,7 @@ def _page_sections(ctx: dict) -> list[dict]:
     if ctx["dynamics_enabled"] or ctx["funnel"] or ctx["dropout"] or ctx["months"]:
         sections.append({"id": "flow", "title": "Поток заявок"})
     sections.append({"id": "moderation", "title": "Модерация и ответы"})
-    if ctx["utm"] or ctx["source_cut"] or ctx["referrals"]:
+    if ctx["utm"] or ctx["source_cut"] or ctx["referrals"] or ctx.get("skillup_it") or ctx.get("skillup_case"):
         sections.append({"id": "sources", "title": "Откуда приходят"})
     if ctx["cuts"]:
         sections.append({"id": "who", "title": "Кто подаёт"})
@@ -367,6 +368,16 @@ def build_page_context(
         if flags.get("dashboard_block_delegations") == "on"
         else None
     )
+    skillup_it = (
+        skillup_block.it_block(conn, scope)
+        if flags.get("dashboard_block_it3plus") == "on"
+        else None
+    )
+    skillup_case = (
+        skillup_block.case_block(conn, scope)
+        if flags.get("dashboard_block_case_optin") == "on"
+        else None
+    )
     referrals_daily_chart = None
     if referrals is not None:
         if referrals["daily"]:
@@ -463,6 +474,8 @@ def build_page_context(
         "ambassadors": ambassadors,
         "referrals": referrals,
         "delegations": delegations,
+        "skillup_it": skillup_it,
+        "skillup_case": skillup_case,
         "deleg_daily": queries.delegation_daily(conn, scope),
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,

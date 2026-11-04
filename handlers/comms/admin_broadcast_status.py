@@ -12,16 +12,33 @@ from aiogram import Bot, F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton
 
-from database.app_status_db import APPROVED, NOT_SUBMITTED, PENDING, REJECTED, split_ids_by_app_status
+from database.app_status_db import (
+    APPROVED, NOT_SUBMITTED, PENDING, REJECTED, WAITLIST, split_ids_by_app_status,
+)
 from handlers.admin import router
 from handlers.states import Broadcast
 
 _ONLY_APPROVED = "✅ Только одобренные"
 _APPROVED_FILTER = {"field": "status", "value": APPROVED}
+_STATUS_SEGMENT_ORDER = (PENDING, APPROVED, REJECTED, WAITLIST)
 _PARTS = (
     (APPROVED, "Одобрены"), (PENDING, "На рассмотрении"),
-    (REJECTED, "Отклонены"), (NOT_SUBMITTED, "Не подали анкету"),
+    (REJECTED, "Отклонены"), (WAITLIST, "Лист ожидания"),
+    (NOT_SUBMITTED, "Не подали анкету"),
 )
+
+
+async def status_segment_options() -> list[tuple[str, str]] | None:
+    """Четыре кнопки статуса, когда лист ожидания включён. None — прежний пикер по базе.
+
+    Подписи человеку из STATUS_LABELS. Коды — только value фильтра. Текста письма здесь нет:
+    менеджер пишет его в обычной рассылке."""
+    from database.db import get_setting
+    from domain.regform.labels import STATUS_LABELS
+
+    if await get_setting("apps_waitlist_enabled") != "on":
+        return None
+    return [(code, STATUS_LABELS[code]) for code in _STATUS_SEGMENT_ORDER]
 
 
 def _has_status(filters: list[dict] | None) -> bool:
@@ -34,14 +51,18 @@ async def _status_parts(ids: list[int], filters: list[dict] | None, callback_dat
     if not ids:
         return "", "", []
     groups = await split_ids_by_app_status(ids)
-    counts = {key: len(groups[key]) for key, _ in _PARTS}
+    # .get: старые подмены разбивки в тестах знают четыре корзины и не знают waitlist.
+    counts = {key: len(groups.get(key, [])) for key, _ in _PARTS}
     line = "Получатели: " + " · ".join(f"{label} {counts[key]}" for key, label in _PARTS if counts[key]) + "\n"
     not_approved = counts[PENDING] + counts[NOT_SUBMITTED]
-    if _has_status(filters) or not (counts[REJECTED] or not_approved):
+    waitlist_n = counts[WAITLIST]
+    if _has_status(filters) or not (counts[REJECTED] or not_approved or waitlist_n):
         return line, "", []
     found = []
     if counts[REJECTED]:
         found.append(f"отклонённые ({counts[REJECTED]})")
+    if waitlist_n:
+        found.append(f"в листе ожидания ({waitlist_n})")
     if not_approved:
         found.append(f"не одобренные ({not_approved})")
     warning = f"⚠️ В рассылке есть {' и '.join(found)}. Обычно пишут только одобренным.\n"
@@ -65,7 +86,8 @@ async def staff_missing_note(missing: set[int]) -> str:
         return (f"⚠️ {no_form} из команды (админы и менеджеры) не зарегистрированы как делегаты — "
                 "рассылку они не получат.\n\n")
     parts = [(no_form, "без анкеты делегата"),
-             (len(groups[PENDING]) + len(groups[REJECTED]), "анкета не одобрена"),
+             (len(groups[PENDING]) + len(groups[REJECTED]) + len(groups.get(WAITLIST, [])),
+              "анкета не одобрена"),
              (len(groups[APPROVED]), "не прошли условия рассылки")]
     reasons = "; ".join(f"{label} — {n}" for n, label in parts if n)
     return f"⚠️ {len(missing)} из команды (админы и менеджеры) рассылку не получат: {reasons}.\n\n"

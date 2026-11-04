@@ -387,6 +387,10 @@ async def _send_confirm_prompt(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
         callback_data="bc_important_toggle",
     )
+    from handlers.comms.admin_broadcast_interview import confirm_rows
+    iv_rows = await confirm_rows(state)
+    from handlers.comms.admin_broadcast_consent import confirm_row
+    consent_rows = await confirm_row(state)
     from services.comms import quiet_hours
     now = _now_moscow_naive()
     window = await quiet_hours.window_for_city(None)
@@ -402,7 +406,7 @@ async def _send_confirm_prompt(
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text=f"🌙 Всё равно отправить сейчас ({total})", callback_data="bc_go")],
-            *season_rows, [important_btn],
+            *season_rows, *iv_rows, *consent_rows, [important_btn],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
         ])
         await bot.send_message(chat_id, text, reply_markup=kb)
@@ -410,7 +414,7 @@ async def _send_confirm_prompt(
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"✅ Отправить {total} пользователям", callback_data="bc_go")],
-        *season_rows, [important_btn],
+        *season_rows, *iv_rows, *consent_rows, [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="bc_no")],
     ])
     await bot.send_message(chat_id, f"{warning}Отправить это {total} пользователям?", reply_markup=kb)
@@ -587,6 +591,15 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     bc_kind = data.get("bc_kind", "media")
     bc_content_html = data.get("bc_content_html")
     bc_base_markup = data.get("bc_reply_markup")
+    from handlers.comms.admin_broadcast_interview import with_interview_button
+    bc_base_markup = with_interview_button(bc_base_markup, bool(data.get("bc_interview_button")))
+    picked_consent = (data.get("bc_consent_key") or "").strip() or None
+    album_note = ""
+    stored_consent = picked_consent
+    if bc_album and picked_consent:
+        from handlers.comms.admin_broadcast_consent import ALBUM_NOTE
+        album_note = "\n" + ALBUM_NOTE
+        stored_consent = None
     important = bool(data.get("bc_important"))
     admin_id = callback.from_user.id
 
@@ -601,7 +614,11 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
 
     bid = await create_broadcast(
         admin_id, preview[:80], total, important=important, full_text=preview,
+        consent_key=stored_consent,
     )
+    if stored_consent:
+        from handlers.comms.admin_broadcast_consent import with_consent_button
+        bc_base_markup = await with_consent_button(bc_base_markup, bid, stored_consent)
     logger.info(
         "broadcast %s started by %s: total=%s important=%s mute_skipped=%s preview=%r",
         bid, admin_id, total, important, mute_skipped, preview[:80],
@@ -663,7 +680,7 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     ]])
     progress_msg = callback.message
     try:
-        await progress_msg.edit_text(f"📨 Отправлено 0 из {total}…", reply_markup=stop_kb)
+        await progress_msg.edit_text(f"📨 Отправлено 0 из {total}…{album_note}", reply_markup=stop_kb)
     except Exception as e:
         logger.warning(
             "broadcast %s: не удалось перерисовать экран подтверждения (%s: %s) — "
@@ -675,7 +692,7 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
             pass  # зависшая карточка могла не удалиться по той же причине — это нормально
         try:
             progress_msg = await bot.send_message(
-                callback.message.chat.id, f"📨 Отправлено 0 из {total}…", reply_markup=stop_kb,
+                callback.message.chat.id, f"📨 Отправлено 0 из {total}…{album_note}", reply_markup=stop_kb,
             )
         except Exception as e3:
             logger.error("broadcast %s: не удалось отправить экран прогресса: %s", bid, e3)
@@ -687,7 +704,9 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
         if progress_msg is None:
             return
         try:
-            await progress_msg.edit_text(f"📨 Отправлено {delivered} из {total_n}…", reply_markup=stop_kb)
+            await progress_msg.edit_text(
+                f"📨 Отправлено {delivered} из {total_n}…{album_note}", reply_markup=stop_kb,
+            )
         except Exception:
             pass  # "message is not modified" и подобные не должны ронять рассылку
 
@@ -697,6 +716,8 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
         row = await get_broadcast(bid)
         if row:
             text, kb2 = _broadcast_card(row)
+            if album_note:
+                text += album_note
         else:
             text, kb2 = (
                 f"Рассылка завершена. ✅ Отправлено {delivered}, ❌ недоступно {blocked}", None
@@ -808,6 +829,9 @@ def _broadcast_card(row: dict) -> tuple[str, InlineKeyboardMarkup | None]:
         ]])
     else:
         text += "\nУдалить нельзя: прошло больше 48 часов."
+    consent_line = str(row.get("consent_line") or "").strip()
+    if consent_line:
+        text += "\n" + consent_line
     return text, kb
 
 
@@ -823,6 +847,8 @@ async def _render_broadcast_log(target):
     if not rows:
         await target.answer("Рассылок пока не было.")
         return
+    from handlers.comms.admin_broadcast_consent import attach_consent_lines
+    await attach_consent_lines(rows)
     for row in rows:
         if row.get("status") == "revoked":
             # Удалённая — одной строкой: кнопок у неё нет, счётчики доставки уже неправда.
@@ -985,11 +1011,15 @@ async def _send_schedule_confirm_prompt(target, state: FSMContext) -> None:
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
         callback_data="sched_important_toggle",
     )
+    from handlers.comms.admin_broadcast_interview import confirm_rows
+    iv_rows = await confirm_rows(state)
+    from handlers.comms.admin_broadcast_consent import confirm_row
+    consent_rows = await confirm_row(state)
     from handlers.comms.admin_broadcast_season import schedule_season_extra
     season_text, season_rows = await schedule_season_extra(state)
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗓 Запланировать", callback_data="sched_go")],
-        *season_rows, [important_btn],
+        *season_rows, *iv_rows, *consent_rows, [important_btn],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="sched_no")],
     ])
     await target.answer(
@@ -1032,10 +1062,13 @@ async def sched_go(callback: types.CallbackQuery, state: FSMContext):
         return
 
     filters = data.get("filters")
-    filter_spec = json.dumps(filters, ensure_ascii=False) if filters else None
+    from handlers.comms.admin_broadcast_interview import pack_filter_spec
+    filter_spec = pack_filter_spec(filters, bool(data.get("bc_interview_button")))
 
+    consent_key = (data.get("bc_consent_key") or "").strip() or None
     bid = await create_scheduled_broadcast(
-        text, photo, filter_spec, _fmt_dt(when), callback.from_user.id, important=important,
+        text, photo, filter_spec, _fmt_dt(when), callback.from_user.id,
+        important=important, consent_key=consent_key,
     )
     schedule_broadcast_job(bid, when)
     await state.clear()
@@ -1515,8 +1548,17 @@ async def _show_value_picker(callback: types.CallbackQuery, state: FSMContext, f
         options = await get_distinct_filter_values(field)
         labels = {code: _TRACK_LABELS.get(code, code) for code in options}
     else:
-        options = await get_distinct_filter_values(field)
-        labels = None
+        fixed = None
+        if field == "status":
+            from handlers.comms.admin_broadcast_status import status_segment_options
+
+            fixed = await status_segment_options()
+        if fixed is None:
+            options = await get_distinct_filter_values(field)
+            labels = None
+        else:
+            options = [code for code, _label in fixed]
+            labels = {code: label for code, label in fixed}
     if not options:
         await callback.answer("В базе нет значений для этого поля.", show_alert=True)
         return
@@ -1760,3 +1802,5 @@ from handlers.comms import admin_broadcast_ext_form_filter  # noqa: E402,F401
 from handlers.comms import admin_broadcast_season  # noqa: E402,F401  # сезон по умолчанию, «из них прошлого сезона»
 from handlers.comms import admin_broadcast_enroll_filter  # noqa: E402,F401  # фильтры записи на сессии и теста
 from handlers.comms import admin_broadcast_status  # noqa: E402,F401  # разбивка по статусу заявки, «Только одобренные»
+from handlers.comms import admin_broadcast_interview  # noqa: E402,F401  # галочка «Выбрать время»
+from handlers.comms import admin_broadcast_consent  # noqa: E402,F401  # кнопка согласия

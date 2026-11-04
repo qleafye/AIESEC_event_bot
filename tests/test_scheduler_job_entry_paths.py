@@ -17,6 +17,7 @@ from tests._paths import REPO_ROOT
 JOB_ENTRY_MODULES = {
     "services.scheduler": {
         "send_scheduled_broadcast", "send_scheduled_poll", "send_payment_reminder",
+        "send_interview_reminder",
         "send_wave_start", "send_task_deadline_reminder", "send_wave_end_ping",
         "send_wave_results", "sweep_payment_overdue", "miniapp_outbox_drain_job",
         "sheet_arrival_drain_job", "sheet_chat_drain_job", "ext_forms_pending_job",
