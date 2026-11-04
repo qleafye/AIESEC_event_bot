@@ -285,6 +285,45 @@ def test_send_wave_start_blocked_recipient_does_not_abort_others(tmp_path, monke
     assert [c[0] for c in bot.sent] == [2]
 
 
+def test_send_wave_start_skips_pending_and_rejected(tmp_path, monkeypatch):
+    """Старт волны молчит для pending и rejected, даже если is_ambassador = 1.
+    Approved (дефолт add_user) и пустой статус получают письмо. Отсев — в DM,
+    на полном ряде get_user, поэтому и фан-аут, и прямой вызов ведут себя одинаково."""
+    _ready(tmp_path)
+    bot = _with_bot(monkeypatch)
+    for tid in (1, 2, 3):
+        _make_ambassador(tid, since="2025-01-01 00:00:00")
+
+    async def _mark():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE users SET status = 'rejected' WHERE telegram_id = 2")
+            await conn.execute("UPDATE users SET status = 'pending' WHERE telegram_id = 3")
+            await conn.commit()
+
+    _run(_mark())
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 1, 0, 0, 1))
+
+    _run(sched.send_wave_start_dm(wave_id, 2))
+    assert bot.sent == []
+
+    _run(sched.send_wave_start(wave_id))
+    assert [c[0] for c in bot.sent] == [1]
+
+    _make_ambassador(4, since="2025-01-01 00:00:00")
+
+    async def _null_status():
+        async with db._connect() as conn:
+            await conn.execute("UPDATE users SET status = NULL WHERE telegram_id = 4")
+            await conn.commit()
+
+    _run(_null_status())
+    bot.sent.clear()
+    _run(sched.send_wave_start_dm(wave_id, 4))
+    assert [c[0] for c in bot.sent] == [4]
+
+
 def test_send_wave_start_includes_ambassador_who_joined_after_scheduling(tmp_path, monkeypatch):
     """Регрессия ГЛАВНОГО бага фикса: джоба волны поставлена, когда участников ещё нет; амбассадор
     появляется ПОСЛЕ постановки, но ДО `starts_at` волны — он полноправный участник по

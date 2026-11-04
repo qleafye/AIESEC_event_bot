@@ -15,6 +15,10 @@ import re
 import sqlite3
 from pathlib import Path
 
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+
 from config import config
 from database import db
 from handlers import user_actions as ua_mod
@@ -32,6 +36,20 @@ TASKS_TEXT = dict(MENU_BUTTONS)["menu_game_tasks"]
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_delegations_game_gate.db")
     fast_init_db()
+
+
+def _set_status(uid, status):
+    conn = sqlite3.connect(config.DB_PATH)
+    conn.execute("UPDATE users SET status = ? WHERE telegram_id = ?", (status, uid))
+    conn.commit()
+    conn.close()
+
+
+def _shown(cb):
+    chunks = [text for text, _alert in cb.answers if text]
+    chunks.extend(item[0] for item in cb.message.answers)
+    chunks.extend(item[0] for item in cb.message.edits)
+    return "\n".join(chunks)
 
 
 def _seed(uid, *, delegation=None):
@@ -262,3 +280,63 @@ def test_long_off_text_goes_as_message_not_alert(tmp_path):
     assert asyncio.run(ua_mod.ensure_game_allowed(cb)) is False
     assert cb.answers == [(None, False)]
     assert [a[0] for a in cb.message.answers] == [long_text]
+
+
+# ── статус заявки: старые кнопки заданий ────────────────────────────────────────────────────
+
+def test_rejected_task_callbacks_do_not_open_list_or_card(tmp_path):
+    """Отказ не открывает список и карточку со старой кнопки: ни правки сообщения, ни названия."""
+    _db_ready(tmp_path)
+    _seed(REGULAR_ID)
+    _set_status(REGULAR_ID, "rejected")
+    task_id = asyncio.run(db.create_task(
+        "Секретное задание", "Light", 10, "photo", "2026-12-31 23:59:00", 1,
+    ))
+    reject = "К сожалению, твоя заявка отклонена."
+
+    page = FakeCallback("gtasks_page:0", user_id=REGULAR_ID)
+    asyncio.run(ua_mod.gtasks_page(page))
+    assert page.message.edits == []
+    shown = _shown(page)
+    assert reject in shown
+    assert "Секретное задание" not in shown
+
+    card = FakeCallback(f"gtask_open:{task_id}", user_id=REGULAR_ID)
+    asyncio.run(ua_mod.mytask_open(card))
+    assert card.message.edits == [] and card.message.answers == []
+    shown = _shown(card)
+    assert reject in shown
+    assert "Секретное задание" not in shown
+
+
+def test_pending_submit_does_not_enter_proof(tmp_path):
+    """Заявка на рассмотрении не входит в сдачу: состояние доказательств не ставится."""
+    _db_ready(tmp_path)
+    _seed(REGULAR_ID)
+    _set_status(REGULAR_ID, "pending")
+    task_id = asyncio.run(db.create_task(
+        "Сдача", "Light", 10, "photo", "2026-12-31 23:59:00", 1,
+    ))
+    state = FSMContext(
+        storage=MemoryStorage(),
+        key=StorageKey(bot_id=1, chat_id=REGULAR_ID, user_id=REGULAR_ID),
+    )
+    cb = FakeCallback(f"mytask_submit:{task_id}", user_id=REGULAR_ID)
+    asyncio.run(ua_mod.mytask_submit_start(cb, state))
+    assert asyncio.run(state.get_state()) is None
+    shown = _shown(cb)
+    assert "на рассмотрении" in shown
+    assert "Сдача" not in shown
+
+
+def test_approved_gtasks_page_still_opens_list(tmp_path):
+    """Статус по умолчанию после add_user — approved, список по-прежнему открывается."""
+    _db_ready(tmp_path)
+    _seed(REGULAR_ID)
+    asyncio.run(db.create_task(
+        "Открытое задание", "Light", 10, "photo", "2026-12-31 23:59:00", 1,
+    ))
+    cb = FakeCallback("gtasks_page:0", user_id=REGULAR_ID)
+    asyncio.run(ua_mod.gtasks_page(cb))
+    assert cb.message.edits
+    assert "Открытое задание" in cb.message.edits[0][0]
