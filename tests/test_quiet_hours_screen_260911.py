@@ -180,7 +180,7 @@ def test_back_button_uses_back_button_helper_not_literal(tmp_path):
     _roles_ready(tmp_path)
     text, kb = _run(qh_screen.render_quiet_hours_screen(ADMIN_ID))
     cbs = _cbs(kb)
-    assert "admin_sec:apps" in cbs
+    assert "admin_menu" in cbs
 
 
 # ── Экранирование ────────────────────────────────────────────────────────────────────────────

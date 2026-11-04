@@ -38,8 +38,8 @@ from database import ext_forms_db as ef
 from database.db import (
     add_user, approve_user_atomic, clear_reg_started, delete_reg_draft, get_reg_started_by_id,
     get_reg_started_by_username,
-    get_setting, get_user, get_user_by_username, record_reg_event, set_user_status, store_username,
-    update_user_answers, username_needle,
+    get_last_application_decision, get_setting, get_user, get_user_by_username, record_reg_event,
+    set_user_status, store_username, update_user_answers, username_needle,
 )
 from services.delegations.delegations_course import _cutoff_dt, evaluate_ta, parse_course
 from services.ext_forms.ext_forms_match import username_from_value
@@ -295,9 +295,9 @@ async def _reset_reg_fsm(bot, tid: int) -> None:
         await ctx.clear()
 
 
-async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool) -> None:
-    """Одно сообщение делегату с обычным меню одобренного. Сбой доставки — в учёт решения, чтобы
-    «Сверить с БД» показал одобрение без письма."""
+async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool) -> bool:
+    """Одно сообщение делегату с обычным меню одобренного. True, только если письмо ушло.
+    Сбой доставки — в учёт решения, чтобы «Сверить с БД» показал одобрение без письма."""
     import html as html_module
 
     from keyboards.builders import get_main_menu_kb
@@ -333,11 +333,70 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
 
     err = await send_with_retry(_send)
     if err is not None:
+        # send_with_retry не бросает ошибку, а возвращает её. Без False долг закрылся бы,
+        # хотя письма не было.
         logger.error("delegations: сообщение делегату не доставлено (tid=%s): %s",
                      tid, type(err).__name__)
         await _record_delivery_fail_soft(tid, "approved", "failed", err)
-    else:
-        await _record_delivery_fail_soft(tid, "approved", "delivered")
+        return False
+    await _record_delivery_fail_soft(tid, "approved", "delivered")
+    return True
+
+
+# Живая строка журнала (effects_sent_at IS NULL) уходит общим письмом одобрения — это
+# другой текст. Долг приветствия лежит в note ответа; журнал закрывается только когда
+# отправка в этом вызове прошла (send_with_retry вернул None).
+_NOTE_WELCOME_PENDING = "welcome_pending"
+_NOTE_WELCOME_PENDING_EXISTING = "welcome_pending_existing"
+_NOTE_WELCOME_SENT = "welcome_sent"
+_WELCOME_DEBT = (_NOTE_WELCOME_PENDING, _NOTE_WELCOME_PENDING_EXISTING)
+
+
+async def _approval_effects_sent(tid: int) -> bool:
+    row = await get_last_application_decision(tid)
+    if not row or row.get("decision") != "approved":
+        return False
+    return bool(str(row.get("effects_sent_at") or "").strip())
+
+
+async def _deliver_welcome(bot, tid: int, university: str | None, *, existing: bool) -> bool:
+    """True только если отправка в этом вызове прошла (err is None).
+
+    `send_with_retry` не бросает ошибку. Исключение из `_send_welcome` — тоже неуспех:
+    note остаётся долгом, журнал с effects_already_sent не пишется.
+    """
+    resolved = None
+    try:
+        resolved = _resolve_bot(bot)
+    except Exception:
+        logger.exception("delegations: бот не инициализирован (tid=%s)", tid)
+        return False
+    if resolved is None:
+        return False
+    try:
+        await _reset_reg_fsm(resolved, tid)
+    except Exception:
+        logger.exception("delegations: FSM анкеты не сброшен (tid=%s)", tid)
+    try:
+        delivered = await _send_welcome(resolved, tid, university, existing=existing)
+    except Exception:
+        logger.exception("delegations: сообщение делегату не отправлено (tid=%s)", tid)
+        return False
+    return delivered is True
+
+
+async def _close_welcome(row_id: int, tid: int, by: int | None, *, journal: bool) -> None:
+    await ddb.set_note(row_id, _NOTE_WELCOME_SENT)
+    if not journal or await _approval_effects_sent(tid):
+        return
+    from services.applications.applications import record_decision
+    try:
+        await record_decision(
+            tid, "approved", None, by if by is not None else DELEGATION_DECIDED_BY,
+            msk_now(), effects_already_sent=True,
+        )
+    except Exception:
+        logger.exception("delegations: журнал решений не записан (tid=%s)", tid)
 
 
 async def convert_to_delegate(
@@ -347,7 +406,9 @@ async def convert_to_delegate(
     """Превратить человека `tid` в одобренного делегата по ответу `row` (строка
     `delegation_answers`) с полями `fields` (см. `extract_fields` + `course_canonical`).
 
-    Идемпотентно: уже привязан к этому ответу — {"already": True}. Новая строка `users`
+    Идемпотентно: уже привязан к этому ответу — {"already": True}. Если приветствие
+    в прошлый раз не ушло, этот же вызов досылает его один раз и только тогда закрывает
+    журнал. Новая строка `users`
     создаётся только у того, кто анкету не подавал; существующая анкета получает лишь поля
     делегации (ФИО/почта/вуз делегата не перетираются). Отклонённый превращается только с
     авторизацией (ручная привязка или решение менеджера) — иначе {"refused": ...}.
@@ -360,7 +421,19 @@ async def convert_to_delegate(
     answer_id = str(row["answer_id"])
     user = await get_user(tid)
     if user and str(user.get("delegation_answer_id") or "") == answer_id:
-        return {"already": True}
+        # Пометка читается из базы: объект row у вызывающего мог остаться со старым note.
+        fresh = await ddb.get_by_id(row["id"])
+        note = (fresh or {}).get("note")
+        if note not in _WELCOME_DEBT:
+            return {"already": True}
+        welcomed = await _deliver_welcome(
+            bot, tid, fields.get("university"),
+            existing=(note == _NOTE_WELCOME_PENDING_EXISTING),
+        )
+        if not welcomed:
+            return {"already": True}
+        await _close_welcome(row["id"], tid, by, journal=(note == _NOTE_WELCOME_PENDING))
+        return {"already": True, "welcomed": True}
     bound = str((user or {}).get("delegation_answer_id") or "")
     if bound and bound != answer_id:
         # Второй ответ того же человека: делегат уже в боте по первому. Привязываем ответ тихо —
@@ -450,12 +523,6 @@ async def convert_to_delegate(
     # Колонка «В боте» листа: единственная точка для всех путей (синк, /start, вручную).
     await _mark_update_fail_soft(row["form_id"], answer_id)
 
-    resolved_bot = None
-    try:
-        resolved_bot = _resolve_bot(bot)
-    except Exception:
-        logger.exception("delegations: бот не инициализирован (tid=%s)", tid)
-
     for step, coro in (
         ("черновик анкеты", delete_reg_draft(tid)),
         ("отметка старта", clear_reg_started(tid)),
@@ -464,21 +531,8 @@ async def convert_to_delegate(
             await coro
         except Exception:
             logger.exception("delegations: %s не снят(а) (tid=%s)", step, tid)
-    if resolved_bot is not None:
-        try:
-            await _reset_reg_fsm(resolved_bot, tid)
-        except Exception:
-            logger.exception("delegations: FSM анкеты не сброшен (tid=%s)", tid)
 
     if flipped:
-        from services.applications.applications import record_decision
-        try:
-            await record_decision(
-                tid, "approved", None, by if by is not None else DELEGATION_DECIDED_BY,
-                msk_now(), effects_already_sent=True,
-            )
-        except Exception:
-            logger.exception("delegations: журнал решений не записан (tid=%s)", tid)
         try:
             await record_reg_event(tid, "form_completed", event_city=city, season=season,
                                    source_tag=SOURCE_TAG)
@@ -492,11 +546,16 @@ async def convert_to_delegate(
             except Exception:
                 logger.exception("delegations: статус в листе не обновлён (tid=%s)", tid)
 
-    if resolved_bot is not None:
-        try:
-            await _send_welcome(resolved_bot, tid, university, existing=(prev_status == "approved"))
-        except Exception:
-            logger.exception("delegations: сообщение делегату не отправлено (tid=%s)", tid)
+    welcomed = await _deliver_welcome(
+        bot, tid, university, existing=(prev_status == "approved"),
+    )
+    if welcomed:
+        await _close_welcome(row["id"], tid, by, journal=flipped)
+    else:
+        await ddb.set_note(
+            row["id"],
+            _NOTE_WELCOME_PENDING if flipped else _NOTE_WELCOME_PENDING_EXISTING,
+        )
 
     return {"converted": True, "flipped": flipped, "prev_status": prev_status}
 
@@ -559,6 +618,13 @@ async def on_answer_available(form_id: int, answer_id: str, *, reason: str = "in
                                answer_id, form_id, tid)
     elif ta == "ok" and row.get("linked_telegram_id") is not None:
         result["verdict"] = "already"
+        if row.get("note") in _WELCOME_DEBT:
+            conv = await convert_to_delegate(
+                int(row["linked_telegram_id"]), row, fields,
+                how=row.get("link_how") or LINK_HOW_USERNAME, by=row.get("decided_by"),
+            )
+            if conv.get("welcomed"):
+                result["welcomed"] = True
 
     if changed and not converted:
         await _mark_update_fail_soft(int(form_id), str(answer_id))
@@ -607,7 +673,8 @@ async def try_delegate_start(message, state, bot) -> bool:
 async def sweep_pending(limit: int = 200, *, reevaluate: bool = False) -> dict:
     """Страховка хука приёма (ретрай очереди второй раз хук не зовёт): оценить ответы формы
     делегаций без оценки и ещё раз поискать людей для ЦА-ответов без привязки. `reevaluate` —
-    прогнать все ответы формы (ручные решения переживают переоценку). Идемпотентно."""
+    прогнать все ответы формы (ручные решения переживают переоценку). Ответ с долгом
+    приветствия досылает письмо, если бот уже есть. Идемпотентно."""
     dfid = await delegation_form_id()
     if dfid is None:
         return {"skipped": "no_form", "evaluated": 0, "linked": 0}
@@ -628,6 +695,8 @@ async def sweep_pending(limit: int = 200, *, reevaluate: bool = False) -> dict:
             rechecked += 1
             if res.get("converted"):
                 linked += 1
+    for owed in await ddb.list_linked_by_note(dfid, _WELCOME_DEBT, limit):
+        await on_answer_available(dfid, owed["answer_id"], reason="sweep")
     return {"evaluated": evaluated, "linked": linked, "rechecked": rechecked}
 
 

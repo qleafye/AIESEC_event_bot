@@ -90,6 +90,18 @@ export const ROUTES = [
   ["#/setup", "screens/setup.js"],
   // Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме.
   ["#/scanner", "screens/scanner.js"],
+  // Указатель рассылки, SOS и находок — один модуль, тема в hash.
+  ["#/chat/{topic}", "screens/chat_pointer.js"],
+  // Папка входов дня форума — не конструктор сценариев.
+  ["#/forum-day", "screens/forum_day.js"],
+  // Папка «Баллы» и стойки магазина — витрины здесь нет.
+  ["#/coins-shop", "screens/coins_shop.js"],
+  // Цифры регистраций — не статистика геймы #/stats.
+  ["#/figures", "screens/reg_figures.js"],
+  // Три числа отметок площадки.
+  ["#/arrivals", "screens/arrivals.js"],
+  // Таблица регистраций и три слота форм. Вкладки и книга отсюда не меняются.
+  ["#/sheets-forms", "screens/sheets_forms.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
@@ -599,6 +611,13 @@ function navigate(hash) {
   location.hash = hash;
 }
 
+// Кнопка чата «Настройки»: признак этого запуска. В ключ роли и в ключ режима не пишется.
+let managerSettingsLaunch = false;
+
+export function managerSettingsLaunchOn() {
+  return managerSettingsLaunch;
+}
+
 async function route() {
   if (terminal) return;
   // Снимаем направление СРАЗУ — любая ветка выхода ниже (missing/showState/ошибка) не должна
@@ -611,6 +630,10 @@ async function route() {
   // Без этой ветки каждый первый вход из Telegram Web попадал в showState("missing")
   // («Раздел пока недоступен») вместо хаба — находка живой приёмки 19-10.
   if (hash.startsWith("#tgWebApp")) hash = "";
+  if ((!hash || hash === "#/" || hash === "#")
+      && /(?:^|[?&])open=settings(?:&|$)/.test(String(location.search || ""))) {
+    managerSettingsLaunch = true;
+  }
   if (!hash || hash === "#/" || hash === "#") {
     hash = homeHash();
     if (hash === "#/") {

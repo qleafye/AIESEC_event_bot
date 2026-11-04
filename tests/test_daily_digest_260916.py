@@ -124,13 +124,10 @@ def test_toggle_row_and_section_placement(tmp_path):
     assert "❌ Выкл → ✅ Вкл" in btn.text  # дефолт OFF
     assert "on" not in btn.text.split(":")[0]
 
-    callbacks = [sec.row_callback(r) for r in sec._declared_rows("manage")]
-    assert callbacks.count("toggle_daily_digest") == 1
-    assert callbacks.index("toggle_daily_digest") == callbacks.index("toggle_chat_tracking_enabled") + 1
-    for token, _label, rows_ in sec.SECTIONS:
-        if token == "manage":
-            continue
-        assert "toggle_daily_digest" not in [sec.row_callback(r) for r in rows_]
+    for token, _label, _rows in sec.SECTIONS:
+        callbacks = [sec.row_callback(r) for r in sec._declared_rows(token)]
+        assert "toggle_daily_digest" not in callbacks, token
+        assert "toggle_chat_tracking_enabled" not in callbacks, token
 
 
 def test_toggle_callback_registered_under_settings_capability():

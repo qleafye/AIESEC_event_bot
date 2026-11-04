@@ -485,20 +485,25 @@ EXCLUDED_GROUPS = ("roles",)
 # Квик 260927: задания для «упоминаний в соцсетях» рейтинга чата хранятся id заданий игры — это
 # коды; в вебе их пришлось бы набирать руками. Правятся только экраном-галочками бота «🏆 Рейтинг
 # чата» (handlers/chat/admin_chat_rating.py), где видны названия заданий.
-# Делегации вузов: id подключённой формы и qkey её ключевых вопросов — коды, которые менеджер
-# в вебе набирал бы руками. Правятся только кнопками экрана «🏫 Делегации» бота (выбор формы и
-# вопросов по подписям). Остальные ключи модуля (дата отсечки, курсы не ЦА, тумблер, тексты)
-# в вебе остаются — у них человеческие типы.
+# Делегации вузов: id форм и qkey вопросов — коды. Человеческие ключи модуля (геймификация,
+# отсечка, курсы, тексты) тоже не в общем веб-списке.
+# Эти ключи правит экран чата «Делегации», веб их не показывает.
 _DELEGATION_SERVICE_KEYS = frozenset({
     "delegation_form_id", "delegation_q_fullname", "delegation_q_university",
     "delegation_q_course", "delegation_q_email",
     "delegation_armed_form_id",
+    "registration_form_id", "ambassador_form_id",
+})
+_DELEGATION_HUMAN_KEYS = frozenset({
+    "delegation_game_enabled", "delegation_ta_cutoff", "delegation_not_ta_courses",
+    "delegation_welcome_text", "delegation_welcome_existing_text", "delegation_game_off_text",
 })
 # Таблица события (`google_sheet_id`): смена — только суперадмином на экране бота «🔗 Какая
 # таблица», где ссылка разбирается и доступ сервисного аккаунта проверяется до сохранения.
 EXCLUDED_KEYS: frozenset[str] = (
-    frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks", "google_sheet_id"}
-    | _DELEGATION_SERVICE_KEYS
+    frozenset(SHEET_TAB_NAME_KEYS)
+    | {"chat_rules_social_tasks", "google_sheet_id", "season_recap_dismissed"}
+    | _DELEGATION_SERVICE_KEYS | _DELEGATION_HUMAN_KEYS
 )
 
 # Токены групп в ТОМ ЖЕ порядке, что экраны бота (handlers.settings.admin_settings.SETTINGS_GROUPS) —

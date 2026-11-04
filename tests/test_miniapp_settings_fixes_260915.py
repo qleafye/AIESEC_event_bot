@@ -116,10 +116,11 @@ def test_app_js_route_table_has_settings_code_key_pattern():
 def test_settings_js_has_single_flight_guard_for_settings_all():
     text = _js_text(SETTINGS_JS)
     assert "let allInFlight = null;" in text
-    # ровно два литеральных вызова GET /admin/settings/all — по одному на renderStart/
-    # renderSection.loadAndRender (T-skg P6), оба под guard'ом allInFlight.
-    assert len(re.findall(r'api\("/admin/settings/all"\)', text)) == 2
-    assert text.count("if (!allInFlight) allInFlight = api(\"/admin/settings/all\")") == 2
+    # ровно один литеральный вызов GET /admin/settings/all — внутри загрузки раздела
+    # (renderSection.loadAndRender), под guard'ом allInFlight. Корень #/settings реестр
+    # не читает: он пишет режим и уходит на хаб.
+    assert len(re.findall(r'api\("/admin/settings/all"\)', text)) == 1
+    assert text.count("if (!allInFlight) allInFlight = api(\"/admin/settings/all\")") == 1
 
 
 def test_settings_js_save_toggle_does_not_reload_registry_on_stale_or_saved_without_items():

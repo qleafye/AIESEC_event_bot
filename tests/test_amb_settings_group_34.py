@@ -36,7 +36,8 @@ def _callbacks(kb):
 
 def test_every_ambassador_key_is_in_amb_group():
     for key, spec in SETTINGS_SCHEMA.items():
-        if _AMB_PREFIX.match(key):
+        # ambassador_form_id ловится префиксом ambassador_, но это служебный слот формы в группе apps.
+        if _AMB_PREFIX.match(key) and key != "ambassador_form_id":
             assert spec["group"] == "amb", key
     assert not [k for k, s in SETTINGS_SCHEMA.items() if s["group"] == "game" and _AMB_PREFIX.match(k)]
 
@@ -73,35 +74,59 @@ def test_translation_corpus_keeps_delegate_texts_and_skips_admin_ones():
 
 
 def test_amb_section_has_settings_row():
-    assert ("group", "amb") in sec.section_rows("amb")
-    assert sec.section_rows("amb")[-1] == ("group", "amb")
+    for _token, _label, rows in sec.SECTIONS:
+        assert ("group", "amb") not in rows
+    amb_cbs = [sec.row_callback(r) for r in sec.section_rows("amb")]
+    assert "settings_group:amb" not in amb_cbs
 
 
 def test_amb_group_reachable_with_module_on_and_off(tmp_path):
     _ready(tmp_path, selection=True)
     kb = _run(sec.build_section_keyboard("amb", ADMIN_ID))
-    assert "settings_group:amb" in _callbacks(kb)
+    assert "settings_group:amb" not in _callbacks(kb)
     _run(db.set_setting("amb_team_selection_enabled", "off"))
     kb = _run(sec.build_section_keyboard("game", ADMIN_ID))
-    assert "settings_group:amb" in _callbacks(kb)
+    assert "settings_group:amb" not in _callbacks(kb)
     group_kb = _run(st.build_settings_group_keyboard("amb", ADMIN_ID))
     cbs = _callbacks(group_kb)
     assert "toggle_wave_rating_show_names" in cbs
-    assert cbs[-1] == "admin_sec:game"  # раздела нет — «Назад» в «🎮 Геймификацию»
+    # section_of("settings_group:amb") is None и callback больше не в _AMB_OFF_GAME_ROWS.
+    assert cbs[-1] == "admin_menu"
+    assert cbs[-1] not in ("admin_sec:game", "admin_sec:amb")
     game_cbs = _callbacks(_run(st.build_settings_group_keyboard("game", ADMIN_ID)))
     assert "toggle_amb_team_selection" in game_cbs  # модуль включается оттуда же
+
+
+# Группа amb снята с раздела: эти ключи справки смотрят в строку приложения «Амбассадоры».
+_AMB_GUIDE_IN_APP = {
+    "wave_prize_places",
+    "wave_start_message_text",
+    "amb_tier1_threshold",
+    "amb_tier2_threshold",
+    "amb_tier3_threshold",
+    "amb_o2o_quota",
+    "amb_count_deadline",
+}
 
 
 def test_guide_entries_for_amb_keys_point_to_ambassador_section():
     from handlers.access.admin_roles import SETTINGS_GUIDE_SECTIONS
     seen = 0
+    seen_app: set[str] = set()
     for _title, _hint, entries in SETTINGS_GUIDE_SECTIONS:
         for e in entries:
             spec = SETTINGS_SCHEMA.get(e["key"])
             if spec and spec["group"] == "amb":
                 seen += 1
-                assert e["where"].startswith("🤝 Амбассадоры"), e["key"]
+                where = e["where"]
+                if e["key"] in _AMB_GUIDE_IN_APP:
+                    seen_app.add(e["key"])
+                    assert where.startswith("В приложении"), e["key"]
+                    assert "«Настройки»" in where and "«Амбассадоры»" in where, e["key"]
+                else:
+                    assert where.startswith("🤝 Амбассадоры"), e["key"]
     assert seen
+    assert seen_app == _AMB_GUIDE_IN_APP
 
 
 def test_guide_describes_new_phase_settings():

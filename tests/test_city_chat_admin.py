@@ -385,12 +385,13 @@ def test_summary_button_one_call(tmp_path, monkeypatch):
 
 def test_section_row_after_digest_pair():
     rows = next(rows for token, _label, rows in SECTIONS if token == "manage")
-    track = next(i for i, row in enumerate(rows) if row[1] == "toggle_chat_tracking_enabled")
-    digest = next(i for i, row in enumerate(rows) if row[1] == "toggle_daily_digest")
-    assert digest == track + 1
-    assert rows[digest + 1] == ("screen", "admin_city_chat", "💬 Чат города")
+    callbacks = [row[1] for row in rows]
+    assert "toggle_chat_tracking_enabled" not in callbacks
+    assert "toggle_daily_digest" not in callbacks
+    chat = next(i for i, row in enumerate(rows) if len(row) > 2 and row[1] == "admin_city_chat")
     rating = next(i for i, row in enumerate(rows) if len(row) > 2 and row[1] == "admin_chat_rating")
-    assert rating == digest + 2
+    assert rows[chat] == ("screen", "admin_city_chat", "💬 Чат города")
+    assert rating == chat + 1
 
 
 def test_caps_cover_screen_and_summary():
@@ -405,6 +406,11 @@ def test_admin_tail_imports_both():
     text = Path("handlers/admin.py").read_text(encoding="utf-8")
     assert "admin_city_chat_summary" in text
     assert "import admin_city_chat\n" in text or "import admin_city_chat " in text
-    tail = text.splitlines()[-2:]
-    assert any("admin_city_chat_summary" in line for line in tail)
-    assert any("import admin_city_chat " in line or line.strip().endswith("admin_city_chat") for line in tail)
+    lines = text.splitlines()
+    summary_at = next(i for i, line in enumerate(lines) if "admin_city_chat_summary" in line)
+    screen_at = next(
+        i for i, line in enumerate(lines)
+        if "import admin_city_chat " in line or line.strip().endswith("admin_city_chat")
+    )
+    find_at = next(i for i, line in enumerate(lines) if "import admin_find" in line)
+    assert summary_at < screen_at < find_at

@@ -1,27 +1,18 @@
 """Фоновые запросы главной Mini App не уводят экран в «Нет доступа» ни у одной роли.
 
-Приёмка 03.10: менеджер заявок без геймы (роли «🆘 Дежурный SOS», «🎪 Менеджер форума»)
-видел плитку «Статистика» по праву `stats`, её счётчик звал `/stats/game` (маршрут требует
-`moderate_game`) -> 403 без quiet -> ядро рисовало «Нет доступа» поверх всей главной.
-
-Сторож по ролям: для каждой роли считаем видимые плитки (та же логика, что `visibleNav`),
-фоновые счётчики, которые хаб для них позовёт, и право, которое проверяет сам маршрут
-(читаем из `miniapp/routers/*.py`). Ни один позванный счётчик и ни одна видимая плитка не
-должны упираться в право, которого у роли нет.
+Приёмка 03.10: счётчик плитки «Статистика» звал `/stats/game` без нужного права и без quiet,
+ядро рисовало «Нет доступа» поверх всей главной. Дом менеджера больше не зовёт эти счётчики:
+в фоне остаются тихие подсказки настройки (при праве settings) и тихие вызовы карточки сезона.
 """
 from __future__ import annotations
 from tests._paths import REPO_ROOT
 
 import re
-from pathlib import Path
-
-import pytest
 
 from tests.test_miniapp_frontend import _nav_from_app_js
 
 ROOT = REPO_ROOT
 HUB_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "hub.js"
-ROUTERS = ROOT / "miniapp" / "routers"
 
 ALL_CAPS = {
     "moderate_reg", "moderate_receipts", "moderate_game", "broadcast",
@@ -37,10 +28,6 @@ ROLES = {
     "delegate": (set(), True),
 }
 
-# Экран плитки -> маршрут, который экран зовёт первым (право маршрута = право экрана).
-SCREEN_ROUTES = {"#/stats": "/stats/game"}
-
-
 def _visible(caps: set[str], is_delegate: bool) -> list[dict]:
     out = []
     for item in _nav_from_app_js():
@@ -55,49 +42,31 @@ def _visible(caps: set[str], is_delegate: bool) -> list[dict]:
     return out
 
 
-def _fetchers() -> dict[str, tuple[str, str]]:
+def _manager_hub_body() -> str:
     text = HUB_JS.read_text(encoding="utf-8")
-    block = text[text.index("const MANAGER_FETCHERS = {"):]
-    block = block[:block.index("\n};")]
-    return {
-        m.group(1): (m.group(2), m.group(3))
-        for m in re.finditer(r'"(#/[\w-]+)": \{ cap: "(\w+)", path: "([^"]+)" \}', block)
-    }
+    start = text.index("async function renderManagerHub(")
+    rest = text[start + 1:]
+    ends = [m.start() for m in re.finditer(r"^(async )?function ", rest, re.M)]
+    return rest[:ends[0]] if ends else rest
 
 
-def _route_cap(path: str) -> str | None:
-    route = "/app/api" + path.split("?", 1)[0]
-    for py in ROUTERS.glob("*.py"):
-        text = py.read_text(encoding="utf-8")
-        idx = text.find(f'@router.get("{route}")')
-        if idx < 0:
-            continue
-        head = text[idx:idx + 600]
-        m = re.search(r'require_cap\("(\w+)"\)', head)
-        return m.group(1) if m else None
-    raise AssertionError(f"маршрут {route} не найден")
-
-
-def test_fetchers_parsed():
-    fetchers = _fetchers()
-    assert {"#/review", "#/admin-tasks", "#/admin-coins", "#/questions", "#/stats", "#/settings"} <= set(fetchers)
-    for hash_, (cap, path) in fetchers.items():
-        assert _route_cap(path) == cap, (hash_, path)
-
-
-@pytest.mark.parametrize("role", sorted(ROLES))
-def test_role_hub_never_hits_forbidden_route(role):
-    caps, is_delegate = ROLES[role]
-    fetchers = _fetchers()
-    for item in _visible(caps, is_delegate):
-        fetcher = fetchers.get(item["hash"])
-        if fetcher and fetcher[0] in caps:
-            need = _route_cap(fetcher[1])
-            assert need is None or need in caps, (role, item["hash"], need)
-        screen = SCREEN_ROUTES.get(item["hash"])
-        if screen:
-            need = _route_cap(screen)
-            assert need is None or need in caps, (role, item["hash"], need)
+def test_manager_hub_background_calls_are_only_quiet_settings():
+    """Счётчики старых плиток сняты: дом больше не зовёт чужие ручки в фоне. Остаются
+    тихие подсказки настройки (при праве settings) и тихие вызовы карточки итога сезона."""
+    text = HUB_JS.read_text(encoding="utf-8")
+    assert "MANAGER_FETCHERS" not in text
+    body = _manager_hub_body()
+    calls = re.findall(r'api\("([^"]+)"', body)
+    assert calls == [
+        "/admin/setup",
+        "/admin/settings/hints",
+        "/stats/season-recap/dismiss",
+        "/stats/season-recap",
+    ]
+    assert 'me.caps.includes("settings")' in body
+    assert "{ quiet: true }" in body
+    for forbidden in ("/stats/game", "/review/next", "/admin/tasks", "/admin/coins", "/questions?"):
+        assert forbidden not in body, forbidden
 
 
 def test_reg_manager_without_game_has_no_stats_tile():
@@ -106,11 +75,13 @@ def test_reg_manager_without_game_has_no_stats_tile():
     assert "#/stats" in {i["hash"] for i in _visible(ALL_CAPS, False)}
 
 
-def test_manager_counters_are_quiet_and_cap_gated():
-    text = HUB_JS.read_text(encoding="utf-8")
-    body = text[text.index("async function renderManagerHub("):]
-    assert "me.caps.includes(fetcher.cap)" in body
-    assert "api(fetcher.path, { quiet: true })" in body
+def test_manager_rows_are_cap_gated_without_a_counter_loop():
+    """Строка без права не рисуется. Фонового цикла счётчиков, который звал чужую ручку, нет."""
+    body = _manager_hub_body()
+    assert "hasCap(item.cap)" in body
+    assert "fetcher.cap" not in body
+    assert "api(fetcher.path" not in body
+    assert "Promise.all(items.map" not in body
 
 
 def test_delegate_hub_section_counters_are_quiet():
