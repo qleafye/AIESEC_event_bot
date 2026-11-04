@@ -329,6 +329,8 @@ async def dlg_univ(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_form_pick")
 async def dlg_form_pick(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await callback.answer(_MOVED, show_alert=True)
 
 
@@ -398,6 +400,8 @@ async def _show_keys(target, form: dict, *, edit: bool = True) -> None:
 
 @router.callback_query(F.data == "dlg_keys")
 async def dlg_keys(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await callback.answer(_MOVED, show_alert=True)
 
 
@@ -637,16 +641,22 @@ async def dlg_apply(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_arm")
 async def dlg_arm(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await callback.answer(_MOVED, show_alert=True)
 
 
 @router.callback_query(F.data == "dlg_arm_yes")
 async def dlg_arm_yes(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await callback.answer(_MOVED, show_alert=True)
 
 
 @router.callback_query(F.data == "dlg_disarm")
 async def dlg_disarm(callback: types.CallbackQuery):
+    if await deny_locked(callback):
+        return
     await callback.answer(_MOVED, show_alert=True)
 
 
