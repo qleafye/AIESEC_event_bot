@@ -36,7 +36,8 @@ def _callbacks(kb):
 
 def test_every_ambassador_key_is_in_amb_group():
     for key, spec in SETTINGS_SCHEMA.items():
-        if _AMB_PREFIX.match(key):
+        # ambassador_form_id ловится префиксом ambassador_, но это служебный слот формы в группе apps.
+        if _AMB_PREFIX.match(key) and key != "ambassador_form_id":
             assert spec["group"] == "amb", key
     assert not [k for k, s in SETTINGS_SCHEMA.items() if s["group"] == "game" and _AMB_PREFIX.match(k)]
 
