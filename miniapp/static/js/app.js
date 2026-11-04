@@ -588,6 +588,13 @@ function navigate(hash) {
   location.hash = hash;
 }
 
+// Кнопка чата «Настройки»: признак этого запуска. В ключ роли и в ключ режима не пишется.
+let managerSettingsLaunch = false;
+
+export function managerSettingsLaunchOn() {
+  return managerSettingsLaunch;
+}
+
 async function route() {
   if (terminal) return;
   // Снимаем направление СРАЗУ — любая ветка выхода ниже (missing/showState/ошибка) не должна
@@ -600,6 +607,10 @@ async function route() {
   // Без этой ветки каждый первый вход из Telegram Web попадал в showState("missing")
   // («Раздел пока недоступен») вместо хаба — находка живой приёмки 19-10.
   if (hash.startsWith("#tgWebApp")) hash = "";
+  if ((!hash || hash === "#/" || hash === "#")
+      && /(?:^|[?&])open=settings(?:&|$)/.test(String(location.search || ""))) {
+    managerSettingsLaunch = true;
+  }
   if (!hash || hash === "#/" || hash === "#") {
     hash = homeHash();
     if (hash === "#/") {
