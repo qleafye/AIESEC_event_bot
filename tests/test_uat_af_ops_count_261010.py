@@ -30,7 +30,7 @@ def test_template_in_registry_shell_and_english():
 def test_hub_has_no_ops_literal_and_uses_shared_counter():
     src = HUB_JS.read_text(encoding="utf-8")
     assert "операций" not in src
-    assert src.count("opsCount(") == 3  # объявление + главная делегата + плитка менеджера
+    assert src.count("opsCount(") == 2  # объявление + главная делегата
     assert re.search(r'formatCount\(screenText\("coins_ops_count"\)', src)
 
 
