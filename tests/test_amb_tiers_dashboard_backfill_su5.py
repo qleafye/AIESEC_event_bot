@@ -238,6 +238,52 @@ def test_setting_for_city_scope_follows_city_ladder(tmp_path):
         conn.close()
 
 
+def test_setting_for_city_scope_import_error_keeps_program_not_season(tmp_path, monkeypatch):
+    """Образ дашборда без пакета `domain`: `importlib.import_module` реестра даёт ImportError.
+    Городской оверрайд `amb_qualified_program` читается, `event_season__city__spb` остаётся
+    общим «ALL». Пакет не удаляется — подменяется только импорт."""
+    import importlib
+
+    from dashboard.amb_tiers_block import setting_for_city_scope
+
+    real_import = importlib.import_module
+    blocked = []
+
+    def _import_module(name, package=None):
+        if name == "domain.settings.schema":
+            blocked.append(name)
+            raise ImportError(name)
+        return real_import(name, package)
+
+    monkeypatch.setattr(importlib, "import_module", _import_module)
+
+    conn = sqlite3.connect(str(tmp_path / "tiers_city_scope_no_domain.db"))
+    conn.execute("CREATE TABLE bot_settings (key TEXT PRIMARY KEY, value TEXT)")
+
+    def put(key, value):
+        conn.execute(
+            "INSERT INTO bot_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    class _City:
+        def __init__(self, city):
+            self.city = city
+
+    put("event_city_enabled", "on")
+    put("amb_qualified_program", "off")
+    put("amb_qualified_program__city__spb", "on")
+    put("event_season", "ALL")
+    put("event_season__city__spb", "CITY")
+    try:
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("spb")) == "on"
+        assert setting_for_city_scope(conn, "event_season", _City("spb")) == "ALL"
+        assert blocked
+    finally:
+        conn.close()
+
+
 def test_block_quota_zero_is_zero_not_default(tmp_path):
     """Квота 0 = слотов нет — дашборд показывает 0 из 0, как и бот, а не «из 15»."""
     path = _ready(tmp_path)

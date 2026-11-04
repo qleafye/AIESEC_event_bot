@@ -1842,15 +1842,18 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         # амбассадор видел их русскими, хотя весь остальной текст ЛС переведён.
         coins_word = i18n.tr("баллов", lang, tr_map)
         deadline_prefix = i18n.tr("до", lang, tr_map)
+        # Тот же `event_city` получателя, что ниже уходит в шаблон волны как `wave_city`.
+        # «без срока» — городской ключ реестра; пользователь уже загружен.
+        wave_city = user.get("event_city")
         lines = []
         for t in tasks:
             # WR-12: `game_labels.task_deadline_text` уже возвращает готовое «без срока» для
             # задания без дедлайна — приклеивать «до » нужно ТОЛЬКО когда срок реально есть,
             # иначе делегат видит «до без срока».
             if game_labels.task_has_deadline(t):
-                deadline_tail = f"{deadline_prefix} {await game_labels.task_deadline_text(t)}"
+                deadline_tail = f"{deadline_prefix} {await game_labels.task_deadline_text(t, wave_city)}"
             else:
-                deadline_tail = await game_labels.task_deadline_text(t)
+                deadline_tail = await game_labels.task_deadline_text(t, wave_city)
             amount = game_labels.fill_template("{n} " + coins_word, n=int(t["coins"]))  # «1 балл»
             lines.append(f"• {html.escape(str(task_title(t)))} — {amount}, {deadline_tail}")
         tasks_block = "\n".join(lines)
@@ -1874,7 +1877,6 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         # CR-05: подстановка в текст, который правит менеджер, — цепочкой `.replace`
         # (`game_labels.fill_template`), НЕ `.format()`: посторонний `{`/`}` в тексте
         # менеджера не должен ронять рассылку целиком (T-073-03-05).
-        wave_city = user.get("event_city")
         template = i18n.tr(
             await get_setting_typed_for_city("wave_start_message_text", wave_city), lang, tr_map,
         )
