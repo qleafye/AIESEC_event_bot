@@ -27,6 +27,7 @@ SCANNER_JS = ROOT / "miniapp" / "static" / "js" / "screens" / "scanner.js"
 NODE_SCRIPT = """
 const e = await import(%(enroll)s);
 const g = await import(%(gate)s);
+const f = await import(%(flow)s);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const enroll = { action: "book", session_id: 5, label: "Записать на эту" };
 const out = {
@@ -38,14 +39,13 @@ const out = {
 };
 // Гейт сканера с решением как в submitScan: 🟢 без записи — дальше, 🟢 с записью — HOLD.
 {
-  const SUCCESS = new Set(["new", "moved"]);
   const answers = { A: { status: "new", telegram_id: 1 }, B: { status: "new", telegram_id: 2, enroll }, C: { status: "new", telegram_id: 3 } };
   const marked = [], closed = [];
   const gate = g.createScanGate({ guardMs: 50, submit: async (t) => {
     await sleep(20);
     const res = answers[t];
     marked.push(t);
-    const holds = !SUCCESS.has(res.status) || e.offersEnroll(res);
+    const holds = !f.scanContinues(res, { offersEnroll: e.offersEnroll });
     if (holds) { closed.push(t); return g.HOLD; }
     return undefined;
   } });
@@ -70,6 +70,7 @@ def result() -> dict:
     script = NODE_SCRIPT % {
         "enroll": json.dumps(ENROLL_JS.resolve().as_uri()),
         "gate": json.dumps(GATE_JS.resolve().as_uri()),
+        "flow": json.dumps((ROOT / "miniapp" / "static" / "js" / "scanner_flow.js").resolve().as_uri()),
     }
     proc = subprocess.run([node, "--input-type=module", "-e", script], cwd=str(ROOT),
                           capture_output=True, text=True, encoding="utf-8", timeout=120)
@@ -94,7 +95,8 @@ def test_green_with_enroll_holds_queue_like_duplicate(result):
 def test_submit_scan_closes_popup_for_enroll_offer():
     text = SCANNER_JS.read_text(encoding="utf-8")
     body = text[text.index("async function submitScan"):text.index("const scanGate")]
-    assert "offersEnroll(res, { training: selectedPoint === TRAINING_POINT })" in body
+    assert "scanContinues(res, {" in body
+    assert "offersEnroll," in body
     assert "if (holds) closeScanPopup();" in body
     assert "showPlaque(res, { closeButton: holds });" in body
     assert "if (!holds) return undefined;" in body
