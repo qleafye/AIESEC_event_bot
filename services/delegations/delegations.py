@@ -295,9 +295,9 @@ async def _reset_reg_fsm(bot, tid: int) -> None:
         await ctx.clear()
 
 
-async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool) -> None:
-    """Одно сообщение делегату с обычным меню одобренного. Сбой доставки — в учёт решения, чтобы
-    «Сверить с БД» показал одобрение без письма."""
+async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool) -> bool:
+    """Одно сообщение делегату с обычным меню одобренного. True, только если письмо ушло.
+    Сбой доставки — в учёт решения, чтобы «Сверить с БД» показал одобрение без письма."""
     import html as html_module
 
     from keyboards.builders import get_main_menu_kb
@@ -322,16 +322,19 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
         lambda: bot.send_message(tid, text, reply_markup=kb, parse_mode="HTML")
     )
     if err is not None:
+        # send_with_retry не бросает ошибку, а возвращает её. Без False долг закрылся бы,
+        # хотя письма не было.
         logger.error("delegations: сообщение делегату не доставлено (tid=%s): %s",
                      tid, type(err).__name__)
         await _record_delivery_fail_soft(tid, "approved", "failed", err)
-    else:
-        await _record_delivery_fail_soft(tid, "approved", "delivered")
+        return False
+    await _record_delivery_fail_soft(tid, "approved", "delivered")
+    return True
 
 
 # Живая строка журнала (effects_sent_at IS NULL) уходит общим письмом одобрения — это
 # другой текст. Долг приветствия лежит в note ответа; журнал закрывается только когда
-# _send_welcome в этом вызове реально вернулся.
+# отправка в этом вызове прошла (send_with_retry вернул None).
 _NOTE_WELCOME_PENDING = "welcome_pending"
 _NOTE_WELCOME_PENDING_EXISTING = "welcome_pending_existing"
 _NOTE_WELCOME_SENT = "welcome_sent"
@@ -346,7 +349,11 @@ async def _approval_effects_sent(tid: int) -> bool:
 
 
 async def _deliver_welcome(bot, tid: int, university: str | None, *, existing: bool) -> bool:
-    """True только если _send_welcome в этом вызове вернулся без исключения."""
+    """True только если отправка в этом вызове прошла (err is None).
+
+    `send_with_retry` не бросает ошибку. Исключение из `_send_welcome` — тоже неуспех:
+    note остаётся долгом, журнал с effects_already_sent не пишется.
+    """
     resolved = None
     try:
         resolved = _resolve_bot(bot)
@@ -360,11 +367,11 @@ async def _deliver_welcome(bot, tid: int, university: str | None, *, existing: b
     except Exception:
         logger.exception("delegations: FSM анкеты не сброшен (tid=%s)", tid)
     try:
-        await _send_welcome(resolved, tid, university, existing=existing)
+        delivered = await _send_welcome(resolved, tid, university, existing=existing)
     except Exception:
         logger.exception("delegations: сообщение делегату не отправлено (tid=%s)", tid)
         return False
-    return True
+    return delivered is True
 
 
 async def _close_welcome(row_id: int, tid: int, by: int | None, *, journal: bool) -> None:
