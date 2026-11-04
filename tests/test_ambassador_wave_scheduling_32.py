@@ -504,6 +504,27 @@ def test_send_task_deadline_reminder_deadline_already_passed_sends_nothing(tmp_p
     assert bot.sent == []
 
 
+def test_send_task_deadline_reminder_quiet_hours_after_deadline_sends_nothing(tmp_path, monkeypatch):
+    """Напоминание попало в тихие часы, а конец окна уже после дедлайна: «скоро срок»
+    утром не шлём. Вариант «уже закрыто» отдельно не выбран."""
+    _ready(tmp_path, "t2quiet.db")
+    bot = _with_bot(monkeypatch)
+    _make_ambassador(1)
+    wave_id = _run(db.create_wave("2026-10-01 00:00:00", "2026-10-08 00:00:00"))
+    _run(db.set_wave_state(wave_id, "active"))
+    task_id = _run(db.create_task(
+        "QuietDue", "Light", 10, "photo", "2026-10-05 08:00:00", None, wave_id=wave_id,
+    ))
+
+    async def _morning_after(_now, _uid):
+        return datetime(2026, 10, 5, 9, 0, 0)
+
+    monkeypatch.setattr(sched, "_now_moscow_naive", lambda: datetime(2026, 10, 4, 23, 0, 0))
+    monkeypatch.setattr("services.comms.quiet_hours.defer_until", _morning_after)
+    _run(sched.send_task_deadline_reminder(task_id))
+    assert bot.sent == []
+
+
 def test_send_task_deadline_reminder_manager_template_with_stray_brace_does_not_abort(tmp_path, monkeypatch):
     """CR-05: менеджерский текст с посторонней `{` не должен ронять напоминание целиком —
     `.replace`-подстановка (`game_labels.fill_template`) оставляет неизвестный плейсхолдер как
@@ -524,6 +545,7 @@ def test_send_task_deadline_reminder_manager_template_with_stray_brace_does_not_
     text = bot.sent[0][1]
     assert "{ссылка}" in text  # неизвестный плейсхолдер остался как есть, не упал
     assert "{deadline}" not in text  # известный — подставлен
+    assert "05.10 12:00" in text  # час виден: день входит до этого времени
 
 
 def test_send_task_deadline_reminder_deadline_pushed_forward_reschedules(tmp_path, monkeypatch):
