@@ -57,15 +57,15 @@ _KEY_TITLES = {"fullname": "ФИО", "university": "Вуз", "course": "Курс
 _KEY_FOR = {"fullname": "ФИО", "university": "вуза", "course": "курса", "email": "почты"}
 _REQUIRED_KEYS = ("fullname", "university", "course")
 
+_MOVED = "Форма и включение делегаций теперь в приложении, экран «Таблица и формы»."
 _NO_FORM_TEXT = (
     "🏫 <b>Делегации вузов</b>\n\n"
-    "Форма делегаций не выбрана. Нажмите «📝 Выбрать форму» — список подключённых форм из "
-    "«📝 Внешние формы».\n\n"
+    "Форма делегаций не выбрана. " + _MOVED + "\n\n"
     "Сначала подключите Яндекс Форму делегаций в «📊 Данные → 📝 Внешние формы»."
 )
 _FORM_GONE_TEXT = (
     "🏫 <b>Делегации вузов</b>\n\n"
-    "Форма отключена или удалена — выберите другую."
+    "Форма отключена или удалена. " + _MOVED
 )
 _NO_FORMS_ALERT = (
     "Ни одна форма ещё не подключена. Сначала подключите Яндекс Форму в "
@@ -76,8 +76,7 @@ _STALE_QUESTIONS = "Список вопросов устарел — откро�
 _KEYS_MISSING = "Без вопросов ФИО, вуз и курс бот не сможет узнать делегата — выберите их."
 _KEYS_SAVED = "Вопросы сохранены"
 _STATE_OFF = (
-    "⏸ Не включено — бот пока никого не одобряет и никому не пишет. Проверьте вопросы, курсы и "
-    "тексты приветствия, затем нажмите «✅ Включить делегации»."
+    "⏸ Не включено — бот пока никого не одобряет и никому не пишет. " + _MOVED
 )
 _STATE_ON = "▶️ Включено — бот одобряет делегатов из формы и пишет им приветствие."
 _ARM_CONFIRM = (
@@ -261,8 +260,7 @@ async def render_screen(target, *, edit: bool = True) -> None:
         return
     if form is None:
         text = _NO_FORM_TEXT if fid is None else _FORM_GONE_TEXT
-        await _show(target, text, _kb([[_btn("📝 Выбрать форму", "dlg_form_pick")], [_back()]]),
-                    edit=edit)
+        await _show(target, text, _kb([[_back()]]), edit=edit)
         return
     keys = await delegations.field_keys()
     c = await _counters(fid)
@@ -276,14 +274,12 @@ async def render_screen(target, *, edit: bool = True) -> None:
         f"зашли в бота: {c['in_bot']} · пришли: {c['arrived']}"
     )
     rows = [
-        [_btn("⏸ Выключить", "dlg_disarm") if armed else _btn("✅ Включить делегации", "dlg_arm")],
         [_btn(f"❔ Проверить курс ({c['check']})", "dlg_review:0")],
         [_btn(f"⏳ Не зашли ({c['absent']})", "dlg_absent:0")],
         [_btn("🏫 По вузам", "dlg_univ:0")],
         [_btn("📋 Лист UR REGS", "dlg_sheet")],
     ]
     rows.extend(await _settings_rows())
-    rows.append([_btn("❓ Вопросы формы", "dlg_keys"), _btn("📝 Сменить форму", "dlg_form_pick")])
     rows.append([_back()])
     if locked:  # без кнопок-ловушек: только счётчики и объяснение
         lines.append(f"\n🔒 {CITY_LOCKED_TEXT}")
@@ -333,16 +329,7 @@ async def dlg_univ(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_form_pick")
 async def dlg_form_pick(callback: types.CallbackQuery):
-    if await deny_locked(callback):
-        return
-    forms = await ef.list_forms()
-    if not forms:
-        await callback.answer(_NO_FORMS_ALERT, show_alert=True)
-        return
-    rows = [[_btn(_cut(f"📝 {_form_title(f)}"), f"dlg_form:{f['id']}")] for f in forms]
-    rows.append([_to_screen()])
-    await _show(callback, "📝 Какая форма — список делегаций вузов?", _kb(rows))
-    await callback.answer()
+    await callback.answer(_MOVED, show_alert=True)
 
 
 async def _release_previous_export(prev_id: int | None, new_id: int) -> None:
@@ -411,14 +398,7 @@ async def _show_keys(target, form: dict, *, edit: bool = True) -> None:
 
 @router.callback_query(F.data == "dlg_keys")
 async def dlg_keys(callback: types.CallbackQuery):
-    if await deny_locked(callback):
-        return
-    form = await _current_form()
-    if form is None:
-        await render_screen(callback)
-    else:
-        await _show_keys(callback, form)
-    await callback.answer()
+    await callback.answer(_MOVED, show_alert=True)
 
 
 @router.callback_query(F.data.startswith("dlg_key:"))
@@ -657,50 +637,17 @@ async def dlg_apply(callback: types.CallbackQuery):
 
 @router.callback_query(F.data == "dlg_arm")
 async def dlg_arm(callback: types.CallbackQuery):
-    if await deny_locked(callback):
-        return
-    keys = await delegations.field_keys()
-    if any(not keys.get(w) for w in _REQUIRED_KEYS):
-        await callback.answer(_KEYS_MISSING, show_alert=True)
-        return
-    n = await delegations.preview_reevaluate()
-    text = "🏫 <b>Включить делегации?</b>\n\n" + (_ARM_CONFIRM.format(n=n) if n else _ARM_CONFIRM_ZERO)
-    await _show(callback, text, _kb([
-        [_btn("✅ Включить", "dlg_arm_yes")],
-        [_btn("← Назад", SCREEN)],
-    ]))
-    await callback.answer()
+    await callback.answer(_MOVED, show_alert=True)
 
 
 @router.callback_query(F.data == "dlg_arm_yes")
 async def dlg_arm_yes(callback: types.CallbackQuery):
-    # Форма и вопросы перечитываются в момент нажатия: устаревшая кнопка не включит другую форму.
-    if await deny_locked(callback):
-        return
-    fid = await delegations.delegation_form_id()
-    form = await ef.get_form(fid) if fid is not None else None
-    if form is None:
-        await callback.answer(_FORM_NOT_FOUND, show_alert=True)
-        await render_screen(callback)
-        return
-    keys = await delegations.field_keys()
-    if any(not keys.get(w) for w in _REQUIRED_KEYS):
-        await callback.answer(_KEYS_MISSING, show_alert=True)
-        await render_screen(callback)
-        return
-    await set_setting_by_admin(_admin_id(callback), "delegation_armed_form_id", str(fid))
-    spawn(delegations.sweep_pending(reevaluate=True))
-    await callback.answer(_ARM_TOAST)
-    await render_screen(callback)
+    await callback.answer(_MOVED, show_alert=True)
 
 
 @router.callback_query(F.data == "dlg_disarm")
 async def dlg_disarm(callback: types.CallbackQuery):
-    if await deny_locked(callback):
-        return
-    await set_setting_by_admin(_admin_id(callback), "delegation_armed_form_id", "")
-    await callback.answer(_DISARM_TOAST, show_alert=True)
-    await render_screen(callback)
+    await callback.answer(_MOVED, show_alert=True)
 
 
 # тексты делегату
