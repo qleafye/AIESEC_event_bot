@@ -269,6 +269,8 @@ EXPECTED_ROUTES = {
     "#/figures": "screens/reg_figures.js",
     # Три числа отметок площадки.
     "#/arrivals": "screens/arrivals.js",
+    # Таблица регистраций и три слота форм.
+    "#/sheets-forms": "screens/sheets_forms.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -305,7 +307,8 @@ def test_route_table_matches_phase_plan_exactly():
     # Ещё две пары папок: "#/forum-day", "#/coins-shop" (25 -> 27).
     # Ещё две пары чтений: "#/figures", "#/arrivals" (27 -> 29).
     # Пять маршрутов: #/chat/{topic}, #/forum-day, #/coins-shop, #/figures, #/arrivals.
-    assert len(routes) == 29
+    # Экран «Таблица и формы»: "#/sheets-forms" (29 -> 30).
+    assert len(routes) == len(EXPECTED_ROUTES) == 30
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 

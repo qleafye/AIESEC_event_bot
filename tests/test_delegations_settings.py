@@ -79,10 +79,11 @@ def test_service_keys_hidden_from_web_settings():
     editable = set(settings_ops.editable_keys())
     for key in SERVICE_KEYS:
         assert key not in editable, key
-    # остальные ключи модуля в вебе остаются — у них человеческие типы
+    # человеческие ключи модуля в общем веб-списке тоже нет: их правит экран чата «Делегации»
     for key in ("delegation_ta_cutoff", "delegation_not_ta_courses", "delegation_game_enabled",
                 *REG_TEXT_KEYS):
-        assert key in editable, key
+        assert key not in editable, key
+        assert key in SETTINGS_SCHEMA, key
 
 
 def test_reg_texts_have_manual_en_with_same_placeholders():
