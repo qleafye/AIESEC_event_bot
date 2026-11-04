@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime
 
 from database import db as bot_db
 from domain.cities import city_scope
+from services.forum import checkin_arrival
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -24,9 +26,13 @@ from tests.test_miniapp_routes import (
 )
 
 STATS_CITY_ID = 900701  # stats_manager, привязан к spb
+FLOOR_SPB_ID = 900702  # volunteer, привязан к spb
+FLOOR_MSK_ID = 900703  # volunteer, привязан к msk
 REG_PATH = "/app/api/stats/registrations"
 GAME_PATH = "/app/api/stats/game"
+FLOOR_PATH = "/app/api/checkin/floor"
 SEASON = "YL26"
+FLOOR_NOW = datetime(2026, 11, 4, 15, 0, 0)
 
 # Ключи, которых в агрегатах быть не должно (T-40-01): люди, супердашборд, код города.
 FORBIDDEN_KEYS = {
@@ -114,7 +120,9 @@ def _ready(tmp_path, *, people=True):
         staff=[
             (GAME_MANAGER_ID, "game_manager", None),
             (STATS_CITY_ID, "stats_manager", "spb"),
-            # Суперадмин с привязкой: admin_ids всё равно не сужает цифры.
+            (FLOOR_SPB_ID, "volunteer", "spb"),
+            (FLOOR_MSK_ID, "volunteer", "msk"),
+            # Суперадмин с привязкой: admin_ids всё равно не сужает цифры и отметки.
             (ADMIN_ID, "stats_manager", "spb"),
         ],
         settings={
@@ -233,3 +241,118 @@ def test_registrations_section_off_is_403(tmp_path):
     resp = client.get(REG_PATH, headers=_hdr(ADMIN_ID))
     assert resp.status_code == 403
     assert resp.json() == {"reason": "section_off", "section": "stats"}
+
+
+def _freeze_floor(monkeypatch):
+    monkeypatch.setattr("services.infra.timeutil.msk_now", lambda: FLOOR_NOW)
+
+
+async def _insert_entry(telegram_id, stamp="2026-11-04 15:00:00"):
+    async with bot_db._connect() as conn:
+        await conn.execute(
+            "INSERT INTO checkins (telegram_id, point, scanned_at, source, created_at, day) "
+            "VALUES (?, 'entry', ?, 'miniapp', ?, ?)",
+            (telegram_id, stamp, stamp, stamp[:10]),
+        )
+        await conn.commit()
+
+
+def _seed_floor():
+    """СПб: двое одобренных, один вход сегодня. Москва: один одобренный со входом.
+    Неодобренный в СПб в «одобрено» не входит. Идёт одна сессия, утренняя — нет."""
+    _run(_insert_user(920001, city="spb", full_name="На Площадке", username="floor_nick", phone="+79990002233"))
+    _run(_insert_user(920002, city="msk", full_name="Московский Гость"))
+    _run(_insert_user(920004, city="spb"))
+    _run(_insert_user(920003, city="spb", status="pending", full_name="Ещё Не Одобрен"))
+    _run(_insert_entry(920001))
+    _run(_insert_entry(920002))
+    _run(bot_db.create_program_session("spb", "2026-11-04", "14:00", "16:00", "Пленарка"))
+    _run(bot_db.create_program_session("spb", "2026-11-04", "09:00", "10:00", "Утренняя"))
+
+
+def _floor_direct(city: str | None) -> dict:
+    scope = city_scope(city) if city is not None else None
+    floor = _run(checkin_arrival.floor_report(scope, city, FLOOR_NOW))
+    day = _run(checkin_arrival.counter_day())
+    arrived, approved = _run(checkin_arrival.arrived_counts(scope, day))
+    return {
+        "present": int(floor["present"]),
+        "arrived": int(arrived),
+        "approved": int(approved),
+    }
+
+
+def test_floor_three_numbers_and_live_session_titles(tmp_path, monkeypatch):
+    _freeze_floor(monkeypatch)
+    client = _ready(tmp_path, people=False)
+    _seed_floor()
+    resp = client.get(FLOOR_PATH, headers=_hdr(ADMIN_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    direct = _floor_direct(None)
+    assert body["present"] == direct["present"] == 2
+    assert body["arrived"] == direct["arrived"] == 2
+    assert body["approved"] == direct["approved"] == 3
+    assert body["sessions"] == ["Пленарка"]
+    assert all(isinstance(title, str) for title in body["sessions"])
+    _no_people(body)
+    text = json.dumps(body, ensure_ascii=False)
+    assert "На Площадке" not in text and "floor_nick" not in text
+    assert "+79990002233" not in text and "Ещё Не Одобрен" not in text
+    assert "csv" not in text.lower() and "broadcast" not in _all_keys(body)
+    same = client.get(FLOOR_PATH, params={"city": "spb"}, headers=_hdr(ADMIN_ID))
+    assert same.json() == body
+
+
+def test_floor_city_manager_does_not_see_another_city(tmp_path, monkeypatch):
+    _freeze_floor(monkeypatch)
+    client = _ready(tmp_path, people=False)
+    _seed_floor()
+    resp = client.get(FLOOR_PATH, params={"city": "msk"}, headers=_hdr(FLOOR_SPB_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    direct = _floor_direct("spb")
+    assert body["present"] == direct["present"] == 1
+    assert body["arrived"] == direct["arrived"] == 1
+    assert body["approved"] == direct["approved"] == 2
+    assert body["sessions"] == ["Пленарка"]
+    _no_people(body)
+    msk = client.get(FLOOR_PATH, headers=_hdr(FLOOR_MSK_ID))
+    assert msk.status_code == 200, msk.text
+    msk_body = msk.json()
+    assert msk_body["present"] == _floor_direct("msk")["present"] == 1
+    assert msk_body["arrived"] == 1 and msk_body["approved"] == 1
+    assert msk_body["sessions"] == []
+    assert "Пленарка" not in json.dumps(msk_body, ensure_ascii=False)
+
+
+def test_floor_zero_stays_zero(tmp_path, monkeypatch):
+    _freeze_floor(monkeypatch)
+    client = _ready(tmp_path, people=False)
+    resp = client.get(FLOOR_PATH, headers=_hdr(ADMIN_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["present"] == 0
+    assert body["arrived"] == 0
+    assert body["approved"] == 0
+    assert body["sessions"] == []
+    assert body != {}
+
+
+def test_floor_without_checkin_cap_is_403_and_scan_route_remains(tmp_path):
+    client = _ready(tmp_path, people=False)
+    for user in (GAME_MANAGER_ID, STATS_CITY_ID, DELEGATE_ID):
+        resp = client.get(FLOOR_PATH, headers=_hdr(user))
+        assert resp.status_code == 403
+        assert resp.json() == {"reason": "no_cap", "cap": "checkin"}
+    scan = client.post("/app/api/checkin/scan", json={"payload": "x"}, headers=_hdr(GAME_MANAGER_ID))
+    assert scan.status_code == 403
+    assert scan.json()["reason"] == "no_cap"
+
+
+def test_floor_section_off_is_403(tmp_path):
+    client = _ready(tmp_path, people=False)
+    _set("miniapp_section_checkin", "off")
+    resp = client.get(FLOOR_PATH, headers=_hdr(ADMIN_ID))
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "section_off", "section": "checkin"}
