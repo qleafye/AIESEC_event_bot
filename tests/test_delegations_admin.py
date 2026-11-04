@@ -176,11 +176,9 @@ def test_no_form_screen_explains_what_to_do(tmp_path):
     text, mode, kb = _last_edit(cb)
     assert mode == "HTML"
     assert "Форма делегаций не выбрана" in text
-    assert "📊 Данные → 📝 Внешние формы" in text
-    assert "Таблица и формы" in text
-    assert "📝 Выбрать форму" not in _button_texts(kb)
-    assert "dlg_form_pick" not in _callbacks(kb)
-    assert "dlg_arm" not in _callbacks(kb)
+    assert "📊 Данные → 📝 Внешние формы" not in text  # отсылку текстом заменила кнопка
+    assert "Подключить форму" in text
+    assert "📝 Выбрать форму" in _button_texts(kb)
     assert "admin_sec:apps" in _callbacks(kb)
     assert "settings_group:apps" not in _callbacks(kb)
     assert not any(c.startswith("settings_edit:") for c in _callbacks(kb))
@@ -193,8 +191,9 @@ def test_form_gone_screen(tmp_path):
     _run(mod.admin_delegations(cb))
     text, _, kb = _last_edit(cb)
     assert "Форма отключена или удалена" in text
-    assert "Таблица и формы" in text
-    assert "dlg_form_pick" not in _callbacks(kb)
+    assert "📝 Выбрать форму" in _button_texts(kb)
+    assert "dlg_form_pick" in _callbacks(kb)
+    assert "admin_sec:apps" in _callbacks(kb)
 
 
 # ── выбор формы и ключевые вопросы ────────────────────────────────────────────────────────
@@ -203,15 +202,15 @@ def test_form_pick_lists_forms_or_alerts(tmp_path):
     _env(tmp_path)
     cb = _FakeCallback("dlg_form_pick")
     _run(mod.dlg_form_pick(cb))
-    assert cb.answer_calls == [(mod._MOVED, True)]
+    assert cb.answer_calls == [(mod._NO_FORMS_ALERT, True)]
     assert cb.message.edits == []
-    assert "Таблица и формы" in cb.answer_calls[0][0]
     fid = _form("Делегации <МГУ>")
     cb = _FakeCallback("dlg_form_pick")
     _run(mod.dlg_form_pick(cb))
-    assert cb.answer_calls == [(mod._MOVED, True)]
-    assert cb.message.edits == []
-    assert str(fid) not in cb.answer_calls[0][0]
+    text, _, kb = _last_edit(cb)
+    assert "Какая форма" in text
+    assert f"dlg_form:{fid}" in _callbacks(kb)
+    assert cb.answer_calls == [(None, False)]
 
 
 def test_pick_form_sets_id_and_guesses_questions_by_labels(tmp_path):

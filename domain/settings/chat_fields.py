@@ -34,6 +34,8 @@ CHAT_TEXT_GROUPS = [
         "reg_lookup_hint_default_text", "reg_lookup_found_title_text", "reg_lookup_empty_title_text",
         "reg_form_own_chip_text", "reg_form_own_option_text", "reg_form_pick_option_text",
         "reg_form_resume_text_only_text",
+        # Отказ резюме не того формата — тот же текст, что в приложении ({formats} — «PDF, DOCX»).
+        "reg_form_resume_wrong_type_text",
         "reg_resume_ttl_hours", "reg_resume_continue_label", "reg_resume_restart_label",
         "reg_resume_restart_confirm_text", "reg_resume_after_restart_text",
         "reg_form_cta_text", "reg_handoff_to_app_text", "reg_handoff_held_by_app_text",
@@ -41,6 +43,10 @@ CHAT_TEXT_GROUPS = [
         "reg_already_submitted_text", "menu_refreshed_text",
         # Кнопка «▶️ К проверке ответов» на дочитанной анкете (handlers/reg/reg_resume.py).
         "reg_resume_review_label",
+        # Итог подачи/правки анкеты — приходит в чат и из приложения.
+        "reg_form_complete_heading_text", "reg_form_complete_body_text",
+        "reg_form_edited_heading_text", "reg_form_edited_pending_heading_text",
+        "reg_form_resubmit_heading_text",
     ]),
     # Пометки и подписи карточки заявки, которую видит менеджер в чате.
     ("🧾 Пометки в карточке заявки", "modcard_labels", [
@@ -58,6 +64,7 @@ CHAT_TEXT_GROUPS = [
         "onsite_reg_done_text", "onsite_reg_approved_text", "onsite_reg_closed_text",
         "onsite_reg_already_approved_text", "onsite_reg_existing_text", "onsite_reg_rate_limited_text",
         "volunteer_invite_welcome_text", "volunteer_invite_already_has_access_text",
+        "volunteer_invite_link_expired_text",
         "checkin_training_sheet_title_text", "checkin_training_qr_note_text",
         "checkin_training_sheet_caption_text",
     ]),
@@ -65,10 +72,16 @@ CHAT_TEXT_GROUPS = [
     ("🔕 «Не присылать сегодня»", "broadcast_texts", [
         "broadcast_mute_offer_text", "broadcast_mute_confirm_text", "broadcast_unmute_confirm_text",
     ]),
-    # Сообщение и кнопка входа в приложение, текст «приложение выключено», подпись копии резюме.
+    # Сообщение и кнопка входа в приложение, текст «приложение выключено», подписи копий файлов
+    # из приложения (резюме, сдача, файл менеджера, ассет оформления).
     ("📱 Приложение: тексты в чате", "miniapp_chat", [
         "miniapp_open_text", "miniapp_open_button", "miniapp_disabled_text",
-        "miniapp_upload_caption_resume",
+        "miniapp_upload_caption_resume", "miniapp_upload_caption_delegate",
+        "miniapp_upload_caption_staff", "miniapp_upload_caption_settings",
+    ]),
+    # Личные сообщения менеджеру о сверке состава чата сразу после привязки — раздел «🔧 Управление».
+    ("🔗 Привязка чата: сообщения вам", "chat_bind_texts", [
+        "chat_bind_reconcile_start_text", "chat_bind_reconcile_done_text",
     ]),
 ]
 

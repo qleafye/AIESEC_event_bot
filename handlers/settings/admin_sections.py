@@ -268,7 +268,12 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("screen", "admin_chat_cleanup", "🧹 Служебные сообщения в чате"),
         # 29.09: сверка состава всех привязанных чатов по кнопке (колонка «В чате» в таблице,
         # экраны «не в чате»); работает и при выключенном учёте — явное действие менеджера.
+        # 28.10: без подключённого чата кнопки нет (`_ROW_VISIBLE_IF`).
         ("screen", "admin_chat_reconcile", "🔄 Сверить состав чата"),
+        ("group", "chat"),
+        # Тексты личных сообщений о сверке после привязки чата (domain/settings/chat_fields.py).
+        # Группа system в раздел не возвращается: владелец экрана больше не выводится из SECTIONS.
+        ("group", "chat_bind_texts"),
     ]),
 ]
 
@@ -559,6 +564,19 @@ def section_group_label(section_token: str, group_token: str) -> str:
     return GROUP_IN_SECTION_LABEL if label == _SECTION_LABELS.get(section_token) else label
 
 
+async def _chat_bound() -> bool:
+    # Импорт ленивый: модульный не добавляем — хвост файла регистрирует хендлеры, порядок
+    # роутеров фиксирует golden-снапшот.
+    from services import chat_tracking
+
+    return bool(await chat_tracking.bound_chats())
+
+
+# Условные строки раздела: условие не выполнено — строка не рисуется (по образцу `link`
+# «📄 Открыть таблицу» без таблицы). Скрытие — только UX, хендлер проверяет сам.
+_ROW_VISIBLE_IF = {"admin_chat_reconcile": _chat_bound}
+
+
 async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None = None) -> InlineKeyboardMarkup:
     """Клавиатура раздела: шапка города (если модуль городов включён) -> строки раздела в
     объявленном порядке -> «← Назад» в корень.
@@ -621,12 +639,9 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
             if _sheet_id():  # таблица не задана — кнопку не показываем
                 buttons.append([InlineKeyboardButton(text=row[2], url=sheet_url())])
         elif kind in ("screen", "screen_admin"):
-            # Без привязанного чата сверка состава нечего сверять — кнопка отвечает
-            # «чат не подключён». Старая клавиатура в переписке всё ещё ловится хендлером.
-            if row[1] == "admin_chat_reconcile":
-                from services import chat_tracking
-                if not await chat_tracking.bound_chats():
-                    continue
+            cond = _ROW_VISIBLE_IF.get(row[1])
+            if cond is not None and not await cond():
+                continue
             buttons.append([InlineKeyboardButton(text=row[2], callback_data=row[1])])
         elif kind == "toggle":
             # Проверяем НАЛИЧИЕ ключа, а не истинность: пустой список строк у существующего
@@ -760,3 +775,6 @@ from handlers.forum import admin_program  # noqa: E402,F401
 # Лист ожидания заявок — тот же хвостовой приём, снимок хендлеров только дописывается.
 from handlers.applications import admin_waitlist  # noqa: E402,F401
 from handlers import admin_interviews  # noqa: E402,F401
+# «✅ Готовность к форуму»: шов чек-листа ненастроенного — импорт СРАЗУ ПОСЛЕ admin_program, тот же
+# хвостовой приём (golden snapshot: tests/test_refac_snapshot_260816.py).
+from handlers.settings import admin_readiness  # noqa: E402,F401

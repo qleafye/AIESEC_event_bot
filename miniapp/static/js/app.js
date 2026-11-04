@@ -102,6 +102,8 @@ export const ROUTES = [
   ["#/arrivals", "screens/arrivals.js"],
   // Таблица регистраций и три слота форм. Вкладки и книга отсюда не меняются.
   ["#/sheets-forms", "screens/sheets_forms.js"],
+  // Магазин баллов: делегатский экран «🛍 Магазин» (витрина, «Взять», мои брони).
+  ["#/shop", "screens/shop.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
@@ -133,6 +135,9 @@ export const NAV = [
   { hash: "#/tasks", section: "tasks", delegate: true },
   { hash: "#/coins", section: "coins", delegate: true },
   { hash: "#/leaderboard", section: "leaderboard", delegate: true },
+  // Магазин баллов: вычисляемый раздел без чекбокса — `me.sections.shop` сервер считает сам
+  // (витрина открыта, на ней есть товары, монеты делегату доступны; miniapp/routers/shop.py).
+  { hash: "#/shop", section: "shop", delegate: true },
   { hash: "#/profile", section: "profile", delegate: true },
   { hash: "#/form", section: "form", delegate: true },
   // Quick 260906-8uq (FAQ-05): делегатский раздел — рядом с form (визуальный хаб строится
@@ -174,6 +179,7 @@ export const NAV_ICONS = {
   "#/form": "file-text",
   "#/faq": "help-circle",
   "#/program": "calendar",
+  "#/shop": "wallet",
   "#/applications": "shield-check",
   "#/questions": "message-circle",
   "#/admin-faq": "help-circle",

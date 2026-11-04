@@ -89,6 +89,17 @@ message-хендлер `admin_reply_to_sos` в поток callback_query не п
 Дрифт-нота (2026-10-10, приёмка 09.10, свободный текст на сводке): +1 хендлер, чистая вставка —
 `process_confirm_other` (`handlers/reg/reg_flow.py`) сразу после `process_confirm_edit`: всё, кроме
 «Всё верно»/«Изменить», в состоянии сводки получает подсказку вместо тишины.
+
+Drift note (2026-10-28, делегации в одном месте): +1 хендлер `dlg_off_alert` (тумблер
+«🔔 Напоминать о выключенных делегациях» на экране «🏫 Делегации») вставлен после `dlg_game`;
+1368 -> 1369, re-captured by RUNNING `_build_snapshot_lines()`, pure insert, zero reorders.
+
+Drift note (2026-10-28, назначение внешней формы): +10 хендлеров — `extf_newp` (шаг «🎯 Для чего
+эта форма?» мастера подключения, handlers/ext_forms/admin_ext_forms_connect.py, после
+`extf_keys_ok`) и `extf_purpose`/`extf_purpose_set`/`extf_purpose_ok`/`extf_reg`/`extf_regq`/
+`extf_regqset`/`extf_regcity`/`extf_regcityset`/`extf_regappr` (новый шов
+handlers/ext_forms/admin_ext_forms_purpose.py, после хендлеров admin_ext_forms_push);
+1369 -> 1379, re-captured by RUNNING `_build_snapshot_lines()`, pure insert, zero reorders.
 """
 import asyncio
 import time
@@ -642,6 +653,24 @@ def _build_snapshot_lines():
 # Дрифт-нота (03.11, экран чата города): +18 хендлеров admin.router, чистые вставки (1369 -> 1387).
 # 2 message (ввод лимита и срока) сразу после shop_edit_input; 5 callback сводки и 11 callback экрана
 # сразу после shop_sales_csv и перед prog_fbday. Пересчитано RUNNING `_build_snapshot_lines()`.
+# Дрифт-нота (28.10, оформление карточки QR): +16 хендлеров admin.router, чистые вставки (1368 -> 1384),
+# пересчитано RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 2 вставки, 0 удалений,
+# 0 реордеров. handlers/settings/admin_qr_card_theme.py (шов-импорт из хвоста admin_miniapp_theme.py):
+# 3 message (qrct_photo_step/qrct_document_step/qrct_image_step_invalid) после miniapp_theme_photo_step_invalid
+# и 13 callback_query qrct_* после miniapp_theme_remove_photo; pure insert, zero reorders.
+# Дрифт-нота (28.10, бронь в магазине баллов): +13 хендлеров, чистые вставки поверх уже слитого снимка, пересчитано
+# по составу строк. admin.router: ввод кода брони (1 message, state:ShopAdmin:*) и shp_resv/shp_code/shp_rc/shp_rgo/shp_rcan/shp_rcango
+# (6 callback_query) из handlers/game/admin_shop_reserve.py (хвост admin_shop.py) — сразу после хендлеров admin_shop;
+# user_actions.router: shopv_take/shopv_go/shopv_my/shopv_qr/shopv_cancel/shopv_cgo — сразу после shop_showcase,
+# ПЕРЕД reg_handoff_idle_fallback. Pure insert, zero reorders.
+# Дрифт-нота (28.10, фото товара в магазине баллов): +7 хендлеров, чистые вставки (1381 -> 1388), пересчитано
+# RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 3 вставки, 0 удалений, 0 реордеров.
+# admin.router: фото товара (handlers/game/admin_shop_photo.py, хвост admin_shop.py после admin_shop_reserve) —
+# 3 message в state:ShopAdmin:* (shop_photo_got_photo/got_document/other) и shp_ph/shp_phdel/shp_phdelgo
+# (3 callback_query) сразу после хендлеров admin_shop_reserve; user_actions.router: shopv_ph (альбом
+# «🖼 Фото товаров») — сразу после shop_showcase, ПЕРЕД shop_take. Pure insert, zero reorders.
+# Дрифт-нота (28.10, готовность к форуму): +5 хендлеров ready_list/ready_city/ready_skip/ready_unskip/ready_remind_toggle
+# (handlers/settings/admin_readiness.py) — хвост цепочки admin_sections.py, сразу после admin_program.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -662,6 +691,9 @@ admin|message|settings_list_add_item|state:EditSetting:*
 admin|message|miniapp_theme_color_step|state:MiniAppTheme:*
 admin|message|miniapp_theme_photo_step|state:MiniAppTheme:*
 admin|message|miniapp_theme_photo_step_invalid|state:MiniAppTheme:*
+admin|message|qrct_photo_step|state:QrCardTheme:*
+admin|message|qrct_document_step|state:QrCardTheme:*
+admin|message|qrct_image_step_invalid|state:QrCardTheme:*
 admin|message|admin_lookup_search_cancel|state:LookupAdmin:*
 admin|message|admin_lookup_search_step|state:LookupAdmin:*
 admin|message|arr_text_cancel|state:RejectRuleEdit:*,state:RejectRuleEdit:*
@@ -894,6 +926,10 @@ admin|message|shop_command|cmd:shop
 admin|message|shop_find_input|state:ShopAdmin:*
 admin|message|shop_new_input|state:ShopAdmin:*
 admin|message|shop_edit_input|state:ShopAdmin:*
+admin|message|shop_code_input|state:ShopAdmin:*
+admin|message|shop_photo_got_photo|state:ShopAdmin:*
+admin|message|shop_photo_got_document|state:ShopAdmin:*
+admin|message|shop_photo_other|state:ShopAdmin:*
 admin|message|city_chat_limit_value|state:CityChatEdit:*
 admin|message|city_chat_days_value|state:CityChatEdit:*
 admin|message|find_person_cancel|state:FindPerson:*,state:FindPerson:*
@@ -983,6 +1019,19 @@ admin|callback_query|miniapp_theme_toggle_playful|miniapp_theme_toggle_playful
 admin|callback_query|miniapp_theme_toggle_pattern|miniapp_theme_toggle_pattern
 admin|callback_query|miniapp_theme_photo_start|miniapp_theme_photo:*
 admin|callback_query|miniapp_theme_remove_photo|miniapp_theme_remove_photo:*
+admin|callback_query|qrct_open|qrct_open
+admin|callback_query|qrct_cancel_edit|qrct_cancel_edit
+admin|callback_query|qrct_pick|qrct_pick:*
+admin|callback_query|qrct_set|qrct_set:*
+admin|callback_query|qrct_toggle|qrct_toggle:*
+admin|callback_query|qrct_photo|qrct_photo:*
+admin|callback_query|qrct_remove|qrct_remove:*
+admin|callback_query|qrct_preview|qrct_preview
+admin|callback_query|qrct_save|qrct_save
+admin|callback_query|qrct_save_go|qrct_save_go
+admin|callback_query|qrct_discard|qrct_discard
+admin|callback_query|qrct_reset|qrct_reset
+admin|callback_query|qrct_reset_go|qrct_reset_go
 admin|callback_query|show_admin_section|admin_sec:*
 admin|callback_query|sheet_logs_open|sheet_logs_open
 admin|callback_query|sheet_logs_autosync_toggle|sheet_logs_autosync_toggle
@@ -1094,6 +1143,11 @@ admin|callback_query|appr_waitlist|appr_waitlist:*
 admin|callback_query|toggle_apps_waitlist|toggle_apps_waitlist
 admin|callback_query|open_interviews|admin_interviews
 admin|callback_query|interview_admin_tap|ivadm:*
+admin|callback_query|ready_list|ready_list
+admin|callback_query|ready_city|ready_city:*
+admin|callback_query|ready_skip|ready_skip:*
+admin|callback_query|ready_unskip|ready_unskip:*
+admin|callback_query|ready_remind_toggle|ready_remind_toggle
 admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
@@ -1663,10 +1717,20 @@ admin|callback_query|extf_gwarn_no|extf_gwarn_no
 admin|callback_query|extf_key|extf_key:u,extf_key:p
 admin|callback_query|extf_keyset|extf_keyset:*
 admin|callback_query|extf_keys_ok|extf_keys_ok
+admin|callback_query|extf_newp|extf_newp:*
 admin|callback_query|extf_import_start|extf_import:*
 admin|callback_query|extf_pkeys|extf_pkeys:*
 admin|callback_query|extf_pkey|extf_pkey:*
 admin|callback_query|extf_pkeyset|extf_pkeyset:*
+admin|callback_query|extf_purpose|extf_purpose:*
+admin|callback_query|extf_purpose_set|extf_purpose_set:*
+admin|callback_query|extf_purpose_ok|extf_purpose_ok:*
+admin|callback_query|extf_reg|extf_reg:*
+admin|callback_query|extf_regq|extf_regq:*
+admin|callback_query|extf_regqset|extf_regqset:*
+admin|callback_query|extf_regcity|extf_regcity:*
+admin|callback_query|extf_regcityset|extf_regcityset:*
+admin|callback_query|extf_regappr|extf_regappr:*
 admin|callback_query|admin_delegations|admin_delegations
 admin|callback_query|dlg_univ|dlg_univ:*
 admin|callback_query|dlg_form_pick|dlg_form_pick
@@ -1677,6 +1741,7 @@ admin|callback_query|dlg_keyset|dlg_keyset:*
 admin|callback_query|dlg_keys_ok|dlg_keys_ok
 admin|callback_query|dlg_cancel|dlg_cancel
 admin|callback_query|dlg_game|dlg_game
+admin|callback_query|dlg_off_alert|dlg_off_alert
 admin|callback_query|dlg_cutoff|dlg_cutoff
 admin|callback_query|dlg_courses|dlg_courses
 admin|callback_query|dlg_course|dlg_course:*
@@ -1839,6 +1904,15 @@ admin|callback_query|shop_top|shp_top:*
 admin|callback_query|shop_top_csv|shp_topcsv
 admin|callback_query|shop_sales|shp_sales:*
 admin|callback_query|shop_sales_csv|shp_salescsv
+admin|callback_query|shop_toggle_reserve|shp_resv
+admin|callback_query|shop_code_start|shp_code
+admin|callback_query|shop_res_card|shp_rc:*
+admin|callback_query|shop_res_issue|shp_rgo:*
+admin|callback_query|shop_res_cancel|shp_rcan:*
+admin|callback_query|shop_res_cancel_go|shp_rcango:*
+admin|callback_query|shop_photo_start|shp_ph:*
+admin|callback_query|shop_photo_delete|shp_phdel:*
+admin|callback_query|shop_photo_delete_go|shp_phdelgo:*
 admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
 admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
 admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
@@ -2036,6 +2110,13 @@ user_actions|callback_query|certificate_get|cert_get
 user_actions|callback_query|certificate_edit|cert_edit
 user_actions|callback_query|certificate_send|cert_ok
 user_actions|callback_query|shop_showcase|shopv
+user_actions|callback_query|shop_photos|shopv_ph
+user_actions|callback_query|shop_take|shopv_take:*
+user_actions|callback_query|shop_take_go|shopv_go:*
+user_actions|callback_query|shop_my|shopv_my
+user_actions|callback_query|shop_my_qr|shopv_qr:*
+user_actions|callback_query|shop_cancel|shopv_cancel:*
+user_actions|callback_query|shop_cancel_go|shopv_cgo:*
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2693,7 +2774,7 @@ def test_snapshot_total_handler_count_is_292():
     # Кнопки аудитории напоминания: +1 admin.callback_query prog_srmaud сразу после prog_srmex (1410 -> 1411).
     # 01.11 (выход из оценки сессии): +1 user_actions.callback_query sfb_dismiss сразу после sfb_rate
     # и перед sfb_offer_comment (1411 -> 1412).
-    assert len(GOLDEN_SNAPSHOT) == 1412
+    assert len(GOLDEN_SNAPSHOT) == 1464
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

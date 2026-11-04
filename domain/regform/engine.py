@@ -392,6 +392,20 @@ _LITERAL_OPTIONS = {
 }
 
 
+# Списки без логики по значению — менеджер правит их в «📝 Регистрация» (ключ реестра, пусто =
+# стандартный список). Шаги остаются и в _LITERAL_OPTIONS: по нему _ui_type_for выбирает
+# кнопки-чипы, а дефолт и ключи ручного EN-слоя — константы domain/regform/options.py.
+_EDITABLE_LITERAL_OPTIONS = {
+    "local_committee": ("local_committee_options", _opts.LOCAL_COMMITTEE_OPTIONS),
+    "position": ("position_options", _opts.POSITION_OPTIONS),
+    "department": ("department_options", _opts.DEPARTMENT_OPTIONS),
+    "aiesec_role": ("aiesec_role_options", _opts.AIESEC_ROLE_OPTIONS),
+    "english_level": ("english_level_options", _opts.ENGLISH_LEVEL_OPTIONS),
+    "housing": ("housing_options", _opts.HOUSING_OPTIONS),
+    "transport": ("transport_options", _opts.TRANSPORT_OPTIONS),
+}
+
+
 async def options(step_key: str, city_code: str | None = None) -> list[str]:
     """Плоский список подписей кнопок для `step_key` — единая точка правды для клавиатур
     бота (через `keyboards/builders.py` -> reg_options) и Mini App (`step_spec()` ниже).
@@ -421,6 +435,9 @@ async def options(step_key: str, city_code: str | None = None) -> list[str]:
         if uni_opts and str(uni_opts).strip():
             return [line.strip() for line in str(uni_opts).splitlines() if line.strip()]
         return []  # пусто = свободный ввод, питерский список не подставляем
+    if step_key in _EDITABLE_LITERAL_OPTIONS:
+        key, default = _EDITABLE_LITERAL_OPTIONS[step_key]
+        return await option_list_for(key, default, city_code)
     return list(_LITERAL_OPTIONS.get(step_key, []))
 
 
@@ -1271,7 +1288,17 @@ async def resolve_track(candidate: str | None, city_code: str | None = None) -> 
 async def party_track_options() -> list[dict]:
     """Варианты пикера формата участия — тот же список и те же подписи, что у кнопок
     `_party_fork_kb` бота (`reg_options.PARTY_TRACK_OPTIONS`)."""
-    return [{"code": code, "label": label} for code, label in _opts.PARTY_TRACK_OPTIONS]
+    from domain.settings.ui_text_fields import ui_text  # подписи кнопок — «🎉 Вечеринка»
+
+    return [{"code": code, "label": await ui_text(PARTY_TRACK_LABEL_KEYS[code])} for code, _ in _opts.PARTY_TRACK_OPTIONS]
+
+
+# Код трека -> ключ реестра с подписью кнопки развилки (дефолт — подпись из PARTY_TRACK_OPTIONS).
+PARTY_TRACK_LABEL_KEYS = {
+    "full": "party_track_full_label_text",
+    "party_overnight": "party_track_overnight_label_text",
+    "party_noovernight": "party_track_noovernight_label_text",
+}
 
 
 async def city_fork_options() -> list[dict]:
@@ -1846,6 +1873,12 @@ async def option_hints_for(step_key: str) -> dict[str, str]:
 # существительное для подстановки в середину фразы).
 _LOOKUP_ENTITY_NAMES: dict[str, str] = {"university": "ВУЗ", "city": "город"}
 
+# До 28.10 у кнопки мультивыбора был свой ключ («Продолжить»), а на остальных шагах мастера —
+# «Дальше» (`reg_form_next_cta_text`): менеджер видел в админке два ключа на одну кнопку.
+# Ключ снят с реестра; сохранённое в bot_settings значение читается, пока менеджер не задал
+# общий — иначе подпись у тех, кто её уже правил, молча сменилась бы.
+_LEGACY_CONTINUE_BUTTON_KEY = "reg_form_continue_button_text"
+
 
 async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | None) -> dict:
     """Тексты новых типов шага (30-UI-SPEC.md § Copywriting Contract), публикуются В
@@ -1873,7 +1906,11 @@ async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | Non
         texts["normalized_note"] = await get_setting_typed("reg_lookup_normalized_note_text")
     elif degraded_kind == "multi":
         texts["skip_button"] = await get_setting_typed("reg_form_skip_button_text")
-        texts["continue_button"] = await get_setting_typed("reg_form_continue_button_text")
+        legacy = (await get_setting(_LEGACY_CONTINUE_BUTTON_KEY) or "").strip()
+        if legacy and await get_setting("reg_form_next_cta_text") is None:
+            texts["continue_button"] = legacy
+        else:
+            texts["continue_button"] = await get_setting_typed("reg_form_next_cta_text")
         # Приёмка 17.09 (находка 2/3): подпись неактивной кнопки «Дальше», пока не набран
         # `spec.min_select` — тот же паттерн, что `pick_option` у select ниже (переиспользуем
         # приём «неактивная кнопка с понятной подписью», не сам текст — вопросы разные).
@@ -2709,14 +2746,22 @@ def parse_age(raw: int | str | None) -> int | None:
 # P0 audit T-dw1-01: resume size guard. Перенос дословный из handlers/registration.py.
 RESUME_MAX_BYTES = 10 * 1024 * 1024
 
+# Принимаемые расширения резюме — одна константа и для проверки, и для текста отказа
+# (`{formats}` в `reg_form_resume_wrong_type_text`). `.doc` не принимается — вопрос владельцу.
+RESUME_ALLOWED_EXTS = (".pdf", ".docx")
+
 
 def is_allowed_resume(file_name: str | None) -> bool:
     """QW-03: accept only PDF/DOCX by extension (case-insensitive). Перенос дословный из
     handlers/registration.py::_is_allowed_resume."""
     if not file_name:
         return False
-    name = file_name.lower()
-    return name.endswith(".pdf") or name.endswith(".docx")
+    return file_name.lower().endswith(RESUME_ALLOWED_EXTS)
+
+
+def resume_formats_label() -> str:
+    """«PDF, DOCX» — для подстановки `{formats}` в текст отказа по формату резюме."""
+    return ", ".join(ext.lstrip(".").upper() for ext in RESUME_ALLOWED_EXTS)
 
 
 def resume_too_large(file_size) -> bool:

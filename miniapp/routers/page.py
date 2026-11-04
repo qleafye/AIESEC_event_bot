@@ -43,6 +43,7 @@ from miniapp.deps import (
 )
 from miniapp.file_tokens import mint_file_token
 from miniapp.routers.program import program_section_visible
+from miniapp.routers.shop import shop_section_visible
 
 router = APIRouter()
 
@@ -189,7 +190,9 @@ def deep_link(bot_username: str | None) -> str:
 # D-29: вычисляемые разделы — без чекбокса `miniapp_section_*` (видимость решает сервер в
 # `/app/api/me`, см. `program_section_visible`), поэтому подпись вкладки живёт здесь, а не в
 # реестре. В `SECTIONS` их нет: там только разделы со своим тумблером (`require_section`).
-COMPUTED_SECTION_LABELS = {"program": "📅 Программа"}
+# «🛍 Магазин» — тоже вычисляемый: плитка есть, пока менеджер открыл витрину и на ней есть
+# товары (`miniapp.routers.shop.shop_section_visible`, то же правило, что у кнопки в чате).
+COMPUTED_SECTION_LABELS = {"program": "📅 Программа", "shop": "🛍 Магазин"}
 
 
 def section_labels() -> dict[str, str]:
@@ -366,6 +369,9 @@ async def me(request: Request, p: Principal = Depends(principal)) -> dict:
     # в чате видна кнопка программы (тот же гейт, что `GET /app/api/program`). Не делегату
     # (сотрудник без заявки, cookie) не считаем вовсе — visibleNav() его всё равно не покажет.
     sections["program"] = is_delegate and await program_section_visible(p)
+    # Магазин баллов: плитка — пока витрина открыта и на ней есть товары; монеты закрыты
+    # (раздел выключен или делегация без геймы) — ручки витрины ответят 403, плитки нет.
+    sections["shop"] = is_delegate and sections["coins"] and await shop_section_visible()
     resolved = web_theme.resolve_theme(theme_settings)
     # Переводы — ПОСЛЕ закрытия `with read_conn`: `i18n.tr()` не ходит в БД (чистая функция над
     # уже загруженной `tr_map`), второй раз соединение открывать незачем.

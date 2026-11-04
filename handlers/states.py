@@ -292,6 +292,14 @@ class MiniAppTheme(StatesGroup):
     pattern = State()          # паттерн плиты, фото (необязательно)
 
 
+class QrCardTheme(StatesGroup):
+    # Экран «🎨 Оформление» → «🎟 Карточка QR» (handlers/settings/admin_qr_card_theme.py), право
+    # `settings` ("state:QrCardTheme:*" регистрирует сам шов). Ждём картинку фото или файлом;
+    # черновик оформления живёт в данных FSM ("qrct_draft") и переживает смену состояния.
+    bg_image = State()         # картинка фона карточки
+    logo = State()             # своё лого карточки
+
+
 class RejectRuleEdit(StatesGroup):
     # Phase 31 (31-08, D-09/D-21): экран карточки правила (handlers/applications/admin_reject_rules.py) —
     # правка имени и текста отказа. Правило id — в state.get_data() ("rre_rule_id"), тот же
@@ -720,7 +728,10 @@ class CertAdmin(StatesGroup):
 
 
 class ShopAdmin(StatesGroup):
-    """«🛍 Магазин баллов» (handlers/game/admin_shop.py): поиск делегата на стойке, товар."""
+    """«🛍 Магазин баллов» (handlers/game/admin_shop.py): поиск делегата на стойке, товар, ввод кода брони,
+    фото товара (handlers/game/admin_shop_photo.py)."""
     find = State()
     new_item = State()
     edit_item = State()
+    code = State()
+    photo = State()

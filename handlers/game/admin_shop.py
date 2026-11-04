@@ -52,10 +52,9 @@ def _kb(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
 
 
 async def shop_title() -> str:
-    from domain.settings.schema import get_setting_typed
+    from services.game.shop_card import shop_title as _title
 
-    event = (await get_setting_typed("event_name") or "").strip()
-    return f"{event}-шоп" if event else "Магазин баллов"
+    return await _title()
 
 
 def _who(user: dict | None, tid: int) -> str:
@@ -84,12 +83,15 @@ async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
     items = await shop_db.list_items()
     active = [i for i in items if i["active"]]
     stats = await shop_db.sales_stats()
-    is_open = await shop_db.is_open()
+    is_open, reserve_on = await shop_db.is_open(), await shop_db.is_reserve_on()
     lines = [
         f"🛍 <b>{html.escape(await shop_title())}</b>", "",
         f"Витрина у делегатов: {'✅ видна' if is_open else '❌ скрыта'} (на экране «🪙 Мои баллы»)",
+        f"Бронь делегатом: {'✅ включена' if reserve_on else '❌ выключена'}",
         f"Выдано: {stats['count']}, потрачено {stats['spent']} {points_word(stats['spent'])}", "",
     ]
+    if stats["reserved"]:
+        lines[-1:-1] = [f"Ждут выдачи броней: {stats['reserved']}"]
     if active:
         lines.append("<b>На витрине</b>")
         for i in active:
@@ -98,10 +100,11 @@ async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
         lines.append("Товаров пока нет — добавьте их в «📦 Товары».")
     lines += ["", "На стойке: «🛒 Выдать товар» → ник или фамилия делегата → товар. Быстрый вход — команда /shop."]
     kb = _kb([
-        [("🛒 Выдать товар", "shp_sell")],
+        [("🛒 Выдать товар", "shp_sell"), ("🎫 Выдать бронь по коду", "shp_code")],
         [("📦 Товары", "shp_items"), ("🏆 Рейтинг баллов", "shp_top:0")],
         [("🧾 Последние выдачи", "shp_sales:0")],
         [("🙈 Скрыть витрину у делегатов" if is_open else "👁 Показать витрину делегатам", "shp_open")],
+        [("🚫 Выключить бронь делегатом" if reserve_on else "🎫 Включить бронь делегатом", "shp_resv")],
         [("◀️ Назад", "admin_sec:game")],
     ])
     return "\n".join(lines), kb
@@ -342,12 +345,18 @@ async def item_text_kb(item: dict) -> tuple[str, InlineKeyboardMarkup]:
         f"Цена: {item['price']} {points_word(item['price'])}\n"
         f"Количество: {_stock(item)}\n"
         f"Лимит: {limit}\n"
-        f"На витрине: {'✅ да' if item['active'] else '🙈 снят'}"
+        f"На витрине: {'✅ да' if item['active'] else '🙈 снят'}\n"
+        f"Фото: {'✅ есть' if item.get('photo_file_id') else 'нет'}"
     )
     iid = item["id"]
+    photo_row = (
+        [("🖼 Заменить фото", f"shp_ph:{iid}"), ("🗑 Убрать фото", f"shp_phdel:{iid}")]
+        if item.get("photo_file_id") else [("🖼 Загрузить фото", f"shp_ph:{iid}")]
+    )
     kb = _kb([
         [("✏️ Название", f"shp_ed:{iid}:title"), ("💰 Цена", f"shp_ed:{iid}:price")],
         [("📦 Количество", f"shp_ed:{iid}:stock"), ("👤 Лимит в одни руки", f"shp_ed:{iid}:per_person")],
+        photo_row,
         [("🙈 Снять с витрины" if item["active"] else "👁 Вернуть на витрину", f"shp_act:{iid}")],
         [("🗑 Удалить", f"shp_del:{iid}")],
         [("◀️ К товарам", "shp_items")],
@@ -546,7 +555,7 @@ async def shop_sales(callback: types.CallbackQuery):
     for s in sales:
         when = (s["sold_at"] or "")[5:16].replace("-", ".")
         who = html.escape(s.get("full_name") or str(s["telegram_id"]))
-        mark = " ↩️ отменена" if s["undone_at"] else ""
+        mark = " ↩️ отменена" if s["undone_at"] else (f" 🎫 бронь {s['pickup_code']}" if s["status"] == "reserved" else "")
         lines.append(f"{when} · {who} — {html.escape(s['title'])} ({s['price']}){mark}")
     nav = []
     if offset > 0:
@@ -563,9 +572,16 @@ async def shop_sales(callback: types.CallbackQuery):
 async def shop_sales_csv(callback: types.CallbackQuery):
     sales = await shop_db.list_sales(100_000, 0)
     data = _csv(
-        ["Когда", "Имя", "Username", "Telegram ID", "Товар", "Баллов", "Выдал (ID)", "Отменена"],
+        ["Когда", "Имя", "Username", "Telegram ID", "Товар", "Баллов", "Выдал (ID)", "Отменена", "Статус", "Код"],
         [[s["sold_at"], s.get("full_name") or "", s.get("username") or "", s["telegram_id"], s["title"],
-          s["price"], s["sold_by"], s["undone_at"] or ""] for s in sales],
+          s["price"], s["issued_by"] or "", s["undone_at"] or "", "бронь" if s["status"] == "reserved" else "выдано",
+          s["pickup_code"] or ""] for s in sales],
     )
     await callback.message.answer_document(BufferedInputFile(data, filename="shop_sales.csv"), caption="🧾 Выдачи магазина")
     await callback.answer()
+
+
+# Брони делегатов на стойке (тумблер, выдача по коду, отмена) — отдельный шов, импорт хвостом.
+from handlers.game import admin_shop_reserve  # noqa: E402,F401
+# Фото товара (загрузить / заменить / убрать) — отдельный шов, импорт хвостом.
+from handlers.game import admin_shop_photo  # noqa: E402,F401

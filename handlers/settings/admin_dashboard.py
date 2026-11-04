@@ -36,6 +36,7 @@ DASHBOARD_BLOCKS = [
     "dashboard_block_delegations",
     "dashboard_block_it3plus",
     "dashboard_block_case_optin",
+    "dashboard_block_polls",
 ]
 
 

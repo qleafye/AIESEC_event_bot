@@ -37,6 +37,8 @@ _FORUM_WORD_ALLOWED = {
     "checkin_volunteer_guide_text",
     # менеджеру: где включить — «🎪 Форум: функции» (подпись экрана)
     "onsite_off_text",
+    # менеджеру: где итоги опросов — «🎪 Статистика форума» (подпись кнопки дашборда)
+    "poll_results_admin_hint_text",
     # подтверждения смены типа события / пресета — перечисляют типы («для конференции»)
     "miniapp_settings_confirm_event_type_text",
     "skillup_preset_confirm_text",

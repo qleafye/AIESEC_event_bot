@@ -137,6 +137,7 @@ HTML_SETTINGS = {
     "payment_option_picker_header_text", "payment_details_template_text",
     "payment_pay_later_text", "payment_pay_later_menu_hint_text",
     "payment_receipt_received_text",
+    "shop_reserved_text", "shop_my_reservations_header_text",  # бронь в магазине: сообщения с parse_mode=HTML
     "leaderboard_header_text", "leaderboard_rank_line_text",
     "balance_history_header_text", "referral_list_header_text",
     "game_wizard_preview_title",  # Phase 16 (16-03): заголовок превью финального шага визарда
@@ -1122,12 +1123,17 @@ PREVIEW_SAMPLES: dict[str, str] = {
     "where": "Нашли у зала А, забрать на стойке 1",
     # Приёмка 17.09: минимум вариантов мультивыбора и подпись раздела реф-ссылки в приложении.
     "min": "1",
+    # Лимит попыток сдачи и максимум частей в одной сдаче задания.
+    "limit": "3",
+    "max_parts": "10",
     "section": "🔗 Моя реферальная ссылка",
     "season": "Форум'26",
     "deadline": "15.10.2026",
     "requisites": "Сбербанк, 2202 2000 0000 0000, Иван И.",
     "amount": "3500",
     "option": "Полная форма",
+    # Отказ резюме не того формата: список принимаемых форматов (reg_engine.resume_formats_label).
+    "formats": "PDF, DOCX",
     "penalties": "⚠️ Штрафы за отмену:\n• до 10.10.2026 — остаток 1000 ₽\n\n",
     "label": "Университет",
     "display": "МГУ",
@@ -1175,6 +1181,10 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # для превью в веб-настройках (сам дефолт nudge_text плейсхолдер не содержит, менеджер
     # добавляет его сам).
     "remaining": "3",
+    # Бронь в магазине баллов: цена товара, код выдачи и название магазина.
+    "price": "150",
+    "code": "Ю-4821",
+    "shop": "Юлид-шоп",
     # Phase 30 (30-03/30-04): новые типы шагов — {entity} название справочника в lookup/multi
     # («Впиши {entity} сам…»), {left} остаток лимита мультивыбора в заголовке-подсказке,
     # {noun} название повторяемого блока («Добавить ещё {noun}»), {query} строка поиска

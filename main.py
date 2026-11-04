@@ -336,6 +336,16 @@ async def main():
     
     # Init DB
     await init_db()
+    # Назначение внешних форм: формы, подключённые до назначений, получают его один раз по
+    # прежнему правилу «относится к делегациям» — поведение не меняется.
+    try:
+        from services.ext_forms.ext_forms_purpose import backfill_purposes
+        n = await backfill_purposes()
+        if n:
+            logging.getLogger(__name__).info("ext_forms: назначение записано старым формам: %s", n)
+    except Exception as e:  # noqa: BLE001 — старт бота не зависит от этой записи
+        logging.getLogger(__name__).warning("ext_forms: назначение старым формам не записано: %s",
+                                            type(e).__name__)
 
     # Форум-ночь (идея №3 бэклога чек-ина): приветствие после первой отметки входа делегата —
     # регистрация слушателя `services.forum.checkin.register_first_entry_listener`. Слушатели живут

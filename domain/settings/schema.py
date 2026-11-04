@@ -32,6 +32,14 @@ import shared.chat_score as chat_score
 from database.db import get_setting, DEFAULT_CONSENT_VERSION
 from domain.regform.labels import REG_LABELS
 
+# Палитра карточки QR (ключи qr_card_*_color): код -> подпись кнопки. HEX — в
+# services/forum/qr_card_theme.py::PALETTE (те же коды, сторож tests/test_qr_card_theme_261028.py).
+_QR_CARD_PALETTE_LABELS = {
+    "blue": "Синий АЙСЕК", "orange": "Оранжевый", "red": "Красный", "yellow": "Жёлтый",
+    "teal": "Бирюзовый", "green": "Зелёный", "purple": "Фиолетовый", "dark": "Тёмный",
+    "white": "Белый",
+}
+
 # REG-01: event-group entries — labels/prompts copied byte-for-byte from the pre-migration
 # literal SETTINGS_FIELDS/PHOTO_FIELDS/FILE_FIELDS tables (handlers/admin.py) so the render
 # snapshot test proves zero drift. Order of the text/enum keys matches the pre-migration
@@ -1165,6 +1173,18 @@ SETTINGS_SCHEMA = {
         ),
         "default": "",
     },
+    # Подсказка менеджеру (не делегату — отсюда `admin` в ключе: он не попадает в корпус
+    # перевода делегата) — где смотреть итоги: мастер опроса, отчёт об отправке, карточки.
+    "poll_results_admin_hint_text": {
+        "type": "text", "group": "event", "label": "📊 Опрос: где смотреть итоги (для менеджера)",
+        "prompt": (
+            "Строка, которую менеджер видит в мастере опроса, в отчёте об отправке и в карточке "
+            "опроса — где смотреть итоги. Обычный текст, например: «Итоги: в боте → 📊 Опросы "
+            "и на дашборде (🎪 Статистика форума → «Опросы»)»."
+            "\n\nОставьте пустым — строка не показывается."
+        ),
+        "default": "Итоги: в боте → 📊 Опросы и на дашборде (🎪 Статистика форума → «Опросы»)",
+    },
     "event_type": {
         "type": "enum", "group": "event", "label": "🎭 Тип события",
         # Phase 28 (28-10, SU-11): четвёртый вариант "skillup" — применяет ВЕСЬ пресет
@@ -2094,15 +2114,19 @@ SETTINGS_SCHEMA = {
     },
     "reg_form_resume_too_large_text": {
         "type": "text", "group": "reg", "label": "📦 Резюме слишком большое",
-        "prompt": "Ошибка загрузки резюме в приложении, когда файл больше 20 МБ.",
-        "default": "Файл больше 20 МБ — сожмите или пришлите ссылку в описании.",
+        "prompt": "Ошибка загрузки резюме в приложении, когда файл больше 10 МБ.",
+        "default": "Файл больше 10 МБ — сожмите или пришлите ссылку в описании.",
     },
     "reg_form_resume_wrong_type_text": {
         "type": "text", "group": "reg", "label": "📄 Неверный формат резюме",
         "prompt": (
-            "Ошибка загрузки резюме в приложении, когда формат файла не PDF и не DOCX."
+            "Ответ делегату (в приложении и в чате), когда файл резюме не PDF и не DOCX. "
+            "{formats} заменится списком форматов."
         ),
-        "default": "Резюме принимается как PDF или DOCX — другой формат не подойдёт.",
+        "default": (
+            "Этот формат не подойдёт — резюме принимается файлом {formats}. Сохрани документ как "
+            "PDF (в Word: «Файл → Сохранить как → PDF») и загрузи снова."
+        ),
     },
     "reg_form_resume_text_only_text": {
         "type": "text", "group": "reg", "label": "📝 Резюме только текстом",
@@ -2184,13 +2208,15 @@ SETTINGS_SCHEMA = {
     },
     "reg_form_complete_heading_text": {
         "type": "text", "group": "reg", "label": "🎉 Заголовок «Заявка принята»",
-        "prompt": "Заголовок экрана в приложении сразу после отправки НОВОЙ анкеты.",
+        "prompt": "Заголовок экрана в приложении сразу после отправки НОВОЙ анкеты."
+        " Этот же текст бот присылает делегату в чат.",
         "default": "Заявка принята",
         "per_city": True,
     },
     "reg_form_complete_body_text": {
         "type": "text", "group": "reg", "label": "🎉 Текст «Заявка принята»",
-        "prompt": "Текст под заголовком того же экрана — сразу после отправки новой анкеты.",
+        "prompt": "Текст под заголовком того же экрана — сразу после отправки новой анкеты."
+        " Этот же текст бот присылает делегату в чат.",
         "default": "Спасибо! Мы всё получили — подробности пришли в чат с ботом.",
         "per_city": True,
     },
@@ -2200,6 +2226,7 @@ SETTINGS_SCHEMA = {
             "Заголовок экрана в приложении после правки уже одобренной анкеты — "
             "показывается, когда тумблер «Изменённая анкета — снова на модерацию» "
             "ВЫКЛЮЧЕН и статус остаётся прежним."
+            " Этот же текст бот присылает делегату в чат."
         ),
         "default": "Изменения отправлены",
         "per_city": True,
@@ -2209,13 +2236,15 @@ SETTINGS_SCHEMA = {
         "prompt": (
             "Заголовок того же экрана — показывается, когда тумблер «Изменённая анкета — "
             "снова на модерацию» ВКЛЮЧЁН, и правка вернула заявку в статус ожидания."
+            " Этот же текст бот присылает делегату в чат."
         ),
         "default": "Анкета снова на проверке",
         "per_city": True,
     },
     "reg_form_resubmit_heading_text": {
         "type": "text", "group": "reg", "label": "🔁 Заголовок «Заявка отправлена заново»",
-        "prompt": "Заголовок экрана в приложении после повторной подачи ОТКЛОНЁННОЙ анкеты.",
+        "prompt": "Заголовок экрана в приложении после повторной подачи ОТКЛОНЁННОЙ анкеты."
+        " Этот же текст бот присылает делегату в чат.",
         "default": "Заявка отправлена заново",
         "per_city": True,
     },
@@ -2719,18 +2748,25 @@ SETTINGS_SCHEMA = {
             "Текст, который бот шлёт участнику перед дедлайном оплаты — в сроки из настроек "
             "«⏰ Первое напоминание об оплате, за сколько дней» и "
             "«⏰ Второе напоминание об оплате, за сколько дней»."
-            "\n\nОставьте пустым — будет стандартный текст."
+            "\n\nЕсли очистить поле, вернётся текст по умолчанию."
         ),
-        "default": None,
+        "default": (
+            "⏰ Напоминание об оплате участия!\n\n"
+            "Срок оплаты истекает скоро. Загрузи чек оплаты через бота."
+        ),
         "per_city": True,
     },
     "payment_overdue_text": {
         "type": "text", "group": "pay", "label": "⌛ Текст «оплата просрочена»",
         "prompt": (
             "Финальный пинг участнику, когда дедлайн оплаты прошёл, а чек так и не "
-            "загружен.\n\nОставьте пустым — будет стандартный текст."
+            "загружен.\n\nЕсли очистить поле, вернётся текст по умолчанию."
         ),
-        "default": None,
+        "default": (
+            "⚠️ Срок оплаты участия истёк.\n\n"
+            "Если ты ещё планируешь участвовать — загрузи чек через бота "
+            "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
+        ),
         "per_city": True,
     },
     "penalty_schedule": {
@@ -3448,11 +3484,6 @@ SETTINGS_SCHEMA = {
             "«Пропустить»."
         ),
         "default": "Пропустить",
-    },
-    "reg_form_continue_button_text": {
-        "type": "text", "group": "reg_prompts", "label": "➡️ Кнопка «Продолжить» (новая анкета)",
-        "prompt": "Главная кнопка мастера, когда есть что продолжать.",
-        "default": "Продолжить",
     },
     "reg_form_own_option_text": {
         "type": "text", "group": "reg_prompts", "label": "✍️ Подсказка «впиши сам» (справочник)",
@@ -4322,6 +4353,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "game_submit_accepted_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "game", "label": "🎮 Текст «Принято!»",
         "prompt": "Что увидит делегат сразу после успешной финализации сдачи.",
         "default": "Принято! Менеджер проверит и начислит баллы.",
@@ -4449,6 +4481,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "game_task_list_empty": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "game", "label": "🎮 Список заданий: пусто",
         "prompt": "Что видит делегат в «🎯 Задания», если активных заданий сейчас нет.",
         "default": "Активных заданий сейчас нет. Загляни попозже!",
@@ -4563,6 +4596,123 @@ SETTINGS_SCHEMA = {
         "default": "⏰ Срок вышел — отправить можно, баллы решит менеджер",
         "per_city": True,
     },
+    # Магазин баллов: бронь делегатом («Взять», код выдачи, «🎫 Мои брони», уведомления со стойки).
+    "shop_take_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Взять»",
+        "prompt": "Кнопка под витриной у каждого товара, который делегат может взять сам (когда включена «Бронь делегатом»).\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах",
+        "default": "🛒 Взять: {title} · {price}",
+        "placeholders": {"title": "товар", "price": "цена в баллах"},
+    },
+    "shop_reserve_hint_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: подсказка про бронь",
+        "prompt": "Строка внизу витрины, когда включена «Бронь делегатом».",
+        "default": "Нажми «Взять» — баллы спишутся сразу, а товар заберёшь на стойке магазина по коду или QR из «🎫 Мои брони».",
+    },
+    "shop_take_confirm_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: подтверждение брони",
+        "prompt": "Вопрос перед списанием баллов за товар.\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах\n{left} — сколько баллов останется",
+        "default": "Списать {price} баллов за «{title}»?\nОстанется {left}. Забрать товар — на стойке магазина по коду выдачи.",
+        "placeholders": {"price": "цена в баллах", "title": "товар", "left": "сколько баллов останется"},
+    },
+    "shop_take_confirm_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Да, списать»",
+        "prompt": "Кнопка, которой делегат подтверждает бронь и списание баллов.",
+        "default": "✅ Да, списать",
+    },
+    "shop_reserved_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: бронь оформлена",
+        "prompt": "Сообщение после брони, под ним приходит QR. Поддерживается HTML.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи\n{price} — списано баллов\n{balance} — осталось на счету",
+        "default": "✅ Забронировано: «{title}»\nКод выдачи: <b>{code}</b>\nСписано {price} баллов, на счету {balance}.\n\nПокажи QR ниже или назови код на стойке магазина.",
+        "placeholders": {"title": "товар", "code": "код выдачи брони", "price": "цена в баллах", "balance": "баланс после операции"},
+    },
+    "shop_my_reservations_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Мои брони»",
+        "prompt": "Кнопка на витрине и на экране «🪙 Мои баллы», пока у делегата есть действующие брони.",
+        "default": "🎫 Мои брони",
+    },
+    "shop_my_reservations_header_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: заголовок «Мои брони»",
+        "prompt": "Первая строка экрана со списком броней делегата. Поддерживается HTML.",
+        "default": "🎫 <b>Мои брони</b>",
+    },
+    "shop_my_reservations_empty_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: броней нет",
+        "prompt": "Что видит делегат на экране «🎫 Мои брони», когда действующих броней нет.",
+        "default": "Действующих броней нет.",
+    },
+    "shop_reservation_qr_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка QR брони",
+        "prompt": "Кнопка в «🎫 Мои брони» — прислать QR брони ещё раз.\n\nПодставляется:\n{code} — код выдачи",
+        "default": "🔳 QR {code}",
+        "placeholders": {"code": "код выдачи брони"},
+    },
+    "shop_reservation_cancel_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка отмены брони",
+        "prompt": "Кнопка в «🎫 Мои брони» — отменить бронь.\n\nПодставляется:\n{code} — код выдачи",
+        "default": "✖ Отменить {code}",
+        "placeholders": {"code": "код выдачи брони"},
+    },
+    "shop_cancel_confirm_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: подтверждение отмены брони",
+        "prompt": "Вопрос перед отменой брони делегатом.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи\n{price} — сколько баллов вернём",
+        "default": "Отменить бронь «{title}» (код {code})?\n\nВернём {price} баллов, товар вернётся на витрину, код перестанет работать.",
+        "placeholders": {"title": "товар", "code": "код выдачи брони", "price": "цена в баллах"},
+    },
+    "shop_cancel_confirm_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Да, отменить бронь»",
+        "prompt": "Кнопка, которой делегат подтверждает отмену брони.",
+        "default": "↩️ Да, отменить бронь",
+    },
+    "shop_cancel_keep_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Не отменять»",
+        "prompt": "Кнопка, которой делегат передумал отменять бронь.",
+        "default": "Не отменять",
+    },
+    "shop_cancelled_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: бронь отменена",
+        "prompt": "Сообщение делегату после отмены брони.\n\nПодставляются:\n{title} — товар\n{price} — сколько баллов вернули\n{balance} — на счету после возврата",
+        "default": "↩️ Бронь «{title}» отменена, {price} баллов вернулись. На счету: {balance}.",
+        "placeholders": {"title": "товар", "price": "цена в баллах", "balance": "баланс после операции"},
+    },
+    "shop_reservation_gone_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: бронь уже неактуальна",
+        "prompt": "Всплывающее сообщение, когда делегат жмёт кнопку брони, которую уже выдали или отменили.",
+        "default": "Эта бронь уже выдана или отменена.",
+    },
+    "shop_reservation_qr_footer_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: подпись на QR брони",
+        "prompt": "Строка внизу картинки QR брони.",
+        "default": "Покажи этот QR на стойке магазина",
+    },
+    "shop_issued_notify_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: уведомление «бронь выдана»",
+        "prompt": "Сообщение делегату, когда на стойке выдали его бронь.\n\nПодставляются:\n{shop} — название магазина\n{code} — код выдачи\n{title} — товар",
+        "default": "🛍 {shop}: по брони {code} выдали «{title}».",
+        "placeholders": {"shop": "название магазина", "code": "код выдачи брони", "title": "товар"},
+    },
+    "shop_cancelled_by_staff_notify_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: уведомление «бронь отменили на стойке»",
+        "prompt": "Сообщение делегату, когда менеджер отменил его бронь.\n\nПодставляются:\n{shop} — название магазина\n{code} — код выдачи\n{title} — товар\n{price} — сколько баллов вернули\n{balance} — на счету после возврата",
+        "default": "🛍 {shop}: бронь {code} «{title}» отменили на стойке, {price} баллов вернулись. На счету: {balance}.",
+        "placeholders": {"shop": "название магазина", "code": "код выдачи брони", "title": "товар", "price": "цена в баллах", "balance": "баланс после операции"},
+    },
+    # Магазин баллов: фото товаров альбомом на витрине в чате.
+    "shop_photos_button_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Фото товаров»",
+        "prompt": "Кнопка на витрине: прислать фото товаров альбомом. Видна, пока витрина открыта и хотя бы у одного товара есть фото.\n\nПример: 🖼 Фото товаров",
+        "default": "🖼 Фото товаров",
+    },
+    "shop_photo_caption_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: подпись к фото товара",
+        "prompt": "Подпись под каждым фото в альбоме товаров.\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах\n\nПример: {title} — {price} баллов",
+        "placeholders": {"title": "товар", "price": "цена в баллах"},
+        "default": "{title} — {price} баллов",
+    },
+    "shop_photos_failed_text": {
+        "type": "text", "group": "game", "label": "🛍 Магазин: фото не загрузились",
+        "prompt": "Всплывающее сообщение, если Телеграм не принял альбом с фото товаров.",
+        "default": "Фото сейчас не загрузились — попробуй ещё раз через минуту.",
+    },
     "leaderboard_header_text": {
         "type": "text", "group": "game", "label": "🏆 Рейтинг: заголовок",
         "prompt": "Первая строка экрана «🏆 Рейтинг» (и команды /рейтинг). Поддерживается HTML.",
@@ -4597,6 +4747,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "referral_link_prompt_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🔗 Реферальная ссылка: текст",
         "prompt": (
             "Что видит делегат по кнопке «🔗 Моя реферальная ссылка».\n\n"
@@ -4690,6 +4841,7 @@ SETTINGS_SCHEMA = {
     # (кнопочный визард «🪙 Монеты вручную» и /coins). Нейтрален к знаку -- тем же текстом
     # сообщается и о списании. `.replace` подстановка (не `.format`) -- см. _notify_manual_coins.
     "coins_manual_notify_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "game", "label": "🪙 Сообщение делегату о ручных баллах",
         "prompt": (
             "Что получит делегат сразу после того, как менеджер вручную начислит или спишет "
@@ -4877,6 +5029,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier1_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 1",
         "prompt": (
             "Сообщение амбассадору, когда набрано нужное число прошедших отбор для первой ступени.\n\n"
@@ -4891,6 +5044,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier2_granted_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 2, награда есть",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до второй ступени и награда ему досталась.\n\n"
@@ -4903,6 +5057,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier2_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 2, лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до второй ступени, но награды уже "
@@ -4915,6 +5070,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier3_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 3",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до третьей ступени.\n\n"
@@ -5079,6 +5235,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier1_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 1, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 1, но награды уже разобрали.\n\n"
@@ -5091,6 +5248,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier3_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 3, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 3, но награды уже разобрали.\n\n"
@@ -5103,6 +5261,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier4_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 4, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 4, но награды уже разобрали.\n\n"
@@ -5115,6 +5274,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier5_waitlist_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 5, мест нет — лист ожидания",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 5, но награды уже разобрали.\n\n"
@@ -5127,6 +5287,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier4_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 4",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 4.\n\nПоддерживается HTML."
@@ -5138,6 +5299,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_tier5_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎓 Текст: ступень 5",
         "prompt": (
             "Сообщение амбассадору, когда он дошёл до ступени 5.\n\nПоддерживается HTML."
@@ -5332,6 +5494,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_candidate_ack_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🗳 Текст: заявка в амбассадоры принята",
         "prompt": (
             "Ответ делегату в режиме отбора, когда он попросился в команду амбассадоров "
@@ -5344,12 +5507,14 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_status_candidate_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🗳 Текст: статус кандидата на «Моя ссылка»",
         "prompt": "Строка на экране «Моя ссылка» у делегата, чья заявка в амбассадоры ещё рассматривается.",
         "default": "🕓 Твоя заявка в команду амбассадоров рассматривается.",
         "per_city": True,
     },
     "amb_slots_full_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎁 Текст: места в команде заняты",
         "prompt": (
             "Ответ делегату, если он попросился в команду, когда все места уже заняты, и строка "
@@ -5362,6 +5527,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_status_pack_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎁 Текст: «пакет за тобой» на «Моя ссылка»",
         "prompt": (
             "Строка на экране «Моя ссылка» у амбассадора, за которым закреплён пакет. "
@@ -5371,6 +5537,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_status_no_pack_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎁 Текст: «без пакета» на «Моя ссылка»",
         "prompt": (
             "Строка на экране «Моя ссылка» у амбассадора, за которым пакета пока нет. "
@@ -5403,6 +5570,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_taken_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🎉 Текст: тебя взяли в амбассадоры",
         "prompt": (
             "Сообщение делегату, которого вы взяли в команду кнопкой «Взять».\n\n"
@@ -5415,6 +5583,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_removed_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "👋 Текст: выведен из команды амбассадоров",
         "prompt": "Сообщение человеку, которого вы вывели из команды амбассадоров.",
         "default": (
@@ -5424,6 +5593,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "amb_decline_all_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🙏 Текст: вежливый отказ кандидатам",
         "prompt": (
             "Сообщение всем кандидатам, которых не взяли, — уходит по кнопке «Вежливо отказать "
@@ -5441,6 +5611,7 @@ SETTINGS_SCHEMA = {
     # `game` целиком входит в `DELEGATE_GROUPS` (services/i18n/i18n_sources.py) — переводятся
     # автоматически, кроме `wave_end_manager_text` ниже (явно исключён в _ADMIN_ONLY_GAME_KEYS).
     "wave_start_message_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Старт волны: текст",
         "prompt": (
             "ЛС каждому амбассадору при старте волны.\n\nПодставляются:\n{wave} — номер "
@@ -5462,6 +5633,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "wave_deadline_reminder_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Напоминание о дедлайне",
         "prompt": (
             "Уходит перед дедлайном (за сколько — «🌊 Напоминание о дедлайне: за сколько часов», "
@@ -5474,6 +5646,18 @@ SETTINGS_SCHEMA = {
             "Успей сдать до дедлайна, чтобы получить баллы."
         ),
         "per_city": True,
+    },
+    # Ссылка на чат города для подстановки {chat} в тексты геймы и волн (domain/settings/city_chat.py).
+    # Бот ссылку на чат не хранит (chat_tracking знает только id и название) — её задаёт менеджер.
+    "delegate_chat_link": {
+        "type": "text", "group": "amb", "per_city": True, "format": "tg_link",
+        "label": "💬 Ссылка на чат города",
+        "prompt": (
+            "Ссылка-приглашение в чат делегатов города — бот вставит её вместо {chat} в сообщения "
+            "геймы и волн. Пришлите ссылку вида https://t.me/+AbCdEf123 или @yulid_msk. «нет» — "
+            "убрать ссылку. Ссылка своя у каждого города — выберите город в шапке админки."
+        ),
+        "default": "",
     },
     # Ночь 10.10 (бэклог «🛠», P1): срок напоминания был зашит — 24 ч. Новое значение
     # переставляет уже стоящие напоминания сразу (services/scheduler.py::on_setting_written).
@@ -5488,6 +5672,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "wave_results_announce_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Итоги волны: объявление всем",
         "prompt": (
             "Уходит всем амбассадорам волны после объявления итогов.\n\nПодставляются:\n"
@@ -5504,6 +5689,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "wave_results_winner_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Итоги волны: поздравление призёру",
         "prompt": (
             "Отдельное ЛС только призёрам (по числу призовых мест волны — при равенстве "
@@ -5523,6 +5709,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "wave_results_prize_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Приз: текст в итогах",
         "prompt": (
             "Сам текст приза, который подставляется в сообщение призёру (вместо {prize} "
@@ -5553,6 +5740,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "wave_rating_closed_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🌊 Рейтинг волны: волна не идёт",
         "prompt": "Что видит амбассадор на экране рейтинга волны, пока активной волны нет.",
         "default": "Сейчас нет активной волны амбассадоров — рейтинг появится, когда волна начнётся.",
@@ -5627,6 +5815,7 @@ SETTINGS_SCHEMA = {
         "per_city": True,
     },
     "ambassador_leave_done_text": {
+        "per_city": True,  # по городам + {chat} — domain/settings/city_chat.py
         "type": "text", "group": "amb", "label": "🤝 Выход из амбассадоров: готово",
         "prompt": "Что видит делегат сразу после подтверждённого выхода из амбассадоров.",
         "default": "Готово — ты больше не амбассадор. Спасибо за работу!",
@@ -5996,6 +6185,12 @@ SETTINGS_SCHEMA = {
     "dashboard_block_case_optin": {
         "type": "enum", "group": "dashboard", "label": "🧩 Хотят в кейс",
         "options": ["on", "off"], "prompt": None, "default": "off",
+    },
+    # Итоги опросов и анкет на странице «🎪 Статистика форума» (раздел «Опросы»). Включён
+    # по умолчанию — менеджер не находил итоги вне бота; выключается, если раздел не нужен.
+    "dashboard_block_polls": {
+        "type": "enum", "group": "dashboard", "label": "📊 Опросы (страница форума)",
+        "options": ["on", "off"], "prompt": None, "default": "on",
     },
     # Квик 260921: своя иконка вкладки браузера дашборда статистики — НЕ `miniapp_logo`
     # (лого в шапке Mini App, отдельный ключ/поверхность). Загружается документом (PNG/ICO,
@@ -6432,6 +6627,59 @@ SETTINGS_SCHEMA = {
         ),
         "default": None,
     },
+    # Оформление карточки QR делегата (services/forum/qr_card_theme.py, экран «🎨 Оформление» →
+    # «🎟 Карточка QR»). Общие на событие, не по городам. Дефолты = карточка «как была»: синий фон,
+    # белый заголовок, оранжевая плашка, встроенное лого АЙСЕК, все элементы включены.
+    # Палитра одна на три цветовых ключа, порядок кнопок = порядок options.
+    "qr_card_bg_color": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: фон",
+        "options": list(_QR_CARD_PALETTE_LABELS), "option_labels": dict(_QR_CARD_PALETTE_LABELS),
+        "prompt": None, "default": "blue",
+    },
+    "qr_card_text_color": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: цвет заголовка",
+        "options": list(_QR_CARD_PALETTE_LABELS), "option_labels": dict(_QR_CARD_PALETTE_LABELS),
+        "prompt": None, "default": "white",
+    },
+    "qr_card_accent_color": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: цвет плашки",
+        "options": list(_QR_CARD_PALETTE_LABELS), "option_labels": dict(_QR_CARD_PALETTE_LABELS),
+        "prompt": None, "default": "orange",
+    },
+    "qr_card_bg_image": {
+        "type": "photo", "group": "miniapp", "label": "🎟 Карточка QR: картинка фона",
+        "prompt": (
+            "Отправьте картинку фона карточки QR — фото или файлом PNG/JPEG. Она растянется на "
+            "всю карточку за белым блоком с кодом, лишнее по краям обрежется. Без неё фон — "
+            "выбранный цвет."
+        ),
+        "default": None,
+    },
+    "qr_card_logo": {
+        "type": "photo", "group": "miniapp", "label": "🎟 Карточка QR: своё лого",
+        "prompt": (
+            "Отправьте лого для карточки QR — оно встанет в левый верхний угол над заголовком. "
+            "Лого с прозрачным фоном присылайте файлом PNG (фото Telegram прозрачность "
+            "теряет). Без своего лого — белое лого АЙСЕК."
+        ),
+        "default": None,
+    },
+    "qr_card_show_watermark": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: надписи на фоне",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "qr_card_show_logo": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: лого",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "qr_card_show_city": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: город под именем",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "qr_card_show_footer": {
+        "type": "enum", "group": "miniapp", "label": "🎟 Карточка QR: плашка-подсказка",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
     "miniapp_logo_dark": {
         "type": "photo", "group": "miniapp", "label": "🌙 Лого для тёмной темы",
         "prompt": (
@@ -6791,6 +7039,109 @@ SETTINGS_SCHEMA = {
             "«из {total}»."
         ),
         "default": "из {total}",
+    },
+    # Магазин баллов: экран «🛍 Магазин» делегата (miniapp/routers/shop.py).
+    "miniapp_shop_closed_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: витрина закрыта",
+        "prompt": "Что видит делегат на экране «Магазин», если витрину скрыли, пока экран был открыт.",
+        "default": "Магазин сейчас закрыт — загляни позже.",
+    },
+    "miniapp_shop_empty_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: товаров нет",
+        "prompt": "Текст на экране «Магазин», когда на витрине нет ни одного товара.",
+        "default": "Товаров пока нет — загляни позже.",
+    },
+    "miniapp_shop_balance_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: баланс",
+        "prompt": "Строка с балансом вверху экрана «Магазин».\n\nПодставляется:\n{balance} — баллов на счету\n\nПример: На счету: {balance} баллов",
+        "placeholders": {"balance": "баллов на счету"},
+        "default": "На счету: {balance} баллов",
+    },
+    "miniapp_shop_price_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: цена товара",
+        "prompt": "Цена на карточке товара.\n\nПодставляется:\n{price} — цена в баллах\n\nПример: {price} баллов",
+        "placeholders": {"price": "цена в баллах"},
+        "default": "{price} баллов",
+    },
+    "miniapp_shop_stock_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: остаток товара",
+        "prompt": "Сколько штук осталось — на карточке товара с ограниченным количеством.\n\nПодставляется:\n{n} — сколько осталось\n\nПример: Осталось {n}",
+        "placeholders": {"n": "сколько осталось"},
+        "default": "Осталось {n}",
+    },
+    "miniapp_shop_sold_out_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: товар закончился",
+        "prompt": "Пометка на карточке товара, который закончился.",
+        "default": "Закончился",
+    },
+    "miniapp_shop_limit_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: лимит в одни руки исчерпан",
+        "prompt": "Пометка на карточке, когда делегат уже взял максимум этого товара.\n\nПодставляется:\n{n} — лимит в одни руки\n\nПример: Ты уже взял(а) максимум — {n} в одни руки",
+        "placeholders": {"n": "лимит в одни руки"},
+        "default": "Ты уже взял(а) максимум — {n} в одни руки",
+    },
+    "miniapp_shop_short_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: не хватает баллов",
+        "prompt": "Пометка на карточке, когда баллов меньше цены.\n\nПодставляется:\n{n} — сколько баллов не хватает\n\nПример: Не хватает {n}",
+        "placeholders": {"n": "сколько баллов не хватает"},
+        "default": "Не хватает {n}",
+    },
+    "miniapp_shop_take_button_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Взять»",
+        "prompt": "Кнопка на карточке товара (видна, когда включена «Бронь делегатом»).",
+        "default": "Взять",
+    },
+    "miniapp_shop_take_yes_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Да, списать»",
+        "prompt": "Кнопка в подтверждении брони — списывает баллы.",
+        "default": "Да, списать",
+    },
+    "miniapp_shop_cancel_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Не надо»",
+        "prompt": "Кнопка в подтверждении брони — передумал брать.",
+        "default": "Не надо",
+    },
+    "miniapp_shop_reserve_off_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: бронь выключена",
+        "prompt": "Подсказка на экране «Магазин», пока «Бронь делегатом» выключена.",
+        "default": "Взять товар здесь пока нельзя — подходи к стойке магазина на форуме и покажи свой QR.",
+    },
+    "miniapp_shop_reserved_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: бронь оформлена",
+        "prompt": "Сообщение после брони в приложении.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи",
+        "placeholders": {"title": "товар", "code": "код выдачи брони"},
+        "default": "Забронировано: «{title}». Код выдачи — {code}. Покажи QR или назови код на стойке магазина.",
+    },
+    "miniapp_shop_my_title_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: заголовок «Мои брони»",
+        "prompt": "Заголовок блока броней делегата на экране «Магазин».",
+        "default": "Мои брони",
+    },
+    "miniapp_shop_code_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: код выдачи брони",
+        "prompt": "Строка под названием брони.\n\nПодставляется:\n{code} — код выдачи\n\nПример: Код выдачи: {code}",
+        "placeholders": {"code": "код выдачи брони"},
+        "default": "Код выдачи: {code}",
+    },
+    "miniapp_shop_qr_button_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Показать QR»",
+        "prompt": "Кнопка у брони — показать QR для стойки.",
+        "default": "Показать QR",
+    },
+    "miniapp_shop_cancel_button_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Отменить бронь»",
+        "prompt": "Кнопка у брони — отменить её и вернуть баллы.",
+        "default": "Отменить бронь",
+    },
+    "miniapp_shop_cancel_yes_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Да, отменить бронь»",
+        "prompt": "Кнопка в подтверждении отмены брони.",
+        "default": "Да, отменить бронь",
+    },
+    "miniapp_shop_keep_text": {
+        "type": "text", "group": "miniapp", "label": "🛍 Магазин: кнопка «Не отменять»",
+        "prompt": "Кнопка в подтверждении отмены брони — оставить бронь.",
+        "default": "Не отменять",
     },
     "miniapp_empty_admin_tasks": {
         "type": "text", "group": "miniapp", "label": "🗂 Пустой список активных заданий",
@@ -7795,6 +8146,13 @@ SETTINGS_SCHEMA = {
         "type": "enum", "group": "apps", "label": "🎮 Геймификация для делегатов",
         "options": ["on", "off"], "prompt": None, "default": "off",
     },
+    # Предупреждать менеджеров заявок, если форма с вопросом про вуз подключена, а делегации
+    # выключены дольше суток. Включено по умолчанию — иначе делегаты молча получают автоотказ;
+    # выключают, если форма с вузом не про делегации.
+    "delegation_off_alert": {
+        "type": "enum", "group": "apps", "label": "🔔 Напоминать о выключенных делегациях",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
     # Тексты делегату. {university} — вуз ровно так, как он написан в форме.
     "delegation_welcome_text": {
         "type": "text", "group": "reg", "label": "🏫 Текст делегату: ты в списке делегации",
@@ -7808,6 +8166,19 @@ SETTINGS_SCHEMA = {
             "Привет! Ты в списке делегации {university} на {event} 🎉\n\n"
             "Анкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет "
             "QR на вход и все новости мероприятия."
+        ),
+    },
+    # Внешняя форма «📝 Регистрация»: ответ формы стал заявкой — человеку одно сообщение.
+    "ext_reg_pending_text": {
+        "type": "text", "group": "reg", "label": "📝 Текст: заявка из внешней формы получена",
+        "prompt": (
+            "Сообщение человеку, чей ответ во внешней форме с назначением «📝 Регистрация» стал "
+            "заявкой: анкету в боте заполнять не нужно. {event} заменится на название "
+            "мероприятия. Например: «Привет! Твоя заявка на {event} пришла из формы 🙌»"
+        ),
+        "default": (
+            "Привет! Твоя заявка на {event} пришла из формы 🙌\n\n"
+            "Анкету в боте заполнять не нужно. Как только заявку рассмотрят, я напишу сюда."
         ),
     },
     "delegation_welcome_existing_text": {
@@ -7978,9 +8349,9 @@ SETTINGS_SCHEMA = {
     },
     # Квик 260915-twr (D2): служебные сообщения админу о разовой сверке чата сразу после
     # привязки — group "system", но НЕ в _SYSTEM_FIELD_ORDER (handlers/settings/admin_settings.py) —
-    # тот же прецедент, что у delegate_chat_id/delegate_chat_title выше (:3128): экран
-    # настроек их не показывает, это технические тексты о фоновом прогоне, не делегатская
-    # копирайтинг-копия.
+    # тот же прецедент, что у delegate_chat_id/delegate_chat_title выше (:3128): это
+    # технические тексты о фоновом прогоне, не делегатская копирайтинг-копия; правятся в
+    # «🔧 Управление → 🔗 Привязка чата» (domain/settings/chat_fields.py).
     "chat_bind_reconcile_start_text": {
         "type": "text", "group": "system", "label": "💬 Сверка после привязки: старт",
         "prompt": (
@@ -8068,6 +8439,23 @@ SETTINGS_SCHEMA = {
         ),
         "default": "21:00",
         "format": "time",
+    },
+    # «✅ Готовность к форуму» (services/forum/readiness.py): за сколько дней до даты форума
+    # города держатели права settings каждое утро получают список ненастроенного (дата закрытия
+    # регистрации, форма делегаций при выключенных делегациях и т.п.). Дефолт ВКЛ: напоминание
+    # приходит только когда что-то правда не настроено и форум близко.
+    "ready_remind_enabled": {
+        "type": "enum", "group": "system", "label": "🔔 Готовность: напоминать менеджерам",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    "ready_remind_days": {
+        "type": "int", "group": "system", "label": "🔔 Готовность: за сколько дней до форума",
+        "prompt": (
+            "За сколько дней до даты форума города начинать каждое утро (10:00 МСК) присылать "
+            "менеджерам список того, что ещё не настроено. Целое число от 1 до 30.\n\n"
+            "Например: 3"
+        ),
+        "default": 3, "min": 1, "max": 30,
     },
     # Форум-ночь п.7 (переделка, ревью 470ce5e..3703ba4): пометка ВСТРОЕНА в само сообщение
     # (первая строка текста/подписи) рассылки, помеченной важной в мастере
@@ -9557,6 +9945,10 @@ for _ui_key in (
 ):
     _UI_TEXT_SCHEMA[_ui_key]["per_city"] = True
 del _ui_key
+# Фразы и кнопки делегату из задач, оплаты, переноса, варианты анкеты — тот же приём.
+from domain.settings.delegate_text_fields import DELEGATE_TEXT_SCHEMA as _DELEGATE_TEXT_SCHEMA  # noqa: E402
+
+SETTINGS_SCHEMA.update(_DELEGATE_TEXT_SCHEMA)
 
 
 # ── Phase 25 (CITYQ-01): группа "reg_prompts" — тексты вопросов анкеты, переопределяемые по

@@ -29,6 +29,7 @@ from handlers.delegations.admin_delegations import (
     _btn, _current_form, _cut, _e, _kb, _show, _tail_int, _to_screen, deny_locked, render_screen,
 )
 from services.delegations import delegations_mirror
+from services.delegations.delegations_sheet_errors import explain, google_status
 from services.sheets import sheets
 
 logger = logging.getLogger(__name__)
@@ -204,7 +205,7 @@ async def _show_check(callback, state: FSMContext, form: dict, tab: str) -> None
     except Exception as exc:  # noqa: BLE001 — сбой API листа объясняем, не роняем экран
         logger.warning("delegations: сверка листа «%s» не удалась: %s", tab, _exc_label(exc))
         await state.update_data(dlg_tab=tab, dlg_dry=None)
-        await _show(callback, _READ_FAILED.format(tab=_e(tab)),
+        await _show(callback, explain(exc, tab) or _READ_FAILED.format(tab=_e(tab)),
                     _kb([[_btn("🔁 Сверить ещё раз", "dlg_check")],
                          [_btn("📋 Другая вкладка", "dlg_sheet"), _to_screen()]]))
         return

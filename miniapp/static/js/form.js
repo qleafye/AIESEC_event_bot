@@ -589,8 +589,10 @@ function resumeForkControl(h, spec, value, onChange) {
   const box = h("div", { class: "choice-stack", role: "group", "aria-label": spec.label });
   for (const opt of spec.fork_options || []) {
     box.append(h("button", {
-      class: "btn secondary", type: "button", "aria-label": opt.label,
+      class: "btn secondary", type: "button", "aria-label": labelText(opt.label),
       onClick: () => onChange(opt.code),
+      // Lucide-иконка уже стоит слева — ведущий эмодзи подписи реестра не дублируем (в чате
+      // подпись остаётся с эмодзи).
     }, icon(opt.icon), h("span", { text: labelText(opt.label) })));
   }
   return { control: box };

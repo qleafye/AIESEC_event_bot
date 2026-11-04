@@ -28,6 +28,7 @@ from aiogram.dispatcher.event.bases import SkipHandler
 import shared.chat_score as chat_score  # Квик 260927: ключи весов рейтинга чата (группа «💬 Чат делегатов»)
 import shared.favicon as dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
 import domain.settings.ui_text_fields as _UI  # подписи, вынесенные из кода: хвосты экранов групп
+import domain.settings.delegate_text_fields as _DT  # фразы делегату, вынесенные из кода: хвосты экранов
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, option_label
 from database.db import (
     export_users_csv,
@@ -111,9 +112,10 @@ _EVENT_FIELD_ORDER = [
     # «Задать вопрос» — иначе менеджер их на экране группы не увидит вовсе.
     "faq_intro_text", "faq_empty_text", "faq_ask_button_text",
     # Опросы: вступление перед опросом — делегатский текст, рядом с другими текстами меню.
-    "poll_intro_text",
+    "poll_intro_text", "poll_results_admin_hint_text",
     "event_name", "event_name_genitive", "event_season", "event_type", "bot_name",
-    "bot_description", "bot_short_description", *_UI.BOT_COMMAND_FIELD_ORDER, *_UI.INFO_SCREEN_FIELD_ORDER]
+    "bot_description", "bot_short_description", *_UI.BOT_COMMAND_FIELD_ORDER, *_UI.INFO_SCREEN_FIELD_ORDER,
+    *_DT.EVENT_FIELD_ORDER]
 _EVENT_FIELDS = [
     (k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
     for k in _EVENT_FIELD_ORDER
@@ -129,6 +131,7 @@ _REG_FIELD_ORDER = [
     # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5): четыре новых списка вариантов + пояснение
     # кейс-чемпионата — иначе менеджер не увидит их в боте (правило файла).
     "stack_options", "experience_options", "readiness_options", "education_status_options",
+    *_DT.REG_OPTIONS_FIELD_ORDER,  # варианты анкеты без логики по значению
     "edu_studying_statuses",
     "reg_case_optin_description_text",
     # Phase 28 (28-03, SU-02): лимит мультивыбора — числа + тексты, рядом с остальными
@@ -163,6 +166,7 @@ _REG_FIELD_ORDER = [
     # ключей по-прежнему "reg". Кладём в хвост «📝 Регистрация» — это D-18-текст об анкете
     # (что дальше с ЗАЯВКОЙ), а не решение о заявке (то живёт на экране «📋 Заявки»).
     "reject_rules_return_text",
+    "ext_reg_pending_text",  # внешняя форма «📝 Регистрация»: заявка из формы получена
 ]
 
 # Phase 20 (20-01, ADMIN-IA-01): группа «📋 Заявки» — всё, что делегат видит ПОСЛЕ подачи
@@ -276,7 +280,7 @@ _APPS_FIELD_ORDER = [
     # редактор экрана достаётся бесплатно попаданием в этот список (тот же приём, что у
     # forum_welcome_text выше); сам тумблер `forum_stats_card_enabled` и фон карточки — НЕ
     # здесь, живут на своём экране `handlers/forum/admin_forum_stats_card.py`.
-    "forum_stats_card_caption_text", *_UI.BACKGROUND_BUTTON_FIELD_ORDER,
+    "forum_stats_card_caption_text", *_UI.BACKGROUND_BUTTON_FIELD_ORDER, *_DT.APPS_FIELD_ORDER,
 ]
 _PAY_FIELD_ORDER = [
     "payment_options", "payment_requisites", "payment_requisites_by_lc",
@@ -287,12 +291,12 @@ _PAY_FIELD_ORDER = [
     # → «чек получен».
     "payment_option_picker_header_text", "payment_details_template_text",
     "payment_pay_later_text", "payment_pay_later_menu_hint_text",
-    "payment_receipt_received_text",
+    "payment_receipt_received_text", *_DT.PAY_FIELD_ORDER,
 ]
 _PARTY_FIELD_ORDER = [
     "party_closed_text", "approve_text__party",
     # Phase 17.1 (17.1-03, schema-completeness): вопрос развилки формата при /start.
-    "party_fork_text",
+    "party_fork_text", *_DT.PARTY_FIELD_ORDER,
 ]
 _CONSENT_FIELD_ORDER = [
     "consent_button_text", "consent_list", "consent_version", "consent_recollect_text",
@@ -327,10 +331,22 @@ _GAME_FIELD_ORDER = [
     "game_proof_type_label_text", "game_proof_type_label_link",
     "game_proof_type_unspecified_text", "game_task_overdue_hint_text",
     "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
+    # Магазин баллов: тексты брони делегатом (витрина, «🎫 Мои брони», уведомления со стойки).
+    "shop_take_button_text", "shop_reserve_hint_text",
+    "shop_take_confirm_text", "shop_take_confirm_button_text",
+    "shop_reserved_text", "shop_my_reservations_button_text",
+    "shop_my_reservations_header_text", "shop_my_reservations_empty_text",
+    "shop_reservation_qr_button_text", "shop_reservation_cancel_button_text",
+    "shop_cancel_confirm_text", "shop_cancel_confirm_button_text",
+    "shop_cancel_keep_button_text", "shop_cancelled_text",
+    "shop_reservation_gone_text", "shop_reservation_qr_footer_text",
+    "shop_issued_notify_text", "shop_cancelled_by_staff_notify_text",
+    "shop_photos_button_text", "shop_photo_caption_text", "shop_photos_failed_text",
     "balance_history_header_text",
     # Штраф за просрочку и тексты заданий про срок — про задания, не про команду амбассадоров.
     "game_late_penalty_percent", "game_task_no_deadline_text", "game_task_penalty_hint_text",
     *_UI.GAME_SCREEN_FIELD_ORDER,  # 10.10: кнопки экранов «🪙 Баланс»
+    *_DT.GAME_FIELD_ORDER,  # ответы карточки задания и сдачи
 ]
 
 from domain.settings.amb_fields import AMB_FIELD_ORDER as _AMB_FIELD_ORDER  # порядок ключей группы «🤝 Амбассадоры»
@@ -360,6 +376,8 @@ _SYSTEM_FIELD_ORDER = [
     # файла); сам тумблер «❗ Отметить как важное» — не настройка реестра, а кнопка мастера
     # рассылки (handlers/comms/admin_broadcasts.py), сюда НЕ входит.
     "important_broadcast_label",
+    # Напоминание «✅ Готовность к форуму» (services/forum/readiness.py) — тумблер и срок.
+    "ready_remind_enabled", "ready_remind_days",
 ]
 
 # Quick 260815-3hw (TABS-01/02/03): every Google Sheets tab NAME in one group — «📄 Вкладки

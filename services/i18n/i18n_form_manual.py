@@ -446,6 +446,9 @@ _CODE_LITERALS_EN = {
     # Форум-ночь п.7 («❗ Важное»): экран делегата «❗ Важное» (`lit:user_actions.important_today_*`).
     "Сегодня важных рассылок не было.": "No important messages today.",
     "❗ Важные рассылки за сегодня:": "❗ Important messages today:",
+    "[рассылка без текста]": "[message without text]",
+    # Подстановка {season} в приветствии вернувшегося, когда сезон прошлой анкеты не записан.
+    "прошлом событии": "the last event",
     # Форум-ночь п.4 (расписание форума в боте): экран делегата «🗓 Программа» (`lit:program.*`).
     "Программа": "Program",
     "Выберите день:": "Choose a day:",
@@ -750,6 +753,28 @@ _REGISTRY_TEXTS_EN = {
     "http://libretranslate:5000": "http://libretranslate:5000",
     "Не нашёл ответ — спросить менеджера": "Didn't find an answer — ask a manager",
     "Собрали ответы на частые вопросы — может, твой уже здесь:": "We've gathered answers to common questions — yours might already be here:",
+    # Магазин баллов: бронь делегатом.
+    "🛒 Взять: {title} · {price}": "🛒 Take: {title} · {price}",
+    "Нажми «Взять» — баллы спишутся сразу, а товар заберёшь на стойке магазина по коду или QR из «🎫 Мои брони».": "Tap «Take» — points are deducted right away, and you pick up the item at the shop desk with the code or QR from «🎫 My reservations».",
+    "Списать {price} баллов за «{title}»?\nОстанется {left}. Забрать товар — на стойке магазина по коду выдачи.": "Deduct {price} points for «{title}»?\n{left} will be left. Pick up the item at the shop desk with your pickup code.",
+    "✅ Да, списать": "✅ Yes, deduct",
+    "✅ Забронировано: «{title}»\nКод выдачи: <b>{code}</b>\nСписано {price} баллов, на счету {balance}.\n\nПокажи QR ниже или назови код на стойке магазина.": "✅ Reserved: «{title}»\nPickup code: <b>{code}</b>\n{price} points deducted, balance: {balance}.\n\nShow the QR below or tell the code at the shop desk.",
+    "🎫 Мои брони": "🎫 My reservations",
+    "🎫 <b>Мои брони</b>": "🎫 <b>My reservations</b>",
+    "Действующих броней нет.": "No active reservations.",
+    "🔳 QR {code}": "🔳 QR {code}",
+    "✖ Отменить {code}": "✖ Cancel {code}",
+    "Отменить бронь «{title}» (код {code})?\n\nВернём {price} баллов, товар вернётся на витрину, код перестанет работать.": "Cancel the reservation «{title}» (code {code})?\n\nWe'll return {price} points, the item goes back to the showcase, and the code will stop working.",
+    "↩️ Да, отменить бронь": "↩️ Yes, cancel the reservation",
+    "Не отменять": "Keep it",
+    "↩️ Бронь «{title}» отменена, {price} баллов вернулись. На счету: {balance}.": "↩️ Reservation «{title}» cancelled, {price} points returned. Balance: {balance}.",
+    "Эта бронь уже выдана или отменена.": "This reservation has already been picked up or cancelled.",
+    "Покажи этот QR на стойке магазина": "Show this QR at the shop desk",
+    "🛍 {shop}: по брони {code} выдали «{title}».": "🛍 {shop}: «{title}» was handed over for reservation {code}.",
+    "🛍 {shop}: бронь {code} «{title}» отменили на стойке, {price} баллов вернулись. На счету: {balance}.": "🛍 {shop}: reservation {code} «{title}» was cancelled at the desk, {price} points returned. Balance: {balance}.",
+    "🖼 Фото товаров": "🖼 Item photos",
+    "{title} — {price} баллов": "{title} — {price} points",
+    "Фото сейчас не загрузились — попробуй ещё раз через минуту.": "Photos didn't load right now — try again in a minute.",
     "🏆 <b>Рейтинг по монетам</b>": "🏆 <b>Coin leaderboard</b>",
     "Твоё место: <b>{rank}</b> · баланс: <b>{balance}</b>": "Your place: <b>{rank}</b> · balance: <b>{balance}</b>",
     "👋 Ты начал(а) регистрацию, но не закончил(а). Нажми кнопку ниже или отправь /start — это займёт пару минут.": "👋 You started your registration but didn't finish it. Tap the button below or send /start — it takes a couple of minutes.",
@@ -760,6 +785,9 @@ _REGISTRY_TEXTS_EN = {
     "Кнопка «💳 Оплата» будет в меню, пока чек не отправлен.": "The «💳 Payment» button will stay in the menu until you send the receipt.",
     "Ок! Оплатишь позже.": "Ok! You'll pay later.",
     "✅ Чек получен! Менеджер проверит его в ближайшее время.": "✅ Receipt received! A manager will check it shortly.",
+    # Фоновые напоминания об оплате (payment_reminder_text / payment_overdue_text).
+    "⏰ Напоминание об оплате участия!\n\nСрок оплаты истекает скоро. Загрузи чек оплаты через бота.": "⏰ Payment reminder!\n\nThe payment deadline is coming up soon. Upload your payment receipt via the bot.",
+    "⚠️ Срок оплаты участия истёк.\n\nЕсли ты ещё планируешь участвовать — загрузи чек через бота (кнопка «💳 Оплата» в меню) или свяжись с организатором.": "⚠️ The payment deadline has passed.\n\nIf you still plan to take part, upload your receipt via the bot (the «💳 Payment» button in the menu) or contact the organizer.",
     "⏳ Твоя заявка на рассмотрении. Доступ откроется после одобрения.": "⏳ Your application is under review. Access will open once it's approved.",
     "Ты в листе ожидания. Мы напишем, если освободится место.": "You're on the waiting list. We'll message you if a place opens up.",
     "Лист ожидания": "Waiting list",
@@ -837,13 +865,13 @@ _REGISTRY_TEXTS_EN = {
     "Повторяемые блоки": "Repeatable blocks",
     "Заявка отправлена заново": "Application resubmitted",
     "Здесь резюме принимается текстом — напиши коротко в ответном сообщении.": "Here your CV is accepted as text — write a short reply message.",
-    "Файл больше 20 МБ — сожмите или пришлите ссылку в описании.": "File is larger than 20 MB — compress it or send a link in the description.",
+    "Файл больше 10 МБ — сожмите или пришлите ссылку в описании.": "File is larger than 10 MB — compress it or send a link in the description.",
     "Не удалось загрузить файл — попробуй ещё раз или пришли резюме текстом.": "Couldn't upload the file — try again or send your CV as text.",
     "Выбери вариант резюме кнопкой ещё раз: приложи файл, дай ссылку или напиши о себе текстом.": "Pick your CV option with a button again: attach a file, share a link or write about yourself as text.",
     "Файл резюме ещё не загрузился — прикрепи его ещё раз.": "Your CV file hasn't uploaded yet — please attach it again.",
     "Выбрать другой способ": "Choose another way",
     "Чтобы загрузить файл, открой чат с ботом и нажми /start — или напиши о себе текстом.": "To upload a file, open the chat with the bot and tap /start — or write about yourself as text.",
-    "Резюме принимается как PDF или DOCX — другой формат не подойдёт.": "Your CV is accepted as PDF or DOCX — other formats won't work.",
+    "Этот формат не подойдёт — резюме принимается файлом {formats}. Сохрани документ как PDF (в Word: «Файл → Сохранить как → PDF») и загрузи снова.": "This format won't work — your CV is accepted as a {formats} file. Save the document as PDF (in Word: “File → Save As → PDF”) and upload it again.",
     "📱 Поделиться номером": "📱 Share phone number",
     "Вместо строчки «Анкета: одобрена» в профиле": "Instead of the «Application: approved» line in the profile",
     "Экран статуса заявки во всю ширину": "Full-width application status screen",
@@ -1218,6 +1246,9 @@ _NEUTRAL_DEFAULTS_EN: dict[str, str] = {
         "You're no longer on the ambassador team. Thank you for your help! Your invite link keeps working, and your points stay with you.",
     "Спасибо, что откликнулся! Места в команде амбассадоров уже заняты, но мы всё равно тебя очень ждём — следи за новостями.":
         "Thank you for responding! All spots on the ambassador team are already taken, but we're still really looking forward to seeing you — stay tuned for news.",
+    # Внешняя форма «📝 Регистрация» (ext_reg_pending_text), дефолт реестра байт-в-байт.
+    "Привет! Твоя заявка на {event} пришла из формы 🙌\n\nАнкету в боте заполнять не нужно. Как только заявку рассмотрят, я напишу сюда.":
+        "Hi! Your application for {event} came in from the form 🙌\n\nNo need to fill in the questionnaire in the bot. As soon as your application is reviewed, I'll write here.",
     "Привет! Ты в списке делегации {university} на {event} 🎉\n\nАнкету заполнять не нужно — заявка уже одобрена. Ниже меню участника: там будет QR на вход и все новости мероприятия.":
         "Hi! You're on the {university} delegation list for {event} 🎉\n\nNo need to fill in the questionnaire — your application is already approved. Below is the participant menu: your entry QR and all event news will be there.",
     "Задания и монеты для делегаций вузов здесь выключены. Всё остальное — программа, QR на вход, новости — работает как обычно.":
@@ -1286,8 +1317,35 @@ _POINTS_261010_EN = {
         "Tasks and points for university delegations are switched off here. Everything else — the programme, the entry QR, the news — works as usual.",
 }
 
+# Чат (`reg_i18n.tr_text`) снимает ведущий эмодзи/символ ДО поиска перевода — тексту делегату с
+# префиксом нужен ключ и без него, иначе английский делегат видит русский (ошибки чека, «срок
+# сдачи вышел», подписи развилки формата, фоновые напоминания об оплате).
+_CHAT_CORE_EN = {
+    "Срок сдачи вышел. Отправить можно, но начислять баллы будет решать менеджер.":
+        "The deadline has passed. You can still submit, but a manager will decide on the points.",
+    "рассылка без текста]": "message without text]",
+    "Важные рассылки за сегодня:": "Important messages today:",
+    "Принимается только PDF-документ. Для скриншота используй функцию отправки фото.":
+        "Only a PDF document is accepted. For a screenshot, use the photo-sending option.",
+    "Файл слишком большой (максимум 10 МБ). Пришли чек меньшего размера.":
+        "File is too large (max 10 MB). Send a smaller receipt.",
+    "Изображение слишком большое (максимум 10 МБ). Пришли чек меньшего размера.":
+        "Image is too large (max 10 MB). Send a smaller receipt.",
+    "Слишком часто. Подожди пару секунд и попробуй снова.":
+        "Too often. Wait a couple of seconds and try again.",
+    "Отправь чек оплаты (PDF-документ или фото).\nИли /start — вернуться в меню (загрузить чек можно будет позже).":
+        "Send your payment receipt (a PDF document or photo).\nOr /start — return to the menu (you can upload the receipt later).",
+    "⏭ Оплачу позже": "⏭ I'll pay later",
+    "Гости с ночёвкой": "Guests with overnight stay",
+    "Гости без ночёвки": "Guests without overnight stay",
+    "Напоминание об оплате участия!\n\nСрок оплаты истекает скоро. Загрузи чек оплаты через бота.":
+        "Payment reminder!\n\nThe payment deadline is coming up soon. Upload your payment receipt via the bot.",
+    "Срок оплаты участия истёк.\n\nЕсли ты ещё планируешь участвовать — загрузи чек через бота (кнопка «💳 Оплата» в меню) или свяжись с организатором.":
+        "The payment deadline has passed.\n\nIf you still plan to take part, upload your receipt via the bot (the «💳 Payment» button in the menu) or contact the organizer.",
+}
+
 FORM_DEFAULT_EN: dict[str, str] = {
-    **_PROMPT_DEFAULTS_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
+    **_PROMPT_DEFAULTS_EN, **_CHAT_CORE_EN, **_STEP_HELP_EN, **_REG_LABELS_EN, **_SUMMARY_LABELS_EN,
     **_OPTIONS_EN, **_CODE_LITERALS_EN, **_ENGINE_DYNAMIC_EN, **_REGISTRY_TEXTS_EN,
     **_AMBASSADOR_WAVE_TEXTS_EN, **_NEUTRAL_DEFAULTS_EN, **_POINTS_261010_EN,
     # Подписи кнопок главного меню (группа menu_labels): дефолты переведены руками в MENU_EN —
