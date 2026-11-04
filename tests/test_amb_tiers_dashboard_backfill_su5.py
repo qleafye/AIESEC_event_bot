@@ -192,6 +192,52 @@ def test_preview_quota_order_by_approval_time(tmp_path):
 
 
 
+def test_setting_for_city_scope_follows_city_ladder(tmp_path):
+    """Оверрайд `{key}__city__{code}` не протекает: модуль выключен, ключ без per_city,
+    город пустой или «*», пустая запись — общее значение. Непустой оверрайд per_city-ключа
+    при включённом модуле — городское."""
+    import sqlite3
+
+    from dashboard.amb_tiers_block import setting_for_city_scope
+
+    conn = sqlite3.connect(str(tmp_path / "tiers_city_scope.db"))
+    conn.execute("CREATE TABLE bot_settings (key TEXT PRIMARY KEY, value TEXT)")
+
+    def put(key, value):
+        conn.execute(
+            "INSERT INTO bot_settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+    class _City:
+        def __init__(self, city):
+            self.city = city
+
+    put("amb_qualified_program", "off")
+    put("amb_qualified_program__city__spb", "on")
+    put("event_season", "ALL")
+    put("event_season__city__spb", "CITY")
+    try:
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("spb")) == "off"
+        put("event_city_enabled", "off")
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("spb")) == "off"
+        put("event_city_enabled", "")
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("spb")) == "off"
+        put("event_city_enabled", "on")
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("spb")) == "on"
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City(None)) == "off"
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("*")) == "off"
+        assert setting_for_city_scope(conn, "amb_qualified_program", None) == "off"
+        put("amb_qualified_program__city__spb", "   ")
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("spb")) == "off"
+        put("amb_qualified_program__city__spb", "")
+        assert setting_for_city_scope(conn, "amb_qualified_program", _City("spb")) == "off"
+        assert setting_for_city_scope(conn, "event_season", _City("spb")) == "ALL"
+    finally:
+        conn.close()
+
+
 def test_block_quota_zero_is_zero_not_default(tmp_path):
     """Квота 0 = слотов нет — дашборд показывает 0 из 0, как и бот, а не «из 15»."""
     path = _ready(tmp_path)
