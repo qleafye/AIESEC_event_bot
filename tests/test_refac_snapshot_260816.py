@@ -632,6 +632,8 @@ def _build_snapshot_lines():
 # Дрифт-нота (28.10, сертификаты после форума): +18 хендлеров, чистые вставки (1325 -> 1343), пересчитано
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 4 вставки, 0 удалений, 0 реордеров.
 # admin.router: certadm_* (handlers/forum/admin_certificates.py, хвост admin.py) — 4 message + 9 callback_query;
+# Дрифт-нота (04.11, сертификат волонтёра уходит сам): +2 admin.callback_query certadm_yes/certadm_rm
+# сразу после certadm_ppl, чистая вставка (1369 -> 1371).
 # user_actions.router: /certificate, ввод имени, cert_get/cert_edit/cert_ok — ПЕРЕД reg_handoff_idle_fallback.
 # Дрифт-нота (28.10, магазин баллов): +25 хендлеров, чистые вставки (1343 -> 1368), пересчитано
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 3 вставки, 0 удалений, 0 реордеров.
@@ -886,6 +888,8 @@ admin|message|certadm_open_input|state:CertAdmin:*
 admin|message|certadm_tpl_file|state:CertAdmin:*
 admin|message|certadm_tpl_not_file|state:CertAdmin:*
 admin|message|certadm_ppl_input|state:CertAdmin:*
+admin|message|certadm_ppl_file|state:CertAdmin:*
+admin|message|certadm_ppl_other|state:CertAdmin:*
 admin|message|shop_command|cmd:shop
 admin|message|shop_find_input|state:ShopAdmin:*
 admin|message|shop_new_input|state:ShopAdmin:*
@@ -1809,6 +1813,8 @@ admin|callback_query|certadm_tpls|certadm_tpls
 admin|callback_query|certadm_tpl|certadm_tpl:*
 admin|callback_query|certadm_tpldel|certadm_tpldel:*
 admin|callback_query|certadm_ppl|certadm_ppl:*
+admin|callback_query|certadm_yes|certadm_yes:*
+admin|callback_query|certadm_rm|certadm_rm:*
 admin|callback_query|certadm_clr|certadm_clr:*
 admin|callback_query|certadm_clrgo|certadm_clrgo:*
 admin|callback_query|certadm_preview|certadm_preview
@@ -2675,20 +2681,14 @@ def test_snapshot_total_handler_count_is_292():
     # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
     # 03.11 (экран чата города): +18 admin.router, чистая вставка (1369 -> 1387).
-    # Лист ожидания: +2 admin.callback_query (appr_waitlist, toggle_apps_waitlist) сразу после
-    # prog_wretime и перед phchk_save.
-    # Запись на интервью: +1 admin.message interview_admin_value после prog_hallname_step,
-    # +2 admin.callback_query (open_interviews, interview_admin_tap) сразу после
-    # toggle_apps_waitlist, +1 admin.callback_query bciv_toggle сразу после bcstatus_filter,
-    # +4 user_actions.callback_query в хвосте после unmute_broadcasts_today.
-    # Партнёрский CSV: +1 admin.callback_query show_partner_export сразу после
-    # settings_edit_all (хвост admin_settings.py).
-    # Кнопка согласия в рассылке: +4 admin.callback_query (bc_consent_open/long/pick/clear)
-    # сразу после bciv_toggle и перед admin_event_preset, +1 user_actions.callback_query
-    # consent_tap в хвосте после iv_moveto.
+    # Лист ожидания, интервью, партнёрский CSV и согласие в рассылке: +16.
     # Вместе с чатом города: 1369 + 18 + 16 = 1403.
     # 03.11 (/find по id и пересылке): +3 admin.message после полей чата города (1403 -> 1406).
-    assert len(GOLDEN_SNAPSHOT) == 1406
+    # 04.11 (сертификат волонтёра и амбассадора уходит сам): +2 admin.callback_query
+    # certadm_yes/certadm_rm сразу после certadm_ppl.
+    # 04.11 (список людей файлом): +2 admin.message certadm_ppl_file/certadm_ppl_other
+    # сразу после certadm_ppl_input. Вместе: 1406 + 4 = 1410.
+    assert len(GOLDEN_SNAPSHOT) == 1410
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
