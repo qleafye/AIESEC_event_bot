@@ -166,6 +166,26 @@ async def unlink(row_id: int, telegram_id: int) -> None:
     )
 
 
+async def set_note(row_id: int, note: str) -> None:
+    """Пометка ответа целиком. Статусы «проверить» сюда не пишут — у них свой `set_decision`."""
+    await _exec(
+        "UPDATE delegation_answers SET note = ? WHERE id = ?",
+        (note, int(row_id)),
+    )
+
+
+async def list_linked_by_note(form_id: int, notes: tuple[str, ...], limit: int) -> list[dict]:
+    """Привязанные ответы с одной из пометок. Пустой набор — пустой список без запроса."""
+    if not notes:
+        return []
+    marks = ",".join("?" * len(notes))
+    return await _fetchall(
+        "SELECT * FROM delegation_answers WHERE form_id = ? AND linked_telegram_id IS NOT NULL "
+        f"AND note IN ({marks}) ORDER BY id LIMIT ?",
+        (int(form_id), *notes, int(limit)),
+    )
+
+
 async def people_by_username(needle: str | None) -> list[int]:
     """telegram_id всех, у кого в боте (анкета или только /start) такой ник; без учёта регистра."""
     key = _db.username_needle(needle)
