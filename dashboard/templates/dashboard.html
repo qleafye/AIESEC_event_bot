@@ -4,7 +4,7 @@
 
   <header class="site-header">
     <div class="brand-row">
-      <a class="brand" href="/" aria-label="АЙСЕК — на главную">
+      <a class="brand" href="/{% if event_code %}?event={{ event_code | urlencode }}{% endif %}" aria-label="АЙСЕК — на главную">
         <img class="brand-light" src="/static/brand/aisek-logo-ru.png" alt="АЙСЕК">
         <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
       </a>
@@ -22,16 +22,22 @@
       </div>
     </div>
 
+    {% if event_code %}
+    <nav class="switchers" aria-label="Навигация">
+      <a class="switch-link" href="/compare">К сравнению событий</a>
+    </nav>
+    {% endif %}
+
     {% if show_city_switcher %}
     <nav class="switchers" aria-label="Город">
       <span class="switchers-label">Город:</span>
       <a class="switch-link{% if not scope.city %} active{% endif %}"
          {% if not scope.city %}aria-current="page"{% endif %}
-         href="?{% if scope.season %}season={{ scope.season }}&{% endif %}{% if cuts_approved %}who=approved{% endif %}">Все города</a>
+         href="?{% if event_code %}event={{ event_code | urlencode }}{% if scope.season or cuts_approved %}&{% endif %}{% endif %}{% if scope.season %}season={{ scope.season }}&{% endif %}{% if cuts_approved %}who=approved{% endif %}">Все города</a>
       {% for city in city_options %}
       <a class="switch-link{% if scope.city == city.code %} active{% endif %}"
          {% if scope.city == city.code %}aria-current="page"{% endif %}
-         href="?city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}{% if cuts_approved %}&who=approved{% endif %}">{{ city.label }}</a>
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}{% if cuts_approved %}&who=approved{% endif %}">{{ city.label }}</a>
       {% endfor %}
     </nav>
     {% elif viewer.bound_city %}
@@ -45,7 +51,7 @@
       {% set is_active = (scope.season and scope.season == season.value) or (not scope.season and season.current) %}
       <a class="switch-link{% if is_active %} active{% endif %}"
          {% if is_active %}aria-current="page"{% endif %}
-         href="?{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}{% if cuts_approved %}&who=approved{% endif %}">{{ season.label }}</a>
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}{% if cuts_approved %}&who=approved{% endif %}">{{ season.label }}</a>
       {% endfor %}
     </nav>
     {% endif %}
@@ -430,7 +436,7 @@
        свои фильтры в URL, на главной они спорили бы со свитчерами города/сезона. #}
     <section class="block">
       <div class="card">
-        <a class="switch-link" href="/sources{% if scope.city %}?city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням — сколько пришло по каждому каналу в любой день</a>
+        <a class="switch-link" href="/sources{% if event_code or scope.city %}?{% endif %}{% if event_code %}event={{ event_code | urlencode }}{% if scope.city %}&{% endif %}{% endif %}{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням — сколько пришло по каждому каналу в любой день</a>
       </div>
     </section>
 
@@ -1040,7 +1046,7 @@
     {% if chat_bindings %}
     <section class="block">
       <div class="card">
-        <a class="switch-link" href="/chat">💬 Чат делегатов — активность и рейтинг</a>
+        <a class="switch-link" href="/chat{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">💬 Чат делегатов — активность и рейтинг</a>
       </div>
     </section>
     {% endif %}
@@ -1053,9 +1059,9 @@
      страницы форума (SOS/доставка решений) не привязаны к отметкам входа. #}
   <section class="block">
     <div class="card">
-      <a class="switch-link" href="/forum">🎪 Статистика форума</a>
-      <a class="switch-link" href="/feedback{% if scope.city %}?city={{ scope.city | urlencode }}{% endif %}">Опросы и фидбек</a>
-      <a class="switch-link" href="/sources{% if scope.city %}?city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням</a>
+      <a class="switch-link" href="/forum{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">🎪 Статистика форума</a>
+      <a class="switch-link" href="/feedback{% if event_code or scope.city %}?{% endif %}{% if event_code %}event={{ event_code | urlencode }}{% if scope.city %}&{% endif %}{% endif %}{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}">Опросы и фидбек</a>
+      <a class="switch-link" href="/sources{% if event_code or scope.city %}?{% endif %}{% if event_code %}event={{ event_code | urlencode }}{% if scope.city %}&{% endif %}{% endif %}{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням</a>
     </div>
   </section>
 

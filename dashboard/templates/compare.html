@@ -65,9 +65,9 @@
   </div>
   {% endif %}
 
-  {# Сводная таблица KPI (строка = событие) #}
-  <section class="block">
-    <h2 class="block-title">Событие рядом</h2>
+  {# Заявки: узкая таблица, без воронки, динамики, играющих и вопросов #}
+  <section class="block" id="applications">
+    <h2 class="block-title">Заявки</h2>
     <div class="card">
       <div class="table-wrap">
         <table class="responsive compare-table">
@@ -79,13 +79,6 @@
               <th class="num">Конверсия старт → заявка</th>
               <th class="num">За 7 дней (Δ)</th>
               <th class="num">Обработка</th>
-              {% if show_game_columns %}
-              <th class="num">В игре</th>
-              <th class="num">Модерация</th>
-              {% endif %}
-              {% if show_question_column %}
-              <th class="num">Ответ</th>
-              {% endif %}
               <th>Дата события</th>
             </tr>
           </thead>
@@ -94,7 +87,11 @@
             <tr>
               <td data-label="Событие">
                 <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+                {% if e.available %}
+                <a href="/?event={{ e.code | urlencode }}">{{ e.name }}</a>
+                {% else %}
                 {{ e.name }}
+                {% endif %}
                 {% if not e.available %}
                 <span class="cell-empty" title="{{ e.error }}">— недоступно</span>
                 {% elif e.season_options | length > 1 %}
@@ -117,13 +114,6 @@
               <td class="num" data-label="Конверсия старт → заявка"><span class="cell-empty">—</span></td>
               <td class="num" data-label="За 7 дней (Δ)"><span class="cell-empty">—</span></td>
               <td class="num" data-label="Обработка"><span class="cell-empty">—</span></td>
-              {% if show_game_columns %}
-              <td class="num" data-label="В игре"><span class="cell-empty">—</span></td>
-              <td class="num" data-label="Модерация"><span class="cell-empty">—</span></td>
-              {% endif %}
-              {% if show_question_column %}
-              <td class="num" data-label="Ответ"><span class="cell-empty">—</span></td>
-              {% endif %}
               <td data-label="Дата события"><span class="cell-empty">—</span></td>
               {% else %}
               <td class="num" data-label="Заявок">{{ e.kpi.total | thousands }}</td>
@@ -144,13 +134,6 @@
                 {% endif %}
               </td>
               <td class="num" data-label="Обработка">{{ e.kpi.processing_avg_label }}</td>
-              {% if show_game_columns %}
-              <td class="num" data-label="В игре">{% if e.game_participants is none %}<span class="cell-empty">—</span>{% else %}{{ e.game_participants | thousands }}{% endif %}</td>
-              <td class="num" data-label="Модерация">{{ e.kpi.game_review_avg_label }}</td>
-              {% endif %}
-              {% if show_question_column %}
-              <td class="num" data-label="Ответ">{{ e.kpi.question_answer_avg_label }}</td>
-              {% endif %}
               <td data-label="Дата события">
                 {{ e.event_date or "—" }}
                 {% if e.days_to_event is not none %}
@@ -168,7 +151,7 @@
   </section>
 
   {# Воронки рядом (строка = ступень, столбец = событие) #}
-  <section class="block">
+  <section class="block" id="funnel">
     <h2 class="block-title">Воронка рядом</h2>
     <div class="card">
       {% if funnel_labels %}
@@ -213,7 +196,7 @@
   </section>
 
   {# Динамика несколькими сериями (линия = событие, ось — день N либо календарь) #}
-  <section class="block">
+  <section class="block" id="dynamics">
     <h2 class="block-title">Динамика регистраций</h2>
     <nav class="switchers axis-toggle" aria-label="Ось времени">
       <a class="switch-link{% if axis == 'day_n' %} active{% endif %}"
@@ -316,6 +299,78 @@
     </div>
   </section>
   {% endfor %}
+
+  {% if show_players %}
+  <section class="block" id="players">
+    <h2 class="block-title">Число играющих</h2>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="responsive compare-table">
+          <thead>
+            <tr>
+              <th>Событие</th>
+              <th class="num">Играющих</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in events %}
+            <tr>
+              <td data-label="Событие">
+                <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+                {{ e.name }}
+              </td>
+              <td class="num" data-label="Играющих">
+                {% if e.game_participants is none %}
+                <span class="cell-empty" title="{% if not e.available %}{{ e.error }}{% else %}у этого события игра выключена или сдач ещё нет{% endif %}">—</span>
+                {% else %}
+                {{ e.game_participants | thousands }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="empty-note">Считаются люди, которые сдали хотя бы одно задание. Время проверки — на странице события, в разделе «Вовлечение».</p>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if show_questions %}
+  <section class="block" id="questions">
+    <h2 class="block-title">Число вопросов</h2>
+    <div class="card">
+      <div class="table-wrap">
+        <table class="responsive compare-table">
+          <thead>
+            <tr>
+              <th>Событие</th>
+              <th class="num">Вопросов</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in events %}
+            <tr>
+              <td data-label="Событие">
+                <span class="series-dot" aria-hidden="true" style="--series-color: {{ e.accent or 'var(--chart-1)' }}"></span>
+                {{ e.name }}
+              </td>
+              <td class="num" data-label="Вопросов">
+                {% if e.questions_total is none %}
+                <span class="cell-empty" title="{% if not e.available %}{{ e.error }}{% else %}у этого события вопросов делегатов нет{% endif %}">—</span>
+                {% else %}
+                {{ e.questions_total | thousands }}
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="empty-note">Это сколько вопросов задали, а не сколько минут ждали ответ. Время ответа — на странице события, в разделе «Модерация и ответы».</p>
+    </div>
+  </section>
+  {% endif %}
 
   {% if dynamics.series and dynamics.labels %}
   <script src="/static/vendor/chart.umd.min.js"></script>
