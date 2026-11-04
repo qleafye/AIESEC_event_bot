@@ -1,14 +1,11 @@
-// Экран «⚙️ Настройки» (фаза 22, D-01…D-15; Phase 22 Plan 07, D-16: пересмотр владельца
-// 03.09 — НЕ одна длинная страница). Два маршрута одного модуля:
-//   #/settings        — стартовый экран: общий поиск по ВСЕМ настройкам сразу + два ряда
-//                        плиток разделов («Нужно менеджеру» / «Реже», `sections[].tier`
-//                        считает `settings_ops.SETTINGS_MAIN_SECTIONS`, JS ничего не решает
-//                        сам — T-19-45, код раздела человеку не показывается, только подпись).
-//   #/settings/{code}  — страница одного раздела: заголовок раздела + назад (Telegram
-//                        BackButton, тот же общий механизм app.js, что у #/task/{id} — экран
-//                        не рисует свою кнопку «назад»), группы/строки настроек раздела,
-//                        гибридное сохранение (тумблер — сразу, остальное — пакетом с diff/
-//                        confirm/stale).
+// Экран настроек (фаза 22, D-01…D-15; фаза 40: полки больше не первый экран).
+//   #/settings         — без кода: пишет режим менеджера и открывает #/hub. Ряды плиток
+//                        здесь не рисуются. Подписи входов живут в хабе, не в этом файле.
+//   #/settings/{code}  — редактор. Старый код раздела или виртуальный row-* (только своя
+//                        пачка ключей). Заголовок и назад — прежний механизм app.js, экран
+//                        свою кнопку «назад» не рисует. Поиск по подписи — внутри раздела.
+//   #/settings/{code}/{key} — тот же редактор, ключ раскрыт. Гибридное сохранение
+//                        (тумблер сразу, остальное пакетом с diff/confirm/stale) то же.
 //
 // Экран — ПОТРЕБИТЕЛЬ `form.js` (план 22-03): ни одного собственного контрола по типу поля,
 // ни одной надписи литералом — все тексты идут из `texts` ответа `GET .../settings/all`
@@ -24,7 +21,7 @@
 // показывает ОБЩЕЕ число несохранённых правок по всем разделам сразу и одним batch сохраняет
 // все разом (сервер уже давно это умеет — `settings/batch` не завязан на «текущий» раздел).
 
-import { sectionTitle, emptyState, errorState, labelText, tile, formatCount, formV2Text } from "../ui.js";
+import { sectionTitle, emptyState, errorState, labelText, formatCount, formV2Text } from "../ui.js";
 import { icon } from "../icons.js";
 import { haptic } from "../motion.js";
 import { MAX_SIDE_ASSET, shrinkPhoto } from "../photo_shrink.js";
@@ -40,21 +37,6 @@ const AUTH_EXCEPT_REASONS = ["not_editable"];
 function isAuthError(err) {
   return isAuthErrorBase(err, AUTH_EXCEPT_REASONS);
 }
-
-// Иконка плитки раздела (Lucide, план 19.1-04 инвентарь) — сопоставление в JS, а не с
-// сервера: код раздела уже приходит (`section.token`), заводить ещё одно API-поле под
-// единственный выбор из семи готовых иконок — лишний контракт (наименьшее из решений,
-// допущенных Claude's Discretion 22-CONTEXT). Раздел без записи (новый токен в будущем)
-// остаётся без иконки — плитка всё равно рабочая, просто без левой картинки.
-const SECTION_ICONS = {
-  event: "calendar",
-  form: "clipboard-list",
-  apps: "check-circle-2",
-  pay: "wallet",
-  game: "trophy",
-  data: "bar-chart-2",
-  manage: "settings",
-};
 
 // Phase 30 (30-07, задача 2, A2-08, 30-UI-SPEC.md § «Экран менеджера "Анкета мероприятия"»,
 // артборд 13): блок «Анкета мероприятия» рисуется ТОЛЬКО для раздела «form» — единственная
@@ -175,11 +157,10 @@ const originalItems = new Map(); // key -> последний ПОДТВЕРЖД
 // очищается при уходе с раздела — иначе diff/stale по ключу с ДРУГОГО раздела не нашёл бы item.
 function setOriginal(item) { originalItems.set(item.key, item); }
 
-// Task 260915-skg (P6): single-flight guard для `GET /admin/settings/all` — открытие экрана
-// (renderStart/renderSection) и точки повторного входа (onCityPick, хвост saveToggle) могут
-// позвать loadAndRender почти одновременно; оба loadAndRender ниже берут ЭТОТ промис, если он
-// уже летит, иначе заводят новый и снимают его в finally — «один запрос на открытие экрана и
-// один после сохранения, если иначе никак» (докстринг saveToggle).
+// Task 260915-skg (P6): single-flight guard для `GET /admin/settings/all`. Корень настроек
+// реестр не читает. Вызов один — загрузка раздела (renderSection). Повторный вход (onCityPick,
+// хвост saveToggle) берёт ЭТОТ промис, если он уже летит, иначе заводит новый и снимает его
+// в finally.
 let allInFlight = null;
 
 // Слушатели живут вне замыкания render() (модульные переменные), чтобы unmount() мог снять
@@ -194,7 +175,7 @@ export async function render(root, params, ctx) {
   return renderStart(root, ctx);
 }
 
-// ══ Стартовый экран: общий поиск + плитки разделов (D-16) ════════════════════════════════
+// Плоский список раздела — поиск по подписи внутри редактора, не второй дом.
 
 function sectionItemsFlat(section) {
   const out = [...section.toggles];
@@ -217,218 +198,206 @@ function sectionItemCount(section) {
   return section.toggles.length + section.groups.reduce((n, g) => n + g.items.length, 0);
 }
 
-async function renderStart(root, ctx) {
-  const { h, api, me, navigate } = ctx;
+// Коды строк настроек. Подписи живут в хабе; здесь только отбор ключей из
+// уже пришедшего settings/all. Неизвестный код остаётся прежним редактором раздела.
+const MANAGER_MODE_KEY = "aiesec_miniapp_manager_mode_v1";
 
-  let texts = {};
-  let payload = null;
+const ROW_CODES = [
+  "row-menu",
+  "row-texts",
+  "row-questions",
+  "row-reminders",
+  "row-pay",
+  "row-chat",
+  "row-amb",
+  "row-rare",
+];
 
-  const title = h("h1", {});
-  const searchInput = h("input", {
-    class: "input", type: "search", disabled: true,
-    onInput: () => onSearchInput(),
+const ROW_FILTERS = {
+  "row-menu": { groups: new Set(["menu"]) },
+  "row-texts": { groups: new Set(["menu_labels"]), regText: true },
+  "row-questions": { groups: new Set(["reg_questions", "reg_prompts"]) },
+  "row-reminders": {
+    prefixes: ["session_enroll_"],
+    keys: new Set([
+      "pending_reminder_enabled",
+      "nudge_enabled",
+      "quiet_hours_enabled",
+      "quiet_hours_start",
+      "quiet_hours_end",
+      "quiet_hours_manager_notice_text",
+      "payment_reminders_enabled",
+    ]),
+  },
+  "row-pay": {
+    groups: new Set(["pay", "consent"]),
+    keys: new Set(["payment_enabled"]),
+    skip: new Set(["payment_reminders_enabled"]),
+  },
+  "row-chat": {
+    groups: new Set(["chat"]),
+    keys: new Set(["chat_tracking_enabled"]),
+    skip: new Set(["chat_rules_social_tasks"]),
+  },
+  "row-amb": { groups: new Set(["amb"]) },
+  "row-rare": {
+    groups: new Set(["miniapp", "system", "dashboard"]),
+    prefixes: ["event_city_", "daily_digest_"],
+    tail: true,
+  },
+};
+
+const ROW_GROUP_ORDER = {
+  "row-texts": ["menu_labels", "reg"],
+  "row-questions": ["reg_questions", "reg_prompts"],
+  "row-pay": ["pay", "consent"],
+  "row-rare": ["miniapp", "system", "dashboard"],
+};
+
+// event/form/apps/pay/amb/manage/data остаются редактором, но ключ строки и ключи
+// на delegation_ из них выпадают. Группы party, game, sheets, event целиком не
+// снимаются: своей строки нет, чат их ещё редактирует. «Новый сезон» сюда не рисуется.
+const OLD_SECTION_CODES = new Set(["event", "form", "apps", "pay", "amb", "manage", "data"]);
+const SETTINGS_ROW_HIDDEN = new Set(["chat_rules_social_tasks"]);
+
+function itemBase(item) {
+  return (item && (item.base_key || item.key)) || "";
+}
+
+function rowClaims(row, item, groupToken) {
+  const base = itemBase(item);
+  if (!base || base.startsWith("delegation_") || SETTINGS_ROW_HIDDEN.has(base)) return false;
+  const spec = ROW_FILTERS[row];
+  if (!spec) return false;
+  if (spec.skip && spec.skip.has(base)) return false;
+  if (spec.groups && spec.groups.has(groupToken)) return true;
+  if (spec.regText && groupToken === "reg" && (item.type === "text" || item.type === "textarea")) {
+    return true;
+  }
+  if (spec.keys && spec.keys.has(base)) return true;
+  if (spec.prefixes) {
+    for (const prefix of spec.prefixes) {
+      if (!base.startsWith(prefix)) continue;
+      if (spec.tail && claimedByOtherRow(item, groupToken, row)) return false;
+      return true;
+    }
+  }
+  return false;
+}
+
+function claimedByOtherRow(item, groupToken, except) {
+  for (const row of ROW_CODES) {
+    if (row === except) continue;
+    if (rowClaims(row, item, groupToken)) return true;
+  }
+  return false;
+}
+
+function claimedByAnyRow(item, groupToken) {
+  for (const row of ROW_CODES) {
+    if (rowClaims(row, item, groupToken)) return true;
+  }
+  return false;
+}
+
+function dropFromOldSection(item, groupToken) {
+  const base = itemBase(item);
+  if (base.startsWith("delegation_") || SETTINGS_ROW_HIDDEN.has(base)) return true;
+  return claimedByAnyRow(item, groupToken);
+}
+
+function takeGroup(group, items) {
+  if (!items.length) return null;
+  const copy = { token: group.token, label: group.label, items };
+  if (items.length === (group.items || []).length) {
+    if (group.matrix) copy.matrix = group.matrix;
+    if (group.theme_preview) copy.theme_preview = true;
+  }
+  return copy;
+}
+
+function orderGroups(code, groups) {
+  const pref = ROW_GROUP_ORDER[code];
+  if (!pref) return groups;
+  const rank = new Map(pref.map((token, i) => [token, i]));
+  return groups.slice().sort((a, b) => {
+    const ra = rank.has(a.token) ? rank.get(a.token) : pref.length;
+    const rb = rank.has(b.token) ? rank.get(b.token) : pref.length;
+    return ra - rb;
   });
-  const searchClear = h("button", {
-    class: "settings-search-clear hidden", type: "button",
-    onClick: () => { searchInput.value = ""; onSearchInput(); searchInput.focus(); },
-  }, icon("x"));
-  const searchField = h("div", { class: "search-field" }, icon("search"), searchInput, searchClear);
-  const searchCount = h("p", { class: "settings-search-count", "aria-live": "polite" });
-  const searchEmpty = h("div", { class: "settings-search-empty hidden" });
-  const searchBar = h("div", { class: "settings-search" }, searchField, searchCount, searchEmpty);
-  const stateWrap = h("div");
-  const resultsWrap = h("div", { class: "hidden" });
-  const tilesWrap = h("div");
+}
 
-  root.append(title, stateWrap, searchBar, resultsWrap, tilesWrap);
-
-  title.textContent = labelText(sectionLabelsFromDom().settings || "");
-
-  if (activeScrollHandler) window.removeEventListener("scroll", activeScrollHandler);
-  if (activeDiffCleanup) { activeDiffCleanup(); activeDiffCleanup = null; }
-  function onScroll() {
-    searchBar.classList.toggle("scrolled", window.scrollY > 0);
-  }
-  activeScrollHandler = onScroll;
-  window.addEventListener("scroll", onScroll, { passive: true });
-
-  function renderSkeleton() {
-    const bars = Array.from({ length: 6 }, () => {
-      const bar = h("div", { class: "card" });
-      bar.style.height = "48px";
-      bar.style.opacity = ".5";
-      return bar;
-    });
-    stateWrap.replaceChildren(...bars);
-  }
-
-  function clearState() {
-    stateWrap.replaceChildren();
-  }
-
-  // ── ряды плиток разделов (D-16): «Нужно менеджеру» (tier=main) / «Реже» (tier=rare). ─────
-  function sectionHasPendingDot(section) {
-    if (!pending.size) return false;
-    const keys = new Set(sectionItemsFlat(section).map((i) => i.key));
-    for (const key of pending.keys()) if (keys.has(key)) return true;
-    return false;
-  }
-
-  function buildTileRow(rowLabel, sections) {
-    if (!sections.length) return null;
-    const wrap = h("div", {});
-    wrap.append(sectionTitle(h, rowLabel));
-    const tiles = h("div", { class: "tiles" });
-    for (const section of sections) {
-      tiles.append(tile(h, {
-        onClick: () => navigate(`#/settings/${section.token}`),
-        iconName: SECTION_ICONS[section.token],
-        label: labelText(section.label),
-        meta: formatCount(texts.miniapp_settings_tile_count_text || "", sectionItemCount(section)),
-        dot: sectionHasPendingDot(section),
-      }));
+function sectionForRow(payload, code) {
+  const seen = new Set();
+  const toggles = [];
+  const buckets = new Map();
+  const order = [];
+  for (const section of payload.sections || []) {
+    for (const item of section.toggles || []) {
+      if (!rowClaims(code, item, null) || seen.has(item.key)) continue;
+      seen.add(item.key);
+      toggles.push(item);
     }
-    wrap.append(tiles);
-    return wrap;
-  }
-
-  function renderTiles() {
-    const main = payload.sections.filter((s) => s.tier === "main");
-    const rare = payload.sections.filter((s) => s.tier !== "main");
-    tilesWrap.replaceChildren(
-      ...[
-        buildTileRow(texts.miniapp_settings_row_main_label || "", main),
-        buildTileRow(texts.miniapp_settings_row_rare_label || "", rare),
-      ].filter(Boolean),
-    );
-  }
-
-  // ── общий поиск (D-15, теперь по ВСЕМ разделам сразу) — результаты сгруппированы
-  // подзаголовком раздела (T-19-45: подпись раздела, не код), тап по строке открывает раздел.
-  function buildSearchRow(item, ranges, sectionToken) {
-    const titleEl = h("div", { class: "flat-row-title" });
-    titleEl.replaceChildren(...highlightMatch(h, item.label, ranges.label));
-    const metaEl = item.help ? h("div", { class: "flat-row-meta" }) : null;
-    if (metaEl) metaEl.replaceChildren(...highlightMatch(h, item.help, ranges.help));
-    return h("button", {
-      type: "button", class: "flat-row", "aria-label": item.label,
-      // Квик 260915-skg (P5): клик по результату поиска открывает и подсвечивает саму
-      // настройку (renderSection читает params.key), не начало раздела с потерянным ключом.
-      onClick: () => navigate(`#/settings/${sectionToken}/${item.key}`),
-    },
-      h("div", { class: "flat-row-body" }, titleEl, metaEl),
-      h("span", { class: "flat-row-chev" }, icon("chevron-right")),
-    );
-  }
-
-  function allItems() {
-    const out = [];
-    for (const section of payload.sections) out.push(...sectionItemsFlat(section));
-    return out;
-  }
-
-  function onSearchInput() {
-    const query = searchInput.value;
-    searchClear.classList.toggle("hidden", !query);
-
-    if (!query) {
-      resultsWrap.classList.add("hidden");
-      tilesWrap.classList.remove("hidden");
-      searchCount.textContent = "";
-      searchCount.classList.remove("active");
-      renderSearchEmpty(false, query);
-      return;
-    }
-
-    const items = allItems();
-    const results = searchFilter(items, query);
-    const rangesByKey = new Map(results.map((r) => [r.item.key, r.ranges]));
-
-    let shown = 0;
-    const groups = [];
-    for (const section of payload.sections) {
-      const rows = [];
-      for (const item of sectionItemsFlat(section)) {
-        const ranges = rangesByKey.get(item.key);
-        if (!ranges) continue;
-        rows.push(buildSearchRow(item, ranges, section.token));
-        shown += 1;
+    for (const group of section.groups || []) {
+      const picked = [];
+      for (const item of group.items || []) {
+        if (!rowClaims(code, item, group.token) || seen.has(item.key)) continue;
+        seen.add(item.key);
+        picked.push(item);
       }
-      if (rows.length) groups.push(h("div", {}, sectionTitle(h, section.label), h("div", { class: "flat-list" }, ...rows)));
+      if (!picked.length) continue;
+      buckets.set(group.token, { group, items: picked });
+      order.push(group.token);
     }
-
-    tilesWrap.classList.add("hidden");
-    resultsWrap.classList.toggle("hidden", groups.length === 0);
-    resultsWrap.replaceChildren(...groups);
-
-    searchCount.textContent = (texts.miniapp_settings_search_count_text || "")
-      .replace("{shown}", String(shown)).replace("{total}", String(payload.total));
-    searchCount.classList.add("active");
-
-    renderSearchEmpty(shown === 0, query, items);
   }
+  const groups = orderGroups(
+    code,
+    order.map((token) => takeGroup(buckets.get(token).group, buckets.get(token).items)).filter(Boolean),
+  );
+  return {
+    token: code,
+    label: sectionLabelsFromDom().settings || "",
+    toggles,
+    groups,
+  };
+}
 
-  function renderSearchEmpty(show, query, items) {
-    searchEmpty.classList.toggle("hidden", !show);
-    if (!show) return;
-    const suggestions = suggestTerms(items || allItems(), query, 3);
-    const template = texts.miniapp_settings_search_suggest_text || "";
-    const parts = template.split("{suggestions}");
-    const suggestRow = suggestions.length
-      ? h("p", { class: "settings-search-suggest" },
-          parts[0] || "",
-          ...suggestions.map((w) => h("button", {
-            class: "chip", type: "button", text: w,
-            onClick: () => { searchInput.value = w; onSearchInput(); },
-          })),
-          parts[1] || "",
-        )
-      : null;
-    searchEmpty.replaceChildren(
-      ...[
-        h("h2", { text: texts.miniapp_settings_search_empty_heading_text || "" }),
-        h("p", { text: texts.miniapp_settings_search_empty_body_text || "" }),
-        suggestRow,
-      ].filter(Boolean),
-    );
+function filterOldSection(section) {
+  const toggles = [];
+  for (const item of section.toggles || []) {
+    if (!dropFromOldSection(item, null)) toggles.push(item);
   }
-
-  async function loadAndRender() {
-    searchInput.disabled = true;
-    clearState();
-    renderSkeleton();
-    let data;
-    try {
-      if (!allInFlight) allInFlight = api("/admin/settings/all").finally(() => { allInFlight = null; });
-      data = await allInFlight;
-    } catch (err) {
-      clearState();
-      if (isAuthError(err)) return;
-      stateWrap.append(errorState(h, {
-        me, text: errorText(err, texts.miniapp_settings_load_error_text || ""), retry: loadAndRender,
-      }));
-      return;
+  const groups = [];
+  for (const group of section.groups || []) {
+    const items = [];
+    for (const item of group.items || []) {
+      if (!dropFromOldSection(item, group.token)) items.push(item);
     }
-    payload = data;
-    texts = data.texts || {};
-    clearState();
-    searchInput.disabled = false;
-    searchInput.placeholder = texts.miniapp_settings_search_placeholder_text || "";
-
-    if (!data.sections.length) {
-      tilesWrap.replaceChildren(emptyState(h, { me, text: texts.miniapp_settings_load_error_text || "" }));
-      return;
-    }
-    renderTiles();
+    const copy = takeGroup(group, items);
+    if (copy) groups.push(copy);
   }
+  return { ...section, toggles, groups };
+}
 
-  await loadAndRender();
+function resolveSection(payload, code) {
+  if (ROW_FILTERS[code]) return sectionForRow(payload, code);
+  const found = (payload.sections || []).find((s) => s.token === code) || null;
+  if (!found || !OLD_SECTION_CODES.has(code)) return found;
+  return filterOldSection(found);
+}
+
+function renderStart(root, ctx) {
+  const { navigate } = ctx;
+  try {
+    localStorage.setItem(MANAGER_MODE_KEY, "settings");
+  } catch (_) { /* приватный режим — хаб откроется и без записанного режима */ }
+  navigate("#/hub");
 }
 
 // ══ Страница одного раздела: группы/строки + гибридное сохранение ════════════════════════
 
 async function renderSection(root, code, ctx, targetKey) {
-  const { h, api, me } = ctx;
+  const { h, api, me, navigate } = ctx;
 
   // ── состояние экрана (per-render; pending/fileNames/originalItems — модульные, см. верх
   // файла) ─────────────────────────────────────────────────────────────────────────────────
@@ -456,14 +425,32 @@ async function renderSection(root, code, ctx, targetKey) {
 
   // ── статичный каркас ──────────────────────────────────────────────────────────────────
   const title = h("h1", {});
+  const searchInput = h("input", {
+    class: "input", type: "search", disabled: true,
+    onInput: () => onSearchInput(),
+  });
+  const searchClear = h("button", {
+    class: "settings-search-clear hidden", type: "button",
+    onClick: () => { searchInput.value = ""; onSearchInput(); searchInput.focus(); },
+  }, icon("x"));
+  const searchField = h("div", { class: "search-field" }, icon("search"), searchInput, searchClear);
+  const searchCount = h("p", { class: "settings-search-count", "aria-live": "polite" });
+  const searchEmpty = h("div", { class: "settings-search-empty hidden" });
+  const searchBar = h("div", { class: "settings-search" }, searchField, searchCount, searchEmpty);
+  const resultsWrap = h("div", { class: "hidden" });
   const cityBar = h("div", { class: "choice-chips hidden" });
   const stateWrap = h("div"); // скелетон / ошибка загрузки
   const sectionsWrap = h("div");
 
-  root.append(title, cityBar, stateWrap, sectionsWrap);
+  root.append(title, searchBar, resultsWrap, cityBar, stateWrap, sectionsWrap);
 
   if (activeScrollHandler) { window.removeEventListener("scroll", activeScrollHandler); activeScrollHandler = null; }
   if (activeDiffCleanup) { activeDiffCleanup(); activeDiffCleanup = null; }
+  function onScroll() {
+    searchBar.classList.toggle("scrolled", window.scrollY > 0);
+  }
+  activeScrollHandler = onScroll;
+  window.addEventListener("scroll", onScroll, { passive: true });
 
   function renderSkeleton(withText) {
     const bars = Array.from({ length: 6 }, () => {
@@ -1525,11 +1512,109 @@ async function renderSection(root, code, ctx, targetKey) {
     }
   }
 
+  // Поиск по подписи внутри уже отфильтрованного раздела. Клик открывает саму настройку.
+  function buildSearchRow(item, ranges, sectionToken) {
+    const titleEl = h("div", { class: "flat-row-title" });
+    titleEl.replaceChildren(...highlightMatch(h, item.label, ranges.label));
+    const metaEl = item.help ? h("div", { class: "flat-row-meta" }) : null;
+    if (metaEl) metaEl.replaceChildren(...highlightMatch(h, item.help, ranges.help));
+    return h("button", {
+      type: "button", class: "flat-row", "aria-label": item.label,
+      onClick: () => navigate(`#/settings/${sectionToken}/${item.key}`),
+    },
+      h("div", { class: "flat-row-body" }, titleEl, metaEl),
+      h("span", { class: "flat-row-chev" }, icon("chevron-right")),
+    );
+  }
+
+  function renderSearchEmpty(show, query, items) {
+    searchEmpty.classList.toggle("hidden", !show);
+    if (!show) return;
+    const suggestions = suggestTerms(items || [], query, 3);
+    const template = texts.miniapp_settings_search_suggest_text || "";
+    const parts = template.split("{suggestions}");
+    const suggestRow = suggestions.length
+      ? h("p", { class: "settings-search-suggest" },
+          parts[0] || "",
+          ...suggestions.map((w) => h("button", {
+            class: "chip", type: "button", text: w,
+            onClick: () => { searchInput.value = w; onSearchInput(); },
+          })),
+          parts[1] || "",
+        )
+      : null;
+    searchEmpty.replaceChildren(
+      ...[
+        h("h2", { text: texts.miniapp_settings_search_empty_heading_text || "" }),
+        h("p", { text: texts.miniapp_settings_search_empty_body_text || "" }),
+        suggestRow,
+      ].filter(Boolean),
+    );
+  }
+
+  function onSearchInput() {
+    const query = searchInput.value;
+    searchClear.classList.toggle("hidden", !query);
+    if (!query || !section) {
+      resultsWrap.classList.add("hidden");
+      sectionsWrap.classList.remove("hidden");
+      searchCount.textContent = "";
+      searchCount.classList.remove("active");
+      renderSearchEmpty(false, query);
+      return;
+    }
+    const items = sectionItemsFlat(section);
+    const results = searchFilter(items, query);
+    const rangesByKey = new Map(results.map((r) => [r.item.key, r.ranges]));
+    const sectionToken = code;
+    let shown = 0;
+    const blocks = [];
+    function take(list) {
+      const rows = [];
+      for (const item of list) {
+        const ranges = rangesByKey.get(item.key);
+        if (!ranges) continue;
+        rows.push(buildSearchRow(item, ranges, sectionToken));
+        shown += 1;
+      }
+      return rows;
+    }
+    const toggleRows = take(section.toggles || []);
+    if (toggleRows.length) blocks.push(h("div", { class: "flat-list" }, ...toggleRows));
+    for (const group of section.groups || []) {
+      const list = [...(group.items || [])];
+      if (group.matrix) {
+        for (const row of group.matrix.rows) list.push(
+          { key: row.party.key, label: row.label, help: "" },
+          { key: row.short.key, label: row.label, help: "" },
+        );
+      }
+      const rows = take(list);
+      if (rows.length) {
+        blocks.push(h("div", {}, sectionTitle(h, group.label), h("div", { class: "flat-list" }, ...rows)));
+      }
+    }
+    sectionsWrap.classList.add("hidden");
+    resultsWrap.classList.toggle("hidden", blocks.length === 0);
+    resultsWrap.replaceChildren(...blocks);
+    searchCount.textContent = (texts.miniapp_settings_search_count_text || "")
+      .replace("{shown}", String(shown)).replace("{total}", String(sectionItemCount(section)));
+    searchCount.classList.add("active");
+    renderSearchEmpty(shown === 0, query, items);
+  }
+
   // ── загрузка/перезагрузка ────────────────────────────────────────────────────────────
   async function loadAndRender() {
     itemIndex.clear();
     groupCollapsedState.clear();
     clearState();
+    resultsWrap.classList.add("hidden");
+    resultsWrap.replaceChildren();
+    sectionsWrap.classList.remove("hidden");
+    searchInput.disabled = true;
+    searchCount.textContent = "";
+    searchCount.classList.remove("active");
+    searchEmpty.classList.add("hidden");
     renderSkeleton(Object.keys(texts).length > 0);
     let data;
     try {
@@ -1545,21 +1630,26 @@ async function renderSection(root, code, ctx, targetKey) {
     }
     payload = data;
     texts = data.texts || {};
-    section = data.sections.find((s) => s.token === code) || null;
+    section = resolveSection(data, code);
     clearState();
 
-    title.textContent = section ? labelText(section.label) : labelText(sectionLabelsFromDom().settings || "");
+    const heading = section && section.label ? section.label : (sectionLabelsFromDom().settings || "");
+    title.textContent = labelText(heading);
 
     if (!section) {
       sectionsWrap.replaceChildren(emptyState(h, { me, text: texts.miniapp_settings_load_error_text || "" }));
       cityBar.classList.add("hidden");
+      searchInput.disabled = true;
       return;
     }
 
+    searchInput.disabled = false;
+    searchInput.placeholder = texts.miniapp_settings_search_placeholder_text || "";
     buildCityBar(data.city_header);
     renderSectionBody();
     updateBatchBar();
     if (targetKey) revealTargetKey(targetKey);
+    if (searchInput.value) onSearchInput();
   }
 
   await loadAndRender();
