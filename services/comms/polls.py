@@ -73,6 +73,10 @@ def audience_label(spec: list[dict] | None) -> str:
             parts.append({"approved": "только одобренные"}.get(value, f"статус: {value}"))
         elif field == "participant_type":
             parts.append(f"трек: {f.get('label') or value}")
+        elif field == "checkin_entry":
+            parts.append(f.get("label") or "пришли сегодня")
+        elif field == "checkin_session":
+            parts.append(f.get("label") or "отмечены на сессии")
         else:
             parts.append(f"{field} = {value}")
     return ", ".join(parts)
