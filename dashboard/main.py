@@ -22,6 +22,8 @@ from __future__ import annotations
 
 import logging
 import mimetypes
+import os
+import sqlite3
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -44,7 +46,7 @@ from dashboard import sources_daily
 from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
 from dashboard.cf_access import require_superadmin_email
-from dashboard.compare import build_compare_context
+from dashboard.compare import _describe_open_error, build_compare_context
 from dashboard.config import DashboardConfig, load_config
 from dashboard.db import read_conn
 from dashboard.files import FILE_ID_RE, fetch_theme_asset, is_theme_asset
@@ -93,6 +95,17 @@ _FUNNEL_BASELINE_LABELS: dict[str, str] = {
 _FUNNEL_EVENT_STAGES: tuple[str, ...] = ("Зашли", "Начали анкету", "Дошли до конца")
 
 logger = logging.getLogger(__name__)
+
+
+def _registry_source(cfg: DashboardConfig, code: str | None):
+    """Источник события по коду из реестра. Пустая строка и неизвестный код — None.
+    Совпадает код целиком, не префикс. Путь к базе отсюда не читается."""
+    if not code:
+        return None
+    for source in cfg.events:
+        if source.code == code:
+            return source
+    return None
 
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
@@ -276,6 +289,7 @@ def _city_label(conn, code: "str | None") -> "str | None":
 
 def build_page_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, cuts_approved: bool = False,
+    *, event_code: str | None = None,
 ) -> dict:
     """Собирает ВЕСЬ контекст страницы одним вызовом — шаблон сам не зовёт БД (D-16: на лету
     на каждый запрос, без кэша). Каждый блок гасится своим тумблером `dashboard_block_*`
@@ -410,7 +424,9 @@ def build_page_context(
     # от раздела «Кто подаёт» (остальные разрезы) — сам разрез по-прежнему из общего цикла
     # `_BREAKDOWN_CUTS` выше, `_split_source_cut` только перекладывает готовый элемент.
     source_cut, cuts = _split_source_cut(cuts)
-    scope_params = {k: v for k, v in (("city", scope.city), ("season", scope.season)) if v}
+    scope_params = {
+        k: v for k, v in (("city", scope.city), ("season", scope.season), ("event", event_code)) if v
+    }
 
     ctx = {
         "event_name": flags.get("event_name"),
@@ -479,6 +495,7 @@ def build_page_context(
         "deleg_daily": queries.delegation_daily(conn, scope),
         "referrals_daily_chart": referrals_daily_chart,
         "questions": questions_stats,
+        "event_code": event_code,
     }
     ctx["page_sections"] = _page_sections(ctx)
     ctx["section_ids"] = {s["id"] for s in ctx["page_sections"]}
@@ -507,7 +524,7 @@ def _parse_reg(reg) -> bool | None:
 
 def build_chat_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, period: str | None = None,
-    reg: str | None = None, chat: str | None = None,
+    reg: str | None = None, chat: str | None = None, *, event_code: str | None = None,
 ) -> dict:
     """Квик 260914-rgr (RGR-01..07): собирает ВЕСЬ контекст страницы «Чат» одним вызовом
     (тот же принцип, что `build_page_context` — шаблон в БД не ходит). Менеджер, привязанный
@@ -524,7 +541,9 @@ def build_chat_context(
     registered_only = _parse_reg(reg)
     now = msk_now()
     # Ссылки переключателей сохраняют город/сезон страницы (и явный выбор «Только с анкетой»).
-    base_params = {k: v for k, v in (("city", scope.city), ("season", scope.season)) if v}
+    base_params = {
+        k: v for k, v in (("city", scope.city), ("season", scope.season), ("event", event_code)) if v
+    }
     reg_params = {} if registered_only is None else {"reg": "1" if registered_only else "0"}
     # Владелец 14.10: чаты городов не простынёй подряд, а вкладками, как «Город:» на главной.
     # Выбор — ?chat=<chat_id>; без него — чат города из ?city=, иначе первый. Вкладки только
@@ -602,11 +621,13 @@ def build_chat_context(
         "period": period,
         "period_links": period_links,
         "bot_username": cfg.bot_username,
+        "event_code": event_code,
     }
 
 
 def build_forum_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, arrival_day: str | None = None,
+    *, event_code: str | None = None,
 ) -> dict:
     """Задача 25.09: страница «🎪 Форум» — приход/стойки (переехали сюда с главной, тот же
     `arrival_block`/`arrival_floor`, общий с ботом `shared/arrival_stats.py` — не дублируем), сессии
@@ -658,6 +679,7 @@ def build_forum_context(
         "regional_move": queries.regional_move_block(conn, scope),
         "stats_card": queries.stats_card_block(conn, scope),
         "bot_username": cfg.bot_username,
+        "event_code": event_code,
     }
 
 
@@ -674,6 +696,7 @@ def _with_survey_links(block: dict, bot_username: str | None) -> dict:
 
 def build_feedback_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict,
+    *, event_code: str | None = None,
 ) -> dict:
     """Страница «Опросы и фидбек» — KPI + таблица форм за сегодня (МСК), те же цифры,
     что `/feedback.json` для автообновления."""
@@ -681,7 +704,9 @@ def build_feedback_context(
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
     block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
-    q = urlencode({k: v for k, v in (("city", scope.city), ("season", scope.season)) if v})
+    q = urlencode({
+        k: v for k, v in (("city", scope.city), ("season", scope.season), ("event", event_code)) if v
+    })
     csv_summary_href = "/feedback.csv" + (f"?{q}" if q else "")
     csv_answers_href = "/feedback.csv?part=answers" + (f"&{q}" if q else "")
     return {
@@ -698,6 +723,7 @@ def build_feedback_context(
         "poll_seconds": 12,
         "csv_summary_href": csv_summary_href,
         "csv_answers_href": csv_answers_href,
+        "event_code": event_code,
         **block,
     }
 
@@ -709,6 +735,7 @@ _SOURCES_BY_OF_GROUP = {v: k for k, v in _SOURCES_GROUP_OF_BY.items()}
 
 def build_sources_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict, q: "sources_daily.SourcesQuery",
+    *, event_code: str | None = None,
 ) -> dict:
     """Запрос менеджера DXP СПб 27.09: конструктор «Источники по дням» — фильтры-чипы
     (ИЛИ внутри группы, И между группами), разбивка, шаг, период; всё состояние в URL, чтобы
@@ -726,7 +753,7 @@ def build_sources_context(
     result = sources_daily.build(conn, scope, q)
 
     def href(**kw) -> str:
-        return q.href(city=kw.pop("city", city), season=season, **kw)
+        return q.href(city=kw.pop("city", city), season=season, event=event_code, **kw)
 
     def chips(group: str, items: list[dict], selected: tuple) -> list[dict]:
         # Цвет-метка у чипа — только у группы, по которой сейчас разбита таблица: тот же
@@ -797,7 +824,7 @@ def build_sources_context(
     # Форма «свои даты» — GET, прочие параметры едут скрытыми полями, чтобы выбор дат не
     # сбрасывал уже нажатые чипы.
     range_form_fields = replace(q, period="all", date_from=None, date_to=None).pairs(
-        city=city, season=season,
+        city=city, season=season, event=event_code,
     )
 
     legend: list[dict] = []
@@ -842,6 +869,7 @@ def build_sources_context(
         "csv_filename": f"источники-{msk_now():%Y-%m-%d}.csv",
         "by_label": sources_daily.BY_LABELS[q.by],
         "week": q.step == "week",
+        "event_code": event_code,
     }
 
 
@@ -948,6 +976,98 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request.session.clear()
         return RedirectResponse(url="/login", status_code=302)
 
+    def _event_denied(request: Request, *, as_json: bool):
+        _email, reason = require_superadmin_email(request, cfg)
+        if reason == "ok":
+            return None
+        logger.warning("супердашборд: отказ в допуске к %s (%s)", request.url.path, reason)
+        if as_json:
+            return JSONResponse({"error": "no_access"}, status_code=403)
+        return templates.TemplateResponse(
+            request, "no_access.html", {"super_only": True}, status_code=403,
+        )
+
+    def _event_missing(*, as_json: bool):
+        if as_json:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return HTMLResponse(
+            "<!doctype html><html lang=\"ru\"><body>"
+            "<p>Такого события в сводке нет.</p>"
+            "<p><a href=\"/compare\">К сравнению</a></p>"
+            "</body></html>",
+            status_code=404,
+        )
+
+    def _event_unavailable(exc: Exception, source, *, as_json: bool):
+        logger.warning(
+            "супердашборд: событие %r (%s) недоступно: %s",
+            source.code, source.db_path, type(exc).__name__,
+        )
+        if as_json:
+            return JSONResponse({"error": "unavailable"}, status_code=503)
+        return HTMLResponse(
+            "<!doctype html><html lang=\"ru\"><body>"
+            f"<p>{_describe_open_error(exc)}</p>"
+            "<p><a href=\"/compare\">К сравнению</a></p>"
+            "</body></html>",
+            status_code=200,
+        )
+
+    def _open_event(request: Request, event: str, *, as_json: bool):
+        denied = _event_denied(request, as_json=as_json)
+        if denied is not None:
+            return None, denied
+        source = _registry_source(cfg, event)
+        if source is None:
+            return None, _event_missing(as_json=as_json)
+        return source, None
+
+    def _html_event(request, event, template, build, *, city, season):
+        if not (event or "").strip():
+            return RedirectResponse(url="/compare", status_code=302)
+        source, early = _open_event(request, event.strip(), as_json=False)
+        if early is not None:
+            return early
+        viewer = {"telegram_id": None, "bound_city": None}
+        try:
+            with read_conn(source.db_path) as conn:
+                scope = queries.Scope(city=city or None, season=season or None)
+                context = build(conn, scope, viewer, source)
+        except (sqlite3.Error, OSError) as exc:
+            return _event_unavailable(exc, source, as_json=False)
+        if os.path.abspath(source.db_path) != os.path.abspath(cfg.db_path):
+            context["event_logo_url"] = None
+            context["favicon_url"] = None
+        return templates.TemplateResponse(request, template, context)
+
+    def _data_event(request, event, build, *, city, season, csv_part=None):
+        if not (event or "").strip():
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        source, early = _open_event(request, event.strip(), as_json=True)
+        if early is not None:
+            return early
+        try:
+            with read_conn(source.db_path) as conn:
+                scope = queries.Scope(city=city or None, season=season or None)
+                payload = build(conn, scope, source)
+        except (sqlite3.Error, OSError) as exc:
+            return _event_unavailable(exc, source, as_json=True)
+        if csv_part is None:
+            return payload
+        data, filename = payload
+        ascii_name = "feedback-answers.csv" if csv_part == "answers" else "feedback.csv"
+        return Response(
+            data,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": (
+                    f"attachment; filename=\"{ascii_name}\"; "
+                    f"filename*=UTF-8''{quote(filename)}"
+                ),
+                "Cache-Control": "no-store",
+            },
+        )
+
     @app.get("/compare", response_class=HTMLResponse)
     def compare_page(
         request: Request,
@@ -1019,12 +1139,21 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         city: Optional[str] = None,
         season: Optional[str] = None,
         who: Optional[str] = None,
+        event: Optional[str] = None,
     ):
         # Phase 26.1-02 (SD-08): на хосте супердашборда Telegram-вход не работает и не должен
         # (домен за ботом не закреплён) — показывать заведомо нерабочий /login хуже, чем
         # редирект на /compare. Одиночный реестр (multi_mode ложно) этот маршрут НЕ трогает.
+        # С ?event= после той же почты, что у /compare, открывается страница этого события.
         if multi_mode(cfg.events):
-            return RedirectResponse(url="/compare", status_code=302)
+            return _html_event(
+                request, event, "dashboard.html",
+                lambda conn, scope, viewer, source: build_page_context(
+                    conn, cfg, scope, viewer, cuts_approved=(who == "approved"),
+                    event_code=source.code,
+                ),
+                city=city, season=season,
+            )
 
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:
@@ -1070,13 +1199,21 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         period: Optional[str] = None,
         reg: Optional[str] = None,
         chat: Optional[str] = None,
+        event: Optional[str] = None,
     ):
         """Квик 260914-rgr (RGR-01..07): периметр — КОПИЯ маршрута `/` строка в строку
         (редирект супердашборда, сессия/логин, пересверка `stats` на каждый запрос,
         `viewer_scope`+`season`). Выгрузок/CSV нет (D-10 задачи — ПД за периметром, тот же
         D-17, что у остального дашборда)."""
         if multi_mode(cfg.events):
-            return RedirectResponse(url="/compare", status_code=302)
+            return _html_event(
+                request, event, "chat.html",
+                lambda conn, scope, viewer, source: build_chat_context(
+                    conn, cfg, scope, viewer, period=period, reg=reg, chat=chat,
+                    event_code=source.code,
+                ),
+                city=city, season=season,
+            )
 
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:
@@ -1112,12 +1249,19 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         city: Optional[str] = None,
         season: Optional[str] = None,
         arrival_day: Optional[str] = None,
+        event: Optional[str] = None,
     ):
         """Задача 25.09: периметр — копия `/` (редирект супердашборда, сессия/логин,
         пересверка `stats` на каждый запрос, `viewer_scope`+`season`), тот же приём, что уже
         применён в `/chat`."""
         if multi_mode(cfg.events):
-            return RedirectResponse(url="/compare", status_code=302)
+            return _html_event(
+                request, event, "forum.html",
+                lambda conn, scope, viewer, source: build_forum_context(
+                    conn, cfg, scope, viewer, arrival_day=arrival_day, event_code=source.code,
+                ),
+                city=city, season=season,
+            )
 
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:
@@ -1152,13 +1296,22 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
+        event: Optional[str] = None,
     ):
         """Конструктор «Источники по дням»: периметр — копия `/` (редирект супердашборда,
         сессия/логин, пересверка `stats` на каждый запрос, `viewer_scope`+`season`), как у
         `/chat` и `/forum`. Отдельного маршрута выгрузки нет (D-17): CSV — `data:`-ссылка
         прямо на странице, из тех же агрегатов."""
         if multi_mode(cfg.events):
-            return RedirectResponse(url="/compare", status_code=302)
+            return _html_event(
+                request, event, "sources.html",
+                lambda conn, scope, viewer, source: build_sources_context(
+                    conn, cfg, scope, viewer,
+                    sources_daily.SourcesQuery.from_params(request.query_params),
+                    event_code=source.code,
+                ),
+                city=city, season=season,
+            )
 
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:
@@ -1194,11 +1347,18 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
+        event: Optional[str] = None,
     ):
         """Заполнение опросов и фидбека за сегодня. Периметр — копия `/` (редирект
         супердашборда, сессия/логин, пересверка `stats` на каждый запрос)."""
         if multi_mode(cfg.events):
-            return RedirectResponse(url="/compare", status_code=302)
+            return _html_event(
+                request, event, "feedback.html",
+                lambda conn, scope, viewer, source: build_feedback_context(
+                    conn, cfg, scope, viewer, event_code=source.code,
+                ),
+                city=city, season=season,
+            )
 
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:
@@ -1233,10 +1393,17 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         request: Request,
         city: Optional[str] = None,
         season: Optional[str] = None,
+        event: Optional[str] = None,
     ):
         """Тот же агрегат, что HTML-страница — для polling без перезагрузки."""
         if multi_mode(cfg.events):
-            return JSONResponse({"error": "not_found"}, status_code=404)
+            return _data_event(
+                request, event,
+                lambda conn, scope, source: _with_survey_links(
+                    queries.feedback_day(conn, scope), cfg.bot_username,
+                ),
+                city=city, season=season,
+            )
 
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:
@@ -1255,11 +1422,17 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         city: Optional[str] = None,
         season: Optional[str] = None,
         part: Optional[str] = None,
+        event: Optional[str] = None,
     ):
         """Сводка форм или детализация ответов. Та же сессия, что у `/feedback`, не публичный
         `/export`. `part=answers` — распределение и открытые ответы без ФИО со страницы."""
         if multi_mode(cfg.events):
-            return JSONResponse({"error": "not_found"}, status_code=404)
+            kind = "answers" if (part or "") == "answers" else "summary"
+            return _data_event(
+                request, event,
+                lambda conn, scope, source: queries.feedback_csv(conn, scope, part=kind),
+                city=city, season=season, csv_part=kind,
+            )
 
         telegram_id = request.session.get("telegram_id")
         if telegram_id is None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 from tests._paths import REPO_ROOT
 
 import asyncio
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -505,7 +506,8 @@ def test_game_participants_and_review_label_per_event(tmp_path):
     assert by_code["b"]["kpi"]["game_review_avg_label"] == "—"
 
 
-def test_show_game_columns_true_only_when_any_event_has_game_data(tmp_path):
+def test_show_players_true_only_when_any_event_has_game_data(tmp_path):
+    compare.reset_cache()
     path_a = _make_event_db(
         tmp_path, "a.db",
         users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
@@ -516,7 +518,11 @@ def test_show_game_columns_true_only_when_any_event_has_game_data(tmp_path):
     )
     cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
     ctx_none = compare.build_compare_context(cfg)
-    assert ctx_none["show_game_columns"] is False
+    assert ctx_none["show_players"] is False
+    assert "show_game_columns" not in ctx_none
+    none_by_code = {e["code"]: e for e in ctx_none["events"]}
+    assert none_by_code["a"]["game_participants"] is None
+    assert none_by_code["b"]["game_participants"] is None
 
     compare.reset_cache()
     path_c = _make_event_db(
@@ -531,7 +537,11 @@ def test_show_game_columns_true_only_when_any_event_has_game_data(tmp_path):
     )
     cfg2 = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="c", db_path=path_c)))
     ctx_some = compare.build_compare_context(cfg2)
-    assert ctx_some["show_game_columns"] is True
+    assert ctx_some["show_players"] is True
+    assert "show_game_columns" not in ctx_some
+    some_by_code = {e["code"]: e for e in ctx_some["events"]}
+    assert some_by_code["c"]["game_participants"] == 1
+    assert some_by_code["a"]["game_participants"] is None
 
 
 def test_unavailable_event_game_participants_none_does_not_break_context(tmp_path):
@@ -569,7 +579,8 @@ def _question(**overrides):
     return question
 
 
-def test_show_question_column_true_only_when_any_event_has_questions(tmp_path):
+def test_show_questions_true_only_when_any_event_has_questions(tmp_path):
+    compare.reset_cache()
     path_a = _make_event_db(
         tmp_path, "a.db",
         users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
@@ -580,7 +591,11 @@ def test_show_question_column_true_only_when_any_event_has_questions(tmp_path):
     )
     cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
     ctx_none = compare.build_compare_context(cfg)
-    assert ctx_none["show_question_column"] is False
+    assert ctx_none["show_questions"] is False
+    assert "show_question_column" not in ctx_none
+    none_by_code = {e["code"]: e for e in ctx_none["events"]}
+    assert none_by_code["a"]["questions_total"] is None
+    assert none_by_code["b"]["questions_total"] is None
 
     compare.reset_cache()
     path_c = _make_event_db(
@@ -590,7 +605,11 @@ def test_show_question_column_true_only_when_any_event_has_questions(tmp_path):
     )
     cfg2 = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="c", db_path=path_c)))
     ctx_some = compare.build_compare_context(cfg2)
-    assert ctx_some["show_question_column"] is True
+    assert ctx_some["show_questions"] is True
+    assert "show_question_column" not in ctx_some
+    some_by_code = {e["code"]: e for e in ctx_some["events"]}
+    assert some_by_code["c"]["questions_total"] == 1
+    assert some_by_code["a"]["questions_total"] is None
 
 
 def test_question_answer_label_per_event(tmp_path):
@@ -636,3 +655,38 @@ def test_unavailable_event_questions_total_none_does_not_break_context(tmp_path)
     assert by_code["ok"]["questions_total"] == 1
     assert by_code["bad"]["questions_total"] is None
     assert by_code["bad"]["available"] is False
+
+
+def test_compare_context_has_no_person_fields(tmp_path):
+    compare.reset_cache()
+    secret_name = "Секретная Фамилия"
+    secret_user = "secret_nick_zz"
+    secret_q = "Секретный текст вопроса zz"
+    path_a = _make_event_db(
+        tmp_path, "a.db",
+        users=[_users_row(
+            1, registration_date="2026-08-01 10:00:00",
+            full_name=secret_name, username=secret_user,
+        )],
+        delegate_questions=[_question(user_id=1, question_text=secret_q)],
+    )
+    path_b = _make_event_db(
+        tmp_path, "b.db",
+        users=[_users_row(1, registration_date="2026-08-01 10:00:00")],
+    )
+    cfg = _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
+    ctx = compare.build_compare_context(cfg)
+    blob = json.dumps(ctx, ensure_ascii=False)
+    for needle in (
+        "top_managers", "question_text", "username", "full_name",
+        secret_name, secret_user, secret_q,
+    ):
+        assert needle not in blob
+
+
+def test_compare_cuts_unchanged():
+    assert compare._COMPARE_CUTS == (
+        ("event_city", "Города"),
+        ("source", "Источники"),
+        ("utm", "Метки кампаний"),
+    )

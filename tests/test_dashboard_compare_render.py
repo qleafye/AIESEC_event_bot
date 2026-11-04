@@ -54,7 +54,10 @@ def _use_tmp_db(tmp_path, name: str) -> str:
     return path
 
 
-async def _seed_async(*, settings=None, users=None, application_decisions=None):
+async def _seed_async(
+    *, settings=None, users=None, application_decisions=None,
+    game_tasks=None, game_submissions=None, delegate_questions=None,
+):
     async with bot_db._connect() as conn:
         for key, value in (settings or {}).items():
             await conn.execute(
@@ -71,6 +74,25 @@ async def _seed_async(*, settings=None, users=None, application_decisions=None):
             placeholders = ", ".join("?" for _ in row)
             await conn.execute(
                 f"INSERT INTO application_decisions ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in game_tasks or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO game_tasks ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in game_submissions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO game_submissions ({cols}) VALUES ({placeholders})", tuple(row.values())
+            )
+        for row in delegate_questions or []:
+            cols = ", ".join(row.keys())
+            placeholders = ", ".join("?" for _ in row)
+            await conn.execute(
+                f"INSERT INTO delegate_questions ({cols}) VALUES ({placeholders})",
+                tuple(row.values()),
             )
         await conn.commit()
 
@@ -158,6 +180,54 @@ def _build_two_event_fixture(tmp_path):
     return _cfg(events)
 
 
+def _build_players_and_questions_fixture(tmp_path):
+    """Одно событие со сдачей и вопросом (среднее 30 мин в контексте, не на экране секций),
+    второе без игры и без вопросов. Города включены, чтобы порядок секций включал разрез."""
+    path_a = _make_event_db(
+        tmp_path, "play.db",
+        settings={
+            "event_name": "Юлид'26",
+            "event_season": "YL26",
+            "dashboard_block_game": "on",
+            "event_city_enabled": "on",
+        },
+        users=[_users_row(
+            1, registration_date="2026-08-01 10:00:00", source="ВК", event_city="msk",
+        )],
+        game_tasks=[{
+            "id": 1, "text": "t", "category": "photo", "coins": 10, "proof_type": "photo",
+            "deadline_at": "2026-09-01 00:00:00", "created_at": "2026-08-01 00:00:00",
+        }],
+        game_submissions=[{
+            "task_id": 1, "user_id": 1, "content_type": "photo", "content": "a",
+            "submitted_at": "2026-08-02 10:00:00", "status": "approved",
+            "reviewed_at": "2026-08-02 10:30:00",
+        }],
+        delegate_questions=[{
+            "user_id": 1,
+            "question_text": "Когда открывается регистрация?",
+            "asked_at": "2026-08-02 10:00:00",
+            "delivered_at": "2026-08-02 10:30:00",
+        }],
+    )
+    path_b = _make_event_db(
+        tmp_path, "quiet.db",
+        settings={"event_name": "РилТолк Форум", "event_season": "RT26"},
+        users=[_users_row(1, registration_date="2026-08-20 10:00:00")],
+    )
+    return _cfg((EventSource(code="a", db_path=path_a), EventSource(code="b", db_path=path_b)))
+
+
+def _section(html: str, start_id: str, end_id: str | None = None) -> str:
+    start = html.find(f'id="{start_id}"')
+    assert start != -1, start_id
+    if end_id is None:
+        return html[start:]
+    end = html.find(f'id="{end_id}"', start + 1)
+    assert end != -1, end_id
+    return html[start:end]
+
+
 # ── фикстурный токен Access ──────────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
@@ -213,8 +283,8 @@ def test_each_event_row_shows_its_own_numbers(tmp_path, monkeypatch):
     text = resp.text
     assert "Юлид" in text
     assert "РилТолк" in text
-    # Заявок: у "a" 5, у "b" 1 — заметно разные числа рядом в одной таблице.
-    table_start = text.find("Событие рядом")
+    # Заявок: у "a" 5, у "b" 1 — заметно разные числа в одной таблице.
+    table_start = text.find('id="applications"')
     scoped = text[table_start:]
     m_a = re.search(r"Юлид.*?data-label=\"Заявок\">\s*([0-9]+)", scoped, re.S)
     m_b = re.search(r"РилТолк.*?data-label=\"Заявок\">\s*([0-9]+)", scoped, re.S)
@@ -349,17 +419,118 @@ def test_no_hardcoded_colors_in_compare_html_source():
     assert not matches, f"hardcoded color literal in compare.html: {matches}"
 
 
-# ── колонка «Обработка» в таблице «Событие рядом» (квик 260908-dbo, DBO-KPI-01) ──────────
+# ── колонка «Обработка» в таблице заявок (квик 260908-dbo, DBO-KPI-01) ───────────────────
 
 def test_compare_table_processing_column_shows_label_and_dash(tmp_path, monkeypatch):
     cfg = _build_two_event_fixture(tmp_path)
     resp = _get_compare(tmp_path, monkeypatch, cfg)
     assert resp.status_code == 200
     text = resp.text
-    table_start = text.find("Событие рядом")
+    table_start = text.find('id="applications"')
     scoped = text[table_start:]
     assert "Обработка" in scoped
     m_a = re.search(r"Юлид.*?data-label=\"Обработка\">\s*([^<]*)", scoped, re.S)
     m_b = re.search(r"РилТолк.*?data-label=\"Обработка\">\s*([^<]*)", scoped, re.S)
     assert m_a and "2 ч" in m_a.group(1)  # событие "a" — решение по делегату 1
     assert m_b and "—" in m_b.group(1)  # событие "b" — решений нет
+
+
+_APPLICATION_HEADERS = (
+    "Событие",
+    "Заявок",
+    "Одобрено",
+    "Конверсия старт → заявка",
+    "За 7 дней (Δ)",
+    "Обработка",
+    "Дата события",
+)
+
+_FORBIDDEN_APPLICATION_HEADERS = (
+    "В игре", "Модерация", "Ответ", "Воронка", "Динамика", "Город",
+    "Источник", "Метки", "Играющих", "Вопросов",
+)
+
+
+def test_applications_headers_are_exactly_the_september_set(tmp_path, monkeypatch):
+    cfg = _build_two_event_fixture(tmp_path)
+    resp = _get_compare(tmp_path, monkeypatch, cfg)
+    assert resp.status_code == 200
+    section = _section(resp.text, "applications", "funnel")
+    headers = [
+        re.sub(r"<[^>]+>", "", raw).strip()
+        for raw in re.findall(r"<th\b[^>]*>(.*?)</th>", section, re.S)
+    ]
+    assert headers == list(_APPLICATION_HEADERS)
+    for word in _FORBIDDEN_APPLICATION_HEADERS:
+        assert word not in section
+
+
+def test_funnel_and_dynamics_are_not_inside_applications(tmp_path, monkeypatch):
+    cfg = _build_two_event_fixture(tmp_path)
+    resp = _get_compare(tmp_path, monkeypatch, cfg)
+    assert resp.status_code == 200
+    text = resp.text
+    app_pos = text.find('id="applications"')
+    funnel_pos = text.find('id="funnel"')
+    dyn_pos = text.find('id="dynamics"')
+    assert 0 <= app_pos < funnel_pos < dyn_pos
+    canvas = text.find('id="compare-chart"')
+    next_section = text.find("<section", dyn_pos + 1)
+    assert dyn_pos < canvas < next_section
+    funnel = text[funnel_pos:dyn_pos]
+    assert "Оплатили" in funnel
+    assert "Оплатили" not in text[app_pos:funnel_pos]
+
+
+def test_players_and_questions_are_own_sections(tmp_path, monkeypatch):
+    cfg = _build_players_and_questions_fixture(tmp_path)
+    resp = _get_compare(tmp_path, monkeypatch, cfg)
+    assert resp.status_code == 200
+    text = resp.text
+    assert 'data-label="В игре"' not in text
+    assert 'data-label="Ответ"' not in text
+    assert "Когда открывается регистрация?" not in text
+    players = _section(text, "players", "questions")
+    questions = _section(text, "questions")
+    m_players = re.search(r'Юлид.*?data-label="Играющих">\s*([0-9]+)', players, re.S)
+    m_questions = re.search(r'Юлид.*?data-label="Вопросов">\s*([0-9]+)', questions, re.S)
+    assert m_players and m_players.group(1) == "1"
+    assert m_questions and m_questions.group(1) == "1"
+    assert "30 мин" not in players
+    assert "30 мин" not in questions
+
+
+def test_players_section_hidden_when_nobody_plays(tmp_path, monkeypatch):
+    cfg = _build_two_event_fixture(tmp_path)
+    resp = _get_compare(tmp_path, monkeypatch, cfg)
+    assert resp.status_code == 200
+    assert 'id="players"' not in resp.text
+
+
+def test_questions_section_hidden_when_nobody_asked(tmp_path, monkeypatch):
+    cfg = _build_two_event_fixture(tmp_path)
+    resp = _get_compare(tmp_path, monkeypatch, cfg)
+    assert resp.status_code == 200
+    assert 'id="questions"' not in resp.text
+
+
+def test_section_order(tmp_path, monkeypatch):
+    cfg = _build_players_and_questions_fixture(tmp_path)
+    resp = _get_compare(tmp_path, monkeypatch, cfg)
+    assert resp.status_code == 200
+    text = resp.text
+    positions = []
+    for marker in ('id="applications"', 'id="funnel"', 'id="dynamics"'):
+        pos = text.find(marker)
+        assert pos != -1, marker
+        positions.append(pos)
+    for heading in ("Города", "Источники", "Метки кампаний"):
+        pos = text.find(f">{heading}<")
+        if pos != -1:
+            positions.append(pos)
+    for marker in ('id="players"', 'id="questions"'):
+        pos = text.find(marker)
+        assert pos != -1, marker
+        positions.append(pos)
+    assert positions == sorted(positions)
+    assert len(positions) == 8
