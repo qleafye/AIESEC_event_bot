@@ -87,7 +87,8 @@ async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
         f"<b>Выдано</b>: участник {sends.get('participant', 0)}, компетенции {sends.get('competency', 0)}, волонтёр {sends.get('volunteer', 0)}, "
         f"амбассадор {sends.get('ambassador', 0)}. Сообщение «готов» получили: {await cdb.announce_count()}.\n\n"
         "Когда выдача откроется, бот сам напишет каждому, кому положен сертификат, с кнопкой "
-        "«🎓 Получить сертификат». Перед отправкой человек проверяет, как написано имя. "
+        "«🎓 Получить сертификат». Участник и компетенции проверяют имя перед файлом. "
+        "Волонтёру и амбассадору бот сам присылает PDF — имя берётся из списка. "
         "Потерявшим сообщение — команда /certificate."
     )
     kb = _kb([
@@ -276,19 +277,46 @@ async def certadm_tpl_not_file(message: types.Message):
 # ── волонтёры и амбассадоры ────────────────────────────────────────────────────────────
 
 async def _people_text_kb(kind: str) -> tuple[str, InlineKeyboardMarkup]:
-    people = await cdb.list_people(kind)
-    shown = ", ".join(f"@{html.escape(p)}" for p in people) if people else "пока никого"
+    people = await certs.people_screen(kind)
+    lines = []
+    rows = []
+    for person in people:
+        bit = f"@{html.escape(person['username'])}"
+        if person["list_name"]:
+            bit += f" — {html.escape(person['list_name'])}"
+        if person["mark"]:
+            bit += f" — {html.escape(person['mark'])}"
+        if person["form_surname"]:
+            bit += f" (в анкете: {html.escape(person['form_surname'])})"
+        lines.append(bit)
+        if person["conflict"]:
+            rows.append([
+                ("Да, это он", f"certadm_yes:{kind}:{person['username']}"),
+                ("Убрать", f"certadm_rm:{kind}:{person['username']}"),
+            ])
+    shown = "\n".join(lines) if lines else "пока никого"
     text = (
         f"{_PEOPLE_TITLES[kind]} — <b>{len(people)}</b>\n\n{shown}\n\n"
-        "Чтобы добавить — пришлите @ники через пробел, запятую или с новой строки.\n"
-        "Пример: @ivanov @maria_k\n\n"
+        "Пришлите людей строками или файлом Excel/CSV.\n"
+        "Строка: @nick — Фамилия Имя Отчество. Ник без имени тоже добавляется.\n"
+        "В файле две колонки: ник и имя. Пример строки:\n"
+        "@ivanov — Иванова Анна\n\n"
+        "Файл дополняет список, целиком его не заменяет. "
         "Чтобы убрать одного — пришлите его ник с минусом: -@ivanov"
     )
-    rows = []
     if people:
         rows.append([("🗑 Очистить весь список", f"certadm_clr:{kind}")])
     rows.append([("◀️ Назад", "certadm_home")])
     return text, _kb(rows)
+
+
+def _parse_person_cb(data: str) -> tuple[str, str] | None:
+    parts = data.split(":")
+    if len(parts) != 3 or parts[1] not in _PEOPLE_TITLES:
+        return None
+    if not re.fullmatch(r"[a-z0-9_]{4,32}", parts[2]):
+        return None
+    return parts[1], parts[2]
 
 
 @router.callback_query(F.data.startswith("certadm_ppl:"))
@@ -304,6 +332,36 @@ async def certadm_ppl(callback: types.CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+_TABLE_MAX = 2 * 1024 * 1024
+
+
+def _people_result(added: int, adds: list, remove: list, bad: list[str]) -> str | None:
+    """`None` — никого не разобрали, ответ уже со словом «пропустил», если было что пропустить."""
+    if not adds and not remove:
+        reply = (
+            "Не нашёл ни одного ника. Пришлите строку @nick — Фамилия Имя Отчество, "
+            "@ники через пробел или файл .xlsx/.csv с колонками «ник» и «имя»."
+        )
+        if bad:
+            reply += "\n\nНе похоже на ник, пропустил: " + ", ".join(html.escape(b) for b in bad[:10])
+        return reply
+    parts = [f"✅ Добавлено: {added}"]
+    if len(adds) > added:
+        parts.append(f"уже были в списке: {len(adds) - added}")
+    if remove:
+        parts.append(f"убрано: {len(remove)}")
+    reply = ", ".join(parts) + "."
+    if bad:
+        reply += "\n\nНе похоже на ник, пропустил: " + ", ".join(html.escape(b) for b in bad[:10])
+    return reply
+
+
+async def _answer_people(message: types.Message, kind: str, reply: str) -> None:
+    await message.answer(reply)
+    text, kb = await _people_text_kb(kind)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
 @router.message(CertAdmin.people, F.text)
 async def certadm_ppl_input(message: types.Message, state: FSMContext):
     kind = (await state.get_data()).get("kind")
@@ -311,35 +369,80 @@ async def certadm_ppl_input(message: types.Message, state: FSMContext):
         await state.clear()
         await message.answer("Не понял, какой список — откройте «🎓 Сертификаты» заново.")
         return
-    add, remove, bad = [], [], []
-    for token in re.split(r"[\s,;]+", message.text.strip()):
-        if not token:
-            continue
-        minus = token.startswith("-")
-        name = cdb.normalize_username(token[1:] if minus else token)
-        if not re.fullmatch(r"[a-z0-9_]{4,32}", name):
-            bad.append(token)
-            continue
-        (remove if minus else add).append(name)
-    if not add and not remove:
-        await message.answer(
-            "Не нашёл ни одного ника. Пришлите @ники через пробел, например: @ivanov @maria_k"
-        )
+    added, adds, remove, bad = await certs.apply_people_paste(kind, message.text or "")
+    reply = _people_result(added, adds, remove, bad)
+    if not adds and not remove:
+        await message.answer(reply)
         return
-    added = await cdb.add_people(kind, add)
-    for name in remove:
-        await cdb.remove_person(kind, name)
-    parts = [f"✅ Добавлено: {added}"]
-    if len(add) > added:
-        parts.append(f"уже были в списке: {len(add) - added}")
-    if remove:
-        parts.append(f"убрано: {len(remove)}")
-    reply = ", ".join(parts) + "."
-    if bad:
-        reply += "\n\nНе похоже на ник, пропустил: " + ", ".join(html.escape(b) for b in bad[:10])
-    await message.answer(reply)
+    await _answer_people(message, kind, reply)
+
+
+@router.message(CertAdmin.people, F.document)
+async def certadm_ppl_file(message: types.Message, state: FSMContext, bot):
+    kind = (await state.get_data()).get("kind")
+    if kind not in _PEOPLE_TITLES:
+        await state.clear()
+        await message.answer("Не понял, какой список — откройте «🎓 Сертификаты» заново.")
+        return
+    doc = message.document
+    if (doc.file_size or 0) > _TABLE_MAX:
+        await message.answer("Файл больше 2 МБ. Для списка людей это много — пришлите файл поменьше.")
+        return
+    buf = await bot.download(doc.file_id)
+    raw = buf.read(_TABLE_MAX + 1)
+    if len(raw) > _TABLE_MAX:
+        await message.answer("Файл больше 2 МБ. Для списка людей это много — пришлите файл поменьше.")
+        return
+    try:
+        adds, bad = certs.people_from_file(raw, doc.file_name or "")
+    except certs.PeopleTableError as e:
+        await message.answer(str(e))
+        return
+    added = await certs.apply_people_changes(kind, adds, [])
+    reply = _people_result(added, adds, [], bad)
+    if not adds:
+        await message.answer(reply)
+        return
+    reply += "\n\nФайл дополнил список. Кто уже был — имя обновилось. Целиком список не заменён."
+    await _answer_people(message, kind, reply)
+
+
+@router.message(CertAdmin.people)
+async def certadm_ppl_other(message: types.Message):
+    await message.answer(
+        "Жду людей строками или файлом .xlsx/.csv. "
+        "В таблице — колонка с @ником и колонка с именем."
+    )
+
+
+@router.callback_query(F.data.startswith("certadm_yes:"))
+async def certadm_yes(callback: types.CallbackQuery, state: FSMContext):
+    parsed = _parse_person_cb(callback.data)
+    if parsed is None:
+        await callback.answer("Не понял, кого подтвердить — откройте список заново.", show_alert=True)
+        return
+    kind, username = parsed
+    await cdb.confirm_list_name(kind, username)
+    await state.set_state(CertAdmin.people)
+    await state.update_data(kind=kind)
+    await callback.answer("Да, отправлю это имя")
     text, kb = await _people_text_kb(kind)
-    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("certadm_rm:"))
+async def certadm_rm(callback: types.CallbackQuery, state: FSMContext):
+    parsed = _parse_person_cb(callback.data)
+    if parsed is None:
+        await callback.answer("Не понял, кого убрать — откройте список заново.", show_alert=True)
+        return
+    kind, username = parsed
+    await cdb.remove_person(kind, username)
+    await state.set_state(CertAdmin.people)
+    await state.update_data(kind=kind)
+    await callback.answer("Убрал из списка")
+    text, kb = await _people_text_kb(kind)
+    await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("certadm_clr:"))

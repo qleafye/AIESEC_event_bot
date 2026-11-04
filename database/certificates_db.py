@@ -3,7 +3,9 @@
 - `certificate_templates` — PDF-шаблон каждого вида (участник/компетенции/волонтёр/амбассадор) и варианта
   дат (`all` — «оба дня», `YYYY-MM-DD` — версия на один день). Хранится `file_id` Telegram:
   менеджер загрузил файл в бот, сам файл с подписью и печатью в репозиторий не попадает.
-- `certificate_people` — волонтёры и амбассадоры @никами (участник определяется отметкой входа).
+- `certificate_people` — волонтёры и амбассадоры: @ник и имя из списка менеджера
+  (участник определяется отметкой входа). Имя подтверждённого сертификата участника
+  живёт отдельно, в `certificate_names`.
 - `certificate_names` — имя, которое человек подтвердил или исправил перед выдачей.
 - `certificate_sends` — что и кому уже выдано (повторный запрос отдаёт файл снова, счётчик
   в админке — по этой таблице).
@@ -36,6 +38,7 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
     await db.execute(
         "CREATE TABLE IF NOT EXISTS certificate_people ("
         "kind TEXT NOT NULL, username TEXT NOT NULL COLLATE NOCASE, added_at TEXT NOT NULL, "
+        "list_name TEXT, name_ok INTEGER NOT NULL DEFAULT 0, send_blocked INTEGER NOT NULL DEFAULT 0, "
         "PRIMARY KEY (kind, username))"
     )
     await db.execute(
@@ -55,6 +58,10 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
         "CREATE TABLE IF NOT EXISTS certificate_config ("
         "id INTEGER PRIMARY KEY CHECK (id = 1), open_at TEXT)"
     )
+    # Старые базы уже создали certificate_people без этих колонок. CREATE IF NOT EXISTS их не добавит.
+    await _db._ensure_column(db, "certificate_people", "list_name", "TEXT")
+    await _db._ensure_column(db, "certificate_people", "name_ok", "INTEGER NOT NULL DEFAULT 0")
+    await _db._ensure_column(db, "certificate_people", "send_blocked", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _stamp() -> str:
@@ -144,6 +151,15 @@ async def clear_people(kind: str) -> None:
         await db.commit()
 
 
+def _person_row(row) -> dict:
+    return {
+        "username": row[0],
+        "list_name": row[1],
+        "name_ok": int(row[2] or 0),
+        "send_blocked": int(row[3] or 0),
+    }
+
+
 async def list_people(kind: str) -> list[str]:
     async with _db._connect() as db:
         async with db.execute(
@@ -151,6 +167,81 @@ async def list_people(kind: str) -> list[str]:
         ) as cur:
             rows = await cur.fetchall()
     return [r[0] for r in rows]
+
+
+async def list_people_rows(kind: str) -> list[dict]:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT username, list_name, name_ok, send_blocked FROM certificate_people "
+            "WHERE kind = ? ORDER BY added_at, username",
+            (kind,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [_person_row(r) for r in rows]
+
+
+async def get_person(kind: str, username: str) -> dict | None:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT username, list_name, name_ok, send_blocked FROM certificate_people "
+            "WHERE kind = ? AND username = ?",
+            (kind, username),
+        ) as cur:
+            row = await cur.fetchone()
+    return _person_row(row) if row else None
+
+
+async def upsert_person(kind: str, username: str, list_name: str | None, *, reset_ok: bool) -> bool:
+    """Новая строка — `True`. Имя списка пишется, только если его прислали.
+    `reset_ok` снимает «Да, это он», когда фамилия в списке сменилась."""
+    async with _db._connect() as db:
+        cur = await db.execute(
+            "INSERT OR IGNORE INTO certificate_people "
+            "(kind, username, added_at, list_name, name_ok, send_blocked) VALUES (?, ?, ?, ?, 0, 0)",
+            (kind, username, _stamp(), list_name),
+        )
+        added = bool(cur.rowcount)
+        if not added and list_name is not None:
+            if reset_ok:
+                await db.execute(
+                    "UPDATE certificate_people SET list_name = ?, name_ok = 0 "
+                    "WHERE kind = ? AND username = ?",
+                    (list_name, kind, username),
+                )
+            else:
+                await db.execute(
+                    "UPDATE certificate_people SET list_name = ? WHERE kind = ? AND username = ?",
+                    (list_name, kind, username),
+                )
+        await db.commit()
+    return added
+
+
+async def confirm_list_name(kind: str, username: str) -> None:
+    async with _db._connect() as db:
+        await db.execute(
+            "UPDATE certificate_people SET name_ok = 1 WHERE kind = ? AND username = ?",
+            (kind, username),
+        )
+        await db.commit()
+
+
+async def mark_send_blocked(kind: str, username: str) -> None:
+    async with _db._connect() as db:
+        await db.execute(
+            "UPDATE certificate_people SET send_blocked = 1 WHERE kind = ? AND username = ?",
+            (kind, username),
+        )
+        await db.commit()
+
+
+async def sent_kinds(telegram_id: int) -> set[str]:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT kind FROM certificate_sends WHERE telegram_id = ?", (telegram_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return {r[0] for r in rows}
 
 
 async def kinds_for_username(username: str | None, telegram_id: int | None = None) -> set[str]:
@@ -162,8 +253,9 @@ async def kinds_for_username(username: str | None, telegram_id: int | None = Non
         if telegram_id is not None:
             async with db.execute(
                 "SELECT username FROM users WHERE telegram_id = ? "
-                "UNION SELECT username FROM chat_usernames WHERE telegram_id = ?",
-                (telegram_id, telegram_id),
+                "UNION SELECT username FROM chat_usernames WHERE telegram_id = ? "
+                "UNION SELECT username FROM reg_started WHERE telegram_id = ?",
+                (telegram_id, telegram_id, telegram_id),
             ) as cur:
                 names |= {normalize_username(r[0]) for r in await cur.fetchall() if r[0]}
         names.discard("")
@@ -177,23 +269,62 @@ async def kinds_for_username(username: str | None, telegram_id: int | None = Non
     return {r[0] for r in rows}
 
 
+async def resolve_nick(username: str) -> dict | None:
+    """Кто стоит за @ником. Сначала анкета (`users`, там есть ФИО), потом ник из чата,
+    потом человек, который только нажал /start (`reg_started`). Нет нигде — `None`, id не выдумываем."""
+    nick = normalize_username(username)
+    if not nick:
+        return None
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT telegram_id, full_name FROM users "
+            "WHERE ltrim(username, '@') = ? COLLATE NOCASE LIMIT 1",
+            (nick,),
+        ) as cur:
+            user = await cur.fetchone()
+        if user:
+            async with db.execute(
+                "SELECT first_name FROM chat_usernames WHERE telegram_id = ?", (int(user[0]),),
+            ) as cur:
+                chat = await cur.fetchone()
+            return {
+                "telegram_id": int(user[0]),
+                "full_name": user[1],
+                "profile_name": chat[0] if chat and chat[0] else None,
+            }
+        async with db.execute(
+            "SELECT telegram_id, first_name FROM chat_usernames "
+            "WHERE ltrim(username, '@') = ? COLLATE NOCASE LIMIT 1",
+            (nick,),
+        ) as cur:
+            chat = await cur.fetchone()
+        if chat:
+            return {
+                "telegram_id": int(chat[0]),
+                "full_name": None,
+                "profile_name": chat[1],
+            }
+        async with db.execute(
+            "SELECT telegram_id FROM reg_started "
+            "WHERE ltrim(username, '@') = ? COLLATE NOCASE LIMIT 1",
+            (nick,),
+        ) as cur:
+            started = await cur.fetchone()
+    if not started:
+        return None
+    return {"telegram_id": int(started[0]), "full_name": None, "profile_name": None}
+
+
 async def ids_for_people() -> dict[str, int]:
-    """@ник из списков -> telegram_id, если бот этого человека знает: по `users.username` или
-    по нику, который бот видел в чате (`chat_usernames`). Нужен рассылке «сертификат готов»."""
+    """@ник из списков -> telegram_id, если бот этого человека знает. Нужен рассылке."""
     out: dict[str, int] = {}
     async with _db._connect() as db:
         async with db.execute("SELECT DISTINCT username FROM certificate_people") as cur:
             names = [r[0] for r in await cur.fetchall()]
-        for name in names:
-            async with db.execute(
-                "SELECT telegram_id FROM users WHERE ltrim(username, '@') = ? COLLATE NOCASE "
-                "UNION SELECT telegram_id FROM chat_usernames WHERE ltrim(username, '@') = ? COLLATE NOCASE "
-                "LIMIT 1",
-                (name, name),
-            ) as cur:
-                row = await cur.fetchone()
-            if row:
-                out[name] = int(row[0])
+    for name in names:
+        found = await resolve_nick(name)
+        if found:
+            out[name] = found["telegram_id"]
     return out
 
 

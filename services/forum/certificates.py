@@ -14,16 +14,20 @@
 Когда: менеджер ставит дату и время открытия. До него кнопка отвечает «будут доступны …». С
 этого момента джоба `announce_job` раз в 5 минут пишет каждому, кому положен сертификат,
 сообщение с кнопкой «🎓 Получить сертификат» — одному человеку один раз (`claim_announce`).
-Сам PDF собирается по нажатию, после подтверждения имени: в анкете имена бывают «саша» и
-«Иванова Анна Сергеевна», а сертификат печатают."""
+Волонтёру и амбассадору та же джоба сразу присылает PDF: имя из списка, без шага «всё верно?».
+Участник и компетенции по-прежнему собираются по нажатию, после подтверждения имени."""
 from __future__ import annotations
 
 import asyncio
+import csv
 import io
 import logging
+import re
+import zipfile
 from datetime import datetime
+from xml.etree import ElementTree as ET
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import certificates_db as cdb
 from database.certificates_db import KIND_AMBASSADOR, KIND_COMPETENCY, KIND_PARTICIPANT, KIND_VOLUNTEER, VARIANT_ALL
@@ -103,8 +107,11 @@ async def forum_days() -> list[str]:
 
 
 def kind_variants(kind: str, variants: list[str]) -> list[str]:
-    """Сертификат компетенций — один на человека, версий на день у него нет."""
-    return [VARIANT_ALL] if kind == KIND_COMPETENCY else variants
+    """День форума выбирает шаблон только у сертификата участника.
+    Компетенции, волонтёр и амбассадор — всегда «все дни»."""
+    if kind in (KIND_COMPETENCY, KIND_VOLUNTEER, KIND_AMBASSADOR):
+        return [VARIANT_ALL]
+    return variants
 
 
 def variant_label(variant: str) -> str:
@@ -178,6 +185,346 @@ def clean_name(raw: str) -> str | None:
     return name
 
 
+def _surname_key(token: str) -> str:
+    return token.casefold().replace("ё", "е")
+
+
+def surname_changed(old: str | None, new: str | None) -> bool:
+    """Фамилия — первое слово. ё/е, регистр и пробелы не считаются сменой."""
+    old_name, new_name = clean_name(old or ""), clean_name(new or "")
+    if not old_name or not new_name:
+        return False
+    return _surname_key(old_name.split()[0]) != _surname_key(new_name.split()[0])
+
+
+def surnames_conflict(list_name: str | None, form_name: str | None) -> bool:
+    """Обе стороны — имя из двух и больше слов, и первые слова разные.
+    Короче с одной стороны, вопрос или мусор в анкете — не конфликт."""
+    if not list_name or not form_name or "?" in form_name:
+        return False
+    listed, form = clean_name(list_name), clean_name(form_name)
+    if not listed or not form:
+        return False
+    listed_tokens, form_tokens = listed.split(), form.split()
+    if len(listed_tokens) < 2 or len(form_tokens) < 2:
+        return False
+    return _surname_key(listed_tokens[0]) != _surname_key(form_tokens[0])
+
+
+def role_print_name(list_name: str | None, confirmed: str | None, form_name: str | None,
+                    profile_name: str | None) -> str | None:
+    """Имя на PDF волонтёра и амбассадора. Из списка — если проходит `clean_name`.
+    Запасное (подтверждённое, анкета, профиль) не берём, если это вопрос или одно слово."""
+    listed = clean_name(list_name or "")
+    if listed:
+        return listed
+    for raw in (confirmed, form_name, profile_name):
+        if not raw or "?" in raw:
+            continue
+        cleaned = clean_name(raw)
+        if cleaned and len(cleaned.split()) >= 2:
+            return cleaned
+    return None
+
+
+_NICK_RE = re.compile(r"[a-z0-9_]{4,32}")
+_DASH_TOKENS = {"—", "–", "-", "|", "−"}
+MARK_BLOCKED = "человек заблокировал бота"
+MARK_UNSEEN = "бот ещё не видел этот ник"
+MARK_SENT = "файл ушёл"
+MARK_CONFLICT = "фамилия в анкете другая — ждёт «Да, это он»"
+_AUTO_KINDS = (KIND_VOLUNTEER, KIND_AMBASSADOR)
+
+
+def parse_people_paste(text: str) -> tuple[list[tuple[str, str | None]], list[str], list[str]]:
+    """Строки «@nick — Фамилия Имя» и пачка ников. Возвращает добавления `(ник, имя или None)`,
+    снятия и куски, которые ником не являются."""
+    adds: list[tuple[str, str | None]] = []
+    removes: list[str] = []
+    bad: list[str] = []
+    seen: dict[str, int] = {}
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        nicks: list[str] = []
+        minus: list[str] = []
+        other: list[str] = []
+        for token in re.split(r"[\s,;]+", line):
+            if not token or token in _DASH_TOKENS:
+                continue
+            minus_flag = token.startswith("-")
+            body = token[1:] if minus_flag else token
+            nick = cdb.normalize_username(body)
+            if _NICK_RE.fullmatch(nick or ""):
+                (minus if minus_flag else nicks).append(nick)
+            else:
+                other.append(token)
+        if minus and not nicks:
+            removes.extend(minus)
+            if other:
+                bad.append(" ".join(other))
+            continue
+        if len(nicks) == 1 and not minus:
+            remainder = " ".join(other)
+            cleaned = clean_name(remainder) if remainder else None
+            if remainder and cleaned is None:
+                bad.append(remainder)
+            _remember_add(adds, seen, nicks[0], cleaned)
+            continue
+        if nicks or minus:
+            for nick in nicks:
+                _remember_add(adds, seen, nick, None)
+            removes.extend(minus)
+            bad.extend(other)
+            continue
+        bad.append(line)
+    return adds, removes, bad
+
+
+def _remember_add(adds: list[tuple[str, str | None]], seen: dict[str, int], nick: str,
+                  list_name: str | None) -> None:
+    if nick in seen:
+        if list_name is not None:
+            adds[seen[nick]] = (nick, list_name)
+        return
+    seen[nick] = len(adds)
+    adds.append((nick, list_name))
+
+
+async def apply_people_changes(kind: str, adds: list[tuple[str, str | None]], removes: list[str]) -> int:
+    """Имя ложится на строку списка и не трогает `certificate_names`. Возвращает, сколько строк новые."""
+    added = 0
+    for username, list_name in adds:
+        reset = False
+        if list_name:
+            current = await cdb.get_person(kind, username)
+            if current and current.get("list_name"):
+                reset = surname_changed(current["list_name"], list_name)
+        if await cdb.upsert_person(kind, username, list_name, reset_ok=reset):
+            added += 1
+    for username in dict.fromkeys(removes):
+        await cdb.remove_person(kind, username)
+    return added
+
+
+async def apply_people_paste(kind: str, text: str) -> tuple[int, list[tuple[str, str | None]], list[str], list[str]]:
+    """Записать разбор текста в список."""
+    adds, removes, bad = parse_people_paste(text)
+    added = await apply_people_changes(kind, adds, removes)
+    return added, adds, list(dict.fromkeys(removes)), bad
+
+
+class PeopleTableError(Exception):
+    """Файл списка люди не прочитали. Текст — что сказать менеджеру."""
+
+
+_TABLE_ROWS = 2000
+_XLSX_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+_NICK_HEADERS = {"ник", "ники", "username", "telegram", "tg", "user", "никнейм", "юзернейм", "телеграм"}
+_NAME_HEADERS = {"имя", "фио", "фамилия", "name"}
+
+
+def _header_kind(cell: str) -> str | None:
+    word = (cell or "").strip().casefold().replace("ё", "е").strip(":")
+    first = word.split()[0] if word else ""
+    if first in _NICK_HEADERS or word in _NICK_HEADERS:
+        return "nick"
+    if first in _NAME_HEADERS or word in _NAME_HEADERS:
+        return "name"
+    return None
+
+
+def _nick_cell(cell: str) -> str | None:
+    text = (cell or "").strip()
+    if not text or re.search(r"\s", text):
+        return None
+    nick = cdb.normalize_username(text)
+    return nick if _NICK_RE.fullmatch(nick or "") else None
+
+
+def _looks_like_name(cell: str) -> bool:
+    text = (cell or "").strip()
+    return bool(text) and any(ch.isalpha() for ch in text) and _nick_cell(text) is None
+
+
+def _col_index(letters: str) -> int:
+    number = 0
+    for ch in letters:
+        number = number * 26 + (ord(ch.upper()) - 64)
+    return number - 1
+
+
+def _xlsx_rows(data: bytes) -> list[list[str]]:
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as e:
+        raise PeopleTableError(
+            "Не смог открыть этот Excel. Сохраните таблицу как .xlsx или .csv и пришлите ещё раз."
+        ) from e
+    with zf:
+        names = set(zf.namelist())
+        shared: list[str] = []
+        if "xl/sharedStrings.xml" in names:
+            root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
+            for si in root.findall(f"{{{_XLSX_NS}}}si"):
+                shared.append("".join((t.text or "") for t in si.iter(f"{{{_XLSX_NS}}}t")))
+        sheets = sorted(n for n in names if n.startswith("xl/worksheets/sheet") and n.endswith(".xml"))
+        if not sheets:
+            raise PeopleTableError(
+                "В файле нет листа. Пришлите .xlsx или .csv: колонка с @ником и колонка с именем."
+            )
+        root = ET.fromstring(zf.read(sheets[0]))
+    rows: list[list[str]] = []
+    for row in root.findall(f"{{{_XLSX_NS}}}sheetData/{{{_XLSX_NS}}}row"):
+        cells: dict[int, str] = {}
+        next_col = 0
+        for cell in row.findall(f"{{{_XLSX_NS}}}c"):
+            ref = cell.get("r") or ""
+            letters = "".join(ch for ch in ref if ch.isalpha())
+            idx = _col_index(letters) if letters else next_col
+            next_col = idx + 1
+            if idx > 40:
+                continue
+            kind = cell.get("t")
+            if kind == "inlineStr":
+                value = "".join((t.text or "") for t in cell.iter(f"{{{_XLSX_NS}}}t"))
+            else:
+                node = cell.find(f"{{{_XLSX_NS}}}v")
+                raw = node.text if node is not None and node.text else ""
+                if kind == "s" and raw:
+                    try:
+                        value = shared[int(raw)]
+                    except (ValueError, IndexError):
+                        value = ""
+                else:
+                    value = raw
+            cells[idx] = value.strip()
+        if cells:
+            width = max(cells) + 1
+            rows.append([cells.get(i, "") for i in range(width)])
+    return rows
+
+
+def _csv_rows(data: bytes) -> list[list[str]]:
+    text = data.decode("utf-8-sig", errors="replace")
+    if "\ufffd" in text:
+        text = data.decode("cp1251", errors="replace")
+    sample = text[:2000]
+    delimiter = ";" if sample.count(";") > sample.count(",") else ","
+    if sample.count("\t") > sample.count(delimiter):
+        delimiter = "\t"
+    return [row for row in csv.reader(io.StringIO(text), delimiter=delimiter)]
+
+
+def _rows_of_file(data: bytes, filename: str) -> list[list[str]]:
+    name = (filename or "").lower()
+    if data[:4] == b"\xd0\xcf\x11\xe0" or name.endswith(".xls"):
+        raise PeopleTableError(
+            "Это старый Excel (.xls). Сохраните таблицу как .xlsx или .csv и пришлите ещё раз."
+        )
+    if data[:2] == b"PK" or name.endswith(".xlsx"):
+        return _xlsx_rows(data)
+    if name.endswith(".csv") or name.endswith(".txt") or name.endswith(".tsv"):
+        return _csv_rows(data)
+    raise PeopleTableError(
+        "Жду таблицу .xlsx или .csv. В ней колонка с @ником и колонка с именем, по человеку на строку."
+    )
+
+
+def _pick_column(rows: list[list[str]], predicate, skip: int | None = None) -> int | None:
+    if not rows:
+        return None
+    width = max(len(row) for row in rows)
+    best, score = None, 0
+    for idx in range(width):
+        if idx == skip:
+            continue
+        values = [row[idx] for row in rows if idx < len(row) and row[idx]]
+        if not values:
+            continue
+        hits = sum(1 for value in values if predicate(value))
+        if hits > score:
+            best, score = idx, hits
+    return best if score else None
+
+
+def people_from_file(data: bytes, filename: str) -> tuple[list[tuple[str, str | None]], list[str]]:
+    """Строки таблицы → те же пары `(ник, имя)`, что и вставка текстом. Список целиком файл не заменяет."""
+    table = [[(cell or "").strip() for cell in row] for row in _rows_of_file(data, filename)]
+    table = [row for row in table if any(row)]
+    if not table:
+        raise PeopleTableError(
+            "В файле нет людей. Нужны колонка с @ником и колонка с именем, по человеку на строку."
+        )
+    header = [_header_kind(cell) for cell in table[0]]
+    nick_i = header.index("nick") if "nick" in header else None
+    name_i = header.index("name") if "name" in header else None
+    data_rows = table[1:] if nick_i is not None or name_i is not None else table
+    if not data_rows:
+        raise PeopleTableError("В файле только шапка. Добавьте людей: одна строка — один человек.")
+    if nick_i is None:
+        nick_i = _pick_column(data_rows, lambda cell: _nick_cell(cell) is not None)
+    if name_i is None and nick_i is not None:
+        name_i = _pick_column(data_rows, _looks_like_name, skip=nick_i)
+    adds: list[tuple[str, str | None]] = []
+    bad: list[str] = []
+    seen: dict[str, int] = {}
+    if nick_i is None:
+        pasted, removes, bad = parse_people_paste(
+            "\n".join(" ".join(cell for cell in row if cell) for row in data_rows)
+        )
+        if removes:
+            bad.append("минус в таблице никого не убирает — пришлите -@nick отдельным сообщением")
+        return pasted[:_TABLE_ROWS], bad
+    for row in data_rows:
+        if len(adds) >= _TABLE_ROWS:
+            bad.append("дальше не читал: в файле больше 2000 строк")
+            break
+        raw = row[nick_i] if nick_i < len(row) else ""
+        nick = _nick_cell(raw)
+        if nick is None:
+            found = [n for cell in row if (n := _nick_cell(cell))]
+            nick = found[0] if len(found) == 1 else None
+        if nick is None:
+            joined = " ".join(cell for cell in row if cell)
+            if joined:
+                bad.append(joined)
+            continue
+        list_name = None
+        if name_i is not None and name_i < len(row) and row[name_i]:
+            list_name = clean_name(row[name_i])
+            if list_name is None:
+                bad.append(row[name_i])
+        _remember_add(adds, seen, nick, list_name)
+    return adds, bad
+
+
+async def people_screen(kind: str) -> list[dict]:
+    """Строка списка для экрана менеджера: ник, имя, одна пометка, обе фамилии при конфликте."""
+    out = []
+    for row in await cdb.list_people_rows(kind):
+        found = await cdb.resolve_nick(row["username"])
+        sent = bool(found) and kind in await cdb.sent_kinds(found["telegram_id"])
+        conflict = bool(
+            found and not sent and not row["send_blocked"] and row["list_name"] and not row["name_ok"]
+            and surnames_conflict(row["list_name"], found.get("full_name"))
+        )
+        form_surname = clean_name(found["full_name"]).split()[0] if conflict else None
+        if row["send_blocked"]:
+            mark = MARK_BLOCKED
+        elif sent:
+            mark = MARK_SENT
+        elif conflict:
+            mark = MARK_CONFLICT
+        elif not found:
+            mark = MARK_UNSEEN
+        else:
+            mark = None
+        out.append({**row, "mark": mark, "conflict": conflict, "form_surname": form_surname})
+    return out
+
+
 # ── сборка PDF ─────────────────────────────────────────────────────────────────────────
 
 async def _template_bytes(bot, file_id: str) -> bytes:
@@ -226,9 +573,74 @@ async def announce_text() -> str:
     )
 
 
+async def _send_role_pdf(bot, telegram_id: int, pdf: bytes, kind: str, name: str) -> None:
+    await bot.send_document(
+        telegram_id,
+        BufferedInputFile(pdf, filename=file_name(kind, name)),
+        caption=f"🎓 {KIND_TITLES[kind]}",
+    )
+
+
+async def deliver_role_pdfs(bot) -> int:
+    """Волонтёр и амбассадор: файл сам, без «Так будет написано имя».
+    Повтор той же роли не шлём. Участника и компетенции здесь нет — им остаётся кнопка."""
+    if bot is None or not await is_open():
+        return 0
+    from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+
+    templates = await cdb.list_templates()
+    sent = 0
+    for kind in _AUTO_KINDS:
+        file_id = pick_template(templates, kind, VARIANT_ALL)
+        if not file_id:
+            continue
+        for row in await cdb.list_people_rows(kind):
+            if row["send_blocked"]:
+                continue
+            found = await cdb.resolve_nick(row["username"])
+            if not found:
+                continue
+            telegram_id = found["telegram_id"]
+            if kind in await cdb.sent_kinds(telegram_id):
+                continue
+            if (
+                row["list_name"] and not row["name_ok"]
+                and surnames_conflict(row["list_name"], found.get("full_name"))
+            ):
+                continue
+            name = role_print_name(
+                row["list_name"], await cdb.get_name(telegram_id),
+                found.get("full_name"), found.get("profile_name"),
+            )
+            if not name:
+                continue
+            try:
+                pdf = await build_pdf(bot, file_id, name, kind)
+                try:
+                    await _send_role_pdf(bot, telegram_id, pdf, kind, name)
+                except TelegramRetryAfter as e:
+                    await asyncio.sleep(e.retry_after)
+                    await _send_role_pdf(bot, telegram_id, pdf, kind, name)
+            except (TelegramForbiddenError, TelegramBadRequest) as e:
+                await cdb.mark_send_blocked(kind, row["username"])
+                logger.info(f"certificates.role {telegram_id} {kind}: {type(e).__name__}")
+                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"certificates.role {telegram_id} {kind}: {e}")
+                continue
+            await cdb.record_send(telegram_id, kind)
+            sent += 1
+            await asyncio.sleep(0.05)
+    if sent:
+        logger.info(f"certificates.role: отправлено {sent}")
+    return sent
+
+
 async def announce_job() -> int:
-    """Интервальная джоба: выдача открыта — написать «готов» всем, кому ещё не писали.
-    Возвращает, скольким отправлено за этот проход."""
+    """Интервальная джоба: выдача открыта — написать «готов» всем, кому ещё не писали,
+    и прислать PDF волонтёра и амбассадора. Возвращает, скольким ушло сообщение «готов»."""
     if not await is_open():
         return 0
     from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
@@ -260,6 +672,7 @@ async def announce_job() -> int:
             logger.warning(f"certificates.announce {telegram_id}: {e}")
             await cdb.release_announce(telegram_id)
         await asyncio.sleep(0.05)
+    await deliver_role_pdfs(bot)
     if sent:
         logger.info(f"certificates.announce: отправлено {sent}")
     return sent
