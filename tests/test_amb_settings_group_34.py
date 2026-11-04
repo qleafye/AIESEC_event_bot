@@ -73,21 +73,25 @@ def test_translation_corpus_keeps_delegate_texts_and_skips_admin_ones():
 
 
 def test_amb_section_has_settings_row():
-    assert ("group", "amb") in sec.section_rows("amb")
-    assert sec.section_rows("amb")[-1] == ("group", "amb")
+    for _token, _label, rows in sec.SECTIONS:
+        assert ("group", "amb") not in rows
+    amb_cbs = [sec.row_callback(r) for r in sec.section_rows("amb")]
+    assert "settings_group:amb" not in amb_cbs
 
 
 def test_amb_group_reachable_with_module_on_and_off(tmp_path):
     _ready(tmp_path, selection=True)
     kb = _run(sec.build_section_keyboard("amb", ADMIN_ID))
-    assert "settings_group:amb" in _callbacks(kb)
+    assert "settings_group:amb" not in _callbacks(kb)
     _run(db.set_setting("amb_team_selection_enabled", "off"))
     kb = _run(sec.build_section_keyboard("game", ADMIN_ID))
-    assert "settings_group:amb" in _callbacks(kb)
+    assert "settings_group:amb" not in _callbacks(kb)
     group_kb = _run(st.build_settings_group_keyboard("amb", ADMIN_ID))
     cbs = _callbacks(group_kb)
     assert "toggle_wave_rating_show_names" in cbs
-    assert cbs[-1] == "admin_sec:game"  # раздела нет — «Назад» в «🎮 Геймификацию»
+    # section_of("settings_group:amb") is None и callback больше не в _AMB_OFF_GAME_ROWS.
+    assert cbs[-1] == "admin_menu"
+    assert cbs[-1] not in ("admin_sec:game", "admin_sec:amb")
     game_cbs = _callbacks(_run(st.build_settings_group_keyboard("game", ADMIN_ID)))
     assert "toggle_amb_team_selection" in game_cbs  # модуль включается оттуда же
 
