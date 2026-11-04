@@ -126,14 +126,14 @@ def test_screen_shows_state_and_button(tmp_path):
     cb = _FakeCallback("admin_delegations")
     _run(mod.render_screen(cb))
     text, _, kb = _last_edit(cb)
-    assert "⏸ Не включено" in text and "dlg_arm" in _callbacks(kb)
-    assert "dlg_disarm" not in _callbacks(kb)
+    assert "⏸ Не включено" in text and "Таблица и формы" in text
+    assert "dlg_arm" not in _callbacks(kb) and "dlg_disarm" not in _callbacks(kb)
     _set(ARM, fid)
     cb = _FakeCallback("admin_delegations")
     _run(mod.render_screen(cb))
     text, _, kb = _last_edit(cb)
-    assert "▶️ Включено" in text and "dlg_disarm" in _callbacks(kb)
-    assert "dlg_arm" not in _callbacks(kb)
+    assert "▶️ Включено" in text
+    assert "dlg_arm" not in _callbacks(kb) and "dlg_disarm" not in _callbacks(kb)
 
 
 def test_dlg_form_disarms(tmp_path):
@@ -152,16 +152,19 @@ def test_dlg_arm_confirm_with_count(tmp_path):
     _reg_started(501)
     cb = _FakeCallback("dlg_arm")
     _run(mod.dlg_arm(cb))
-    text, _, kb = _last_edit(cb)
-    assert "Бот одобрит 1 человек" in text and "dlg_arm_yes" in _callbacks(kb)
+    assert cb.answer_calls == [(mod._MOVED, True)]
+    assert "Таблица и формы" in cb.answer_calls[0][0]
+    assert str(fid) not in cb.answer_calls[0][0]
     assert _run(dlg.is_armed()) is False
+    assert _drow(fid, "a1") is None
 
 
 def test_dlg_arm_zero_text(tmp_path):
     _, fid = _disarmed_env(tmp_path)
     cb = _FakeCallback("dlg_arm")
     _run(mod.dlg_arm(cb))
-    assert "Сейчас в боте нет никого из ЦА этой формы" in _last_edit(cb)[0]
+    assert cb.answer_calls == [(mod._MOVED, True)]
+    assert _run(get_setting_typed(ARM)) in ("", None)
 
 
 def test_dlg_arm_without_keys_alerts(tmp_path):
@@ -169,7 +172,8 @@ def test_dlg_arm_without_keys_alerts(tmp_path):
     _set("delegation_q_course", "")
     cb = _FakeCallback("dlg_arm")
     _run(mod.dlg_arm(cb))
-    assert cb.answer_calls == [(mod._KEYS_MISSING, True)] and not cb.message.edits
+    assert cb.answer_calls == [(mod._MOVED, True)] and not cb.message.edits
+    assert _run(get_setting_typed(ARM)) in ("", None)
 
 
 def test_dlg_arm_yes_arms_and_sweeps(tmp_path, monkeypatch):
@@ -179,11 +183,12 @@ def test_dlg_arm_yes_arms_and_sweeps(tmp_path, monkeypatch):
     spawned = _patch_spawn(monkeypatch)
     cb = _FakeCallback("dlg_arm_yes")
     _run(mod.dlg_arm_yes(cb))
-    assert str(_run(get_setting_typed(ARM))) == str(fid)
-    assert cb.answer_calls[0][0] == mod._ARM_TOAST
-    assert len(spawned) == 1
-    _drain(spawned)
-    assert _drow(fid, "a1")["linked_telegram_id"] == 501 and len(bot.sent) == 1
+    assert _run(get_setting_typed(ARM)) in ("", None)
+    assert _run(dlg.is_armed()) is False
+    assert spawned == []
+    assert _drow(fid, "a1") is None and bot.sent == []
+    assert "Таблица и формы" in cb.answer_calls[0][0]
+    assert str(fid) not in cb.answer_calls[0][0]
 
 
 def test_dlg_disarm(tmp_path):
@@ -191,8 +196,10 @@ def test_dlg_disarm(tmp_path):
     _set(ARM, fid)
     cb = _FakeCallback("dlg_disarm")
     _run(mod.dlg_disarm(cb))
-    assert _run(dlg.is_armed()) is False
-    assert "остаются одобренными" in cb.answer_calls[0][0]
+    assert _run(dlg.is_armed()) is True
+    assert str(_run(get_setting_typed(ARM))) == str(fid)
+    assert "Таблица и формы" in cb.answer_calls[0][0]
+    assert str(fid) not in cb.answer_calls[0][0]
 
 
 def test_offer_reevaluate_not_armed(tmp_path, monkeypatch):
