@@ -8,7 +8,7 @@
 
 import { visibleNav, NAV_ICONS, managerSettingsLaunchOn } from "../app.js";
 import { icon } from "../icons.js";
-import { countUp, haptic, stagger } from "../motion.js";
+import { confetti, countUp, haptic, stagger } from "../motion.js";
 import {
   fileUrl, flatRow, sectionTitle, labelText, tile, noticeBox, ambassadorLinkBlock, formatCount, screenText,
 } from "../ui.js";
@@ -511,6 +511,8 @@ function dismissManagerViewForce() {
   managerViewPin = false;
 }
 
+let seasonRecapCelebrated = false;
+
 async function renderManagerHub(root, ctx, opts = {}) {
   // opts оставлен: ветка анкеты и переключатель роли по-прежнему передают skipHero.
   void opts;
@@ -580,7 +582,61 @@ async function renderManagerHub(root, ctx, opts = {}) {
     ));
   }
 
-  // Место карточки сезона — план 07, между подсказками и сегментом.
+  // Карточка сезона — между подсказками и сегментом. Список режимов её не ждёт.
+  if (hasCap("stats")) {
+    const card = h("div", { class: "card" });
+    const grid = h("div", { class: "stats" });
+    grid.style.gap = "var(--sp-4)";
+    const figureFor = (label, note) => {
+      const figure = h("div", { class: "home-figure", text: "…" });
+      grid.append(h("div", {},
+        figure,
+        h("div", { class: "label-role", text: label }),
+        note ? h("div", { class: "label-role", text: note }) : null,
+      ));
+      return figure;
+    };
+    const applications = figureFor("Заявки");
+    const arrived = figureFor("Пришедшие");
+    const participants = figureFor("Игроки", "по всем городам");
+    const questions = figureFor("Вопросы");
+    const hide = h("button", {
+      type: "button",
+      class: "muted",
+      text: "Скрыть итог",
+      onClick: () => {
+        card.remove();
+        api("/stats/season-recap/dismiss", { method: "POST", quiet: true }).catch(() => {});
+      },
+    });
+    hide.style.marginTop = "var(--sp-4)";
+    hide.style.background = "transparent";
+    hide.style.border = "0";
+    hide.style.padding = "0";
+    hide.style.minHeight = "var(--tap-min)";
+    hide.style.font = "inherit";
+    hide.style.cursor = "pointer";
+    card.append(h("h1", { text: "Сезон прошёл" }), grid, hide);
+    root.append(card);
+    api("/stats/season-recap", { quiet: true }).then((data) => {
+      if (!card.isConnected) return;
+      if (!data || data.show !== true) {
+        card.remove();
+        return;
+      }
+      const asFigure = (value) => (value == null ? "…" : String(value));
+      applications.textContent = asFigure(data.applications);
+      arrived.textContent = asFigure(data.arrived);
+      participants.textContent = asFigure(data.participants);
+      questions.textContent = asFigure(data.questions);
+      if (!seasonRecapCelebrated) {
+        seasonRecapCelebrated = true;
+        confetti(card);
+      }
+    }).catch(() => {
+      if (card.isConnected) card.remove();
+    });
+  }
 
   // Входы папки «День форума»: расписание без отдельной капы (null), остальные — право ручки.
   const forumDayEntryCaps = ["checkin", null, "checkin", "moderate_reg", "checkin"];

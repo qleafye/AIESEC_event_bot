@@ -1128,7 +1128,9 @@ def test_hub_manager_hints_fail_soft_without_counter_loop():
     body = _manager_hub_body()
     assert '"/admin/settings/hints"' in body
     assert "try {" in body and "catch (_)" in body
-    assert '"/stats' not in body and '"#/stats"' not in body
+    assert '"/stats/game"' not in body and '"/stats/registrations"' not in body
+    assert '"#/stats"' not in body
+    assert '"/stats/season-recap"' in body
 
 
 # ── сторож: replaceChildren не принимает null/false/undefined верхним аргументом (quick
@@ -1391,6 +1393,36 @@ def test_manager_hub_renders_three_modes():
     assert "В этом режиме пусто" in body
     assert "Для вашей роли здесь нет строк. Если дело пропало, попросите того, кто выдаёт доступ, проверить права." in body
     assert '"#/setup"' in body and 'iconName: "sparkles"' in body and "show_tile" in body
+
+
+def test_season_recap_card_says_players_are_all_cities():
+    """Подпись «Игроки» рядом говорит «по всем городам». Это не счёт одного форума."""
+    body = _manager_hub_body()
+    players_at = body.index("Игроки")
+    phrase_at = body.index("по всем городам")
+    assert abs(players_at - phrase_at) < 240
+    for banned in (
+        "только этого города",
+        "только этот город",
+        "только этого форума",
+        "игроки этого города",
+        "по форуму этого города",
+    ):
+        assert banned not in body
+    hints_at = body.index('"/admin/settings/hints"')
+    title_at = body.index("Сезон прошёл")
+    segment_at = body.index("Режим менеджера")
+    assert hints_at < title_at < segment_at
+    card = body[body.index('if (hasCap("stats"))'):segment_at]
+    assert "home-figure" in card and "stat-value" not in card
+    assert "Заявки" in card and "Пришедшие" in card and "Вопросы" in card
+    assert "Скрыть итог" in card
+    assert "class: \"btn\"" not in card and "btn danger" not in card
+    assert 'api("/stats/season-recap", { quiet: true })' in card
+    assert "await api(\"/stats/season-recap\"" not in body
+    assert "confetti(" in card
+    assert "dashboard" not in card
+    assert "…" in card
 
 
 def test_manager_hub_dashboard_tile_driven_by_registry_not_literal():

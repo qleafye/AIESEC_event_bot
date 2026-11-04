@@ -514,6 +514,20 @@ async def _texts() -> dict[str, str]:
     }
 
 
+def close_season_copy() -> dict[str, str]:
+    """Тексты тихого ряда на экране «Редкое». Отдельного ключа реестра у ряда нет."""
+    return {
+        "label": "Закрыть сезон",
+        "meta": "Первая настройка снова появится. Заявки и люди останутся.",
+        "dialog": (
+            "Заявки, оплаты и люди останутся в базе. "
+            "Плитка «Первая настройка» снова появится на доме."
+        ),
+        "confirm": "Вернуть первую настройку",
+        "cancel": "Оставить как есть",
+    }
+
+
 @router.get("/app/api/admin/settings/all")
 async def settings_all(
     p: Principal = Depends(require_cap("settings")),
@@ -529,6 +543,7 @@ async def settings_all(
             "city_header": await _city_header(ctx),
             "texts": await _texts(),
             "total": total,
+            "close_season": close_season_copy(),
         }
 
 

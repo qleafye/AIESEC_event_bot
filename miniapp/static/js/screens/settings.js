@@ -1464,6 +1464,50 @@ async function renderSection(root, code, ctx, targetKey) {
     section.groups.forEach((group, idx) => {
       sectionsWrap.append(buildGroupCard(group, idx === 0 && !managerToggles.length, sectionTotal));
     });
+    mountCloseSeason(payload && payload.close_season);
+  }
+
+  function mountCloseSeason(copy) {
+    if (code !== "row-rare" || !copy) return;
+    const box = h("div", { class: "confirm-box hidden" },
+      h("p", { text: copy.dialog || "" }),
+      h("button", {
+        class: "btn", type: "button", text: copy.confirm || "",
+        onClick: () => { closeSeason(); },
+      }),
+      h("button", {
+        class: "btn ghost", type: "button", text: copy.cancel || "",
+        onClick: () => { box.close(); },
+      }),
+    );
+    box.open = () => box.classList.remove("hidden");
+    box.close = () => box.classList.add("hidden");
+    const title = h("div", { class: "flat-row-title muted", text: copy.label || "" });
+    const meta = h("div", { class: "flat-row-meta", text: copy.meta || "" });
+    const row = h("button", {
+      type: "button", class: "flat-row",
+      onClick: () => box.open(),
+    }, h("div", { class: "flat-row-body" }, title, meta));
+    sectionsWrap.append(h("div", { class: "flat-list" }, row), box);
+  }
+
+  async function closeSeason() {
+    let resp;
+    try {
+      resp = await api("/admin/settings/batch", {
+        method: "POST",
+        body: {
+          changes: [{ key: "setup_wizard_dismissed", value: "off" }],
+          base: {},
+          confirm: [],
+        },
+      });
+    } catch (_) {
+      return;
+    }
+    const saved = resp && resp.saved;
+    if (!saved || !saved.includes("setup_wizard_dismissed")) return;
+    navigate("#/hub");
   }
 
   // Квик 260915-skg (P5): развернуть группу-владельца ключа и подсветить строку тем же
