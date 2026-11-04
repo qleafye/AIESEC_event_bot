@@ -329,6 +329,82 @@ def test_visible_steps_conference_includes_lc_step_only_for_conference():
         assert "conf_lc" not in {s.key for s in visible_steps(other, {})}, other
 
 
+def test_close_season_returns_the_setup_tile(tmp_path):
+    """Скрытая плитка снова видна, люди на месте, новый путь не закрывает сезон в базе."""
+    import inspect
+
+    from database import db as bot_db
+
+    client = _setup(tmp_path)
+    _set("setup_wizard_dismissed", "on")
+    assert _setup_resp(client).json()["show_tile"] is False
+
+    async def _users():
+        async with bot_db._connect() as conn:
+            cursor = await conn.execute("SELECT COUNT(*) FROM users")
+            return int((await cursor.fetchone())[0])
+
+    before = _run(_users())
+    posted = client.post(
+        "/app/api/admin/settings/batch",
+        json={
+            "changes": [{"key": "setup_wizard_dismissed", "value": "off"}],
+            "base": {},
+            "confirm": [],
+        },
+        headers=_hdr(ADMIN_ID),
+    )
+    assert posted.status_code == 200, posted.text
+    assert "setup_wizard_dismissed" in posted.json()["saved"]
+    assert posted.json()["errors"] == {}
+    again = _setup_resp(client).json()
+    assert again["done_count"] < again["total"]
+    assert again["show_tile"] is True
+    assert _run(_users()) == before
+    assert _run(bot_db.get_setting("setup_wizard_dismissed")) == "off"
+
+    from miniapp.routers.settings import close_season_copy
+
+    src = inspect.getsource(close_season_copy)
+    src = re.sub(r'"""[\s\S]*?"""', "", src)
+    src = "\n".join(line.split("#", 1)[0] for line in src.splitlines())
+    assert "mark_season_ended" not in src
+    assert "season_reset_apply" not in src
+    copy = close_season_copy()
+    body = _all_resp(client).json()["close_season"]
+    assert body == copy
+    assert body == {
+        "label": "Закрыть сезон",
+        "meta": "Первая настройка снова появится. Заявки и люди останутся.",
+        "dialog": (
+            "Заявки, оплаты и люди останутся в базе. "
+            "Плитка «Первая настройка» снова появится на доме."
+        ),
+        "confirm": "Вернуть первую настройку",
+        "cancel": "Оставить как есть",
+    }
+    assert "удалить" not in body["dialog"].lower()
+    packed = " ".join(body.values())
+    assert "Новый сезон" not in packed
+
+    text = _js_without_comments(SCREENS_DIR / "settings.js")
+    start = text.index("function mountCloseSeason")
+    chunk = text[start:text.index("async function closeSeason")]
+    assert 'code !== "row-rare"' in chunk
+    assert "copy.label" in chunk and "copy.meta" in chunk
+    assert "copy.dialog" in chunk and "copy.confirm" in chunk and "copy.cancel" in chunk
+    assert "confirm-box" in chunk and "box.open" in chunk and "box.close" in chunk
+    assert 'class: "btn ghost"' in chunk
+    assert 'class: "btn danger"' not in chunk
+    assert "confirmBox(" not in chunk
+    write = text[text.index("async function closeSeason"):text.index("async function loadAndRender")]
+    assert 'key: "setup_wizard_dismissed"' in write
+    assert 'value: "off"' in write
+    assert 'navigate("#/hub")' in write
+    assert "window.confirm" not in text
+    assert "innerHTML" not in chunk and "innerHTML" not in write
+
+
 def test_setup_js_takes_step_number_from_server():
     """Номер шага на экране — из ответа роутера (step.n / step.m), а не позиция в общем списке:
     иначе «Шаг 6 из 14» рядом с «5 из 11 готово» (приёмка 10.10)."""

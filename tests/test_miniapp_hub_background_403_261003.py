@@ -2,7 +2,7 @@
 
 Приёмка 03.10: счётчик плитки «Статистика» звал `/stats/game` без нужного права и без quiet,
 ядро рисовало «Нет доступа» поверх всей главной. Дом менеджера больше не зовёт эти счётчики:
-в фоне остаются только тихие подсказки настройки, и только при праве settings.
+в фоне остаются тихие подсказки настройки (при праве settings) и тихие вызовы карточки сезона.
 """
 from __future__ import annotations
 from tests._paths import REPO_ROOT
@@ -52,12 +52,17 @@ def _manager_hub_body() -> str:
 
 def test_manager_hub_background_calls_are_only_quiet_settings():
     """Счётчики старых плиток сняты: дом больше не зовёт чужие ручки в фоне. Остаются
-    только тихие подсказки настройки, и только при праве settings."""
+    тихие подсказки настройки (при праве settings) и тихие вызовы карточки итога сезона."""
     text = HUB_JS.read_text(encoding="utf-8")
     assert "MANAGER_FETCHERS" not in text
     body = _manager_hub_body()
     calls = re.findall(r'api\("([^"]+)"', body)
-    assert calls == ["/admin/setup", "/admin/settings/hints"]
+    assert calls == [
+        "/admin/setup",
+        "/admin/settings/hints",
+        "/stats/season-recap/dismiss",
+        "/stats/season-recap",
+    ]
     assert 'me.caps.includes("settings")' in body
     assert "{ quiet: true }" in body
     for forbidden in ("/stats/game", "/review/next", "/admin/tasks", "/admin/coins", "/questions?"):

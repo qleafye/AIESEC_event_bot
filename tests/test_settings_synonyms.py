@@ -45,6 +45,8 @@ _SELF_DESCRIBING_MINIAPP_EXCEPTIONS = {
     # Квик 12.09 (UI-аудит, пункт 4): «счётчик в заголовке группы» не содержит слова «формат»/
     # «шаблон» — явный синоним точнее самоописания.
     "miniapp_settings_group_count_text",
+    # Итог сезона: служебный флаг, в веб-списке его нет (EXCLUDED_KEYS). Синоним не заводим.
+    "season_recap_dismissed",
 }
 SEARCH_SELF_DESCRIBING = {
     k for k, v in SETTINGS_SCHEMA.items()

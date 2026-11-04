@@ -501,7 +501,8 @@ _DELEGATION_HUMAN_KEYS = frozenset({
 # Таблица события (`google_sheet_id`): смена — только суперадмином на экране бота «🔗 Какая
 # таблица», где ссылка разбирается и доступ сервисного аккаунта проверяется до сохранения.
 EXCLUDED_KEYS: frozenset[str] = (
-    frozenset(SHEET_TAB_NAME_KEYS) | {"chat_rules_social_tasks", "google_sheet_id"}
+    frozenset(SHEET_TAB_NAME_KEYS)
+    | {"chat_rules_social_tasks", "google_sheet_id", "season_recap_dismissed"}
     | _DELEGATION_SERVICE_KEYS | _DELEGATION_HUMAN_KEYS
 )
 

@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -633,3 +635,196 @@ def test_sheets_forms_router_does_not_close_the_season():
         assert not stripped.startswith((
             "from handlers", "import handlers", "import aiogram", "from aiogram",
         ))
+
+
+# ── Итог сезона: четыре числа после окна форума города ──────────────────────────────────
+
+RECAP_PATH = "/app/api/stats/season-recap"
+DISMISS_PATH = RECAP_PATH + "/dismiss"
+_RECAP_NOW = datetime(2026, 11, 4, 12, 0, 0)
+_NUMBER_KEYS = ("applications", "arrived", "participants", "questions")
+COMMON_WRITER_ID = 900704
+
+
+def _freeze_recap(monkeypatch):
+    monkeypatch.setattr("miniapp.routers.stats.msk_now", lambda: _RECAP_NOW)
+
+
+def _user_count() -> int:
+    async def _count():
+        async with bot_db._connect() as conn:
+            cursor = await conn.execute("SELECT COUNT(*) FROM users")
+            row = await cursor.fetchone()
+            return int(row[0])
+
+    return _run(_count())
+
+
+def _ended_city_forum():
+    """Своя дата СПб уже позади. Общая и московская даты впереди и не должны подставиться."""
+    _set("forum_date__city__spb", "01.01.2020")
+    _set("forum_date", "01.01.2099")
+    _set("forum_date__city__msk", "01.01.2099")
+
+
+def _plant_recap_counts():
+    """Один вход в СПб, вопрос СПб и вопрос Москвы, сдача игрока из Москвы."""
+    _run(_insert_entry(910007, "2026-10-01 12:00:00"))
+    _run(bot_db.create_question(910007, "Вопрос Петербурга"))
+    _run(bot_db.create_question(910001, "Вопрос Москвы"))
+    task_id = _run(bot_db.create_task(
+        "задание", "Light", 1, "text", "2026-12-01 00:00:00", None, event_city="msk",
+    ))
+    _run(bot_db.create_submission(task_id, 910001, "text", "ответ", "2026-11-01 00:00:00"))
+
+
+def test_season_recap_players_are_unfiltered_game_stats(tmp_path, monkeypatch):
+    from miniapp.routers import stats as stats_router
+
+    src = inspect.getsource(stats_router.season_recap)
+    dismiss_src = inspect.getsource(stats_router.season_recap_dismiss)
+    assert re.search(r"get_game_stats\(\s*\)", src)
+    assert not re.search(r"get_game_stats\(\s*[^)\s]", src)
+    file_src = Path(stats_router.__file__).read_text(encoding="utf-8")
+    assert "mark_season_ended" not in file_src
+    assert "season_reset_apply" not in file_src
+    assert "forum_end_date_iso" not in file_src
+    assert "inherit_common" not in file_src
+    assert "initData" not in src and "init_data" not in src
+    assert "initData" not in dismiss_src and "init_data" not in dismiss_src
+
+    client = _ready(tmp_path)
+    _freeze_recap(monkeypatch)
+    _ended_city_forum()
+    _plant_recap_counts()
+    resp = client.get(RECAP_PATH, params={"city": "msk"}, headers=_hdr(STATS_CITY_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    scope = city_scope("spb")
+    total, _top = _run(bot_db.get_stats(city_scope=scope, season=SEASON))
+    arrived, _approved = _run(checkin_arrival.arrived_counts(scope))
+    buckets = _run(bot_db.count_questions_by_status(city_scope=scope))
+    questions = int(buckets["new"]) + int(buckets["in_work"]) + int(buckets["answered"])
+    participants = _run(bot_db.get_game_stats())["participants"]
+    assert participants >= 1
+    assert body == {
+        "show": True,
+        "applications": total,
+        "arrived": arrived,
+        "participants": participants,
+        "questions": questions,
+    }
+    assert body["applications"] == 2
+    assert body["arrived"] == 1
+    assert body["questions"] == 1
+    assert "по всем городам" not in resp.text
+    _no_people(body)
+    same = client.get(RECAP_PATH, headers=_hdr(ADMIN_ID))
+    assert same.status_code == 200, same.text
+    assert same.json()["applications"] == body["applications"]
+    assert same.json()["participants"] == participants
+
+
+def test_season_recap_without_own_window_stays_hidden(tmp_path, monkeypatch):
+    client = _ready(tmp_path)
+    _freeze_recap(monkeypatch)
+    _set("forum_date", "01.01.2020")
+    _set("forum_date__city__msk", "01.01.2020")
+    hidden = client.get(RECAP_PATH, headers=_hdr(STATS_CITY_ID))
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json() == {"show": False}
+    assert not (set(hidden.json()) & set(_NUMBER_KEYS))
+
+    _set("forum_date__city__spb", "03.11.2026")
+    on_last_day = client.get(RECAP_PATH, headers=_hdr(STATS_CITY_ID))
+    assert on_last_day.json() == {"show": False}
+
+    _set("forum_date__city__spb", "10.12.2026")
+    before = client.get(RECAP_PATH, headers=_hdr(STATS_CITY_ID))
+    assert before.json() == {"show": False}
+
+
+def test_season_recap_dismiss_hides_card_and_keeps_users(tmp_path, monkeypatch):
+    client = _ready(tmp_path)
+    _freeze_recap(monkeypatch)
+    _ended_city_forum()
+    before = _user_count()
+    names = _run(bot_db.get_setting("season_recap_dismissed"))
+    posted = client.post(DISMISS_PATH, headers=_hdr(STATS_CITY_ID))
+    assert posted.status_code == 200, posted.text
+    assert posted.json() == {"ok": True}
+    assert _run(bot_db.get_setting("season_recap_dismissed__city__spb")) == "on"
+    assert _run(bot_db.get_setting("season_recap_dismissed")) == names
+    assert _user_count() == before
+    again = client.get(RECAP_PATH, headers=_hdr(STATS_CITY_ID))
+    assert again.status_code == 200
+    assert again.json() == {"show": False}
+
+
+def test_season_recap_common_writer_sets_registry_flag(tmp_path, monkeypatch):
+    client = _ready(tmp_path)
+    _freeze_recap(monkeypatch)
+    _ended_city_forum()
+    _seed(staff=[(COMMON_WRITER_ID, "stats_manager", None)])
+    before = _user_count()
+    posted = client.post(DISMISS_PATH, headers=_hdr(COMMON_WRITER_ID))
+    assert posted.status_code == 200, posted.text
+    assert _run(bot_db.get_setting("season_recap_dismissed")) == "on"
+    assert _user_count() == before
+    again = client.get(RECAP_PATH, headers=_hdr(STATS_CITY_ID))
+    assert again.json() == {"show": False}
+
+
+def test_season_recap_requires_stats_cap(tmp_path):
+    client = _ready(tmp_path, people=False)
+    for user in (GAME_MANAGER_ID, DELEGATE_ID):
+        got = client.get(RECAP_PATH, headers=_hdr(user))
+        assert got.status_code == 403
+        assert got.json() == {"reason": "no_cap", "cap": "stats"}
+        posted = client.post(DISMISS_PATH, headers=_hdr(user))
+        assert posted.status_code == 403
+        assert posted.json() == {"reason": "no_cap", "cap": "stats"}
+
+
+def test_season_recap_section_off_is_403(tmp_path):
+    client = _ready(tmp_path, people=False)
+    _set("miniapp_section_stats", "off")
+    resp = client.get(RECAP_PATH, headers=_hdr(STATS_CITY_ID))
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "section_off", "section": "stats"}
+
+
+def test_unbound_superadmin_has_no_season_card(tmp_path, monkeypatch):
+    db_path = _use_tmp_db(tmp_path, "season_recap_unbound.db")
+    _seed(
+        staff=[(ADMIN_ID, "stats_manager", None)],
+        settings={
+            "miniapp_enabled": "on",
+            "event_city_enabled": "on",
+            "event_season": SEASON,
+            "forum_date": "01.01.2020",
+            "forum_date__city__spb": "01.01.2020",
+        },
+    )
+    _seed_people()
+    _freeze_recap(monkeypatch)
+    client = _client(_cfg(db_path))
+    resp = client.get(RECAP_PATH, params={"city": "spb"}, headers=_hdr(ADMIN_ID))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"show": False}
+
+
+def test_season_recap_flag_is_not_writable_by_batch(tmp_path):
+    client = _ready(tmp_path, people=False)
+    resp = client.post(
+        "/app/api/admin/settings/batch",
+        json={
+            "changes": [{"key": "season_recap_dismissed", "value": "on"}],
+            "base": {},
+            "confirm": [],
+        },
+        headers=_hdr(ADMIN_ID),
+    )
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "not_editable", "key": "season_recap_dismissed"}
+    assert _run(bot_db.get_setting("season_recap_dismissed")) is None
