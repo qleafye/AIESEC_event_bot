@@ -23,7 +23,7 @@ import html as html_module
 import logging
 
 from services.infra.ru_plural import agree_placeholder
-from domain.cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city, is_per_city
 from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
@@ -42,11 +42,12 @@ async def notify_manual_coins(bot, user_id: int, delta: int, reason: str, balanc
     notification, just not right now), False on any failure (delegate blocked the bot,
     etc.) -- logged, never raised. The ledger write already happened before this is called
     (T-14-20): a failed notification must never be the reason an operation looks undone."""
-    from database.db import get_user
-    person = await get_user(user_id)
-    template = await get_setting_typed_for_city(
-        "coins_manual_notify_text", (person or {}).get("event_city"),
-    )
+    city = None
+    if is_per_city("coins_manual_notify_text"):
+        from database.db import get_user
+        user = await get_user(user_id)
+        city = (user or {}).get("event_city")
+    template = await get_setting_typed_for_city("coins_manual_notify_text", city)
     if not template:
         template = SETTINGS_SCHEMA["coins_manual_notify_text"]["default"]
     # «{delta} баллов» согласуется с числом: «+1 балл», «−3 балла».

@@ -13,8 +13,22 @@ Mini App не могло позвать (aiogram-модуль), поэтому `
 эту функцию — формула считается в одном месте буквально."""
 from __future__ import annotations
 
-from domain.cities import get_setting_typed_for_city
+from domain.cities import get_setting_typed_for_city, is_per_city
 from domain.game.labels import penalized_coins, task_has_deadline
+
+
+async def _submitter_city(submission: dict) -> str | None:
+    """event_city сдавшего. Пока ключ не городской — None, без лишнего чтения пользователя."""
+    if not is_per_city("game_late_penalty_percent"):
+        return None
+    if "user_event_city" in submission:
+        return submission.get("user_event_city")
+    user_id = submission.get("user_id")
+    if not user_id:
+        return None
+    from database.db import get_user
+    user = await get_user(int(user_id))
+    return (user or {}).get("event_city")
 
 
 async def award_for(submission: dict, task: dict, base_coins: int) -> tuple[int, bool]:
@@ -24,11 +38,5 @@ async def award_for(submission: dict, task: dict, base_coins: int) -> tuple[int,
     late = task_has_deadline(task) and str(submission["submitted_at"]) > str(task["deadline_at"])
     if not late:
         return base_coins, False
-    city = None
-    uid = submission.get("user_id")
-    if uid is not None:
-        from database.db import get_user
-        person = await get_user(uid)
-        city = (person or {}).get("event_city")
-    percent = await get_setting_typed_for_city("game_late_penalty_percent", city)
+    percent = await get_setting_typed_for_city("game_late_penalty_percent", await _submitter_city(submission))
     return penalized_coins(base_coins, percent), True
