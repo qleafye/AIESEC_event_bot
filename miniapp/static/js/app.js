@@ -92,6 +92,10 @@ export const ROUTES = [
   ["#/forum-day", "screens/forum_day.js"],
   // Папка «Баллы» и стойки магазина — витрины здесь нет.
   ["#/coins-shop", "screens/coins_shop.js"],
+  // Цифры регистраций — не статистика геймы #/stats.
+  ["#/figures", "screens/reg_figures.js"],
+  // Три числа отметок площадки.
+  ["#/arrivals", "screens/arrivals.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,

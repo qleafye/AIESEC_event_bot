@@ -568,6 +568,16 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .stat { text-align: center; margin-bottom: 0; }
 .stat .icon { width: 20px; height: 20px; color: var(--text-muted); margin-bottom: var(--sp-1); }
 .stat-value { font-family: var(--font-heading); font-weight: 800; font-size: 28px; color: var(--accent-text); font-variant-numeric: tabular-nums; }
+/* Числа «Цифры» и «Отметки»: Display, не акцент .stat-value экрана геймы. */
+.home-figure {
+  font-family: var(--font-heading);
+  font-weight: 700;
+  font-size: 28px;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.thin-screen-state { margin-top: var(--sp-6); }
 .balance-big {
   display: flex;
   align-items: center;
