@@ -2,13 +2,11 @@
 // компонент по умолчанию для менеджера, пока голосование команды не выбрало A/B/C) + одно-
 // разовый привет-экран. Дом приложения при NAV_LAYOUT === "hub" (см. app.js).
 //
-// Состав плиток строится ТЕМ ЖЕ visibleNav(), что и раскладки таб-бара/верхних табов —
-// выключенный чекбоксом раздел не даёт плитку, права по-прежнему проверяет сервер на каждом
-// маршруте (T-19.1-14). Счётчики менеджера — существующие списочные ручки /app/api/* с
-// минимальным limit, каждый запрос fail-soft по отдельности (T-19.1-16): не ответившая ручка
-// даёт плитку без цифры, а не пустой экран.
+// Делегатский состав плиток строится тем же visibleNav(), что и раскладки таб-бара.
+// Дом менеджера — три режима: Работа, Настройки, Форум. Права по-прежнему проверяет сервер
+// на каждом маршруте (T-19.1-14). Подсказки менеджера fail-soft (T-19.1-16).
 
-import { visibleNav, NAV_ICONS, SECTION_GROUPS } from "../app.js";
+import { visibleNav, NAV_ICONS } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp, haptic, stagger } from "../motion.js";
 import {
@@ -58,14 +56,6 @@ function sectionLabelsFromDom() {
   } catch (_) {
     return {};
   }
-}
-
-function daysSince(value) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value || "");
-  if (!m) return null;
-  const submittedAt = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const days = Math.max(0, Math.floor((Date.now() - submittedAt) / 86400000));
-  return days;
 }
 
 // Шаги «как это работает» (D-06): `miniapp_onboarding_steps` — шаги через `;`, внутри шага
@@ -373,8 +363,7 @@ async function renderTilesOnlyHub(root, ctx, items) {
 
   // Плита «Анкета на проверке / заявка отклонена» (UAT D3): запрашивается только когда
   // статус вообще может нести текст — approved/none/draft получают heading: None и ручку
-  // можно не звать вовсе. Отказ ручки -> плиты нет, плитки на месте (тот же fail-soft, что
-  // у MANAGER_FETCHERS ниже по файлу, T-19.1-16).
+  // можно не звать вовсе. Отказ ручки -> плиты нет, плитки на месте (fail-soft, T-19.1-16).
   if (
     ctx.me.form_status === "pending" || ctx.me.form_status === "rejected"
     || ctx.me.form_status === "approved" || ctx.me.form_status === "returning"
@@ -449,18 +438,7 @@ async function renderTilesOnlyHub(root, ctx, items) {
   root.append(tiles);
 }
 
-// ── хаб менеджера (D-10, вариант C по умолчанию до голосования) ─────────────────────────
-// Счётчики плиток — фоновые запросы: `cap` — право, которое проверяет сам маршрут (может не
-// совпадать с правом видимости плитки), без него запрос не делается вовсе; quiet — страховка:
-// 403 счётчика оставляет плитку без цифры, а не уводит главную в «Нет доступа».
-const MANAGER_FETCHERS = {
-  "#/review": { cap: "moderate_game", path: "/review/next?offset=0" },
-  "#/admin-tasks": { cap: "moderate_game", path: "/admin/tasks?archived=0&offset=0&limit=1" },
-  "#/admin-coins": { cap: "moderate_game", path: "/admin/coins?offset=0&limit=1" },
-  "#/questions": { cap: "moderate_reg", path: "/questions?offset=0&limit=1" },
-  "#/stats": { cap: "moderate_game", path: "/stats/game" },
-  "#/settings": { cap: "settings", path: "/admin/settings" },
-};
+// ── хаб менеджера: три режима (Работа, Настройки, Форум), не группы разделов ─────────────
 
 // Плитка «📊 Дашборд» (quick 260903): открывает веб-дашборд во внешнем браузере — НЕ раздел
 // NAV (нет hash/секции), поэтому не строится через tile()/visibleNav(). Адрес и подпись
@@ -491,37 +469,30 @@ function opsCount(n) {
   return formatCount(screenText("coins_ops_count") || "{n}", Number(n) || 0);
 }
 
-function applyManagerTileData(hash, data, tileEl, hero) {
-  const small = tileEl.querySelector("small");
-  if (hash === "#/review") {
-    const remaining = data.empty ? 0 : data.remaining;
-    small.textContent = remaining ? `${remaining} на очереди` : "очередь пуста";
-    if (!hero) return;
-    countUp(hero.querySelector(".big"), 0, remaining || 0);
-    const days = !data.empty && data.submission ? daysSince(data.submission.submitted_at) : null;
-    hero.querySelector(".lbl").textContent = remaining
-      ? `сдач на проверке${days != null ? ` · старейшая ${days} дн.` : ""}`
-      : "сдач на проверке нет";
-  } else if (hash === "#/admin-tasks") {
-    small.textContent = `${data.active_count} активных · ${data.archived_count} в архиве`;
-  } else if (hash === "#/admin-coins") {
-    small.textContent = opsCount(data.total);
-  } else if (hash === "#/questions") {
-    small.textContent = data.counts.new ? `${data.counts.new} без ответа` : "все отвечены";
-  } else if (hash === "#/stats") {
-    small.textContent = `${data.participants} участников`;
-  } else if (hash === "#/settings") {
-    small.textContent = `${data.length} настроек`;
-  }
+const MANAGER_MODE_KEY = "aiesec_miniapp_manager_mode_v1";
+
+function storedManagerMode() {
+  try {
+    const value = localStorage.getItem(MANAGER_MODE_KEY);
+    if (value === "work" || value === "settings" || value === "forum") return value;
+  } catch (_) { /* приватный режим — как пустой ключ */ }
+  return "work";
+}
+
+function setManagerMode(mode) {
+  try { localStorage.setItem(MANAGER_MODE_KEY, mode); }
+  catch (_) { /* приватный режим */ }
+}
+
+function currentManagerMode() {
+  return storedManagerMode();
 }
 
 async function renderManagerHub(root, ctx, opts = {}) {
-  // opts.skipHero — ветка делегата-менеджера (renderHub): плитки разделов дорисовываются ПОД
-  // делегатским хабом, а большой герой «сдач на проверке» не дублирует делегатского героя
-  // с монетами — счётчик очереди остаётся в подписи плитки «Проверка сдач».
-  const { h, api, navigate, tg, me } = ctx;
-  const labels = sectionLabelsFromDom();
-  const items = visibleNav().filter((item) => !item.delegate);
+  // opts оставлен: ветка анкеты и переключатель роли по-прежнему передают skipHero.
+  void opts;
+  const { h, api, navigate, me } = ctx;
+  const hasCap = (cap) => Array.isArray(me && me.caps) && me.caps.includes(cap);
 
   // Квик 260915-4mu: плитка мастера первой настройки — первым блоком экрана, ПЕРЕД
   // подсказками ниже. Решение «показывать/нет» и текст прогресса считает сервер
@@ -551,9 +522,8 @@ async function renderManagerHub(root, ctx, opts = {}) {
   }
 
   // Подсказка про незаданную «🗓 Дата отсчёта до форума» (quick 260903, D-06): текст и решение
-  // «показывать/нет» считает сервер — hub.js только рисует. Fail-soft — тот же приём, что у
-  // MANAGER_FETCHERS ниже: отказ/403 (делегат без права settings) даёт хаб без строки, а не
-  // падение экрана. Строку рисуем и в skipHero-ветке — она про настройку, не про очередь.
+  // «показывать/нет» считает сервер — hub.js только рисует. Отказ ручки даёт хаб без строки,
+  // а не падение экрана. Строка про настройку, не про очередь.
   let countdown = null;
   let quietQueue = null;
   try {
@@ -586,65 +556,100 @@ async function renderManagerHub(root, ctx, opts = {}) {
       }),
     ));
   }
-  const knownGroups = new Set(SECTION_GROUPS.map(([token]) => token));
-  // Плитку без раздела (или с незнакомым токеном) терять нельзя: она уходит в хвост, под
-  // «🔧 Управление». Лежать не на своём месте — плохо, исчезнуть с экрана молча — хуже.
-  const groupOf = (item) => (knownGroups.has(item.group) ? item.group : "manage");
 
-  // Герой считает очередь проверки сдач. Без плитки «#/review» (гейма выключена или нет
-  // права) заполнять его нечем — он навсегда застыл бы на «0 / сдач на проверке» и врал.
-  // ИНВАРИАНТ: герой существует ровно тогда, когда среди плиток есть «#/review» —
-  // applyManagerTileData трогает hero только в этой ветке, поэтому null ниже безопасен.
-  const hero = !opts.skipHero && items.some((item) => item.hash === "#/review")
-    ? h("section", { class: "hero hero-flat" },
-      h("div", { class: "big", text: "0" }),
-      h("div", { class: "lbl", text: "сдач на проверке" }),
-    )
-    : null;
-  if (hero) root.append(hero);
+  // Место карточки сезона — план 07, между подсказками и сегментом.
 
-  // Хаб = та же карта админки, что корень /admin (Phase 20, ADMIN-IA-04, D-05): те же восемь
-  // разделов, те же подписи, тот же порядок. Раздел без единой видимой плитки не рисуется
-  // вовсе — ни заголовка, ни пустого контейнера (T-20-06: менеджер без права не узнаёт с
-  // экрана о существовании чужого раздела). Подпись самой плитки по-прежнему из реестра
-  // (labels[item.section]), а не из SECTION_GROUPS — это разные вещи.
-  const tileEls = {};
-  for (const [token, label] of SECTION_GROUPS) {
-    const groupItems = items.filter((item) => groupOf(item) === token);
-    // Плитка «Дашборд» встаёт в группу «data» рядом со «Статистикой» — она не строка NAV,
-    // поэтому раздел «data» обязан рисоваться и тогда, когда единственная видимая плитка в
-    // нём — именно дашборд (менеджер без права "stats", но с адресом дашборда).
-    const dashTile = token === "data" ? dashboardTile(h, tg, me) : null;
-    if (!groupItems.length && !dashTile) continue;
-    const tiles = h("div", { class: "tiles" });
-    for (const item of groupItems) {
-      const el = tile(h, {
-        onClick: () => navigate(item.hash),
-        iconName: NAV_ICONS[item.hash],
-        // D-04: плитка уже несёт Lucide-иконку слева — labelText снимает ведущий эмодзи
-        // подписи реестра, не дублируя его рядом с иконкой (тот же приём, что выше по файлу).
-        label: labelText(labels[item.section] || item.section),
-        meta: "…",
-      });
-      tileEls[item.hash] = el;
-      tiles.append(el);
-    }
-    if (dashTile) tiles.append(dashTile);
-    stagger(tiles); // квик 260915-4mw (ANIM-05): менеджерские плитки — той же лесенкой
-    root.append(h("div", { class: "sec", text: label }), tiles);
+  // Входы папки «День форума»: расписание без отдельной капы (null), остальные — право ручки.
+  const forumDayEntryCaps = ["checkin", null, "checkin", "moderate_reg", "checkin"];
+  const forumDayVisible = forumDayEntryCaps.some((cap) => cap == null || hasCap(cap));
+  const workRows = [
+    { cap: "moderate_reg", icon: "clipboard-list", title: "Отбор заявок", hash: "#/applications" },
+    { cap: "checkin", icon: "camera", title: "Сканер QR", hash: "#/scanner" },
+    {
+      cap: null, icon: "calendar", title: "Расписание", hash: "#/program",
+      meta: "Посмотреть сессии, не переставлять их.",
+    },
+    { folder: "forum-day", icon: "map-pin", title: "День форума", hash: "#/forum-day" },
+    { cap: "moderate_reg", icon: "help-circle", title: "Вопросы делегатов", hash: "#/questions" },
+    { cap: "broadcast", icon: "mail", title: "Рассылка", hash: "#/chat/broadcast" },
+    { cap: null, icon: "coins", title: "Баллы и магазин", hash: "#/coins-shop" },
+    { cap: "stats", icon: "bar-chart-2", title: "Цифры", hash: "#/figures" },
+  ];
+  const settingsRows = [
+    { cap: "settings", icon: "smartphone", title: "Кнопки меню делегата", hash: "#/settings/row-menu" },
+    { cap: "settings", icon: "pen-line", title: "Тексты делегату", hash: "#/settings/row-texts" },
+    { cap: "settings", icon: "pencil", title: "Вопросы анкеты", hash: "#/settings/row-questions" },
+    { cap: "settings", icon: "file-text", title: "Таблица и формы", hash: "#/sheets-forms" },
+    { cap: "settings", icon: "clock", title: "Запись и напоминания", hash: "#/settings/row-reminders" },
+    { cap: "settings", icon: "wallet", title: "Оплата и согласия", hash: "#/settings/row-pay" },
+    { cap: "settings", icon: "message-circle", title: "Чат города", hash: "#/settings/row-chat" },
+    { cap: "settings", icon: "user", title: "Амбассадоры", hash: "#/settings/row-amb" },
+    { cap: "settings", icon: "settings", title: "Редкое", hash: "#/settings/row-rare" },
+  ];
+  const forumTiles = [
+    { cap: "checkin", icon: "camera", title: "Сканер QR", hash: "#/scanner", meta: "Отметка на входе" },
+    { cap: null, icon: "calendar", title: "Расписание", hash: "#/program", meta: "Посмотреть сессии" },
+    { cap: "checkin", icon: "check-circle-2", title: "Отметки", hash: "#/arrivals", meta: "Кто на площадке" },
+    { cap: "moderate_reg", icon: "alert-triangle", title: "SOS", hash: "#/chat/sos", meta: "Пока в чате" },
+    { cap: "checkin", icon: "briefcase", title: "Находки", hash: "#/chat/lost", meta: "Пока в чате" },
+    { cap: "checkin", icon: "wallet", title: "Магазин", hash: "#/scanner", meta: "Стойка выдачи" },
+    { cap: "moderate_game", icon: "coins", title: "Баллы", hash: "#/admin-coins" },
+  ];
+  const visible = (item) => {
+    if (item.folder === "forum-day") return forumDayVisible;
+    if (!item.cap) return true;
+    return hasCap(item.cap);
+  };
+  const mode = currentManagerMode();
+  const seg = (id, label) => h("button", {
+    class: `hub-seg-btn${mode === id ? " active" : ""}`,
+    type: "button",
+    role: "tab",
+    "aria-selected": mode === id ? "true" : "false",
+    text: label,
+    onClick: () => {
+      if (mode === id) return;
+      setManagerMode(id);
+      root.replaceChildren();
+      renderHub(root, ctx);
+    },
+  });
+  root.append(h("div", {
+    class: "hub-seg",
+    role: "tablist",
+    "aria-label": "Режим менеджера",
+  }, seg("work", "Работа"), seg("settings", "Настройки"), seg("forum", "Форум")));
+
+  const source = mode === "settings" ? settingsRows : mode === "forum" ? forumTiles : workRows;
+  const items = source.filter(visible);
+  if (!items.length) {
+    root.append(
+      h("h1", { text: "В этом режиме пусто" }),
+      h("p", { text: "Для вашей роли здесь нет строк. Если дело пропало, попросите того, кто выдаёт доступ, проверить права." }),
+    );
+    return;
   }
-
-  await Promise.all(items.map(async (item) => {
-    const fetcher = MANAGER_FETCHERS[item.hash];
-    if (!fetcher || !(Array.isArray(me && me.caps) && me.caps.includes(fetcher.cap))) return;
-    try {
-      const data = await api(fetcher.path, { quiet: true });
-      applyManagerTileData(item.hash, data, tileEls[item.hash], hero);
-    } catch (_) {
-      // Плитка без цифры, экран не падает (T-19.1-16) — сервер по-прежнему проверял право
-      // на каждом из этих же маршрутов, отказ здесь — сетевой/403, не утечка данных.
+  if (mode === "forum") {
+    const tiles = h("div", { class: "tiles" });
+    for (const item of items) {
+      tiles.append(tile(h, {
+        onClick: () => navigate(item.hash),
+        iconName: item.icon,
+        label: item.title,
+        meta: item.meta || "",
+      }));
     }
-  }));
+    stagger(tiles);
+    root.append(tiles);
+    return;
+  }
+  root.append(h("div", { class: "flat-list" }, items.map((item) => flatRow(h, {
+    icon: item.icon,
+    title: item.title,
+    meta: item.meta,
+    chevron: true,
+    onClick: () => navigate(item.hash),
+  }))));
 }
 
 // Выбор вида хаба для делегата-менеджера (владелец 02.09: «неудобно, когда всё на одном
