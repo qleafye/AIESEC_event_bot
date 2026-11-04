@@ -22,7 +22,7 @@ from aiogram.types import (
     ReplyKeyboardRemove,
 )
 
-from database.db import get_poll, count_and_list_filtered
+from database.db import get_poll
 from database.survey_db import (
     create_survey_draft,
     update_survey_texts,
@@ -56,9 +56,10 @@ from keyboards.builders import get_cancel_kb
 from handlers.states import SurveyBuild
 from handlers.settings.admin_core import _admin_city_view
 from handlers.comms.admin_polls import _poll_out_of_scope, _parse_id, _short
+from handlers.comms.admin_poll_midcheck import recount_note
 from handlers.comms.admin_poll_wizard import (
     _audience_kb,
-    build_audience_spec,
+    resolve_audience_tap,
     _deliver_and_report,
     _quiet_hours_warning,
 )
@@ -548,11 +549,14 @@ async def survey_audience_pick(callback: types.CallbackQuery, state: FSMContext)
     if poll is None:
         return
     choice = callback.data[len("poll_aud:"):]
-    spec, city = await build_audience_spec(choice, callback.from_user.id)
-    ids = await count_and_list_filtered(spec) if spec else None
-    if ids is None:
-        from database.db import get_all_users_ids
-        ids = await get_all_users_ids()
+    tap = await resolve_audience_tap(
+        choice, callback.from_user.id, state, surface="survey", draft_id=pid,
+    )
+    if tap["kind"] in ("screen", "refuse"):
+        await callback.answer()
+        await _edit(callback, tap["text"], tap["markup"])
+        return
+    spec, city, ids = tap["spec"], tap["city"], tap["ids"]
     await state.update_data(audience=spec, city=city)
     await state.set_state(SurveyBuild.confirm)
     await callback.answer()
@@ -572,6 +576,7 @@ async def survey_audience_pick(callback: types.CallbackQuery, state: FSMContext)
     await callback.message.answer(
         f"Выше — вся анкета, как её увидит делегат.\n\n"
         f"Кому: <b>{_esc(audience_label(spec))}</b> — {len(ids)} чел.\n"
+        f"{recount_note(spec)}"
         f"{await _quiet_hours_warning()}"
         "Отправить сейчас или запланировать?",
         parse_mode="HTML", reply_markup=kb,
