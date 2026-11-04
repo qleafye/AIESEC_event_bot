@@ -7310,6 +7310,16 @@ SETTINGS_SCHEMA = {
         "type": "text", "group": "apps", "label": "🏫 Форма делегаций (служебный)",
         "prompt": None, "default": None,
     },
+    # Указатели форм регистрации и амбассадоров — тот же служебный приём, что у формы
+    # делегаций: менеджер не набирает id, в порядок полей общего экрана ключи не входят.
+    "registration_form_id": {
+        "type": "text", "group": "apps", "label": "📝 Форма регистрации (служебный)",
+        "prompt": None, "default": None,
+    },
+    "ambassador_form_id": {
+        "type": "text", "group": "apps", "label": "🤝 Форма амбассадоров (служебный)",
+        "prompt": None, "default": None,
+    },
     "delegation_q_fullname": {
         "type": "text", "group": "apps", "label": "🏫 Вопрос формы: ФИО (служебный)",
         "prompt": None, "default": None,

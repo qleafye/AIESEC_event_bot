@@ -259,6 +259,30 @@ def test_editable_keys_count_matches_formula():
     assert len(settings_ops.editable_keys()) == len(SETTINGS_SCHEMA) - len(_web_excluded_keys())
 
 
+def test_form_slots_and_delegation_human_keys_are_not_web_editable():
+    """Служебные указатели форм и человеческие ключи делегаций не листаются в вебе.
+    Формула длины editable_keys() остаётся len(схемы) - len(исключений), не числом."""
+    editable = set(settings_ops.editable_keys())
+    for key in ("registration_form_id", "ambassador_form_id"):
+        entry = SETTINGS_SCHEMA[key]
+        assert (entry["type"], entry["group"], entry["prompt"], entry["default"]) == (
+            "text", "apps", None, None,
+        ), key
+        assert "служебный" in entry["label"], key
+        assert key not in editable, key
+    human = (
+        "delegation_game_enabled", "delegation_ta_cutoff", "delegation_not_ta_courses",
+        "delegation_welcome_text", "delegation_welcome_existing_text", "delegation_game_off_text",
+    )
+    for key in human:
+        assert key in SETTINGS_SCHEMA, key
+        assert key not in editable, key
+    assert "delegation_form_id" not in editable
+    assert "main_sheet_tab" not in editable
+    assert "google_sheet_id" not in editable
+    assert len(editable) == len(SETTINGS_SCHEMA) - len(_web_excluded_keys())
+
+
 # (е) Phase 22 Plan 07 (D-16): SETTINGS_MAIN_SECTIONS — подмножество кодов SECTION_GROUPS,
 # непустое и не покрывающее все разделы (иначе второй ряд «Реже» стартового экрана всегда
 # пуст — сигнал, что константу забыли поправить вместе со структурой разделов).
