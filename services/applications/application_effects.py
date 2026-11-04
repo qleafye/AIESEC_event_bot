@@ -142,6 +142,23 @@ async def apply_decision_effects(bot, telegram_id: int, status: str, reason: str
             )
         if sheet:
             await update_status_in_sheet(telegram_id, STATUS_LABELS["rejected"])
+    elif status == "waitlist":
+        if notify_now:
+            from services.i18n.i18n import context as _i18n_context
+            from services.i18n.i18n import tr_setting
+            lang, tr_map = await _i18n_context(telegram_id)
+            text = await tr_setting("waitlist_delegate_text", lang, tr_map)
+            if text:
+                send_err = await send_with_retry(
+                    lambda: bot.send_message(telegram_id, text, parse_mode="HTML"),
+                )
+                if send_err is not None:
+                    logger.error(f"Failed to notify waitlisted user {telegram_id}: {send_err}")
+                await _record_delivery_fail_soft(
+                    telegram_id, "waitlist", "failed" if send_err else "delivered", send_err,
+                )
+        if sheet:
+            await update_status_in_sheet(telegram_id, STATUS_LABELS["waitlist"])
 
 
 async def mass_approve_effects(bot, ids: list) -> None:

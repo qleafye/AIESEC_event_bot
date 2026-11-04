@@ -110,7 +110,10 @@ def test_reg_labels_keys_snapshot():
     import domain.regform.labels as reg_labels
 
     assert list(reg_labels.REG_LABELS) == REG_LABELS_KEYS_SNAPSHOT
-    assert reg_labels.STATUS_LABELS == {"pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена"}
+    assert reg_labels.STATUS_LABELS == {
+        "pending": "Новая", "approved": "Одобрена", "rejected": "Отклонена",
+        "waitlist": "Лист ожидания",
+    }
     assert set(reg_labels.PAYMENT_STATUS_LABELS) == {"not_paid", "overdue", "receipt_sent", "paid"}
 
 

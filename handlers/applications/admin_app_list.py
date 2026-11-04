@@ -27,6 +27,7 @@ STATUS_LABELS = {
     "approved": "✅ Одобренные",
     "rejected": "❌ Отклонённые",
     "pending": "⏳ Ожидают",
+    "waitlist": "📋 Лист ожидания",
 }
 _STATUS_ORDER = ("approved", "rejected", "pending")
 
@@ -101,6 +102,7 @@ _DATE_CAPTION = {
     "approved": "решение",
     "rejected": "решение",
     "pending": "подана",
+    "waitlist": "подана",
 }
 
 
@@ -110,7 +112,8 @@ async def render_app_list_screen(
     """«Функция возвращает (text, kb)» idiom (форма `render_questions_screen`). WR-05: одно
     чтение города на экран — тот же scope уходит и в счётчики, и в выборку, иначе счётчик в
     шапке разойдётся со списком под ним."""
-    if status not in STATUS_LABELS:
+    waitlist_on = await get_setting("apps_waitlist_enabled") == "on"
+    if status not in STATUS_LABELS or (status == "waitlist" and not waitlist_on):
         status = "approved"
     scope, label = await _admin_city_view(admin_id)
     # Сезон: по умолчанию только текущий (`event_season`), иначе импортированные делегаты
@@ -132,9 +135,10 @@ async def render_app_list_screen(
     current_page = offset // PAGE + 1
 
     lines = ["📇 <b>Список заявок</b>"]
-    lines.append(
-        f"✅ {counts['approved']} · ❌ {counts['rejected']} · ⏳ {counts['pending']}"
-    )
+    header = f"✅ {counts['approved']} · ❌ {counts['rejected']} · ⏳ {counts['pending']}"
+    if "waitlist" in counts:
+        header += f" · 📋 {counts['waitlist']}"
+    lines.append(header)
     if current_season:
         shown = "все сезоны" if all_seasons else current_season
         lines.append(f"Сезон: {html_module.escape(shown)}")
@@ -159,12 +163,13 @@ async def render_app_list_screen(
     # Выбор сезона едет в callback_data (суффикс `:all`), в настройки не пишется.
     suffix = ":all" if all_seasons else ""
     buttons: list[list[InlineKeyboardButton]] = []
+    chip_order = (*_STATUS_ORDER, "waitlist") if waitlist_on else _STATUS_ORDER
     status_row = [
         InlineKeyboardButton(
             text=("• " if opt == status else "") + STATUS_LABELS[opt],
             callback_data=f"apl:{opt}:0{suffix}",
         )
-        for opt in _STATUS_ORDER
+        for opt in chip_order
     ]
     buttons.append(status_row)
 

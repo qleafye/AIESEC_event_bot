@@ -613,6 +613,64 @@
       </div>
     </section>
     {% endif %}
+
+    {% if skillup_it %}
+    <section class="block">
+      <h2 class="block-title">В IT от 3 лет</h2>
+      <div class="card">
+        {% if skillup_it.total %}
+        <div class="kpi">
+          <div class="num">{{ skillup_it.count | thousands }}</div>
+          <div class="lbl">заявок</div>
+          {% if skillup_it.percent is not none %}
+          <div class="delta">{{ skillup_it.percent }}%</div>
+          {% endif %}
+        </div>
+        {% else %}
+        <p class="empty-note">Появится, когда в анкетах ответят на этот вопрос</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if skillup_case %}
+    <section class="block">
+      <h2 class="block-title">Хотят в кейс</h2>
+      <div class="card">
+        {% if skillup_case.total %}
+        <div class="kpi">
+          <div class="num">{{ skillup_case.count | thousands }}</div>
+          <div class="lbl">заявок</div>
+          {% if skillup_case.percent is not none %}
+          <div class="delta">{{ skillup_case.percent }}%</div>
+          {% endif %}
+        </div>
+        {% if skillup_case.fields %}
+        <h3 class="cut-title">Направление</h3>
+        {% for row in skillup_case.fields %}
+        <div class="bar-row">
+          <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+          <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+          <span class="val">{{ row.count | thousands }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% if skillup_case.stack %}
+        <h3 class="cut-title">Стек</h3>
+        {% for row in skillup_case.stack %}
+        <div class="bar-row">
+          <span class="label" title="{{ row.label }}">{{ row.label }}</span>
+          <span class="track" aria-hidden="true"><span class="fill" style="width:{{ row.pct }}%"></span></span>
+          <span class="val">{{ row.count | thousands }}</span>
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% else %}
+        <p class="empty-note">Появится, когда в анкетах ответят на этот вопрос</p>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
   </section>
   {% endif %}
 

@@ -349,6 +349,7 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
 
     # ── stats ────────────────────────────────────────────────────────────────────────────
     "admin_export_csv": "stats",
+    "admin_export_partner": "stats",
     # «📊 Данные»: «👥 Список участников» (CSV одобренных) — менеджеру регистраций и статистике;
     # «📄 Открыть таблицу» (url-кнопка, своего callback нет) — тем, кто синхронизирует таблицу,
     # плюс менеджеру регистраций: он и так читает в ней заявки.
@@ -376,6 +377,11 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # button carries an optional ":<city>" suffix. Prefix key, not the bare exact string.
     "appr_all_yes*": "moderate_reg",
     "appr_approve:*": "moderate_reg",
+    "appr_waitlist:*": "moderate_reg",
+    "toggle_apps_waitlist": "moderate_reg",
+    "admin_interviews": "moderate_reg",
+    "ivadm:*": "moderate_reg",
+    "state:InterviewAdmin:*": "moderate_reg",
     # Phase 21 (21-07, T-21-09): кнопка «🕓 История» правок анкеты в карточке заявки — та же
     # капа, что и вся остальная карточка, чужую историю без прав не открыть.
     "appr_history:*": "moderate_reg",
@@ -490,6 +496,11 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # Форум-ночь п.7 (D-XX, «❗ Важное»): тумблер важности на превью немедленной рассылки —
     # та же capability, что bc_go/bc_no рядом.
     "bc_important_toggle": "broadcast",
+    "bciv_toggle": "broadcast",
+    "bc_consent_open": "broadcast",
+    "bc_consent_clear": "broadcast",
+    "bc_consent_long": "broadcast",
+    "bc_consent:*": "broadcast",
     "bc_rev:*": "broadcast",
     "bc_revgo:*": "broadcast",
     "bc_revno*": "broadcast",

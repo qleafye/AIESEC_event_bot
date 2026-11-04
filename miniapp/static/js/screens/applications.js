@@ -260,15 +260,20 @@ export async function render(root, params, ctx) {
     busy = true;
     const tid = currentCard.application.telegram_id;
     try {
-      // Два литеральных пути (не `${action}`) — тот же приём, что review.js::decide.
-      const res = action === "approve"
-        ? await api(`/applications/${encodeURIComponent(tid)}/approve`, { method: "POST", body: {} })
-        : await api(`/applications/${encodeURIComponent(tid)}/reject`, { method: "POST", body: { reason: reason || "" } });
+      // Литеральные пути (не `${action}`) — тот же приём, что review.js::decide.
+      let res;
+      if (action === "approve") {
+        res = await api(`/applications/${encodeURIComponent(tid)}/approve`, { method: "POST", body: {} });
+      } else if (action === "waitlist") {
+        res = await api(`/applications/${encodeURIComponent(tid)}/waitlist`, { method: "POST", body: {} });
+      } else {
+        res = await api(`/applications/${encodeURIComponent(tid)}/reject`, { method: "POST", body: { reason: reason || "" } });
+      }
       if (res.ok) {
         haptic("success");
         // Quick 260904-dq1: приписка «делегат узнает в 09:00» приходит с сервера целиком
         // (D-13: ни одного русского литерала в JS) — JS только склеивает, когда она непустая.
-        let toastText = action === "approve" ? texts.approved_toast : texts.rejected_toast;
+        let toastText = res.toast || (action === "approve" ? texts.approved_toast : texts.rejected_toast);
         if (res.quiet_notice) toastText = `${toastText} · ${res.quiet_notice}`;
         showToast(toastText, res.undo_seconds, () => undoDecision(res.decision_id));
         await load();
@@ -458,6 +463,13 @@ export async function render(root, params, ctx) {
       class: "btn ghost appl-decide reject", type: "button", "aria-label": texts.reject_button || "",
       onClick: () => openRejectSheet(),
     }, icon("x"));
+    const waitlistBtn = card.waitlist_enabled && card.waitlist_button
+      ? h("button", {
+          class: "btn ghost appl-decide waitlist", type: "button",
+          "aria-label": card.waitlist_button,
+          onClick: () => decide("waitlist"),
+        }, card.waitlist_button)
+      : null;
 
     // D-04 (фикс «подложка закрывает кнопки», квик 03.09): стопка (тень следующей карточки +
     // сама карточка) — отдельная обёртка `.appl-stack-wrap`, а не прямой ребёнок cardHolder.
@@ -471,7 +483,7 @@ export async function render(root, params, ctx) {
         h("div", { class: "appl-stack", "aria-hidden": "true" }),
         cardEl,
       ),
-      h("div", { class: "appl-decide-row" }, rejectBtn, approveBtn),
+      h("div", { class: "appl-decide-row" }, rejectBtn, waitlistBtn, approveBtn),
     );
 
     if (_detachSwipe) { _detachSwipe(); _detachSwipe = null; }

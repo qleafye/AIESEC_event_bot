@@ -856,54 +856,60 @@ async def send_scheduled_broadcast(broadcast_id: int):
             return
 
         filter_spec = row.get("filter_spec")
+        interview_on = False
         if filter_spec:
             try:
                 spec = json.loads(filter_spec)
-                # WR-02: the `exclude` list inside an `event_city` filter is a SNAPSHOT of "the
-                # other known city codes" taken when the manager built the filter. EVENT_CITIES
-                # is an .env list edited between scheduling and sending, so a city added after
-                # scheduling is missing from the frozen exclude — the default-city condition
-                # (`event_city NOT IN (...)`) stops excluding it and its delegates leak into a
-                # broadcast addressed to another city. Re-resolve against the LIVE registry at
-                # send time; the stored exclude is only a fallback for pre-WR-02 rows.
-                from domain.cities import refresh_city_filter_spec
-                spec = refresh_city_filter_spec(spec)
-                if spec is None:
-                    # An event_city filter names a code the registry no longer knows. Refuse:
-                    # normalizing it would silently redirect the whole broadcast to the DEFAULT
-                    # city, which is worse than not sending at all.
-                    logger.error(
-                        f"Scheduled broadcast {broadcast_id} targets an unknown event_city — "
-                        "refusing to send (empty audience)"
-                    )
-                    target_ids = []
+                from handlers.comms.admin_broadcast_interview import peel_interview_flag
+                interview_on, spec = peel_interview_flag(spec)
+                if not spec:
+                    target_ids = await get_all_users_ids()
                 else:
-                    # Квик 260914-rgr (RGR-01..07): та же забота, что у event_city выше —
-                    # карта `chats` внутри спеки delegate_chat пересобирается ЗАНОВО на
-                    # момент отправки, а не хранится замороженной со времени планирования.
-                    # Выбрано пересобирать (не отдельный `refresh_*_spec`, как у городов) —
-                    # проще и честнее: чат, отвязанный между планированием и отправкой, не
-                    # должен давать аудиторию «все», а замороженная карта именно так бы и
-                    # сделала (пустой EXISTS -> фрагмент "0" -> пустая, но НЕ ошибочная
-                    # аудитория есть только если карта пуста целиком, а не устарела).
-                    if any(isinstance(f, dict) and f.get("field") == "delegate_chat" for f in spec):
-                        from domain.cities import city_scope as _city_scope
-                        from services.chat_tracking import bound_chats
+                    # WR-02: the `exclude` list inside an `event_city` filter is a SNAPSHOT of "the
+                    # other known city codes" taken when the manager built the filter. EVENT_CITIES
+                    # is an .env list edited between scheduling and sending, so a city added after
+                    # scheduling is missing from the frozen exclude — the default-city condition
+                    # (`event_city NOT IN (...)`) stops excluding it and its delegates leak into a
+                    # broadcast addressed to another city. Re-resolve against the LIVE registry at
+                    # send time; the stored exclude is only a fallback for pre-WR-02 rows.
+                    from domain.cities import refresh_city_filter_spec
+                    spec = refresh_city_filter_spec(spec)
+                    if spec is None:
+                        # An event_city filter names a code the registry no longer knows. Refuse:
+                        # normalizing it would silently redirect the whole broadcast to the DEFAULT
+                        # city, which is worse than not sending at all.
+                        logger.error(
+                            f"Scheduled broadcast {broadcast_id} targets an unknown event_city — "
+                            "refusing to send (empty audience)"
+                        )
+                        target_ids = []
+                    else:
+                        # Квик 260914-rgr (RGR-01..07): та же забота, что у event_city выше —
+                        # карта `chats` внутри спеки delegate_chat пересобирается ЗАНОВО на
+                        # момент отправки, а не хранится замороженной со времени планирования.
+                        # Выбрано пересобирать (не отдельный `refresh_*_spec`, как у городов) —
+                        # проще и честнее: чат, отвязанный между планированием и отправкой, не
+                        # должен давать аудиторию «все», а замороженная карта именно так бы и
+                        # сделала (пустой EXISTS -> фрагмент "0" -> пустая, но НЕ ошибочная
+                        # аудитория есть только если карта пуста целиком, а не устарела).
+                        if any(isinstance(f, dict) and f.get("field") == "delegate_chat" for f in spec):
+                            from domain.cities import city_scope as _city_scope
+                            from services.chat_tracking import bound_chats
 
-                        bound = await bound_chats()
-                        chats_payload = []
-                        for entry in bound:
-                            sc = _city_scope(entry["city"]) if entry["city"] else None
-                            chats_payload.append({
-                                "city": entry["city"], "chat_id": entry["chat_id"],
-                                "exclude": list(sc[1]) if sc else [],
-                            })
-                        spec = [
-                            {**f, "chats": chats_payload}
-                            if isinstance(f, dict) and f.get("field") == "delegate_chat" else f
-                            for f in spec
-                        ]
-                    target_ids = await count_and_list_filtered(spec)
+                            bound = await bound_chats()
+                            chats_payload = []
+                            for entry in bound:
+                                sc = _city_scope(entry["city"]) if entry["city"] else None
+                                chats_payload.append({
+                                    "city": entry["city"], "chat_id": entry["chat_id"],
+                                    "exclude": list(sc[1]) if sc else [],
+                                })
+                            spec = [
+                                {**f, "chats": chats_payload}
+                                if isinstance(f, dict) and f.get("field") == "delegate_chat" else f
+                                for f in spec
+                            ]
+                        target_ids = await count_and_list_filtered(spec)
             except Exception as e:
                 logger.error(f"Scheduled broadcast {broadcast_id} bad filter_spec: {e}")
                 target_ids = []
@@ -933,10 +939,11 @@ async def send_scheduled_broadcast(broadcast_id: int):
         # `log_bid` — id строки `broadcasts` (им владеют record_broadcast_delivery/
         # finish_broadcast — журнал «Последние рассылки» и отзыв). Не перепутать.
         log_bid = row.get("log_broadcast_id")
+        consent_key = (row.get("consent_key") or "").strip() or None
         if not log_bid:
             log_bid = await create_broadcast(
                 row.get("created_by") or 0, (row.get("text") or "")[:80], len(target_ids),
-                important=important, full_text=row.get("text"),
+                important=important, full_text=row.get("text"), consent_key=consent_key,
             )
             await set_scheduled_log_broadcast_id(broadcast_id, log_bid)
 
@@ -958,6 +965,10 @@ async def send_scheduled_broadcast(broadcast_id: int):
         sent_message_ids: dict[int, int] = {}
         # Языки получателей и кнопка «🔕» — один раз на рассылку, не походом в БД на каждого.
         langs = await load_recipient_langs() if not important else None
+        from handlers.comms.admin_broadcast_interview import with_interview_button
+        from handlers.comms.admin_broadcast_consent import with_consent_button
+        interview_base = with_interview_button(None, interview_on)
+        interview_base = await with_consent_button(interview_base, log_bid, consent_key)
         # Чекпоинт `mark_delivery` остаётся на КАЖДОГО получателя (он и есть защита от дубля
         # после краха), но пишется через одно соединение на весь цикл (`delivery_writer`);
         # строки журнала отзыва копятся и сбрасываются пачкой.
@@ -970,7 +981,9 @@ async def send_scheduled_broadcast(broadcast_id: int):
                         continue
                     # Ревью 470ce5e..3703ba4: ровно 1 API-вызов на получателя — пометка важности
                     # внутри `content`, кнопка «🔕» внутри `markup` (альбома здесь не бывает).
-                    markup = await recipient_markup(chat_id, important, langs=langs)
+                    markup = await recipient_markup(
+                        chat_id, important, interview_base, langs=langs,
+                    )
                     if photo:
                         async def _send(cid, _photo=photo, _caption=content, _markup=markup):
                             caption = await _render_delegate_text(_bot, cid, _caption)
@@ -1168,6 +1181,70 @@ async def send_payment_reminder(user_id: int):
         await _send_delegate_message(user_id, text)
     except Exception as e:
         logger.error(f"send_payment_reminder({user_id}) failed: {e}")
+
+
+def schedule_interview_reminder(user_id: int, slot_id: int, run_at: datetime):
+    """Напоминание за 2 часа. Один id на человека: новая запись заменяет старую.
+
+    Если время уже прошло (слот ближе чем через 2 часа), джобу не ставим."""
+    if run_at <= _now_moscow_naive():
+        return
+    get_scheduler().add_job(
+        send_interview_reminder, "date",
+        run_date=run_at, args=[int(user_id), int(slot_id)],
+        id=f"interview_rem_{int(user_id)}", replace_existing=True,
+    )
+
+
+def cancel_interview_reminder(user_id: int):
+    try:
+        get_scheduler().remove_job(f"interview_rem_{int(user_id)}")
+    except Exception:
+        pass
+
+
+async def send_interview_reminder(user_id: int, slot_id: int):
+    """Перед отправкой бронь читается заново. Чужой или старый slot_id молчит.
+
+    Тихие часы не переносят напоминание на момент слота или позже: тогда письмо
+    уходит сразу, иначе человек получил бы его уже на созвоне."""
+    try:
+        from database import interview_db
+        from services.comms import quiet_hours
+
+        if await get_setting_typed("interview_booking_enabled") != "on":
+            return
+        booking = await interview_db.get_booking(int(user_id))
+        if not booking or int(booking["slot_id"]) != int(slot_id):
+            return
+        slot = await interview_db.get_slot(int(slot_id))
+        if not slot:
+            return
+        try:
+            starts = datetime.strptime(slot["starts_at"].strip(), "%Y-%m-%d %H:%M")
+        except (TypeError, ValueError, AttributeError):
+            return
+        now = _now_moscow_naive()
+        if now >= starts:
+            return
+        due = await quiet_hours.defer_until(now, int(user_id))
+        if due is not None and due < starts:
+            get_scheduler().add_job(
+                send_interview_reminder, "date",
+                run_date=due, args=[int(user_id), int(slot_id)],
+                id=f"interview_rem_{int(user_id)}", replace_existing=True,
+            )
+            return
+        text = await get_setting_typed("interview_reminder_text") or (
+            "Напоминание: интервью {when}. До встречи."
+        )
+        when = starts.strftime("%d.%m.%Y %H:%M")
+        await _safe_send(
+            lambda cid: _bot.send_message(cid, str(text).replace("{when}", when)),
+            int(user_id),
+        )
+    except Exception as e:
+        logger.error(f"send_interview_reminder({user_id}) failed: {e}")
 
 
 async def sweep_payment_overdue():

@@ -938,6 +938,16 @@ async def init_db():
         await _ensure_column(db, "broadcasts", "important", "INTEGER DEFAULT 0")
         await _ensure_column(db, "broadcasts", "full_text", "TEXT")
         await _ensure_column(db, "broadcasts", "mute_skipped", "INTEGER DEFAULT 0")
+        await _ensure_column(db, "broadcasts", "consent_key", "TEXT")
+        await _ensure_column(db, "scheduled_broadcasts", "consent_key", "TEXT")
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS broadcast_consent_taps (
+                broadcast_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                accepted_at TEXT,
+                PRIMARY KEY (broadcast_id, user_id)
+            )
+        ''')
         # БЕЗ PRIMARY KEY: альбом отдаёт несколько message_id на один chat_id — по одной строке
         # на каждое доставленное сообщение, не одна на получателя.
         await db.execute('''
@@ -1569,6 +1579,27 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_application_decisions_due "
             "ON application_decisions(effects_sent_at, undone_at, effects_due_at)"
         )
+
+        # Слоты интервью кейс-чемпионата. event_city NULL — слот общий (модуль городов
+        # выключен). starts_at — московское время без пояса, YYYY-MM-DD HH:MM.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS interview_slots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_city TEXT,
+                starts_at TEXT NOT NULL,
+                cap INTEGER NOT NULL,
+                created_by INTEGER,
+                created_at TEXT NOT NULL
+            )
+        ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS interview_bookings (
+                user_id INTEGER PRIMARY KEY,
+                slot_id INTEGER NOT NULL,
+                reschedule_count INTEGER NOT NULL DEFAULT 0,
+                booked_at TEXT NOT NULL
+            )
+        ''')
 
         # Phase 31 (31-02, D-05/D-15): правила автоотказа по анкете. Условия правила хранятся
         # ОДНОЙ JSON-колонкой (`conditions`), а не нормализованной схемой условий — D-02
@@ -4434,16 +4465,17 @@ async def set_user_status(telegram_id: int, status: str):
 
 
 async def approve_user_atomic(telegram_id: int) -> bool:
-    """Atomically approve one pending user. True iff this call flipped the row
+    """Atomically approve one pending or waitlisted user. True iff this call flipped the row
     (rowcount==1) — a concurrent second approve returns False (no double approval).
     approved_at (D-10, Phase 23.1-05) is stamped in the SAME UPDATE — this is the shared seam
     for both the bot's single-approve (appr_approve) and the web's single-approve
-    (services.applications.applications.claim_approve), so a second timestamp write is never needed."""
+    (services.applications.applications.claim_approve), so a second timestamp write is never needed.
+    «Принять всех» сюда не входит и лист ожидания не захватывает."""
     approved_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE users SET status = 'approved', approved_at = ? "
-            "WHERE telegram_id = ? AND status = 'pending'",
+            "WHERE telegram_id = ? AND status IN ('pending', 'waitlist')",
             (approved_at, telegram_id),
         )
         await db.commit()
@@ -4451,7 +4483,7 @@ async def approve_user_atomic(telegram_id: int) -> bool:
 
 
 async def reject_user(telegram_id: int) -> bool:
-    """Atomically reject one pending user. True iff one row flipped.
+    """Atomically reject one pending or waitlisted user. True iff one row flipped.
     rejected_at (Phase 30, 30-05 задача 3) is stamped in the SAME UPDATE — the shared seam
     for both the bot's single-reject (appr_reject_reason) and the web's single-reject
     (services.applications.applications.claim_reject), same discipline as approve_user_atomic/approved_at."""
@@ -4459,8 +4491,22 @@ async def reject_user(telegram_id: int) -> bool:
     async with _connect() as db:
         cursor = await db.execute(
             "UPDATE users SET status = 'rejected', rejected_at = ? "
-            "WHERE telegram_id = ? AND status = 'pending'",
+            "WHERE telegram_id = ? AND status IN ('pending', 'waitlist')",
             (rejected_at, telegram_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
+async def claim_waitlist_from_pending(telegram_id: int) -> bool:
+    """Лист ожидания только из pending и не для walk-in у стойки. True — эта запись выиграла флип.
+    Своей колонки времени нет. Обёртка для бота — services.applications.applications.claim_waitlist."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE users SET status = 'waitlist' "
+            "WHERE telegram_id = ? AND status = 'pending' "
+            "AND COALESCE(onsite_kind, '') != 'walkin'",
+            (telegram_id,),
         )
         await db.commit()
         return cursor.rowcount == 1
@@ -4843,16 +4889,27 @@ async def claim_decision_with_undo_row(telegram_id: int, decision: str, reason: 
         stamp_col, status = "approved_at", "approved"
     elif decision == "rejected":
         stamp_col, status = "rejected_at", "rejected"
+    elif decision == "waitlist":
+        stamp_col, status = None, "waitlist"
     else:
         raise ValueError(f"unknown decision: {decision!r}")
+    if decision == "waitlist":
+        status_sql = (
+            "UPDATE users SET status = 'waitlist' "
+            "WHERE telegram_id = ? AND status = 'pending' "
+            "AND COALESCE(onsite_kind, '') != 'walkin'"
+        )
+        status_params = (telegram_id,)
+    else:
+        status_sql = (
+            f"UPDATE users SET status = ?, {stamp_col} = ? "
+            "WHERE telegram_id = ? AND status IN ('pending', 'waitlist')"
+        )
+        status_params = (status, msk_now().strftime("%Y-%m-%d %H:%M:%S"), telegram_id)
     async with _connect() as db:
         await db.execute("BEGIN IMMEDIATE")
         try:
-            cursor = await db.execute(
-                f"UPDATE users SET status = ?, {stamp_col} = ? "
-                "WHERE telegram_id = ? AND status = 'pending'",
-                (status, msk_now().strftime("%Y-%m-%d %H:%M:%S"), telegram_id),
-            )
+            cursor = await db.execute(status_sql, status_params)
             if cursor.rowcount != 1:
                 await db.rollback()
                 return None
@@ -5067,22 +5124,23 @@ async def create_scheduled_broadcast(
     filter_spec: str | None,
     scheduled_at: str,
     created_by: int,
-    *, important: bool = False,
+    *, important: bool = False, consent_key: str | None = None,
 ) -> int:
     """Insert a pending scheduled broadcast; return its new id (the job's only arg).
 
     `important` (форум-ночь п.7, kw-only с дефолтом False — существующие вызовы байт-в-байт
     прежние): копируется в журнал `broadcasts` при отправке (services/scheduler.py::
-    send_scheduled_broadcast), read back via get_scheduled_broadcast (SELECT *)."""
+    send_scheduled_broadcast), read back via get_scheduled_broadcast (SELECT *).
+    `consent_key` — какое согласие прикреплено кнопкой; без аргумента пишется NULL."""
     created_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO scheduled_broadcasts "
             "(text, photo_file_id, filter_spec, scheduled_at, status, created_by, created_at, "
-            "important) "
-            "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+            "important, consent_key) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
             (text, photo_file_id, filter_spec, scheduled_at, created_by, created_at,
-             1 if important else 0),
+             1 if important else 0, consent_key),
         )
         await db.commit()
         return cursor.lastrowid
@@ -5263,22 +5321,23 @@ async def cleanup_deliveries(broadcast_id: int):
 
 async def create_broadcast(
     admin_id: int, text_preview: str, total: int,
-    *, important: bool = False, full_text: str | None = None,
+    *, important: bool = False, full_text: str | None = None, consent_key: str | None = None,
 ) -> int:
     """Insert a 'sending' row for an immediate broadcast; return its new id.
 
     Форум-ночь п.7: `important`/`full_text` — тот же ряд, что и у отложенной рассылки
     (services/scheduler.py::send_scheduled_broadcast заводит/переиспользует ЭТУ ЖЕ строку
     журнала через log_broadcast_id). kw-only с дефолтами — существующие позиционные вызовы
-    остаются байт-в-байт прежними."""
+    остаются байт-в-байт прежними. `consent_key` без аргумента — NULL."""
     started_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
     async with _connect() as db:
         cursor = await db.execute(
             "INSERT INTO broadcasts "
             "(admin_id, text_preview, started_at, status, total, delivered, blocked, "
-            "important, full_text) "
-            "VALUES (?, ?, ?, 'sending', ?, 0, 0, ?, ?)",
-            (admin_id, text_preview, started_at, total, 1 if important else 0, full_text),
+            "important, full_text, consent_key) "
+            "VALUES (?, ?, ?, 'sending', ?, 0, 0, ?, ?, ?)",
+            (admin_id, text_preview, started_at, total, 1 if important else 0, full_text,
+             consent_key),
         )
         await db.commit()
         return cursor.lastrowid
@@ -7951,6 +8010,7 @@ _APPLICATION_STATUS_SQL = {
     "rejected": "u.status = 'rejected'",
     # D-41: walk-in без решения — не заявка на модерацию (его ждёт стойка), как в очереди.
     "pending": "u.status = 'pending' AND COALESCE(u.onsite_kind, '') != 'walkin'",
+    "waitlist": "u.status = 'waitlist'",
 }
 
 # Порядок COALESCE в каждом выражении — три рубежа даты решения, от самого точного к самому
@@ -7980,6 +8040,7 @@ _APPLICATION_DATE_SQL = {
         "u.registration_date)"
     ),
     "pending": "u.registration_date",
+    "waitlist": "u.registration_date",
 }
 
 # Владелец 16.09: строка списка обязана показывать, КТО принял решение — тот же рубеж
@@ -8002,6 +8063,7 @@ _APPLICATION_DECIDER_SQL = {
         "AND d.undone_at IS NULL ORDER BY d.decided_at DESC, d.id DESC LIMIT 1)"
     ),
     "pending": "NULL",
+    "waitlist": "NULL",
 }
 
 
@@ -8084,29 +8146,40 @@ async def resolve_decision_managers(decided_by_ids: list[int]) -> dict[int, str]
 async def count_applications(*, city_scope=None, season: str | None = None) -> dict[str, int]:
     """Один запрос, три `SUM(CASE …)` по тем же фрагментам `_APPLICATION_STATUS_SQL` и тому же
     city-фрагменту, что `list_applications_page` — счётчик в шапке экрана не может разойтись со
-    списком под ней (тот же приём WR-05, что у `count_questions_by_status`)."""
+    списком под ней (тот же приём WR-05, что у `count_questions_by_status`).
+
+    Четвёртый SUM по листу ожидания есть только при включённом тумблере. Выключенный
+    режим отдаёт прежние три числа, даже если такие строки в базе уже есть."""
+    include_waitlist = await get_setting("apps_waitlist_enabled") == "on"
     city_frag, city_params = _city_clause(city_scope, "u.event_city")
     s_frag, s_params = _season_clause(season, "u.season")
     if s_frag:
         city_frag = f"{city_frag} AND {s_frag}" if city_frag else s_frag
         city_params = [*city_params, *s_params]
     where_sql = f"WHERE {city_frag}" if city_frag else ""
+    sums = (
+        f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['approved']} THEN 1 ELSE 0 END), "
+        f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['rejected']} THEN 1 ELSE 0 END), "
+        f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['pending']} THEN 1 ELSE 0 END)"
+    )
+    if include_waitlist:
+        sums += f", SUM(CASE WHEN {_APPLICATION_STATUS_SQL['waitlist']} THEN 1 ELSE 0 END)"
     async with _connect() as db:
         async with db.execute(
-            "SELECT "
-            f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['approved']} THEN 1 ELSE 0 END), "
-            f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['rejected']} THEN 1 ELSE 0 END), "
-            f"SUM(CASE WHEN {_APPLICATION_STATUS_SQL['pending']} THEN 1 ELSE 0 END) "
-            f"FROM users u {where_sql}",
+            f"SELECT {sums} FROM users u {where_sql}",
             tuple(city_params),
         ) as cursor:
             row = await cursor.fetchone()
-    approved_n, rejected_n, pending_n = row if row else (0, 0, 0)
-    return {
-        "approved": int(approved_n or 0),
-        "rejected": int(rejected_n or 0),
-        "pending": int(pending_n or 0),
+    if not row:
+        row = (0, 0, 0, 0) if include_waitlist else (0, 0, 0)
+    counts = {
+        "approved": int(row[0] or 0),
+        "rejected": int(row[1] or 0),
+        "pending": int(row[2] or 0),
     }
+    if include_waitlist:
+        counts["waitlist"] = int(row[3] or 0)
+    return counts
 
 
 # ── Quick 260906-8uq (FAQ-01..06): аксессоры faq_items ───────────────────────────────────────

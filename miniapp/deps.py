@@ -132,10 +132,8 @@ def read_setting(conn, key: str):
 def _gate_decision(status) -> tuple[bool, str | None]:
     """Копия `handlers.user_actions._gate_decision`: legacy/missing/unknown -> allowed."""
     status = status or "approved"
-    if status == "pending":
-        return False, "pending"
-    if status == "rejected":
-        return False, "rejected"
+    if status in ("pending", "rejected", "waitlist"):
+        return False, status
     return True, None
 
 

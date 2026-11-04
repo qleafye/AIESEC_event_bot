@@ -53,6 +53,7 @@ from database.db import (
     get_reject_rule,
     get_setting,
     get_user,
+    claim_waitlist_from_pending,
     record_application_decision,
     reject_user,
     revert_user_to_pending,
@@ -625,6 +626,12 @@ async def claim_reject(telegram_id: int) -> bool:
     return await reject_user(telegram_id)
 
 
+async def claim_waitlist(telegram_id: int) -> bool:
+    """Лист ожидания — единственная запись users.status = waitlist из бота.
+    Только pending и не walk-in. True, если этот вызов выиграл флип."""
+    return await claim_waitlist_from_pending(telegram_id)
+
+
 async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
     """Массовое одобрение + начисление рефералки ОДНИМ швом (32-05, D-20/D-22) — единственная
     точка, которую зовут И бот (`handlers/applications/admin_moderation.py::appr_all_yes`), И веб, так что
@@ -773,7 +780,11 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
         if approved_ids:
             from services.amb.amb_journal import on_invitees_approved
             await on_invitees_approved(approved_ids)
-        rejected_ids = [row["telegram_id"] for row in due if row["decision"] != "approved"]
+        # waitlist — не отказ: слот амбассадора из-за листа ожидания не снимаем.
+        rejected_ids = [
+            row["telegram_id"] for row in due
+            if row["decision"] not in ("approved", "waitlist")
+        ]
         if rejected_ids:
             from services.amb.amb_status import on_applications_unapproved
             await on_applications_unapproved(rejected_ids)

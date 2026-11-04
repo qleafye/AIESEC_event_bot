@@ -166,6 +166,7 @@ async def applications_next(
     if await cities_module_on():
         manager_city_label = await city_label(normalize_city(p.city) if p.city is not None else ALL_CITIES)
 
+    waitlist_on = await get_setting_typed("apps_waitlist_enabled") == "on"
     return {
         "application": {
             "telegram_id": row.get("telegram_id"),
@@ -201,6 +202,8 @@ async def applications_next(
                 "flagged": await get_setting_typed("miniapp_applications_filter_flagged"),
             },
         },
+        "waitlist_enabled": waitlist_on,
+        "waitlist_button": "📋 В лист ожидания" if waitlist_on else None,
     }
 
 
@@ -252,6 +255,40 @@ async def applications_reject(
     # D-05: причина по желанию — пустая строка допустима, обрезаем длинную по лимиту шторки.
     reason = (body.reason if body is not None else "").strip()[:REASON_MAX] or None
     return await _decide(tid, "rejected", reason, p)
+
+
+_WAITLIST_TOAST = "Заявка в листе ожидания. Делегат увидит: Лист ожидания."
+_WAITLIST_OFF_TEXT = (
+    "Лист ожидания выключен. Включите «📋 Лист ожидания» в разделе «📋 Заявки»."
+)
+
+
+@router.post("/app/api/applications/{tid}/waitlist")
+async def applications_waitlist(
+    tid: int,
+    p: Principal = Depends(require_cap("moderate_reg")),
+    _: Principal = Depends(require_section("applications")),
+) -> dict:
+    """Та же одна транзакция, что у одобрения, но без окна причины отказа."""
+    await _flush()
+    if await applications.out_of_scope(p.city, tid):
+        raise HTTPException(403, {"reason": "out_of_scope", "text": OUT_OF_SCOPE_TEXT})
+    if await get_setting_typed("apps_waitlist_enabled") != "on":
+        raise HTTPException(403, {"reason": "waitlist_off", "text": _WAITLIST_OFF_TEXT})
+    decision_id = await applications.claim_web_decision(
+        tid, "waitlist", None, p.telegram_id, now_msk_naive(),
+    )
+    if decision_id is None:
+        return {"ok": False, "reason": "already"}
+    asyncio.create_task(_delayed_flush())
+    quiet_notice = await quiet_hours.manager_notice(now_msk_naive(), tid)
+    return {
+        "ok": True,
+        "decision_id": decision_id,
+        "undo_seconds": applications.UNDO_WINDOW_SECONDS,
+        "quiet_notice": quiet_notice,
+        "toast": _WAITLIST_TOAST,
+    }
 
 
 # ── POST /app/api/applications/undo ──────────────────────────────────────────────────────

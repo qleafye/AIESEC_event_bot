@@ -95,6 +95,11 @@ class FaqItem(StatesGroup):
     # ("state:FaqItem:*" в handlers/access/admin_caps.py).
     text = State()
 
+class InterviewAdmin(StatesGroup):
+    # Экран «🗓 Интервью»: дата окна, кап и новое время одним сообщением.
+    # Группа живёт здесь: roles-тест резолвит state:InterviewAdmin:* только из этого модуля.
+    value = State()
+
 class LookupAdmin(StatesGroup):
     # Phase 30 (30-07, A2-03): поиск канoники при слиянии «Другое»/закреплении чипа на экране
     # «📚 Справочники» (handlers/settings/admin_lookup.py) — заведён здесь (не локально в шве), т.к.
