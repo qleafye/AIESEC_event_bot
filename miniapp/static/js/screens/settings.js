@@ -356,7 +356,7 @@ function sectionForRow(payload, code) {
   );
   return {
     token: code,
-    label: sectionLabelsFromDom().settings || "",
+    label: labelText(sectionLabelsFromDom().settings || ""),
     toggles,
     groups,
   };
@@ -1633,7 +1633,7 @@ async function renderSection(root, code, ctx, targetKey) {
     section = resolveSection(data, code);
     clearState();
 
-    const heading = section && section.label ? section.label : (sectionLabelsFromDom().settings || "");
+    const heading = section && section.label ? section.label : labelText(sectionLabelsFromDom().settings || "");
     title.textContent = labelText(heading);
 
     if (!section) {
