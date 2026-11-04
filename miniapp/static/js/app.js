@@ -96,6 +96,8 @@ export const ROUTES = [
   ["#/figures", "screens/reg_figures.js"],
   // Три числа отметок площадки.
   ["#/arrivals", "screens/arrivals.js"],
+  // Таблица регистраций и три слота форм. Вкладки и книга отсюда не меняются.
+  ["#/sheets-forms", "screens/sheets_forms.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,

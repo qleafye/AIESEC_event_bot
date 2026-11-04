@@ -8,10 +8,13 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
 
 from database import db as bot_db
+from database import ext_forms_db
 from domain.cities import city_scope
 from services.forum import checkin_arrival
+from services.sheets.sheet_target import sheet_id
 
 from tests.test_miniapp_routes import (
     ADMIN_ID,
@@ -356,3 +359,277 @@ def test_floor_section_off_is_403(tmp_path):
     resp = client.get(FLOOR_PATH, headers=_hdr(ADMIN_ID))
     assert resp.status_code == 403
     assert resp.json() == {"reason": "section_off", "section": "checkin"}
+
+
+# ── Таблица и формы: карточка, слот, вопросы, включение ──────────────────────────────────
+
+SHEETS_PATH = "/app/api/admin/sheets-forms"
+SLOT_PATH = SHEETS_PATH + "/slot"
+QUESTION_PATH = SHEETS_PATH + "/question"
+ARM_PATH = SHEETS_PATH + "/delegations"
+CITY_WRITER_ID = 900811
+_LEAK_SECRET = "ya-token-SHOULD-NOT-LEAK"
+_LEAK_EXTERNAL = "ext-SHOULD-NOT-LEAK"
+_LEAK_QKEY = "qkey-SHOULD-NOT-LEAK"
+_CARD_FORBIDDEN_KEYS = {
+    "form_id", "qkey", "external_id", "sheet_url", "sheet_id", "token", "secret",
+    "access_token", "oauth_token", "id", "count",
+}
+_KEYS_MISSING = (
+    "Сначала выберите вопросы формы: имя, вуз и курс. Без этого делегации не включаются."
+)
+
+
+def _sheets_client(tmp_path, name="sheets_forms.db"):
+    db_path = _use_tmp_db(tmp_path, name)
+    _seed(
+        users=[(DELEGATE_ID, "approved")],
+        settings={"miniapp_enabled": "on", "registration_mode": "full"},
+    )
+    return _client(_cfg(db_path))
+
+
+def _raw_setting(key):
+    return _run(bot_db.get_setting(key))
+
+
+def _card_is_closed(body: dict, *planted: str):
+    assert not (_all_keys(body) & _CARD_FORBIDDEN_KEYS)
+    text = json.dumps(body, ensure_ascii=False)
+    for secret in planted:
+        assert secret not in text
+    sid = sheet_id()
+    assert body["book_connected"] is bool(sid)
+    if sid:
+        assert sid not in text
+
+
+async def _make_form(title, *, secret, external_id, columns=()):
+    fid = await ext_forms_db.create_form(
+        platform="yandex", external_id=external_id, title=title, secret=secret,
+    )
+    if columns:
+        await ext_forms_db.upsert_columns(fid, list(columns))
+    return fid
+
+
+def test_sheets_forms_card_hides_ids_and_reads_tabs(tmp_path):
+    client = _sheets_client(tmp_path)
+    fid = _run(_make_form(
+        "Анкета регистрации",
+        secret=_LEAK_SECRET,
+        external_id=_LEAK_EXTERNAL,
+        columns=[(_LEAK_QKEY, "ФИО человека"), ("q-age-hidden", "Возраст")],
+    ))
+    _set("delegation_form_id", str(fid))
+    _set("delegation_q_fullname", _LEAK_QKEY)
+    _set("main_sheet_tab", "Регистрации")
+    _set("incomplete_sheet_tab", "")
+    resp = client.get(SHEETS_PATH, headers=_hdr(ADMIN_ID))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    _card_is_closed(body, _LEAK_SECRET, _LEAK_EXTERNAL, _LEAK_QKEY, "q-age-hidden", str(fid))
+    names = {tab["key"]: tab["name"] for tab in body["tabs"]}
+    assert [tab["key"] for tab in body["tabs"]] == ["main", "short", "party", "incomplete"]
+    assert names == {
+        "main": "Регистрации",
+        "short": "Краткая",
+        "party": "Party",
+        "incomplete": None,
+    }
+    assert [slot["slot"] for slot in body["slots"]] == [
+        "registration", "delegation", "ambassador",
+    ]
+    titles = {slot["slot"]: slot["title"] for slot in body["slots"]}
+    assert titles["registration"] is None
+    assert titles["delegation"] == "Анкета регистрации"
+    assert titles["ambassador"] is None
+    assert body["delegations_on"] is False
+    assert body["questions_ready"] is False
+    assert [q["label"] for q in body["questions"]] == ["Имя", "Вуз", "Курс"]
+    assert body["questions"][0]["text"] == "ФИО человека"
+    assert body["questions"][1]["text"] is None and body["questions"][2]["text"] is None
+    assert body["forms"] == ["Анкета регистрации"]
+    assert body["question_choices"] == ["ФИО человека", "Возраст"]
+    assert "count" not in body
+
+
+def test_sheets_forms_slot_writes_only_a_listed_form(tmp_path):
+    client = _sheets_client(tmp_path, "sheets_slot.db")
+    first = _run(_make_form(
+        "Первая форма", secret=_LEAK_SECRET, external_id=_LEAK_EXTERNAL,
+    ))
+    second = _run(_make_form(
+        "Вторая форма", secret="other-secret-SHOULD-NOT-LEAK", external_id="ext-other",
+    ))
+    missed = client.post(
+        SLOT_PATH,
+        json={"slot": "registration", "form_id": 999999, "index": 0},
+        headers=_hdr(ADMIN_ID),
+    )
+    assert missed.status_code == 400, missed.text
+    assert missed.json()["reason"] == "unknown_form"
+    assert _raw_setting("registration_form_id") in (None, "")
+    assert _LEAK_SECRET not in missed.text
+    saved = client.post(
+        SLOT_PATH, json={"slot": "registration", "index": 0}, headers=_hdr(ADMIN_ID),
+    )
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    _card_is_closed(body, _LEAK_SECRET, _LEAK_EXTERNAL, str(first), str(second))
+    assert _raw_setting("registration_form_id") == str(first)
+    assert body["slots"][0]["title"] == "Первая форма"
+    other = client.post(
+        SLOT_PATH, json={"slot": "ambassador", "index": 1}, headers=_hdr(ADMIN_ID),
+    )
+    assert other.status_code == 200, other.text
+    assert _raw_setting("ambassador_form_id") == str(second)
+    assert _raw_setting("google_sheet_id") in (None, "")
+
+
+def test_sheets_forms_question_uses_column_index_not_client_qkey(tmp_path):
+    client = _sheets_client(tmp_path, "sheets_question.db")
+    columns = [
+        ("col-fullname", "ФИО человека"),
+        ("col-age", "Возраст"),
+        ("col-course", "Курс обучения"),
+    ]
+    fid = _run(_make_form(
+        "Делегации вузов", secret=_LEAK_SECRET, external_id=_LEAK_EXTERNAL, columns=columns,
+    ))
+    _set("delegation_form_id", str(fid))
+    _set("delegation_armed_form_id", str(fid))
+    refused = client.post(
+        QUESTION_PATH,
+        json={"which": "course", "index": 2, "qkey": _LEAK_QKEY},
+        headers=_hdr(ADMIN_ID),
+    )
+    assert refused.status_code == 200, refused.text
+    body = refused.json()
+    _card_is_closed(body, _LEAK_SECRET, _LEAK_EXTERNAL, _LEAK_QKEY, "col-course", str(fid))
+    assert _raw_setting("delegation_q_course") == "col-course"
+    assert body["questions"][2]["text"] == "Курс обучения"
+    assert body["delegations_on"] is True
+    assert _raw_setting("delegation_armed_form_id") == str(fid)
+    no_form = _sheets_client(tmp_path, "sheets_question_empty.db")
+    bad = no_form.post(
+        QUESTION_PATH,
+        json={"which": "course", "index": 0, "qkey": _LEAK_QKEY},
+        headers=_hdr(ADMIN_ID),
+    )
+    assert bad.status_code == 400, bad.text
+    assert _raw_setting("delegation_q_course") in (None, "")
+    assert _LEAK_QKEY not in bad.text
+
+
+def test_sheets_forms_city_manager_cannot_write_common(tmp_path, monkeypatch):
+    from config import config
+
+    monkeypatch.setattr(config, "ADMIN_IDS", [1])
+    client = _sheets_client(tmp_path, "sheets_city.db")
+    fid = _run(_make_form(
+        "Общая форма", secret=_LEAK_SECRET, external_id=_LEAK_EXTERNAL,
+    ))
+    _seed(staff=[(CITY_WRITER_ID, "reg_manager", "spb")])
+    _set("role_caps_reg_manager", "settings")
+    _set("event_city_enabled", "on")
+    _set("delegation_form_id", str(fid))
+    _set("delegation_q_fullname", "q1")
+    _set("delegation_q_university", "q4")
+    _set("delegation_q_course", "q6")
+    read = client.get(SHEETS_PATH, headers=_hdr(CITY_WRITER_ID))
+    assert read.status_code == 200, read.text
+    resp = client.post(
+        SLOT_PATH, json={"slot": "registration", "index": 0}, headers=_hdr(CITY_WRITER_ID),
+    )
+    assert resp.status_code == 403, resp.text
+    assert resp.json() == {"reason": "common_locked"}
+    assert _raw_setting("registration_form_id") in (None, "")
+    arm = client.post(ARM_PATH, json={"action": "on"}, headers=_hdr(CITY_WRITER_ID))
+    assert arm.status_code == 403, arm.text
+    assert arm.json()["reason"] == "common_locked"
+    assert _raw_setting("delegation_armed_form_id") in (None, "")
+
+
+def test_sheets_forms_without_settings_cap_is_403(tmp_path):
+    client = _sheets_client(tmp_path, "sheets_cap.db")
+    resp = client.get(SHEETS_PATH, headers=_hdr(DELEGATE_ID))
+    assert resp.status_code == 403
+    assert resp.json() == {"reason": "no_cap", "cap": "settings"}
+    _set("miniapp_section_settings", "off")
+    off = client.get(SHEETS_PATH, headers=_hdr(ADMIN_ID))
+    assert off.status_code == 403
+    assert off.json() == {"reason": "section_off", "section": "settings"}
+
+
+def _delegation_http(tmp_path):
+    from tests.test_delegations_core import _delegation_form, _env
+
+    _env(tmp_path, "sheets_arm.db")
+    fid = _delegation_form()
+    _set("delegation_armed_form_id", "")
+    _set("miniapp_enabled", "on")
+    from config import config
+
+    return _client(_cfg(config.DB_PATH)), fid
+
+
+def test_sheets_forms_on_without_questions_does_not_arm_or_sweep(tmp_path):
+    from database import delegations_db as ddb
+    from tests.test_delegations_core import _answer_from_fixture
+
+    client, fid = _delegation_http(tmp_path)
+    _answer_from_fixture(fid, "a1", answered_at="2026-09-01 12:00:00")
+    _set("delegation_q_course", "")
+    resp = client.post(ARM_PATH, json={"action": "on"}, headers=_hdr(ADMIN_ID))
+    assert resp.status_code == 200, resp.text
+    assert resp.json() == {"ok": False, "text": _KEYS_MISSING}
+    assert _raw_setting("delegation_armed_form_id") == ""
+    assert _run(ddb.get_by_answer(fid, "a1")) is None
+
+
+def test_sheets_forms_preview_then_on_converts_one_and_off_keeps_key(tmp_path):
+    from database import delegations_db as ddb
+    from tests.test_delegations_core import _answer_from_fixture, _reg_started
+
+    client, fid = _delegation_http(tmp_path)
+    _answer_from_fixture(fid, "a1", answered_at="2026-09-01 12:00:00")
+    _reg_started(501)
+    card = client.get(SHEETS_PATH, headers=_hdr(ADMIN_ID))
+    assert card.status_code == 200, card.text
+    assert "count" not in card.json()
+    assert "Тест Делегат Тестович" not in card.text
+    assert _run(ddb.get_by_answer(fid, "a1")) is None
+    preview = client.post(ARM_PATH, json={"action": "preview"}, headers=_hdr(ADMIN_ID))
+    assert preview.status_code == 200, preview.text
+    assert preview.json() == {"ok": True, "count": 1}
+    assert _raw_setting("delegation_armed_form_id") == ""
+    assert _run(ddb.get_by_answer(fid, "a1")) is None
+    turned = client.post(ARM_PATH, json={"action": "on"}, headers=_hdr(ADMIN_ID))
+    assert turned.status_code == 200, turned.text
+    assert turned.json()["ok"] is True
+    assert turned.json()["delegations_on"] is True
+    assert _raw_setting("delegation_armed_form_id") == str(fid)
+    assert _run(ddb.get_by_answer(fid, "a1"))["linked_telegram_id"] == 501
+    off = client.post(ARM_PATH, json={"action": "off"}, headers=_hdr(ADMIN_ID))
+    assert off.status_code == 200, off.text
+    assert off.json() == {"ok": True, "delegations_on": False}
+    assert _raw_setting("delegation_armed_form_id") == ""
+
+
+def test_sheets_forms_router_does_not_close_the_season():
+    text = (
+        Path(__file__).resolve().parents[1] / "miniapp" / "routers" / "sheets_forms.py"
+    ).read_text(encoding="utf-8")
+    assert "mark_season_ended" not in text
+    assert "season_reset_apply" not in text
+    assert "initData" not in text and "init_data" not in text
+    assert "YANDEX_OAUTH" not in text
+    assert "google_sheet_id" not in text
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+        assert not stripped.startswith((
+            "from handlers", "import handlers", "import aiogram", "from aiogram",
+        ))
