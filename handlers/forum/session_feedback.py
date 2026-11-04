@@ -74,6 +74,20 @@ async def sfb_rate(callback: types.CallbackQuery):
         logger.info("sfb_rate: edit_text failed for session=%s: %s", session_id, e)
 
 
+@delegate_router.callback_query(F.data.startswith("sfb:x:"))
+async def sfb_skip(callback: types.CallbackQuery):
+    """Выход без оценки: кнопки снимаются, в базу и FSM ничего не пишется."""
+    session_id = int(callback.data.split(":", 2)[2])
+    await callback.answer()
+    text = callback.message.text if callback.message is not None else None
+    if not text:
+        return
+    try:
+        await callback.message.edit_text(text, reply_markup=None)
+    except Exception as e:
+        logger.info("sfb_skip: edit_text failed for session=%s: %s", session_id, e)
+
+
 @delegate_router.callback_query(F.data.startswith("sfb:c:"))
 async def sfb_offer_comment(callback: types.CallbackQuery, state: FSMContext):
     session_id = int(callback.data.split(":", 2)[2])
