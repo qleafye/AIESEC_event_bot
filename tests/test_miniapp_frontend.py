@@ -1260,6 +1260,14 @@ def test_every_manager_nav_item_has_a_group():
         )
 
 
+def _route_body() -> str:
+    text = APP_JS.read_text(encoding="utf-8")
+    start = text.index("async function route()")
+    rest = text[start + 1:]
+    ends = [m.start() for m in re.finditer(r"^(async )?function ", rest, re.M)]
+    return rest[:ends[0]] if ends else rest
+
+
 def test_router_ignores_telegram_webapp_fragment():
     """Telegram Web (K/A) передаёт initData фрагментом URL (#tgWebAppData=…). Роутер обязан
     считать такой hash пустым и уводить на homeHash, а не в showState("missing") — иначе
@@ -1270,6 +1278,34 @@ def test_router_ignores_telegram_webapp_fragment():
     assert 'startsWith("#tgWebApp")' in body, (
         "route() обязан сбрасывать служебный фрагмент #tgWebApp… в пустой hash до маршрутизации"
     )
+
+
+def test_open_settings_launch_selects_manager_settings_without_writing_keys():
+    """?open=settings при пустом или служебном hash запоминается в route() до выбора дома.
+    Этот путь не пишет ключ роли и не перезаписывает постоянный ключ режима менеджера."""
+    body = _route_body()
+    assert 'startsWith("#tgWebApp")' in body
+    assert "open=settings" in body
+    assert body.index('startsWith("#tgWebApp")') < body.index("open=settings") < body.index("homeHash()")
+    assert "setItem" not in body
+    assert "aiesec_miniapp_hub_mode_v1" not in body
+    assert "aiesec_miniapp_manager_mode_v1" not in body
+    assert "navigate(" not in body
+    hub = (SCREENS_DIR / "hub.js").read_text(encoding="utf-8")
+    mode_fn = hub[hub.index("function currentManagerMode("):hub.index("function pickManagerMode(")]
+    assert "managerSettingsLaunchOn()" in mode_fn
+    assert '"settings"' in mode_fn
+    assert "setItem" not in mode_fn
+    assert "setManagerMode" not in mode_fn
+    assert "storedManagerMode()" in mode_fn
+    view_fn = hub[hub.index("function managerViewForced("):hub.index("function dismissManagerViewForce(")]
+    assert "managerSettingsLaunchOn()" in view_fn
+    assert "setHubMode" not in view_fn
+    assert "setItem" not in view_fn
+    render = hub[hub.index("async function renderHub("):hub.index("export async function render(")]
+    assert "managerViewForced()" in render
+    assert 'forceManager ? "manager" : hubMode()' in render
+    assert render.index("renderTilesOnlyHub(") < render.index("renderManagerHub(")
 
 
 def test_payment_row_hidden_when_payment_module_off():

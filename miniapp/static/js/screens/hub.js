@@ -6,7 +6,7 @@
 // Дом менеджера — три режима: Работа, Настройки, Форум. Права по-прежнему проверяет сервер
 // на каждом маршруте (T-19.1-14). Подсказки менеджера fail-soft (T-19.1-16).
 
-import { visibleNav, NAV_ICONS } from "../app.js";
+import { visibleNav, NAV_ICONS, managerSettingsLaunchOn } from "../app.js";
 import { icon } from "../icons.js";
 import { countUp, haptic, stagger } from "../motion.js";
 import {
@@ -484,8 +484,31 @@ function setManagerMode(mode) {
   catch (_) { /* приватный режим */ }
 }
 
+// Пин на запуск: query выбирает режим один раз и не пишет ключ. Явный тап сегмента — пишет.
+let managerModePin = null;
+
 function currentManagerMode() {
-  return storedManagerMode();
+  if (managerModePin == null) {
+    managerModePin = managerSettingsLaunchOn() ? "settings" : storedManagerMode();
+  }
+  return managerModePin;
+}
+
+function pickManagerMode(mode) {
+  if (mode === currentManagerMode()) return;
+  managerModePin = mode;
+  setManagerMode(mode);
+}
+
+let managerViewPin = null;
+
+function managerViewForced() {
+  if (managerViewPin == null) managerViewPin = managerSettingsLaunchOn();
+  return managerViewPin === true;
+}
+
+function dismissManagerViewForce() {
+  managerViewPin = false;
 }
 
 async function renderManagerHub(root, ctx, opts = {}) {
@@ -609,7 +632,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
     text: label,
     onClick: () => {
       if (mode === id) return;
-      setManagerMode(id);
+      pickManagerMode(id);
       root.replaceChildren();
       renderHub(root, ctx);
     },
@@ -684,20 +707,24 @@ async function renderHub(root, ctx) {
   const isDelegate = Boolean(ctx.me.is_delegate);
   const hasManager = visibleNav().some((item) => !item.delegate);
   const delegateItems = visibleNav().filter((item) => item.delegate);
+  const forceManager = managerViewForced();
   // Не-делегат с доступной анкетой (D-24): плитка анкеты над менеджерскими разделами (если
   // они есть) — незарегистрированный менеджер не теряет ни того, ни другого.
   if (!isDelegate && delegateItems.length) {
     await renderTilesOnlyHub(root, ctx, delegateItems);
-    if (hasManager) await renderManagerHub(root, ctx, { skipHero: true });
+    if (hasManager || forceManager) await renderManagerHub(root, ctx, { skipHero: true });
     return;
   }
-  if (isDelegate && hasManager) {
-    const mode = hubMode();
-    root.append(modeSwitch(ctx.h, mode, (next) => {
-      setHubMode(next);
-      root.replaceChildren();
-      renderHub(root, ctx);
-    }));
+  if (isDelegate && (hasManager || forceManager)) {
+    const mode = forceManager ? "manager" : hubMode();
+    if (hasManager) {
+      root.append(modeSwitch(ctx.h, mode, (next) => {
+        dismissManagerViewForce();
+        setHubMode(next);
+        root.replaceChildren();
+        renderHub(root, ctx);
+      }));
+    }
     if (mode === "manager") await renderManagerHub(root, ctx, { skipHero: false });
     else await renderDelegateHub(root, ctx);
   } else if (isDelegate) {
