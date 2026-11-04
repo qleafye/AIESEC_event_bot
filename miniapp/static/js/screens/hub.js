@@ -583,59 +583,53 @@ async function renderManagerHub(root, ctx, opts = {}) {
   }
 
   // Карточка сезона — между подсказками и сегментом. Список режимов её не ждёт.
+  // До ответа, при show !== true и при ошибке карточки на экране нет.
   if (hasCap("stats")) {
-    const card = h("div", { class: "card" });
-    const grid = h("div", { class: "stats" });
-    grid.style.gap = "var(--sp-4)";
-    const figureFor = (label, note) => {
-      const figure = h("div", { class: "home-figure", text: "…" });
-      grid.append(h("div", {},
-        figure,
-        h("div", { class: "label-role", text: label }),
-        note ? h("div", { class: "label-role", text: note }) : null,
-      ));
-      return figure;
-    };
-    const applications = figureFor("Заявки");
-    const arrived = figureFor("Пришедшие");
-    const participants = figureFor("Игроки", "по всем городам");
-    const questions = figureFor("Вопросы");
-    const hide = h("button", {
-      type: "button",
-      class: "muted",
-      text: "Скрыть итог",
-      onClick: () => {
-        card.remove();
-        api("/stats/season-recap/dismiss", { method: "POST", quiet: true }).catch(() => {});
-      },
+    const dismissSeasonRecap = () => api("/stats/season-recap/dismiss", {
+      method: "POST",
+      quiet: true,
     });
-    hide.style.marginTop = "var(--sp-4)";
-    hide.style.background = "transparent";
-    hide.style.border = "0";
-    hide.style.padding = "0";
-    hide.style.minHeight = "var(--tap-min)";
-    hide.style.font = "inherit";
-    hide.style.cursor = "pointer";
-    card.append(h("h1", { text: "Сезон прошёл" }), grid, hide);
-    root.append(card);
     api("/stats/season-recap", { quiet: true }).then((data) => {
-      if (!card.isConnected) return;
-      if (!data || data.show !== true) {
-        card.remove();
-        return;
-      }
+      if (!data || data.show !== true) return;
+      const card = h("div", { class: "card" });
+      const grid = h("div", { class: "stats" });
+      grid.style.gap = "var(--sp-4)";
       const asFigure = (value) => (value == null ? "…" : String(value));
-      applications.textContent = asFigure(data.applications);
-      arrived.textContent = asFigure(data.arrived);
-      participants.textContent = asFigure(data.participants);
-      questions.textContent = asFigure(data.questions);
+      const figureFor = (label, value, note) => {
+        grid.append(h("div", {},
+          h("div", { class: "home-figure", text: asFigure(value) }),
+          h("div", { class: "label-role", text: label }),
+          note ? h("div", { class: "label-role", text: note }) : null,
+        ));
+      };
+      figureFor("Заявки", data.applications);
+      figureFor("Пришедшие", data.arrived);
+      figureFor("Игроки", data.participants, "по всем городам");
+      figureFor("Вопросы", data.questions);
+      const hide = h("button", {
+        type: "button",
+        class: "muted",
+        text: "Скрыть итог",
+        onClick: () => {
+          dismissSeasonRecap().then((res) => {
+            if (res && res.ok === true) card.remove();
+          }).catch(() => {});
+        },
+      });
+      hide.style.marginTop = "var(--sp-4)";
+      hide.style.background = "transparent";
+      hide.style.border = "0";
+      hide.style.padding = "0";
+      hide.style.minHeight = "var(--tap-min)";
+      hide.style.font = "inherit";
+      hide.style.cursor = "pointer";
+      card.append(h("h1", { text: "Сезон прошёл" }), grid, hide);
+      root.append(card);
       if (!seasonRecapCelebrated) {
         seasonRecapCelebrated = true;
         confetti(card);
       }
-    }).catch(() => {
-      if (card.isConnected) card.remove();
-    });
+    }).catch(() => {});
   }
 
   // Входы папки «День форума»: расписание без отдельной капы (null), остальные — право ручки.
