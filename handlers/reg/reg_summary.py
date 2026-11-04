@@ -26,7 +26,7 @@ async def show_summary(message: types.Message, state: FSMContext, data: dict) ->
     from handlers.reg.reg_city_gate import summary_data
 
     lang, tr_map = await reg_i18n.ctx_for(message)
-    value_maps = await reg_i18n.summary_value_maps(lang, tr_map)
+    value_maps = await reg_i18n.summary_value_maps(lang, tr_map, data.get("event_city"))
     summary = registration._build_summary(await summary_data(data), lang, tr_map, value_maps)
     await registration._safe_answer(message, summary, reply_markup=get_confirm_kb(), parse_mode="HTML")
     await state.set_state(Registration.confirm)

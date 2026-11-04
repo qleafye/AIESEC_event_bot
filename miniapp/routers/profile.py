@@ -73,15 +73,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Request
 
 import domain.regform.engine as reg_engine
-from domain.cities import cities_module_on, city_label as resolve_city_label, normalize_city
+from domain.cities import (
+    cities_module_on, city_label as resolve_city_label, get_setting_typed_for_city, normalize_city,
+)
 from database.db import get_user
 from domain.regform.labels import PAYMENT_STATUS_LABELS, REG_LABELS, STATUS_LABELS
 from services.i18n import i18n
 from services.registration import reg_edit_policy
 from services.applications.applications import format_edited_date
 from services.registration.nextcloud import file_name_from_link
-from domain.settings.schema import get_setting_typed
-
 from miniapp import file_tokens
 from miniapp.avatars import resolve_avatar
 from miniapp.deps import Principal, delegate_gate, require_section
@@ -338,7 +338,7 @@ async def profile(request: Request, p: Principal = Depends(delegate_gate),
     payment_status = user.get("payment_status") or "not_paid"
     # Тумблер «💳 Модуль оплаты» выключен -> статус оплаты не существует как понятие:
     # «Не оплатил» на профиле пугал бы делегата счётом, которого нет (вопрос владельца 02.09).
-    payment_on = (await get_setting_typed("payment_enabled") == "on"
+    payment_on = (await get_setting_typed_for_city("payment_enabled", user.get("event_city")) == "on"
                   and not user.get("delegation_answer_id"))
 
     enabled_label_keys = await _enabled_label_keys(user)

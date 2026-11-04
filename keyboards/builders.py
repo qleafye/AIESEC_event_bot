@@ -545,12 +545,12 @@ def get_yes_no_kb() -> ReplyKeyboardMarkup:
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
 
-async def get_source_kb() -> ReplyKeyboardMarkup:
+async def get_source_kb(city_code: str | None = None) -> ReplyKeyboardMarkup:
     kb = ReplyKeyboardBuilder()
     # REG-02: read through the registry accessor. The registry's list default is None
     # (not DEFAULT_SOURCE_OPTIONS), so the empty->DEFAULT_SOURCE_OPTIONS fallback guard is
     # kept here to preserve exact pre-migration behavior (T-06-11).
-    items = await get_setting_typed("source_options")
+    items = await get_setting_typed_for_city("source_options", city_code)
     if not items:
         items = DEFAULT_SOURCE_OPTIONS
     for item in items:

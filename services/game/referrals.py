@@ -46,7 +46,7 @@ from database.db import (
     get_user,
     list_applications_page,
 )
-from domain.settings.schema import get_setting_typed
+from domain.cities import get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict
     `'approval'`) в кандидаты не попадает — `get_referral_credit` уже нашёл строку.
     Повторный запуск бэкафилла идемпотентен по той же причине: второй проход видит те же
     строки `referral_credits`, что первый уже создал, и пропускает их."""
-    coins = int(await get_setting_typed("ambassador_referral_coins") or 0)
+    planned_coins = 0
     resolved_season = season if season is not None else (
         (await get_setting("event_season") or "").strip() or None
     )
@@ -134,6 +134,9 @@ async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict
         referrer = await get_user(referrer_id)
         if not referrer or int(referrer.get("is_ambassador") or 0) != 1:
             continue
+        coins = int(await get_setting_typed_for_city(
+            "ambassador_referral_coins", referrer.get("event_city"),
+        ) or 0)
         if coins <= 0:
             continue
 
@@ -147,6 +150,7 @@ async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict
         })
         entry["invitees"] += 1
         entry["coins"] += coins
+        planned_coins += coins
         if dry_run:
             continue
 
@@ -160,7 +164,7 @@ async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict
 
     if dry_run:
         credited = candidates
-        coins_total = coins * candidates
+        coins_total = planned_coins
 
     return {
         "candidates": candidates, "credited": credited, "coins": coins_total,

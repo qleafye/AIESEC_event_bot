@@ -15,9 +15,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.db import get_setting, get_user, update_payment_status, set_payment_due
+from database.db import get_user, update_payment_status, set_payment_due
+from domain.cities import get_setting_typed_for_city
 from domain.payment import parse_options as _parse_options  # квик-фикс 260913: см. ниже
-from domain.settings.schema import get_setting_typed  # REG-02 (06-06): payment_enabled gate
 from handlers.states import Registration
 from keyboards.builders import get_main_menu_kb
 from handlers.access.admin_caps import notify_by_capability  # D-13: fan out by capability, not bare ADMIN_IDS
@@ -43,6 +43,19 @@ def init_payment_module(storage):
     _storage = storage
 
 
+def _as_lines(raw) -> str:
+    """Список реестра — обратно в строки для парсеров, которые ждут текст."""
+    if isinstance(raw, list):
+        return "\n".join(str(item) for item in raw)
+    return raw or ""
+
+
+def _deadline_text(deadline) -> str:
+    if hasattr(deadline, "strftime"):
+        return deadline.strftime("%d.%m.%Y %H:%M")
+    return str(deadline).strip() if deadline else ""
+
+
 def _parse_lc_requisites(raw: str) -> dict[str, str]:
     """Parse per-LC requisites ('ЛК | реквизиты' per line) → {lc_lower: requisites}.
     LC name is matched case-insensitively against the user's local_committee."""
@@ -62,16 +75,19 @@ def _parse_lc_requisites(raw: str) -> dict[str, str]:
 async def _resolve_requisites(telegram_id: int) -> str | None:
     """Per-LC requisites for this user's local_committee, else the global payment_requisites.
     Each ЛК collects to its own card (payment_requisites_by_lc); missing/unmatched LC falls
-    back to the single shared card."""
-    by_lc = _parse_lc_requisites(await get_setting("payment_requisites_by_lc") or "")
+    back to the single shared card. Both lists are the person's event city."""
+    user = await get_user(telegram_id)
+    city = (user or {}).get("event_city")
+    by_lc = _parse_lc_requisites(_as_lines(
+        await get_setting_typed_for_city("payment_requisites_by_lc", city),
+    ))
     if by_lc:
-        user = await get_user(telegram_id)
         lc = (user or {}).get("local_committee")
         if lc:
             hit = by_lc.get(str(lc).strip().lower())
             if hit:
                 return hit
-    return await get_setting("payment_requisites")
+    return await get_setting_typed_for_city("payment_requisites", city)
 
 
 def _format_requisites_block(requisites: str | None, lang: str = "ru", tr_map: dict | None = None) -> str:
@@ -112,10 +128,10 @@ async def should_offer_receipt_upload(telegram_id: int) -> bool:
     persistent '💳 Оплата' menu button so upload works any time — gated on
     the DB status, not the MemoryStorage FSM, so it survives a bot restart. Free /
     no-requisites participants (nothing to pay) never trip it."""
-    if await get_setting_typed("payment_enabled") != "on":  # REG-02: registry-backed
-        return False
     user = await get_user(telegram_id)
     if not user:
+        return False
+    if await get_setting_typed_for_city("payment_enabled", user.get("event_city")) != "on":
         return False
     if user.get("delegation_answer_id"):
         # Делегат вуза платит не здесь: оплаты у него нет никогда, даже при включённом модуле.
@@ -158,18 +174,21 @@ async def _schedule_deadline_reminders(telegram_id: int):
     tapped «Оплачу позже» (status not_paid) is exactly who must be reminded. Idempotent:
     scheduler.schedule_payment_reminder uses replace_existing, and send_payment_reminder
     self-guards on paid/receipt_sent so a user who pays before it fires is never pinged."""
-    deadline_str = await get_setting("payment_deadline")
-    if not deadline_str or not deadline_str.strip():
+    user = await get_user(telegram_id)
+    deadline = await get_setting_typed_for_city("payment_deadline", (user or {}).get("event_city"))
+    deadline_str = _deadline_text(deadline)
+    if not deadline_str:
         return
     try:
         from datetime import datetime, timedelta
         from services.scheduler import schedule_payment_reminder, _now_moscow_naive
-        deadline = datetime.strptime(deadline_str.strip(), "%d.%m.%Y %H:%M")
+        if not hasattr(deadline, "strftime"):
+            deadline = datetime.strptime(deadline_str, "%d.%m.%Y %H:%M")
         # WR-03: persist payment_due so a user who defers straight from the multi-option picker
         # (never picking an option → payment_option stays NULL) is still caught by the overdue
         # sweep, which gates on (payment_option IS NOT NULL OR payment_due IS NOT NULL).
         try:
-            await set_payment_due(telegram_id, deadline_str.strip())
+            await set_payment_due(telegram_id, deadline_str)
         except Exception as e:
             logger.error(f"Failed to persist payment_due for {telegram_id}: {e}")
         # TZFIX-260817 (A-9): payment_deadline приходит от менеджера в московских часах, а
@@ -202,7 +221,9 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
     """
     lang, tr_map = await i18n_service.context(telegram_id)
     try:
-        options = _parse_options(await get_setting("payment_options") or "")
+        payer = await get_user(telegram_id)
+        pay_city = (payer or {}).get("event_city")
+        options = _parse_options(_as_lines(await get_setting_typed_for_city("payment_options", pay_city)))
         # D-17: visible is built by enumerating the FULL options list once — never
         # re-enumerated. i is the index into `options`, preserved under filtering.
         visible = _visible_options(options, participant_type)
@@ -216,7 +237,9 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
                 for i, label, price in visible
             ] + [[_pay_later_btn(lang, tr_map)]])
             # Phase 17.1 (17.1-02): заголовок — из реестра; блок реквизитов клеит бот.
-            text = reg_i18n.tr_text(await get_setting_typed("payment_option_picker_header_text"), lang, tr_map)
+            text = reg_i18n.tr_text(
+                await get_setting_typed_for_city("payment_option_picker_header_text", pay_city), lang, tr_map,
+            )
             block = _format_requisites_block(await _resolve_requisites(telegram_id), lang, tr_map)
             if block:
                 text += f"\n\n{block}"
@@ -258,7 +281,14 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     # NO Registration.payment_option state filter — start_payment_step runs without an
     # FSMContext, so that state is never set; a filter here would silently swallow the tap.
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    options = _parse_options(await get_setting("payment_options") or "")
+    try:
+        user = await get_user(callback.from_user.id)
+    except Exception as e:
+        logger.error(f"process_payment_option: get_user failed for {callback.from_user.id}: {e}")
+        user = None
+    options = _parse_options(_as_lines(
+        await get_setting_typed_for_city("payment_options", (user or {}).get("event_city")),
+    ))
     try:
         idx = int(callback.data.split(":", 1)[1])
     except ValueError:
@@ -276,11 +306,6 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     # WR-01: resolved unconditionally (not only when `tracks is not None`) so the value is
     # always available to pass into _show_payment_details below — a party delegate picking an
     # UNTRACKED ("offered to all") free option must still get approve_text__party.
-    try:
-        user = await get_user(callback.from_user.id)
-    except Exception as e:
-        logger.error(f"process_payment_option: get_user failed for {callback.from_user.id}: {e}")
-        user = None
     current_track = (user or {}).get("participant_type") or "full"
     if tracks is not None and current_track not in tracks:
         await callback.answer(reg_i18n.tr_text("Этот вариант недоступен для твоего трека.", lang, tr_map), show_alert=True)
@@ -312,11 +337,17 @@ async def process_pay_later(callback: types.CallbackQuery, state: FSMContext):
         await _schedule_deadline_reminders(callback.from_user.id)
         # Phase 17.1 (17.1-02): обе реплики — из реестра; блок реквизитов между ними по-прежнему
         # собирает бот, склейка через "\n\n" прежняя.
-        parts = [reg_i18n.tr_text(await get_setting_typed("payment_pay_later_text"), lang, tr_map)]
+        later_user = await get_user(callback.from_user.id)
+        later_city = (later_user or {}).get("event_city")
+        parts = [reg_i18n.tr_text(
+            await get_setting_typed_for_city("payment_pay_later_text", later_city), lang, tr_map,
+        )]
         block = _format_requisites_block(await _resolve_requisites(callback.from_user.id), lang, tr_map)
         if block:
             parts.append(block)
-        parts.append(reg_i18n.tr_text(await get_setting_typed("payment_pay_later_menu_hint_text"), lang, tr_map))
+        parts.append(reg_i18n.tr_text(
+            await get_setting_typed_for_city("payment_pay_later_menu_hint_text", later_city), lang, tr_map,
+        ))
         await callback.message.answer(
             "\n\n".join(parts),
             parse_mode="HTML",
@@ -333,9 +364,11 @@ async def _show_payment_details(
     participant_type: str | None = None,
 ):
     lang, tr_map = await i18n_service.context(telegram_id)
+    payer = await get_user(telegram_id)
+    pay_city = (payer or {}).get("event_city")
     requisites = await _resolve_requisites(telegram_id)  # per-LC card, else shared
-    deadline = await get_setting("payment_deadline")
-    penalties = await get_setting("penalty_schedule")
+    deadline = _deadline_text(await get_setting_typed_for_city("payment_deadline", pay_city))
+    penalties = _as_lines(await get_setting_typed_for_city("penalty_schedule", pay_city))
 
     # WR-05: free participation (price 0 and no bank requisites) must not be forced
     # through a receipt-upload gate. Land the user on the completion text + menu instead.
@@ -372,7 +405,7 @@ async def _show_payment_details(
         if lines:
             penalties_label = reg_i18n.tr_text("Штрафы за отмену", lang, tr_map)
             penalties_block = f"⚠️ {penalties_label}:\n" + "\n".join(lines) + "\n\n"
-    tpl = await get_setting_typed("payment_details_template_text")
+    tpl = await get_setting_typed_for_city("payment_details_template_text", pay_city)
     # Квик 260917-en: перевод ШАБЛОНА до подстановки — тот же порядок, что reg_i18n.tr_fmt
     # (LANG-02, UAT-фикс 27-05): src_hash подставленной строки иначе никогда не совпал бы с
     # хешем исходного шаблона в tr_map. Своя ручная подстановка (не tr_fmt) — блоки уже
@@ -471,6 +504,7 @@ async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: 
 
     # Ping admins so the receipt doesn't sit unseen in the «🧾 Чеки» queue. Fail-soft:
     # a notify error must never break the user's receipt confirmation below.
+    user = None
     try:
         user = await get_user(telegram_id)
         name = html.escape(str((user or {}).get("full_name") or telegram_id))
@@ -488,5 +522,7 @@ async def _finalize_receipt(message: types.Message, state: FSMContext, file_id: 
     # Phase 17.1 (17.1-02): подтверждение — из реестра.
     await reg_i18n.say(
         message,
-        await get_setting_typed("payment_receipt_received_text"), parse_mode="HTML"
+        await get_setting_typed_for_city(
+            "payment_receipt_received_text", (user or {}).get("event_city"),
+        ), parse_mode="HTML"
     )
