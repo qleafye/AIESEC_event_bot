@@ -86,6 +86,8 @@ export const ROUTES = [
   ["#/setup", "screens/setup.js"],
   // Phase 12 (FORUM-CHECKIN.md, D-08): сканер отметки на форуме.
   ["#/scanner", "screens/scanner.js"],
+  // Указатель рассылки, SOS и находок — один модуль, тема в hash.
+  ["#/chat/{topic}", "screens/chat_pointer.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
