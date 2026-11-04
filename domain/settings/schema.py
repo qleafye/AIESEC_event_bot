@@ -7275,6 +7275,16 @@ SETTINGS_SCHEMA = {
         ),
         "default": "off",
     },
+    # Карточка итога сезона. В «Редком» ключа нет: он в EXCLUDED_KEYS, пишет только POST.
+    "season_recap_dismissed": {
+        "type": "enum", "group": "miniapp", "options": ["on", "off"],
+        "label": "Итог сезона: служебный флаг скрытия",
+        "prompt": (
+            "«включено» — карточка итога сезона в приложении больше не показывается. "
+            "Заявки и люди при этом остаются."
+        ),
+        "default": "off",
+    },
 
     # ── Quick 260902-tzh: «🧾 Поля карточки заявки» — какие ответы анкеты показывать
     # менеджеру в карточке отбора и до какой длины обрезать длинный ответ. Own group "apps"
@@ -7492,6 +7502,16 @@ SETTINGS_SCHEMA = {
     # в веб-настройках скрыты (settings_ops.EXCLUDED_KEYS), иначе человеку показали бы код.
     "delegation_form_id": {
         "type": "text", "group": "apps", "label": "🏫 Форма делегаций (служебный)",
+        "prompt": None, "default": None,
+    },
+    # Указатели форм регистрации и амбассадоров — тот же служебный приём, что у формы
+    # делегаций: менеджер не набирает id, в порядок полей общего экрана ключи не входят.
+    "registration_form_id": {
+        "type": "text", "group": "apps", "label": "📝 Форма регистрации (служебный)",
+        "prompt": None, "default": None,
+    },
+    "ambassador_form_id": {
+        "type": "text", "group": "apps", "label": "🤝 Форма амбассадоров (служебный)",
         "prompt": None, "default": None,
     },
     "delegation_q_fullname": {

@@ -604,6 +604,184 @@ def test_evaluation_only_marks_sheet_when_status_changes(tmp_path):
     assert _sheet_state("a1") == "synced"
 
 
+def _effects_sent(tid: int) -> list:
+    conn = sqlite3.connect(config.DB_PATH)
+    rows = conn.execute(
+        "SELECT effects_sent_at FROM application_decisions WHERE telegram_id = ? ORDER BY id",
+        (tid,),
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def _drop_bot(monkeypatch) -> None:
+    dlg.init(None, dlg._storage)
+
+    def _raise():
+        raise RuntimeError("Scheduler not initialised — call init_scheduler(bot) first")
+
+    monkeypatch.setattr("services.scheduler.get_bot", _raise)
+
+
+def test_welcome_not_marked_sent_without_bot(tmp_path, monkeypatch):
+    """Без бота письмо не закрыто в журнале; следующий вызов шлёт его один раз."""
+    from services.applications.applications import flush_due_decisions
+
+    bot, _storage = _env(tmp_path)
+    _drop_bot(monkeypatch)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(601)
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form, _run(dlg.field_keys())))
+    first = _run(dlg.convert_to_delegate(601, row, fields, how="username", by=None))
+    assert first.get("flipped") is True and first.get("welcomed") is not True
+    assert _row(601)["status"] == "approved" and _row(601)["delegation_answer_id"] == "a1"
+    assert bot.sent == []
+    assert _effects_sent(601) == []
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_PENDING
+    assert ("form_completed", "delegation") in [(e, s) for _, e, s in _reg_events(601)]
+    queued: list = []
+    assert _run(flush_due_decisions(datetime(2099, 1, 1), lambda kind, _row: queued.append(kind))) == 0
+    assert queued == []
+
+    dlg.init(bot, _storage)
+    second = _run(dlg.convert_to_delegate(601, row, fields, how="username", by=None))
+    assert second.get("welcomed") is True and len(bot.sent) == 1
+    assert bot.sent[0][0] == 601 and UNIVERSITY in bot.sent[0][1]
+    template = _run(dlg.get_setting_typed("delegation_welcome_text"))
+    assert "делегации" in bot.sent[0][1]
+    assert template
+    sent = _effects_sent(601)
+    assert len(sent) == 1 and sent[0]
+    assert _journal(601) == [("approved", dlg.DELEGATION_DECIDED_BY)]
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_SENT
+
+    third = _run(dlg.convert_to_delegate(601, row, fields, how="username", by=None))
+    assert third == {"already": True}
+    assert len(bot.sent) == 1 and len(_effects_sent(601)) == 1
+
+
+def test_welcome_retry_return_does_not_close_the_debt(tmp_path, monkeypatch):
+    """Бот есть, send_with_retry возвращает исключение и не бросает его.
+    Долг остаётся, пока следующая отправка не пройдёт. Третий заход письмо не повторяет."""
+    from services.infra import telegram_send
+
+    bot, _storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(605)
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form, _run(dlg.field_keys())))
+    real_send = telegram_send.send_with_retry
+
+    async def _refuse(_attempt):
+        return RuntimeError("telegram refused")
+
+    monkeypatch.setattr(telegram_send, "send_with_retry", _refuse)
+    first = _run(dlg.convert_to_delegate(605, row, fields, how="username", by=None))
+    assert first.get("welcomed") is not True
+    assert bot.sent == []
+    assert _effects_sent(605) == []
+    assert _journal(605) == []
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_PENDING
+
+    monkeypatch.setattr(telegram_send, "send_with_retry", real_send)
+    second = _run(dlg.convert_to_delegate(605, row, fields, how="username", by=None))
+    assert second.get("welcomed") is True
+    assert len(bot.sent) == 1
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_SENT
+    sent = _effects_sent(605)
+    assert len(sent) == 1 and sent[0]
+    third = _run(dlg.convert_to_delegate(605, row, fields, how="username", by=None))
+    assert third == {"already": True}
+    assert len(bot.sent) == 1
+    assert len(_effects_sent(605)) == 1
+
+
+def test_welcome_retry_return_keeps_existing_debt_without_journal(tmp_path, monkeypatch):
+    """Тот же отказ для уже одобренного: note остаётся welcome_pending_existing, журнала нет."""
+    from services.infra import telegram_send
+
+    bot, _storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(606, "approved")
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form, _run(dlg.field_keys())))
+
+    async def _refuse(_attempt):
+        return RuntimeError("telegram refused")
+
+    monkeypatch.setattr(telegram_send, "send_with_retry", _refuse)
+    result = _run(dlg.convert_to_delegate(606, row, fields, how="username", by=None))
+    assert result.get("welcomed") is not True
+    assert bot.sent == []
+    assert _journal(606) == []
+    assert _effects_sent(606) == []
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_PENDING_EXISTING
+
+
+def test_welcome_failure_is_retried_once(tmp_path, monkeypatch):
+    bot, _storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(602)
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form, _run(dlg.field_keys())))
+    real = dlg._send_welcome
+
+    async def _boom(*_a, **_k):
+        raise RuntimeError("telegram down")
+
+    monkeypatch.setattr(dlg, "_send_welcome", _boom)
+    _run(dlg.convert_to_delegate(602, row, fields, how="username", by=None))
+    assert bot.sent == [] and _effects_sent(602) == []
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_PENDING
+
+    monkeypatch.setattr(dlg, "_send_welcome", real)
+    _run(dlg.convert_to_delegate(602, row, fields, how="username", by=None))
+    assert len(bot.sent) == 1 and _effects_sent(602)[0]
+    _run(dlg.convert_to_delegate(602, row, fields, how="username", by=None))
+    assert len(bot.sent) == 1 and len(_journal(602)) == 1
+
+
+def test_welcome_debt_is_sent_once_by_sweep(tmp_path, monkeypatch):
+    bot, storage = _env(tmp_path)
+    _drop_bot(monkeypatch)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(603)
+    assert _available(fid, "a1").get("converted", {}).get("flipped") is True
+    assert bot.sent == [] and _effects_sent(603) == []
+    dlg.init(bot, storage)
+    _run(dlg.sweep_pending())
+    assert len(bot.sent) == 1 and _effects_sent(603)[0]
+    _run(dlg.sweep_pending())
+    assert len(bot.sent) == 1
+
+
+def test_existing_welcome_retries_once_without_journal(tmp_path, monkeypatch):
+    bot, storage = _env(tmp_path)
+    _drop_bot(monkeypatch)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(604, "approved")
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form, _run(dlg.field_keys())))
+    _run(dlg.convert_to_delegate(604, row, fields, how="username", by=None))
+    assert bot.sent == [] and _journal(604) == []
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_PENDING_EXISTING
+    dlg.init(bot, storage)
+    _run(dlg.convert_to_delegate(604, row, fields, how="username", by=None))
+    existing = _run(dlg.get_setting_typed("delegation_welcome_existing_text"))
+    assert len(bot.sent) == 1
+    assert bot.sent[0][1] == existing.replace("{university}", UNIVERSITY)
+    assert _journal(604) == []
+    assert _run(dlg.convert_to_delegate(604, row, fields, how="username", by=None)) == {"already": True}
+    assert len(bot.sent) == 1
+
+
 def test_sweep_pending(tmp_path):
     bot, _ = _env(tmp_path)
     fid = _delegation_form()

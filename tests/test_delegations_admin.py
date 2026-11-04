@@ -177,7 +177,10 @@ def test_no_form_screen_explains_what_to_do(tmp_path):
     assert mode == "HTML"
     assert "Форма делегаций не выбрана" in text
     assert "📊 Данные → 📝 Внешние формы" in text
-    assert "📝 Выбрать форму" in _button_texts(kb)
+    assert "Таблица и формы" in text
+    assert "📝 Выбрать форму" not in _button_texts(kb)
+    assert "dlg_form_pick" not in _callbacks(kb)
+    assert "dlg_arm" not in _callbacks(kb)
     assert "admin_sec:apps" in _callbacks(kb)
     assert "settings_group:apps" not in _callbacks(kb)
     assert not any(c.startswith("settings_edit:") for c in _callbacks(kb))
@@ -190,7 +193,8 @@ def test_form_gone_screen(tmp_path):
     _run(mod.admin_delegations(cb))
     text, _, kb = _last_edit(cb)
     assert "Форма отключена или удалена" in text
-    assert "dlg_form_pick" in _callbacks(kb)
+    assert "Таблица и формы" in text
+    assert "dlg_form_pick" not in _callbacks(kb)
 
 
 # ── выбор формы и ключевые вопросы ────────────────────────────────────────────────────────
@@ -199,14 +203,15 @@ def test_form_pick_lists_forms_or_alerts(tmp_path):
     _env(tmp_path)
     cb = _FakeCallback("dlg_form_pick")
     _run(mod.dlg_form_pick(cb))
-    assert cb.answer_calls == [(mod._NO_FORMS_ALERT, True)]
+    assert cb.answer_calls == [(mod._MOVED, True)]
     assert cb.message.edits == []
+    assert "Таблица и формы" in cb.answer_calls[0][0]
     fid = _form("Делегации <МГУ>")
     cb = _FakeCallback("dlg_form_pick")
     _run(mod.dlg_form_pick(cb))
-    text, _, kb = _last_edit(cb)
-    assert f"dlg_form:{fid}" in _callbacks(kb)
-    assert "📝 Делегации <МГУ>" in _button_texts(kb)  # кнопки — без HTML, текст как есть
+    assert cb.answer_calls == [(mod._MOVED, True)]
+    assert cb.message.edits == []
+    assert str(fid) not in cb.answer_calls[0][0]
 
 
 def test_pick_form_sets_id_and_guesses_questions_by_labels(tmp_path):
@@ -338,9 +343,10 @@ def test_keys_ok_spawns_sweep_and_renders_screen_with_counters(tmp_path, monkeyp
     assert "🏫 По вузам" in texts and "📋 Лист UR REGS" in texts
     cbs = _callbacks(kb)
     for expected in ("dlg_review:0", "dlg_absent:0", "dlg_univ:0", "dlg_sheet", "dlg_game",
-                     "dlg_cutoff", "dlg_courses", "dlg_text", "dlg_keys", "dlg_form_pick",
-                     "admin_sec:apps"):
+                     "dlg_cutoff", "dlg_courses", "dlg_text", "admin_sec:apps"):
         assert expected in cbs, expected
+    assert "dlg_keys" not in cbs and "dlg_form_pick" not in cbs
+    assert "dlg_arm" not in cbs and "dlg_disarm" not in cbs
     assert "settings_group:apps" not in cbs
     assert not any(c.startswith("settings_edit:") for c in cbs)
 

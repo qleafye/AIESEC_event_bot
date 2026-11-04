@@ -15,7 +15,9 @@ Two clusters live here (.planning CONCERNS.md "Internal coupling inside handlers
   (appr_*/rcpt_*, still in admin.py) and gamification review (grev_*, admin_gamification.py)
   both gate per-card/per-submission actions through it.
 """
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+import logging
+
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 
 from config import config
 from database.db import get_user
@@ -28,6 +30,8 @@ from domain.cities import (
     ALL_CITIES_LABEL,
 )
 from handlers.access.admin_caps import required_capability, resolve_capabilities, _holds
+
+logger = logging.getLogger(__name__)
 
 
 # ROLE-01 (D-15): the ONE list of (text, callback_data) menu rows. Phase 20 (20-03,
@@ -116,6 +120,24 @@ def _visible_menu_rows(caps: set) -> list[tuple[str, str]]:
     return rows
 
 
+def _root_settings_row(caps: set) -> list[InlineKeyboardButton] | None:
+    """Последняя строка корня: приложение в режиме «Настройки».
+
+    Нет права settings, пустой адрес или ошибка разбора — строки нет, исключение наружу
+    не уходит. Цвет кнопки не задаётся: у неё нет callback и нет своей капы."""
+    if "settings" not in caps:
+        return None
+    try:
+        raw = config.DASHBOARD_PUBLIC_URL
+        if not isinstance(raw, str) or not raw.strip():
+            return None
+        url = raw.rstrip("/") + "/app?open=settings"
+        return [InlineKeyboardButton(text="Настройки", web_app=WebAppInfo(url=url))]
+    except Exception:
+        logger.error("root settings button skipped")
+        return None
+
+
 async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """ROLE-01 (D-15): the panel built for THIS person — a fresh capability read
     (`resolve_capabilities`, D-05: no cache) followed by the pure row filter. Every caller
@@ -138,10 +160,14 @@ async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
         from services.amb.amb_status import selection_enabled  # раздел живёт только с модулем отбора
         if not await selection_enabled():
             sections = [(token, label) for token, label in sections if token != "amb"]
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text=label, callback_data=f"admin_sec:{token}")]
         for token, label in sections
-    ])
+    ]
+    settings_row = _root_settings_row(caps)
+    if settings_row is not None:
+        rows.append(settings_row)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # Phase 07.2 (CITY-02): per-admin city switcher, rendered as a header row over the panel.

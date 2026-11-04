@@ -9,15 +9,32 @@ RU-подписи категорий — из корневого `game_labels.ca
 
 Правило дашборда D-17 распространяется сюда (T-19-32): в ответе нет ни одного поля с
 персональными данными — ни имён, ни username, ни телефонов, ни telegram_id.
+
+Phase 40: `GET /app/api/stats/registrations` — цифры регистраций рядом, гейму не подменяя.
+Те же агрегаты, что экран статистики бота (`get_stats` / города), без HTML и без людей.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from database.db import GAME_CATEGORIES, get_game_stats
+from database.db import (
+    GAME_CATEGORIES,
+    count_past_season_users,
+    count_questions_by_status,
+    get_city_counts,
+    get_game_stats,
+    get_returning_count,
+    get_setting,
+    get_stats,
+)
+from domain.cities import (
+    CITIES, cities_module_on, city_label, city_scope, normalize_city, per_city_key,
+)
 from domain.game.labels import category_label
+from services.infra.timeutil import msk_now
 
 from miniapp.deps import Principal, require_cap, require_section
+from miniapp.routers.checkin import _bound_city
 
 router = APIRouter()
 
@@ -44,3 +61,184 @@ async def game_stats(
             for code in GAME_CATEGORIES
         ],
     }
+
+
+async def _registration_city_rows(bound: str | None, season: str | None) -> list[dict]:
+    """Свёртка городов как у экрана статистики бота: человеческое имя, не код.
+
+    Привязка — одна строка. Без привязки и при включённом модуле — все города реестра;
+    пустой и неизвестный код падают в город по умолчанию. Модуль выключен — разреза нет.
+    """
+    if bound is None and (not await cities_module_on() or not CITIES):
+        return []
+    rows = await get_city_counts(season=season)
+    if bound is not None:
+        total = pending = approved = 0
+        for raw_city, cnt, pend, appr in rows:
+            if normalize_city(raw_city) == bound:
+                total += cnt or 0
+                pending += pend or 0
+                approved += appr or 0
+        return [{
+            "city_label": await city_label(bound),
+            "total": total,
+            "pending": pending,
+            "approved": approved,
+        }]
+    per_city = {c["code"]: [0, 0, 0] for c in CITIES}
+    for raw_city, cnt, pend, appr in rows:
+        bucket = per_city[normalize_city(raw_city)]
+        bucket[0] += cnt or 0
+        bucket[1] += pend or 0
+        bucket[2] += appr or 0
+    return [
+        {
+            "city_label": await city_label(c["code"]),
+            "total": per_city[c["code"]][0],
+            "pending": per_city[c["code"]][1],
+            "approved": per_city[c["code"]][2],
+        }
+        for c in CITIES
+    ]
+
+
+@router.get("/app/api/stats/registrations")
+async def registration_stats(
+    request: Request,
+    p: Principal = Depends(require_cap("stats")),
+    _: Principal = Depends(require_section("stats")),
+) -> dict:
+    """Цифры регистраций текущего сезона. Не гейма и не супердашборд.
+
+    Город только из `_bound_city`: admin_ids не сужается, иначе привязка Principal.
+    Query-параметр города не читается. Прошлые сезоны — только если число больше нуля.
+    initData в лог и в JSON не кладётся.
+    """
+    bound = await _bound_city(request, p)
+    scope = city_scope(bound) if bound is not None else None
+    season = (await get_setting("event_season") or "").strip() or None
+    total, top_unis = await get_stats(city_scope=scope, season=season)
+    body = {
+        "total": int(total or 0),
+        "universities": [
+            {"name": str(uni), "count": int(count)} for uni, count in top_unis
+        ],
+        "returning": int(await get_returning_count(city_scope=scope, season=season)),
+        "city_label": await city_label(bound) if bound is not None else None,
+        "cities": await _registration_city_rows(bound, season),
+    }
+    past = int(await count_past_season_users(season, city_scope=scope))
+    if past:
+        body["past_seasons"] = past
+    return body
+
+
+_UNBOUND = object()
+_RECAP_FLAG = "season_recap_dismissed"
+
+
+async def _season_city(request: Request, p: Principal):
+    """Город карточки по тому же `_bound_city`, что цифры регистраций.
+
+    Суперадмин этим правилом не сужается. Своя привязка в staff всё же его город:
+    без неё карточки нет, нули всех городов не подставляются. Модуль городов
+    выключен — окно одно, город не нужен.
+    """
+    bound = await _bound_city(request, p)
+    if bound is not None:
+        return bound
+    if not await cities_module_on():
+        return None
+    admin_ids = request.app.state.cfg.admin_ids or ()
+    if p.telegram_id in admin_ids and p.city:
+        return normalize_city(p.city)
+    return _UNBOUND
+
+
+async def _season_dismissed(city: str | None) -> bool:
+    from domain.settings.schema import get_setting_typed
+
+    if await get_setting_typed(_RECAP_FLAG) == "on":
+        return True
+    if not city:
+        return False
+    composed = per_city_key(_RECAP_FLAG, city)
+    if not composed:
+        return False
+    return await get_setting(composed) == "on"
+
+
+def _season_hidden() -> dict:
+    return {"show": False}
+
+
+async def _dismiss_flag_key(actor_id: int, city: str | None) -> str:
+    """Общий ключ пишет тот, кто видит все города. Остальные — составной ключ своего города:
+    воронка `set_setting_by_admin` общий ключ им не отдаёт, а batch этот флаг не пишет.
+    """
+    from domain.settings.ops import can_write_common
+
+    if city is not None and not await can_write_common(actor_id):
+        composed = per_city_key(_RECAP_FLAG, city)
+        if composed is None:
+            raise HTTPException(403, {"reason": "no_city"})
+        return composed
+    return _RECAP_FLAG
+
+
+@router.get("/app/api/stats/season-recap")
+async def season_recap(
+    request: Request,
+    p: Principal = Depends(require_cap("stats")),
+    _: Principal = Depends(require_section("stats")),
+) -> dict:
+    """Четыре числа после окна форума этого города. Без окна чисел нет.
+
+    Игроки — `get_game_stats()` без города. Заявки, пришедшие и вопросы — город показа.
+    """
+    city = await _season_city(request, p)
+    if city is _UNBOUND:
+        return _season_hidden()
+    from services.sos import sos_active_window
+
+    window = await sos_active_window(city)
+    if window is None or msk_now().date() <= window[1]:
+        return _season_hidden()
+    if await _season_dismissed(city):
+        return _season_hidden()
+    scope = city_scope(city) if city is not None else None
+    season = (await get_setting("event_season") or "").strip() or None
+    total, _top = await get_stats(city_scope=scope, season=season)
+    from services.forum.checkin_arrival import arrived_counts
+
+    arrived, _approved = await arrived_counts(scope)
+    buckets = await count_questions_by_status(city_scope=scope)
+    questions = int(buckets["new"]) + int(buckets["in_work"]) + int(buckets["answered"])
+    participants = int((await get_game_stats())["participants"])
+    return {
+        "show": True,
+        "applications": int(total or 0),
+        "arrived": int(arrived or 0),
+        "participants": participants,
+        "questions": questions,
+    }
+
+
+@router.post("/app/api/stats/season-recap/dismiss")
+async def season_recap_dismiss(
+    request: Request,
+    p: Principal = Depends(require_cap("stats")),
+    _: Principal = Depends(require_section("stats")),
+) -> dict:
+    """Прячет карточку. Пишет флаг через `set_setting_by_admin`, таблицу людей не трогает."""
+    from services.settings.audit import CommonSettingDenied, set_setting_by_admin
+
+    city = await _season_city(request, p)
+    if city is _UNBOUND:
+        city = None
+    key = await _dismiss_flag_key(p.telegram_id, city)
+    try:
+        await set_setting_by_admin(p.telegram_id, key, "on")
+    except CommonSettingDenied:
+        raise HTTPException(403, {"reason": "common_denied"})
+    return {"ok": True}

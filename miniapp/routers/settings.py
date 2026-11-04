@@ -51,7 +51,7 @@ from domain.cities import (
 )
 from database.db import get_setting, settings_snapshot
 from services.applications.reject_rules_affects import affects_reject_rules
-from services.settings.audit import write_setting_logged
+from services.settings.audit import CommonSettingDenied, set_setting_by_admin, write_setting_logged
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
 from domain.settings.search import search_terms
 
@@ -515,6 +515,20 @@ async def _texts() -> dict[str, str]:
     }
 
 
+def close_season_copy() -> dict[str, str]:
+    """Тексты тихого ряда на экране «Редкое». Отдельного ключа реестра у ряда нет."""
+    return {
+        "label": "Закрыть сезон",
+        "meta": "Первая настройка снова появится. Заявки и люди останутся.",
+        "dialog": (
+            "Заявки, оплаты и люди останутся в базе. "
+            "Плитка «Первая настройка» снова появится на доме."
+        ),
+        "confirm": "Вернуть первую настройку",
+        "cancel": "Оставить как есть",
+    }
+
+
 @router.get("/app/api/admin/settings/all")
 async def settings_all(
     p: Principal = Depends(require_cap("settings")),
@@ -530,6 +544,7 @@ async def settings_all(
             "city_header": await _city_header(ctx),
             "texts": await _texts(),
             "total": total,
+            "close_season": close_season_copy(),
         }
 
 
@@ -540,13 +555,28 @@ async def settings_all(
 _SETUP_MODULE_FLAGS = tuple(sorted({s.requires for s in SETUP_STEPS if s.requires}))
 
 
+async def _wizard_tile_dismissed(ctx: _CityCtx, city: str | None) -> bool:
+    """Плитка скрыта при «on». Кто видит все города, читает только общий ключ.
+    У привязанного менеджера непустой городской ключ решает сам; пустой — как общий."""
+    common_on = (await get_setting_typed("setup_wizard_dismissed")) == "on"
+    if not ctx.on or ctx.sees_all:
+        return common_on
+    composed = per_city_key("setup_wizard_dismissed", city) if city else None
+    if not composed:
+        return common_on
+    raw = await get_setting(composed)
+    if raw is None or str(raw).strip() == "":
+        return common_on
+    return str(raw).strip() == "on"
+
+
 @router.get("/app/api/admin/setup")
 async def setup_status(
     p: Principal = Depends(require_cap("settings")),
     _: Principal = Depends(require_section("settings")),
 ) -> dict:
-    """Мастер первой настройки — только чтение (запись идёт через существующий
-    `settings/batch`, план 260915-4mu намеренно не заводит своего пути записи)."""
+    """Мастер первой настройки — только чтение шагов. Плитку возвращает
+    `POST /admin/settings/close-season`."""
     async with settings_snapshot():  # Perf 17.09 — тот же приём, что у settings_all
         ctx = await _city_ctx(p.telegram_id)
         event_type = await get_setting_typed("event_type")
@@ -589,7 +619,7 @@ async def setup_status(
                 "link": {"hash": step.link[0], "label": step.link[1]} if step.link else None,
             })
 
-        dismissed = (await get_setting_typed("setup_wizard_dismissed")) == "on"
+        dismissed = await _wizard_tile_dismissed(ctx, p.city)
     return {
         "event_type": event_type,
         "steps": steps_out,
@@ -598,6 +628,34 @@ async def setup_status(
         "show_tile": (not dismissed) and done_count < total,
         "texts": SETUP_TEXTS,
     }
+
+
+@router.post("/app/api/admin/settings/close-season")
+async def settings_close_season(
+    p: Principal = Depends(require_cap("settings")),
+    _: Principal = Depends(require_section("settings")),
+) -> dict:
+    """Вернуть плитку первой настройки. Общий ключ пишет тот, кто видит все города
+    или у кого модуль городов выключен. Привязанный менеджер общий ключ не пишет:
+    сервер сам кладёт «off» в ключ его города. Код города из запроса не читается."""
+    ctx = await _city_ctx(p.telegram_id)
+    if not ctx.on or ctx.sees_all:
+        key = "setup_wizard_dismissed"
+    else:
+        key = per_city_key("setup_wizard_dismissed", p.city) if p.city else None
+        if key is None:
+            raise HTTPException(403, {
+                "reason": "no_city",
+                "text": settings_ops.COMMON_DENIED_TEXT,
+            })
+    try:
+        await set_setting_by_admin(p.telegram_id, key, "off")
+    except CommonSettingDenied:
+        raise HTTPException(403, {
+            "reason": "common_denied",
+            "text": settings_ops.COMMON_DENIED_TEXT,
+        })
+    return {"ok": True}
 
 
 class CityIn(BaseModel):

@@ -102,7 +102,10 @@ def test_key_documented_in_settings_guide(key: str):
     assert key in entries, f"{key} отсутствует в SETTINGS_GUIDE_SECTIONS"
     labels = [label for _token, label, _rows in sec.SECTIONS]
     where = entries[key]["where"]
-    assert any(where.startswith(label) for label in labels), (key, where)
+    # Раздел чата или путь «В приложении» — пустая и любая другая строка не проходят.
+    in_chat = any(where.startswith(label) for label in labels)
+    in_app = where.startswith("В приложении")
+    assert in_chat or in_app, (key, where)
 
 
 def test_uat_checklist_scaffold_exists_and_long_enough():

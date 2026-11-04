@@ -769,6 +769,40 @@ async def checkin_stats(
             "today": bool(day)}
 
 
+@router.get("/app/api/checkin/floor")
+async def checkin_floor(
+    request: Request,
+    p: Principal = Depends(require_cap(_CAP)),
+    _: Principal = Depends(require_section(_SECTION)),
+) -> dict:
+    """Три числа «Отметки»: сейчас на площадке, пришли, одобрено.
+
+    Город — тот же `_bound_city`, что у `/stats` (admin_ids не сужается). Имена, ники,
+    коды городов и кнопки рассылки или CSV в ответ не входят. Идущие сессии — только
+    названия, без id.
+    """
+    from services.infra.timeutil import msk_now
+
+    bound = await _bound_city(request, p)
+    scope = city_scope(bound) if bound is not None else None
+    floor = await checkin_arrival.floor_report(scope, bound, msk_now())
+    day = await checkin_arrival.counter_day()
+    arrived, approved = await checkin_arrival.arrived_counts(scope, day)
+    titles: list[str] = []
+    seen: set[str] = set()
+    for session in floor.get("live_sessions") or []:
+        title = str(session.get("title") or "").strip()
+        if title and title not in seen:
+            seen.add(title)
+            titles.append(title)
+    return {
+        "present": int(floor.get("present") or 0),
+        "arrived": int(arrived or 0),
+        "approved": int(approved or 0),
+        "sessions": titles,
+    }
+
+
 # ── регистрация на месте (D-41) ──────────────────────────────────────────────────────────
 
 async def _staff_text(p: Principal, key: str) -> str:
