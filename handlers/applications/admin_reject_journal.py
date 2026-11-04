@@ -33,7 +33,8 @@ import logging
 from aiogram import F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import get_setting
+from database.db import get_setting, get_user
+from domain.cities import get_setting_typed_for_city
 from handlers.admin import router
 from handlers.access.admin_caps import has_capability
 from handlers.settings.admin_core import _admin_city_view
@@ -218,7 +219,9 @@ async def arj_back_confirm(callback: types.CallbackQuery):
     name = html_module.escape(str(entry.get("full_name") or "") or "делегат")
     rule = entry.get("rule_display") or "—"
     attempts = entry.get("attempt_count") or 0
-    raw_return_text = await get_setting("reject_rules_return_text") or DEFAULT_RETURN_TEXT
+    raw_return_text = await get_setting_typed_for_city(
+        "reject_rules_return_text", entry.get("event_city"),
+    ) or DEFAULT_RETURN_TEXT
     text = (
         "↩️ <b>Вернуть заявку на модерацию?</b>\n\n"
         f"{name} — попыток автоотказа: {attempts}\n"
@@ -258,7 +261,10 @@ async def arj_back_go(callback: types.CallbackQuery):
         return
 
     telegram_id = entry["telegram_id"]
-    raw_return_text = await get_setting("reject_rules_return_text") or DEFAULT_RETURN_TEXT
+    person = await get_user(telegram_id)
+    raw_return_text = await get_setting_typed_for_city(
+        "reject_rules_return_text", (person or {}).get("event_city"),
+    ) or DEFAULT_RETURN_TEXT
     from services.i18n.i18n import context as _i18n_context, tr as _i18n_tr
     lang, tr_map = await _i18n_context(telegram_id)
     delegate_text = html_module.escape(_i18n_tr(raw_return_text, lang, tr_map))

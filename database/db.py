@@ -6866,23 +6866,28 @@ async def purge_chat_data(chat_id: int) -> None:
 DEFAULT_CONSENT_VERSION = "1"
 
 
-async def current_consent_version() -> str:
-    """Текущая редакция согласия (настройка consent_version; пусто -> DEFAULT_CONSENT_VERSION)."""
-    raw = await get_setting("consent_version")
-    return (raw or "").strip() or DEFAULT_CONSENT_VERSION
+async def current_consent_version(city_code: str | None = None) -> str:
+    """Текущая редакция согласия (настройка consent_version; пусто -> DEFAULT_CONSENT_VERSION).
+
+    `city_code` — город мероприятия человека. Вызов без аргумента читает общее значение."""
+    from domain.cities import get_setting_typed_for_city
+    raw = await get_setting_typed_for_city("consent_version", city_code)
+    return (str(raw).strip() if raw else "") or DEFAULT_CONSENT_VERSION
 
 
 async def record_user_consent(
-    user_id: int, consent_key: str, consent_version: str | None = None, raw_button: str | None = None,
+    user_id: int, consent_key: str, consent_version: str | None = None,
+    raw_button: str | None = None, city_code: str | None = None,
 ):
     """Idempotent consent write — re-tapping «Принимаю» never raises (INSERT OR IGNORE).
     Quick 260822: пишет редакцию согласия на момент подписи (по умолчанию — текущая
     consent_version); повтор того же (user, key, version) дедупится, новая редакция — новая
     строка. Quick 260907-4ai: `raw_button` — снимок текста нажатой кнопки (не перечитывается
-    из настройки); опционален, старые вызовы без аргумента пишут NULL."""
+    из настройки); опционален, старые вызовы без аргумента пишут NULL.
+    `city_code` нужен только когда версия не передана явно — тогда берётся редакция города."""
     accepted_at = msk_now().isoformat()
     if consent_version is None:
-        consent_version = await current_consent_version()
+        consent_version = await current_consent_version(city_code)
     async with _connect() as db:
         await db.execute(
             "INSERT OR IGNORE INTO user_consents (user_id, consent_key, accepted_at, consent_version, raw_button) "

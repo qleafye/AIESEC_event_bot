@@ -130,7 +130,7 @@ async def _receive_step(step_key: str, message: types.Message, state: FSMContext
         from handlers.reg import reg_resume_fork  # ленивый шов (цикл импортов) — единая точка «Назад»
         await reg_resume_fork.back_to_fork(message, state)
         return
-    canon = await reg_i18n.canonicalize(message, step_key, message.text)
+    canon = await reg_i18n.canonicalize(message, step_key, message.text, (await state.get_data()).get("event_city"))
     value, err = validate_answer(step_key, canon)
     if err:
         await reg_i18n.say(message, err)

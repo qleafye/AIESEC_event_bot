@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from domain.cities import cities_module_on, city_scope, normalize_city
+from domain.cities import cities_module_on, city_scope, get_setting_typed_for_city, normalize_city
 from database.db import (
     count_rejected_submissions,
     get_active_submission,
@@ -42,8 +42,6 @@ from domain.game.labels import (
 )
 from services.i18n import i18n
 from services.amb.ambassador_waves import wave_visibility_ids  # хвост CR-03: та же пара id, что у бота
-from domain.settings.schema import get_setting_typed
-
 from miniapp.deps import Principal, game_gate, require_section
 from miniapp.timeutil import today_msk
 
@@ -105,7 +103,9 @@ async def submission_state(task_id: int, user_id: int) -> dict:
     сдачи и не исчерпан `game_resubmit_limit` (как у бота: лимит 0/пусто = без лимита)."""
     active = await get_active_submission(task_id, user_id)
     rejected = await count_rejected_submissions(task_id, user_id)
-    limit = await get_setting_typed("game_resubmit_limit") or 0
+    limit = await get_setting_typed_for_city(
+        "game_resubmit_limit", (await get_user(user_id) or {}).get("event_city"),
+    ) or 0
     if active is not None and active["status"] == "pending":
         status, can_submit = "pending", False
     elif active is not None and active["status"] == "approved":
@@ -201,7 +201,9 @@ async def tasks_list(offset: str | None = None, limit: str | None = None,
         "limit": lim,
         "offset": off,
         "empty_text": (
-            await i18n.tr_setting("game_task_list_empty", lang, tr_map) if not all_tasks else None
+            await i18n.tr_setting_for_city(
+                "game_task_list_empty", (user or {}).get("event_city"), lang, tr_map,
+            ) if not all_tasks else None
         ),
     }
 
@@ -279,7 +281,9 @@ async def task_card(task_id: int, p: Principal = Depends(game_gate),
         # структурные поля через textContent (innerHTML запрещён, T-19-15).
         "card_text": await render_task_card_text(task, status_line, attempt),
         "overdue_hint": (
-            await i18n.tr_setting("game_task_overdue_hint_text", lang, tr_map) if item["overdue"] else None
+            await i18n.tr_setting_for_city(
+                "game_task_overdue_hint_text", (_user_for_gate or {}).get("event_city"), lang, tr_map,
+            ) if item["overdue"] else None
         ),
         "deadline_left_text": deadline_left_text,
         "todo_eyebrow": await i18n.tr_setting("miniapp_task_todo_eyebrow", lang, tr_map),

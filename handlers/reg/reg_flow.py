@@ -30,7 +30,7 @@ from database.db import current_consent_version, get_user_consent_versions
 from database.db import RESUME_RECALL_COLUMNS
 from domain.settings.schema import get_setting_typed
 from services.registration.consent import tapped_button_text
-from domain.cities import CITIES, is_city_registration_open
+from domain.cities import CITIES, is_city_registration_open, get_setting_typed_for_city
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb, get_main_menu_kb
 from handlers.registration import (
@@ -378,9 +378,11 @@ async def start_confirm_edit(message: types.Message, state: FSMContext) -> None:
     выглядел бы тем самым перезапуском (и исключение не должно оставить делегата без ответа)."""
     await reg_i18n.say(message, "Давай поправим ответы — пройдём по ним по очереди.")
     try:
-        version = await current_consent_version()
+        edit_user = await get_user(message.from_user.id)
+        edit_city = (edit_user or {}).get("event_city")
+        version = await current_consent_version(edit_city)
         signed = {key for key, ver in await get_user_consent_versions(message.from_user.id) if ver == version}
-        pending = [s for s in await get_consent_steps() if s.split(":", 1)[1] not in signed]
+        pending = [s for s in await get_consent_steps(edit_city) if s.split(":", 1)[1] not in signed]
     except Exception as e:
         logger.error(f"start_confirm_edit: consent read failed for {message.from_user.id}: {e}")
         pending = []
@@ -479,7 +481,7 @@ async def process_date_input(message: types.Message, state: FSMContext, bot: Bot
     # payment_plan_date) конфигурируются пресет-кнопками (option_pairs может вернуть непустой
     # список для date-типа с preset-вариантами) — та же канонизация ДО validate_answer, что и
     # у _thin_step/_store_choice; у шагов без вариантов option_pairs вернёт [], no-op.
-    canon_text = await reg_i18n.canonicalize(message, step_key, message.text)
+    canon_text = await reg_i18n.canonicalize(message, step_key, message.text, data.get("event_city"))
     value, err = validate_answer(step_key, canon_text)
     if err:
         await reg_i18n.say(message, err)
@@ -499,7 +501,7 @@ async def process_select_input(message: types.Message, state: FSMContext, bot: B
     # подпись («IT and technology») ложится в базу/таблицу молча (UAT 27-05 нашёл именно это
     # на study_field). `_err_kb` смотрит на canon_text — английское «Other» уже канонизировано
     # в «Другое», та же клавиатура «Отмена», что у русского делегата.
-    canon_text = await reg_i18n.canonicalize(message, step_key, message.text)
+    canon_text = await reg_i18n.canonicalize(message, step_key, message.text, data.get("event_city"))
     value, err = validate_answer(step_key, canon_text)
     if err:
         await reg_i18n.say(message, err, reply_markup=_err_kb(canon_text))
@@ -510,9 +512,9 @@ async def process_select_input(message: types.Message, state: FSMContext, bot: B
 
 # --- YL'26: configurable multi-select step (inline toggles) ---
 
-async def _multi_options(step_key: str) -> list[str]:
+async def _multi_options(step_key: str, city_code: str | None = None) -> list[str]:
     opt_key, default = MULTI_CONFIG.get(step_key, (f"{step_key}_options", []))
-    return await _get_options(opt_key, default)
+    return await _get_options(opt_key, default, city_code)
 
 
 @router.callback_query(F.data.startswith("regmulti:"), Registration.multi_input)
@@ -542,7 +544,7 @@ async def process_multi_toggle(callback: types.CallbackQuery, state: FSMContext)
             return
         selected.add(idx)
     await state.update_data(**{f"_multi_{step_key}": sorted(selected)})
-    options = await _multi_options(step_key)
+    options = await _multi_options(step_key, data.get("event_city"))
     # Phase 27 (27-05, Rule 1): edit_reply_markup — не message.answer, say() тут не подходит,
     # но перевод обязателен: без него первичный рендер (_ask_step -> _safe_answer, задача 1)
     # уходит по-английски, а любой тап по чекбоксу тут же откатывает клавиатуру на русский.
@@ -561,7 +563,7 @@ async def process_multi_done(callback: types.CallbackQuery, state: FSMContext, b
     step_key = callback.data.split(":", 1)[1]
     data = await state.get_data()
     selected = sorted(set(data.get(f"_multi_{step_key}", [])))
-    options = await _multi_options(step_key)
+    options = await _multi_options(step_key, data.get("event_city"))
     # Index -> label resolution is UI-specific (depends on the rendered options order) and
     # stays here; validate_answer takes the resolved label list (empty-check + join — same
     # rule as before, now shared with any future multi-typed step, not just goal/formats).
@@ -597,7 +599,7 @@ async def process_ambassador(message: types.Message, state: FSMContext, bot: Bot
     # Phase 27 (27-05, Задача 3, LANG-06): пятая и последняя точка канонизации — «Да!»/«Пока
     # нет» это _validate_answer_core-ветка без записи в _CHOICE_STEPS/_BESPOKE_CHOICE, но с
     # тем же риском молчаливой английской записи в is_ambassador_candidate.
-    canon_text = await reg_i18n.canonicalize(message, "ambassador", message.text)
+    canon_text = await reg_i18n.canonicalize(message, "ambassador", message.text, (await state.get_data()).get("event_city"))
     value, err = validate_answer("ambassador", canon_text)
     if err:
         await reg_i18n.say(message, err)
@@ -621,8 +623,9 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
     # Quick 260907-4ai: снимок текста НАЖАТОЙ кнопки — читаем markup ДО edit_reply_markup
     # ниже (после него разметки уже нет). Фолбэк — тот же литерал/настройка, что и в
     # _send_renew_card/process_consent_ignore, третьего варианта дефолта не заводим.
-    raw_button = tapped_button_text(callback) or await get_setting("consent_button_text") or "Согласен(-на)"
-    await record_user_consent(callback.from_user.id, consent_key, raw_button=raw_button)  # D-02 audit row
+    consent_city = data.get("event_city")
+    raw_button = tapped_button_text(callback) or await get_setting_typed_for_city("consent_button_text", consent_city) or "Согласен(-на)"
+    await record_user_consent(callback.from_user.id, consent_key, raw_button=raw_button, city_code=consent_city)
     # "✅ Принято" — обвязка экрана согласия (кнопка сработала), не сам текст согласия
     # (LANG-09 запрещает переводить ТОЛЬКО текст/PDF согласия, не UI вокруг него).
     await callback.answer(await reg_i18n.tr_for(callback, "✅ Принято"))
@@ -648,7 +651,8 @@ async def process_consent_ignore(message: types.Message):
     # всегда — переводим ТОЛЬКО обёртку вокруг него, через шаблон с {btn} в ярусе A
     # (i18n_ui_en.UI_EN), не машинным переводом всей склеенной строки (btn_text — переменная
     # настройка, статичный словарь не смог бы её матчить целиком).
-    btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
+    ignore_user = await get_user(message.from_user.id)
+    btn_text = await get_setting_typed_for_city("consent_button_text", (ignore_user or {}).get("event_city")) or "Согласен(-на)"
     # Квик 260917-en: {btn} должен совпадать с тем, что реально на кнопке у ЭТОГО делегата —
     # если ему уже показали переведённую карточку согласия (registration.py::_ask_step),
     # подсказка должна цитировать ТУ ЖЕ подпись, не русский оригинал.

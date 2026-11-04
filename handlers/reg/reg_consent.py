@@ -16,8 +16,8 @@ import logging
 from aiogram import F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from database.db import get_setting, record_user_consent
-from domain.settings.schema import get_setting_typed
+from database.db import get_setting, get_user, record_user_consent
+from domain.cities import get_setting_typed_for_city
 from services.registration.consent import recollect_gate_on, outstanding_consents, tapped_button_text
 from handlers.registration import router, _consent_entries, _prompt
 # Phase 27 (27-05, LANG-02/LANG-09): say()/tr_for() переводят UI-обвязку экрана пересогласия
@@ -32,7 +32,9 @@ logger = logging.getLogger(__name__)
 RENEW_PREFIX = "consent_renew:"
 
 
-async def _send_renew_card(message: types.Message, label: str, consent_key: str) -> None:
+async def _send_renew_card(
+    message: types.Message, label: str, consent_key: str, city_code: str | None = None,
+) -> None:
     """Та же карточка, что у шага consent:* в анкете (registration._ask_step), но с
     callback'ом пересогласия.
 
@@ -48,7 +50,7 @@ async def _send_renew_card(message: types.Message, label: str, consent_key: str)
     prompt_text = await _prompt(f"consent_{consent_key}", label)
     lang, _tr_map = await reg_i18n.ctx_for(message)
     caption = html.escape(reg_i18n.tr_text(prompt_text, lang, {}))
-    btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
+    btn_text = await get_setting_typed_for_city("consent_button_text", city_code) or "Согласен(-на)"
     # Квик 260917-en (приёмка 17.09): кнопка — не текст согласия (caption/PDF выше остаются
     # русскими, LANG-09), переводим только её (см. handlers/registration.py::_ask_step,
     # тот же приём).
@@ -70,17 +72,19 @@ async def maybe_offer_consent_recollect(message: types.Message, user_id: int) ->
     Гейт выключен (дефолт) или всё подписано текущей редакцией — молча False. Fail-soft:
     любая ошибка здесь не должна стоить делегату его /start."""
     try:
-        if not await recollect_gate_on():
+        person = await get_user(user_id)
+        city = (person or {}).get("event_city")
+        if not await recollect_gate_on(city):
             return False
-        pending = await outstanding_consents(user_id, await _consent_entries())
+        pending = await outstanding_consents(user_id, await _consent_entries(city), city)
         if not pending:
             return False
-        intro = await get_setting_typed("consent_recollect_text")
+        intro = await get_setting_typed_for_city("consent_recollect_text", city)
         if intro:
             # Интро-уведомление О пересогласии (не сам текст согласия) — переводимая обвязка.
             await reg_i18n.say(message, html.escape(intro))
         label, key = pending[0]
-        await _send_renew_card(message, label, key)
+        await _send_renew_card(message, label, key, city)
         return True
     except Exception as e:
         logger.error(f"consent recollect skipped for {user_id}: {e}")
@@ -91,23 +95,25 @@ async def maybe_offer_consent_recollect(message: types.Message, user_id: int) ->
 async def consent_renew_accept(callback: types.CallbackQuery):
     consent_key = callback.data[len(RENEW_PREFIX):]
     user_id = callback.from_user.id
-    entries = await _consent_entries()
-    if not await recollect_gate_on() or consent_key not in {k for _lbl, k in entries}:
+    person = await get_user(user_id)
+    city = (person or {}).get("event_city")
+    entries = await _consent_entries(city)
+    if not await recollect_gate_on(city) or consent_key not in {k for _lbl, k in entries}:
         # Старая карточка в чате после выключения гейта / смены списка — просто гасим.
         await callback.answer()
         return
     # Quick 260907-4ai: снимок текста НАЖАТОЙ кнопки — читаем markup ДО edit_reply_markup
     # ниже; фолбэк — та же настройка/литерал, что и в _send_renew_card.
-    raw_button = tapped_button_text(callback) or await get_setting("consent_button_text") or "Согласен(-на)"
-    await record_user_consent(user_id, consent_key, raw_button=raw_button)  # новая строка аудита с текущей версией
+    raw_button = tapped_button_text(callback) or await get_setting_typed_for_city("consent_button_text", city) or "Согласен(-на)"
+    await record_user_consent(user_id, consent_key, raw_button=raw_button, city_code=city)
     await callback.answer(await reg_i18n.tr_for(callback, "✅ Принято"))
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    pending = await outstanding_consents(user_id, entries)
+    pending = await outstanding_consents(user_id, entries, city)
     if pending:
         label, key = pending[0]
-        await _send_renew_card(callback.message, label, key)
+        await _send_renew_card(callback.message, label, key, city)
         return
     await reg_i18n.say(callback.message, "✅ Спасибо! Согласие обновлено.")

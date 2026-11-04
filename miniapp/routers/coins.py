@@ -14,13 +14,12 @@ from database.db import (
     count_coin_entries_for_user,
     get_balance,
     get_leaderboard,
+    get_user,
     get_user_rank,
     list_coin_entries_for_user,
 )
 from services.amb import amb_progress
 from services.i18n import i18n
-from domain.settings.schema import get_setting_typed
-
 from miniapp.deps import Principal, game_gate, require_section
 from miniapp.routers.tasks import parse_page
 
@@ -61,18 +60,19 @@ async def history(offset: str | None = None, limit: str | None = None,
     lang = lang if lang in ("ru", "en") else "ru"
     total = await count_coin_entries_for_user(p.telegram_id)
     rows = await list_coin_entries_for_user(p.telegram_id, limit=lim, offset=off)
+    city = (await get_user(p.telegram_id) or {}).get("event_city")
 
     async def tr_key(key: str) -> str:  # колбэк перевода для services.amb.amb_progress
-        return await i18n.tr_setting(key, lang, tr_map)
+        return await i18n.tr_setting_for_city(key, city, lang, tr_map)
 
     # Тумблер «Скрывать имена приглашённых»: «Приглашённый №N» вместо имени, БД не трогаем.
     rows = await amb_progress.mask_referral_coin_rows(p.telegram_id, rows, tr_key)
-    manual_label = await i18n.tr_setting("balance_source_manual_label", lang, tr_map)
-    task_label = await i18n.tr_setting("balance_source_task_label", lang, tr_map)
+    manual_label = await i18n.tr_setting_for_city("balance_source_manual_label", city, lang, tr_map)
+    task_label = await i18n.tr_setting_for_city("balance_source_task_label", city, lang, tr_map)
     # Phase 32 (32-06, D-36): начисление за приглашённого (`claim_referral_credit`, план 32-01)
     # подписано по-человечески, как manual/task — иначе делегат видит служебный код source или
     # пустую подпись «—» вместо понятной причины.
-    referral_label = await i18n.tr_setting("balance_source_referral_label", lang, tr_map)
+    referral_label = await i18n.tr_setting_for_city("balance_source_referral_label", city, lang, tr_map)
     items = []
     for row in rows:
         source = row.get("source")
@@ -94,7 +94,7 @@ async def history(offset: str | None = None, limit: str | None = None,
     return {
         "items": items, "total": total, "limit": lim, "offset": off,
         "empty_text": (
-            await i18n.tr_setting("balance_history_empty", lang, tr_map) if total == 0 else None
+            await i18n.tr_setting_for_city("balance_history_empty", city, lang, tr_map) if total == 0 else None
         ),
     }
 
@@ -106,6 +106,7 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(game_gate
     lang, tr_map = await i18n.context(p.telegram_id)
     lang = lang if lang in ("ru", "en") else "ru"
     rows = await get_leaderboard(lim)
+    city = (await get_user(p.telegram_id) or {}).get("event_city")
     items = [
         {
             "rank": i,
@@ -123,6 +124,6 @@ async def leaderboard(limit: str | None = None, p: Principal = Depends(game_gate
         # баланса в хабе, переведённая на язык делегата; форму под число выбирает `unitFor`.
         "unit": await i18n.tr_setting("miniapp_hub_balance_unit", lang, tr_map),
         "empty_text": (
-            await i18n.tr_setting("leaderboard_empty_text", lang, tr_map) if not rows else None
+            await i18n.tr_setting_for_city("leaderboard_empty_text", city, lang, tr_map) if not rows else None
         ),
     }
