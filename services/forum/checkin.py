@@ -375,11 +375,11 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
 
 async def _render_card(user: dict, payload: str) -> bytes:
     """Оформленная карточка (`services.forum.qr_card`) — заголовок и фон из `event_name`,
-    город человеческим названием, а не кодом."""
+    город человеческим названием, а не кодом. Адрес ВК — из `vk_username` анкеты, если он есть."""
     import asyncio
 
     from domain.cities import city_label_or_none
-    from services.forum.qr_card import render_qr_card
+    from services.forum.qr_card import pass_vk_line, render_qr_card
 
     event = (await get_setting_typed("event_name") or "").strip()
     title = f"Пропуск на {event}" if event else "Пропуск на форум"
@@ -391,7 +391,8 @@ async def _render_card(user: dict, payload: str) -> bytes:
     city = rest.strip() if prefix else city
     name = (user.get("full_name") or "").strip() or "—"
     return await asyncio.to_thread(
-        render_qr_card, payload, name, city, title, "Покажи этот QR на входе", (event or "АЙСЕК").upper(),
+        render_qr_card, payload, name, city, title, "Покажи этот QR на входе",
+        (event or "АЙСЕК").upper(), pass_vk_line(user.get("vk_username")),
     )
 
 
