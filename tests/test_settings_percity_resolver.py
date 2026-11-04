@@ -334,6 +334,8 @@ EXPECTED_PER_CITY_KEYS = {
     "payment_requisites",
     "payment_requisites_by_lc",
     "payment_deadline",
+    "payment_reminder_first_days",
+    "payment_reminder_second_days",
     "payment_reminder_text",
     "payment_overdue_text",
     "penalty_schedule",
