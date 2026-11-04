@@ -335,3 +335,63 @@ def test_feedback_page_shows_questions_and_session_block(tmp_path, monkeypatch):
     csv_body = client.get("/feedback.csv", params={"part": "answers"}).text
     assert "Больше кейсов" in csv_body
     assert "Сильный спикер" in csv_body
+
+
+DAY2 = "2026-10-31"
+
+
+async def _seed_second_program_day():
+    async with _connect() as conn:
+        await conn.execute(
+            "INSERT INTO program_sessions "
+            "(city, day, start_time, end_time, title, hall_id, created_at, updated_at) "
+            "VALUES ('msk', ?, '11:00', '12:00', 'Второй день', 1, ?, ?)",
+            (DAY2, f"{DAY2} 09:00:00", f"{DAY2} 09:00:00"),
+        )
+        await conn.commit()
+
+
+def test_feedback_page_shows_one_program_day(tmp_path, monkeypatch):
+    """Кнопки дней программы: сессии и CSV выбранного дня. Открытая анкета остаётся
+    на каждом дне — к какому дню она относится, ещё не решено."""
+    from datetime import datetime as dt
+    from tests import test_dashboard_render as tdr
+
+    monkeypatch.setattr("dashboard.queries.msk_now", lambda: dt(2026, 10, 31, 12, 0, 0))
+    db_path = tdr._use_tmp_db(tmp_path, "feedback_days.db")
+    monkeypatch.setattr(config, "ADMIN_IDS", [tdr.ADMIN_ID])
+    _run(db.set_setting("event_season", SEASON))
+    _run(db.set_setting("event_city_enabled", "on"))
+    _run(_seed_cities())
+    _run(_user(1, city="msk", season=SEASON, status="approved"))
+    _run(_seed_survey())
+    _run(_seed_session_with_ratings())
+    _run(_seed_second_program_day())
+
+    client = tdr._stats_manager_client(db_path)
+    today = client.get("/feedback", params={"city": "msk"})
+    assert today.status_code == 200
+    assert "30.10" in today.text and "31.10" in today.text
+    assert "Второй день" in today.text
+    assert "Рынок меняется" not in today.text
+    assert "Как старт" in today.text
+    assert "ещё не решено" in today.text
+    assert "day=2026-10-31" in today.text
+
+    first = client.get("/feedback", params={"city": "msk", "day": DAY})
+    assert "Рынок меняется" in first.text
+    assert "Второй день" not in first.text
+    assert "Как старт" in first.text
+    assert f"day={DAY}" in first.text
+
+    payload = client.get("/feedback.json", params={"city": "msk", "day": DAY}).json()
+    titles = [s["name"] for s in payload["sessions"]]
+    assert "Рынок меняется" in titles and "Второй день" not in titles
+    assert any(f["name"] == "Как старт" for f in payload["forms"])
+
+    other = client.get("/feedback.csv", params={"city": "msk", "day": DAY2}).text
+    assert "Второй день" in other
+    assert "Рынок меняется" not in other
+
+    junk = client.get("/feedback.json", params={"city": "msk", "day": "вчера"}).json()
+    assert junk["day"] == DAY2
