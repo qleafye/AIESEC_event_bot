@@ -326,8 +326,8 @@ async def _balance_screen(
             lines.append(_format_coin_entry_line(row, manual_label, task_label, referral_label))
     text = "\n".join(lines)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_history_button_text"), lang, tr_map), callback_data="gbal_history:0")],
-        [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_top_button_text"), lang, tr_map), callback_data="gbal_top")],
+        [InlineKeyboardButton(text=reg_i18n.tr_text(await get_setting_typed_for_city("balance_history_button_text", city), lang, tr_map), callback_data="gbal_history:0")],
+        [InlineKeyboardButton(text=reg_i18n.tr_text(await get_setting_typed_for_city("balance_top_button_text", city), lang, tr_map), callback_data="gbal_top")],
     ])
     from handlers.game.shop_delegate import with_shop_button  # витрина магазина баллов, если открыта
     return text, await with_shop_button(kb)
@@ -366,15 +366,15 @@ async def _balance_history_screen(
     nav_row: list[InlineKeyboardButton] = []
     if offset > 0:
         nav_row.append(InlineKeyboardButton(
-            text=reg_i18n.tr_text(await ui_text("balance_history_prev_button_text"), lang, tr_map), callback_data=f"gbal_history:{max(0, offset - limit)}",
+            text=reg_i18n.tr_text(await get_setting_typed_for_city("balance_history_prev_button_text", city), lang, tr_map), callback_data=f"gbal_history:{max(0, offset - limit)}",
         ))
     if offset + limit < total:
         nav_row.append(InlineKeyboardButton(
-            text=reg_i18n.tr_text(await ui_text("balance_history_next_button_text"), lang, tr_map), callback_data=f"gbal_history:{offset + limit}",
+            text=reg_i18n.tr_text(await get_setting_typed_for_city("balance_history_next_button_text", city), lang, tr_map), callback_data=f"gbal_history:{offset + limit}",
         ))
     if nav_row:
         buttons.append(nav_row)
-    buttons.append([InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_back_button_text"), lang, tr_map), callback_data="gbal_back")])
+    buttons.append([InlineKeyboardButton(text=reg_i18n.tr_text(await get_setting_typed_for_city("balance_back_button_text", city), lang, tr_map), callback_data="gbal_back")])
     return text, InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -420,7 +420,7 @@ async def gbal_top(callback: types.CallbackQuery):
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text = await render_leaderboard(rows, callback.from_user.id, rank, balance, lang, tr_map)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=reg_i18n.tr_text(await ui_text("balance_back_button_text"), lang, tr_map), callback_data="gbal_back")],
+        [InlineKeyboardButton(text=reg_i18n.tr_text(await get_setting_typed_for_city("balance_back_button_text", (await get_user(callback.from_user.id) or {}).get("event_city")), lang, tr_map), callback_data="gbal_back")],
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -484,13 +484,13 @@ async def _render_game_task_line(
     tr_map = tr_map or {}
     tr = lambda s: reg_i18n.tr_text(s, lang, tr_map)  # noqa: E731 — локальный алиас, короче на 6 использований ниже
     title = html.escape(task_title(task))
-    category = await category_label(task["category"])
+    category = await category_label(task["category"], city_code)
     category = tr(category)  # game_category_label_* — теперь в делегатском корпусе (group "game")
     deadline, overdue = _game_task_deadline_short(task)
     overdue_mark = " ⏰" if overdue else ""
     # Phase 32 (32-06, D-27): задание без срока (`deadline` пустая строка) показывает словами
     # `_game_task_deadline_text` («без срока» по умолчанию), а не «до » с пустым хвостом.
-    deadline_word = f"{tr('до')} {deadline}" if deadline else await _game_task_deadline_text(task)
+    deadline_word = f"{tr('до')} {deadline}" if deadline else await _game_task_deadline_text(task, city_code)
 
     limit = await get_setting_typed_for_city("game_resubmit_limit", city_code)
     if limit:
@@ -610,7 +610,7 @@ async def _game_task_list_screen(
     if is_ambassador:
         current_wave = await current_wave_for(code)
         if current_wave and wave_eligible(user, current_wave):
-            wave_label = reg_i18n.tr_text(await ui_text("wave_rating_button_text"), lang, tr_map)
+            wave_label = reg_i18n.tr_text(await get_setting_typed_for_city("wave_rating_button_text", (user or {}).get("event_city")), lang, tr_map)
             buttons.append([InlineKeyboardButton(text=wave_label, callback_data="ambwave")])
 
     kb = InlineKeyboardMarkup(inline_keyboard=buttons) if buttons else None
@@ -726,7 +726,7 @@ async def mytask_open(callback: types.CallbackQuery):
         can_submit = True
         attempt = rejected
 
-    card_text = await _render_task_card_text(task, status_line, attempt)
+    card_text = await _render_task_card_text(task, status_line, attempt, (user or {}).get("event_city"))
     card_kb = _game_task_card_kb(task_id, can_submit, lang, tr_map)
     photo_id = task.get("photo_file_id")
     if photo_id:

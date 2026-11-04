@@ -632,7 +632,8 @@ async def get_setting_for_city(key: str, city_code: str | None) -> str | None:
 
 async def get_setting_typed_for_city(key: str, city_code: str | None):
     """Типизированный вариант `get_setting_for_city`: та же лестница ранних выходов, но
-    фолбэк — `get_setting_typed(key)`, а найденный override пропускается через
+    фолбэк — `get_setting_typed(key, city_code=code)` (тот же город, что у оверрайда:
+    `default_free` смотрит его `payment_enabled`), а найденный override пропускается через
     `_parse_setting(key, raw)` с БАЗОВЫМ ключом (метаданные типа лежат у базового ключа
     реестра, не у составного `{key}__city__{code}`).
 
@@ -652,7 +653,7 @@ async def get_setting_typed_for_city(key: str, city_code: str | None):
         raw = await get_setting(override_key)
         if raw:
             return _parse_setting(key, raw)
-    return await get_setting_typed(key)
+    return await get_setting_typed(key, city_code=code)
 
 
 async def city_override_codes(key: str) -> list[str]:

@@ -64,13 +64,20 @@ _STATUS_SCREEN_EXTRAS_OFF: dict = {
 }
 
 
-async def _next_steps(prefix: str, lang: str, tr_map: dict[str, str]) -> list[dict]:
+async def _next_steps(
+    prefix: str, lang: str, tr_map: dict[str, str], event_city: str | None,
+) -> list[dict]:
     """Три шага «Что дальше» одного состояния — `reg_status_{prefix}_step{1..3}_title_text`/
-    `_body_text`, тот же реестровый шаблон для review/approved (30-UI-SPEC.md таблицы)."""
+    `_body_text`, тот же реестровый шаблон для review/approved (30-UI-SPEC.md таблицы).
+    Город — тот же `event_city`, что у карточки оплаты на этом экране."""
     steps = []
     for i in (1, 2, 3):
-        title = await i18n.tr_setting(f"reg_status_{prefix}_step{i}_title_text", lang, tr_map)
-        body = await i18n.tr_setting(f"reg_status_{prefix}_step{i}_body_text", lang, tr_map)
+        title = await i18n.tr_setting_for_city(
+            f"reg_status_{prefix}_step{i}_title_text", event_city, lang, tr_map,
+        )
+        body = await i18n.tr_setting_for_city(
+            f"reg_status_{prefix}_step{i}_body_text", event_city, lang, tr_map,
+        )
         if title or body:
             steps.append({"title": title, "body": body})
     return steps
@@ -355,7 +362,7 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
             "title": await i18n.tr_setting("reg_status_review_title_text", lang, tr_map),
             "screen_body": await i18n.tr_setting("reg_status_review_body_text", lang, tr_map),
             "next_steps_eyebrow": await i18n.tr_setting("reg_status_next_eyebrow_text", lang, tr_map),
-            "next_steps": await _next_steps("review", lang, tr_map),
+            "next_steps": await _next_steps("review", lang, tr_map, event_city),
             "edit_button_text": await i18n.tr_setting("reg_status_edit_button_text", lang, tr_map),
             "payment": None, "pay_button_text": None,
             "reason_eyebrow": None, "reason_text": None, "reason_date": None,
@@ -433,7 +440,7 @@ async def hub_status(p: Principal = Depends(form_gate)) -> dict:
                 дата=event_dates, город=event_place,
             ),
             "next_steps_eyebrow": await i18n.tr_setting("reg_status_next_eyebrow_text", lang, tr_map),
-            "next_steps": await _next_steps("approved", lang, tr_map),
+            "next_steps": await _next_steps("approved", lang, tr_map, event_city),
             "edit_button_text": None,
             "payment": payment,
             "pay_button_text": (
