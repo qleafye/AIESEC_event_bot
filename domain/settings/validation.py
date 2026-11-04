@@ -294,6 +294,19 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
             )
         return f"{hours:02d}:{minutes:02d}", None
 
+    if entry.get("format") == "tg_link":
+        # Ссылка на чат города для {chat}: только t.me/telegram.me/@имя, хранится как
+        # https://t.me/<путь> — чужой домен и HTML/скобки в сообщение делегату не попадут.
+        from domain.settings.city_chat import normalize_chat_link
+        link = normalize_chat_link(value)
+        if link is None:
+            return None, (
+                "Не похоже на ссылку на чат Telegram. Пришлите ссылку вида "
+                "<code>https://t.me/+AbCdEf123</code> или <code>@yulid_msk</code>, «нет» — убрать "
+                "ссылку, «-» — сбросить."
+            )
+        return link, None
+
     if entry.get("format") == "msk_datetime":
         # Дедлайн ступеней амбассадоров: «ГГГГ-ММ-ДД ЧЧ:ММ» по Москве. «нет» — без дедлайна
         # (хранится пустой строкой); «-» сюда не доходит — это сброс к значению по умолчанию.

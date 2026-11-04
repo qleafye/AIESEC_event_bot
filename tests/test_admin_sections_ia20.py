@@ -210,19 +210,23 @@ def test_coverage_frozen_before_is_fully_reachable(tmp_path):
 
 
 def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
-    """Группы, которые остались в разделах. chat, amb, menu_labels, pay, consent и system
-    уехали в Mini App и в объединении их нет."""
+    """Группы, которые остались в разделах. amb, menu_labels, pay, consent и system
+    уехали в Mini App. «Чат» и тексты сверки снова в «Управлении»."""
     after = _after_callbacks(tmp_path)
     groups_after = {cb for cb in after if cb.startswith("settings_group:")}
     left_for_app = {
-        "settings_group:chat", "settings_group:amb", "settings_group:menu_labels",
-        "settings_group:pay", "settings_group:consent", "settings_group:system",
+        "settings_group:amb", "settings_group:menu_labels",
+        "settings_group:pay", "settings_group:consent",
+        "settings_group:system",
     }
     assert groups_after == (_GROUPS_BEFORE - left_for_app) | {
         "settings_group:apps",
         # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
+        # Сообщения менеджеру о сверке после привязки чата — в «🔧 Управление».
+        "settings_group:chat_bind_texts",
+        "settings_group:chat",
     }
     assert not (left_for_app & groups_after)
 
@@ -643,7 +647,9 @@ def test_root_rows_are_only_sections(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
     flat = _flat_callback_data(asyncio.run(admin_keyboard_for(ADMIN_ID)))
     assert flat[0] == "admin_city_switch"
-    assert flat[1:] == [f"admin_sec:{token}" for token in _root_section_tokens(amb=False)]
+    assert flat[0] == "admin_city_switch"
+    assert flat[1] == "ready_list"
+    assert flat[2:] == [f"admin_sec:{token}" for token in _root_section_tokens(amb=False)]
     for banned in ("work", "settings", "forum"):
         assert banned not in flat
         assert f"admin_sec:{banned}" not in flat
@@ -652,6 +658,7 @@ def test_root_rows_are_only_sections(tmp_path, monkeypatch):
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
     rows = kb.inline_keyboard
     assert rows[0][0].callback_data == "admin_city_switch"
+    assert rows[0][1].callback_data == "ready_list"
     assert [row[0].callback_data for row in rows[1:-1]] == [
         f"admin_sec:{token}" for token in _root_section_tokens(amb=False)
     ]
@@ -978,7 +985,9 @@ def test_cancel_returns_to_the_screen_it_came_from(tmp_path):
     cb_empty = FakeCallback("settings_cancel")
     asyncio.run(st.cancel_edit_setting_callback(cb_empty, FakeState()))
     flat = _flat_callback_data(cb_empty.message.markup)
-    assert flat and all(cd.startswith("admin_sec:") for cd in flat), flat
+    # 28.10/готовность: первый ряд ready_list — не раздел.
+    assert flat and flat[0] == "ready_list", flat
+    assert all(cd.startswith("admin_sec:") for cd in flat[1:]), flat
 
 
 def test_photo_and_file_return_to_event_group(tmp_path):

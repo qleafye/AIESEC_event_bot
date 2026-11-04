@@ -24,6 +24,7 @@ from handlers.i18n import reg_i18n
 from domain.regform.engine import build_referral_link
 from services.amb import amb_progress, amb_screen
 from services.amb.invite_threshold import threshold_line
+from services.game import city_texts
 from services.i18n import i18n as i18n_service
 from domain.cities import get_setting_typed_for_city
 
@@ -61,8 +62,8 @@ async def _tr_line(key: str, lang: str, tr_map: dict, city: str | None = None) -
     if lang != "ru" and isinstance(text, str) and text:
         full = i18n_service.tr(text, lang, tr_map)
         if full != text:
-            return full
-    return reg_i18n.tr_text(text, lang, tr_map)
+            return await city_texts.fill_chat(full, city)
+    return await city_texts.fill_chat(reg_i18n.tr_text(text, lang, tr_map), city)
 
 
 async def _lines(
@@ -94,7 +95,7 @@ async def referral_screen(
     bot_user = await bot.get_me()
     referral_link = build_referral_link(bot_user.username, user_id)
     tpl = await get_setting_typed_for_city("referral_link_prompt_text", city)
-    text = reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link)
+    text = await city_texts.fill_chat(reg_i18n.tr_fmt(tpl, lang, tr_map, link=referral_link), city)
 
     buttons: list[list[InlineKeyboardButton]] = []
     view = await amb_screen.delegate_view(user_id)

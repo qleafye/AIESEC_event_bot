@@ -137,6 +137,8 @@ def _root_settings_row(caps: set) -> list[InlineKeyboardButton] | None:
         logger.error("root settings button skipped")
         return None
 
+READY_CALLBACK = "ready_list"  # экран «✅ Готовность к форуму» (handlers/settings/admin_readiness.py)
+
 
 async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """ROLE-01 (D-15): the panel built for THIS person — a fresh capability read
@@ -164,6 +166,12 @@ async def build_admin_keyboard(user_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=label, callback_data=f"admin_sec:{token}")]
         for token, label in sections
     ]
+    # «✅ Готовность к форуму» — первым рядом, только у держателя settings.
+    if _holds(caps, "settings"):
+        from services.forum.readiness import pending_count_for_admin
+        n = await pending_count_for_admin(user_id)
+        text = f"⚠️ Не настроено: {n} — готовность к форуму" if n else "✅ Готовность к форуму"
+        rows.insert(0, [InlineKeyboardButton(text=text, callback_data=READY_CALLBACK)])
     settings_row = _root_settings_row(caps)
     if settings_row is not None:
         rows.append(settings_row)
@@ -182,7 +190,12 @@ async def admin_keyboard_for(admin_id: int) -> InlineKeyboardMarkup:
     # the button text ITSELF is ALL_CITIES_LABEL, not the label glued after the usual prefix.
     label_text = ALL_CITIES_LABEL if code == ALL_CITIES else f"🏙 Город: {await city_label(code)}"
     header = [InlineKeyboardButton(text=label_text, callback_data="admin_city_switch")]
-    return InlineKeyboardMarkup(inline_keyboard=[header] + base.inline_keyboard)
+    rows = list(base.inline_keyboard)
+    # Кнопка готовности встаёт в ряд шапки города: корень — «шапка + не больше девяти разделов»
+    # (tests/test_admin_sections_ia20.py), отдельный ряд дал бы одиннадцатый.
+    if rows and rows[0][0].callback_data == READY_CALLBACK:
+        header = header + rows.pop(0)
+    return InlineKeyboardMarkup(inline_keyboard=[header] + rows)
 
 
 # Phase 07.2 (CITY-02): the ONE resolver both moderation queues (applications + receipts)

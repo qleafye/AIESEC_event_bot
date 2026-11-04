@@ -273,6 +273,8 @@ EXPECTED_ROUTES = {
     "#/arrivals": "screens/arrivals.js",
     # Таблица регистраций и три слота форм.
     "#/sheets-forms": "screens/sheets_forms.js",
+    # Магазин баллов: делегатский экран «🛍 Магазин».
+    "#/shop": "screens/shop.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -305,9 +307,8 @@ def test_route_table_matches_phase_plan_exactly():
     # настроек открывает саму настройку, не начало раздела.
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
-    # Правила автоотказа: список и редактор. Отдельного "#/admin-reject-rule/new" нет.
-    # Пять маршрутов режима и «Таблица и формы»: 30 + 2 = 32.
-    assert len(routes) == len(EXPECTED_ROUTES) == 32
+    # Правила автоотказа, маршруты режима, «Таблица и формы» и витрина магазина.
+    assert len(routes) == len(EXPECTED_ROUTES) == 33
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -547,6 +548,7 @@ EXPECTED_NAV = [
     {"hash": "#/tasks", "section": "tasks", "delegate": True},
     {"hash": "#/coins", "section": "coins", "delegate": True},
     {"hash": "#/leaderboard", "section": "leaderboard", "delegate": True},
+    {"hash": "#/shop", "section": "shop", "delegate": True},
     {"hash": "#/profile", "section": "profile", "delegate": True},
     {"hash": "#/form", "section": "form", "delegate": True},
     # Quick 260906-8uq (FAQ-05): делегатский раздел — рядом с form.

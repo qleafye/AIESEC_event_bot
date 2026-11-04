@@ -135,6 +135,8 @@ _ADMIN_ONLY_GAME_KEYS: frozenset[str] = frozenset({
     "amb_tiers_count", "amb_tiers_require_approved", "amb_tier4_threshold", "amb_tier5_threshold",
     *(f"amb_tier{n}_quota_on" for n in range(1, 6)),
     *(f"amb_tier{n}_quota" for n in (1, 3, 4, 5)),
+    # Ссылка на чат города для {chat} — URL, не язык.
+    "delegate_chat_link",
 })
 
 # Квик 260917-en: `payment_requisites_by_lc`/`penalty_schedule` — построчные данные (ЛК+реквизиты
@@ -339,10 +341,6 @@ def code_literals() -> list[tuple[str, str]]:
     items.append((
         "lit:reg_flow.cancel_registration_confirm",
         "Регистрация отменена. Чтобы начать заново, отправь /start.",
-    ))
-    items.append((
-        "lit:reg_flow.process_resume",
-        "Принимаются только PDF или DOCX. Прикрепи файл ещё раз.",
     ))
     items.append((
         "lit:reg_flow.process_resume",

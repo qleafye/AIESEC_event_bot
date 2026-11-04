@@ -719,16 +719,17 @@ def test_menu_admin_sees_all_sections(tmp_path):
             if isinstance(cb, str) and cb.startswith("admin_sec:")
         ]
 
-    # Чужой тест мог оставить адрес: кнопка «Настройки» без callback тогда попадает в список.
     saved_url = config.DASHBOARD_PUBLIC_URL
     config.DASHBOARD_PUBLIC_URL = ""
     try:
         kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
-        flat = section_callbacks(kb)
-        # «🤝 Амбассадоры» — только при включённом модуле «🤝 Отбор амбассадоров» (по умолчанию выкл).
-        assert flat == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS if token != "amb"]
+        flat = _flat_callback_data(kb)
+        assert flat[0] == "ready_list"
+        assert section_callbacks(kb) == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS if token != "amb"]
         asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
         kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
+        flat = _flat_callback_data(kb)
+        assert flat[0] == "ready_list"
         assert section_callbacks(kb) == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS]
     finally:
         config.DASHBOARD_PUBLIC_URL = saved_url

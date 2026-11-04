@@ -417,6 +417,15 @@ async def init_scheduler(bot):
         id=_DIGEST_JOB_ID, replace_existing=True,
     )
 
+    # «✅ Готовность к форуму»: утреннее напоминание менеджерам о ненастроенном за
+    # ready_remind_days дней до даты форума города. Одна cron-джоба, 10:00 МСК, на каждом старте
+    # заново (replace_existing); тумблер и окно джоба перечитывает у себя.
+    from services.forum.readiness import JOB_ID as _READY_JOB_ID, READY_REMIND_HOUR, readiness_remind_job
+    _scheduler.add_job(
+        readiness_remind_job, "cron", hour=READY_REMIND_HOUR, minute=0,
+        id=_READY_JOB_ID, replace_existing=True,
+    )
+
     # ME-03: re-arm any pending broadcast whose date job was dropped from the jobstore during a
     # downtime longer than misfire_grace — otherwise it stays 'pending' forever and never fires.
     await reconcile_scheduled_broadcasts()
@@ -1177,10 +1186,7 @@ async def send_payment_reminder(user_id: int):
                 id=f"pay_reminder_{user_id}_quiet_hours_shift", replace_existing=True,
             )
             return
-        text = await get_setting_typed_for_city("payment_reminder_text", pay_city) or (
-            "⏰ Напоминание об оплате участия!\n\n"
-            "Срок оплаты истекает скоро. Загрузи чек оплаты через бота."
-        )
+        text = await get_setting_typed_for_city("payment_reminder_text", pay_city)
         await _send_delegate_message(user_id, text)
     except Exception as e:
         logger.error(f"send_payment_reminder({user_id}) failed: {e}")
@@ -1298,11 +1304,7 @@ async def sweep_payment_overdue():
             # этого города включены. Следующий прогон человека уже не выберет.
             if await get_setting_typed_for_city("payment_reminders_enabled", city) != "on":
                 continue
-            text = await get_setting_typed_for_city("payment_overdue_text", city) or (
-                "⚠️ Срок оплаты участия истёк.\n\n"
-                "Если ты ещё планируешь участвовать — загрузи чек через бота "
-                "(кнопка «💳 Оплата» в меню) или свяжись с организатором."
-            )
+            text = await get_setting_typed_for_city("payment_overdue_text", city)
             await quiet_hours.send_or_queue_text(
                 now, tid, text,
                 sender=lambda cid=tid, txt=text: _send_delegate_message(cid, txt),
@@ -1485,6 +1487,13 @@ async def ext_forms_notify_job():
         await alert_reauth(_bot)
     except Exception as e:
         logger.error(f"ext_forms_notify_job failed: {e}")
+    # Отдельным блоком: сбой уведомлений о новых ответах не должен глушить предупреждение
+    # о форме с вопросом про вуз при выключенных делегациях (и наоборот).
+    try:
+        from services.delegations.delegations_off_alert import alert_off_delegations
+        await alert_off_delegations(_bot)
+    except Exception as e:
+        logger.error(f"ext_forms_notify_job: alert_off_delegations failed: {e}")
 
 
 async def translation_drain_job():
@@ -1985,11 +1994,13 @@ async def send_wave_start_dm(wave_id: int, ambassador_id: int) -> None:
         # CR-05: подстановка в текст, который правит менеджер, — цепочкой `.replace`
         # (`game_labels.fill_template`), НЕ `.format()`: посторонний `{`/`}` в тексте
         # менеджера не должен ронять рассылку целиком (T-073-03-05).
+        from services.game import city_texts
+        city = await city_texts.delegate_city(dict(user))
         template = i18n.tr(
-            await get_setting_typed_for_city("wave_start_message_text", wave_city), lang, tr_map,
+            await get_setting_typed_for_city("wave_start_message_text", city), lang, tr_map,
         )
         text = game_labels.fill_template(
-            template, wave=wave["number"], ends=ends_txt, intro=intro_block, tasks=tasks_block,
+            await city_texts.fill_chat(template, city), wave=wave["number"], ends=ends_txt, intro=intro_block, tasks=tasks_block,
         )
         if not intro:
             text = text.replace("\n\n\n", "\n\n")
@@ -2190,6 +2201,10 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         else:
             recipients = await _task_out_of_wave_recipients(task)
 
+        # Шаблон — по городу ПОЛУЧАТЕЛЯ, один раз на город за прогон (кэш ниже).
+        from domain.cities import get_setting_typed_for_city
+        from services.game import city_texts
+        templates: dict = {}
         game_open = await _game_open_filter()
         from database.db import mark_task_deadline_reminded
         # Отметка ДО рассылки: лучше недослать одному при сбое, чем разослать всем дважды.
@@ -2206,9 +2221,6 @@ async def send_task_deadline_reminder(task_id: int) -> None:
                 recipient = await get_user(uid) or {}
                 if not game_open(recipient):
                     continue  # задания ему закрыты (отклонён, ждёт решения, прошлый сезон)
-                template_raw = await get_setting_typed_for_city(
-                    "wave_deadline_reminder_text", recipient.get("event_city"),
-                )
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
                 # Тихие часы откладывают текст на утро. Если утро уже после дедлайна,
@@ -2216,8 +2228,13 @@ async def send_task_deadline_reminder(task_id: int) -> None:
                 due = await quiet_hours.defer_until(now, uid)
                 if due is not None and due >= deadline:
                     continue
+                city = await city_texts.delegate_city(recipient)
+                if city not in templates:
+                    templates[city] = await get_setting_typed_for_city(
+                        "wave_deadline_reminder_text", city,
+                    )
                 lang, tr_map = await i18n.context(uid)
-                template = i18n.tr(template_raw, lang, tr_map)
+                template = await city_texts.fill_chat(i18n.tr(templates[city], lang, tr_map), city)
                 text = game_labels.fill_template(
                     template, task=html.escape(str(title)), coins=int(task["coins"]),
                     deadline=deadline_txt,
@@ -2379,6 +2396,21 @@ async def send_wave_results(wave_id: int) -> None:
             for w in winners
         ) or "—"
 
+        # Тексты — по городу ПОЛУЧАТЕЛЯ (у джобы нет контекста города), один раз на город.
+        from database.db import get_user
+        from domain.cities import get_setting_typed_for_city
+        from services.game import city_texts
+        texts_by_city: dict = {}
+
+        async def _raw(city):
+            if city not in texts_by_city:
+                texts_by_city[city] = [
+                    await get_setting_typed_for_city(k, city) for k in (
+                        "wave_results_announce_text", "wave_results_winner_text",
+                        "wave_results_prize_text",
+                    )
+                ]
+            return texts_by_city[city]
         wave_number = wave.get("number")
         now = _now_moscow_naive()
 
@@ -2394,13 +2426,11 @@ async def send_wave_results(wave_id: int) -> None:
                 ):
                     continue  # отметил параллельный тик той же джобы — не шлём вторично
 
-                person_city = (await get_user(user_id) or {}).get("event_city")
-                announce_raw = await get_setting_typed_for_city("wave_results_announce_text", person_city)
-                winner_raw = await get_setting_typed_for_city("wave_results_winner_text", person_city)
-                prize_raw = await get_setting_typed_for_city("wave_results_prize_text", person_city)
+                city = await city_texts.delegate_city(dict(await get_user(user_id) or {}))
+                announce_raw, winner_raw, prize_raw = await _raw(city)
                 lang, tr_map = await i18n.context(user_id)
                 text = game_labels.fill_template(
-                    i18n.tr(announce_raw, lang, tr_map),
+                    await city_texts.fill_chat(i18n.tr(announce_raw, lang, tr_map), city),
                     wave=wave_number, winners=winners_txt, place=place, total=total, points=points,
                 )
 
@@ -2412,9 +2442,9 @@ async def send_wave_results(wave_id: int) -> None:
 
                 if user_id not in winner_ids:
                     continue
-                prize_text = i18n.tr(prize_raw, lang, tr_map)
+                prize_text = await city_texts.fill_chat(i18n.tr(prize_raw, lang, tr_map), city)
                 winner_text = game_labels.fill_template(
-                    i18n.tr(winner_raw, lang, tr_map),
+                    await city_texts.fill_chat(i18n.tr(winner_raw, lang, tr_map), city),
                     wave=wave_number, place=place, points=points, prize=prize_text,
                 )
 

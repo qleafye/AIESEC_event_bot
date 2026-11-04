@@ -11,6 +11,7 @@ import asyncio
 from config import config
 from database import db
 from domain.settings.ui_text_fields import BACKGROUND_BUTTON_FIELD_ORDER
+import domain.settings.delegate_text_fields as _DT
 from handlers import admin as admin_mod
 from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.access.admin_caps import required_capability
@@ -105,6 +106,8 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
         # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
+        # Сообщения менеджеру о сверке после привязки чата.
+        "settings_group:chat_bind_texts",
     ]
     assert not any(cd and cd.startswith("settings_edit:") for cd in flat)
     assert not any(cd and cd.startswith("settings_photo:") for cd in flat)
@@ -396,6 +399,8 @@ def test_render_snapshot_reg(tmp_path):
         # Phase 28 (28-01, SU-01/SU-08, СкиллАп 5): четыре новых списка вариантов + пояснение
         # кейс-чемпионата, сразу после study_field_options (handlers/settings/admin_settings.py).
         "stack_options", "experience_options", "readiness_options", "education_status_options",
+        # 28.10: семь списков вариантов анкеты без логики по значению — рядом со статусами.
+        *_DT.REG_OPTIONS_FIELD_ORDER,
         "edu_studying_statuses",
         "reg_case_optin_description_text",
         # Phase 28 (28-03, SU-02): лимит мультивыбора — числа + тексты, сразу после
@@ -432,11 +437,15 @@ def test_render_snapshot_reg(tmp_path):
         # Phase 31 (31-03, D-18): текст «заявку пересмотрят» — хвост группы (handlers/
         # admin_settings.py::_REG_FIELD_ORDER).
         "reject_rules_return_text",
+        # Внешняя форма «📝 Регистрация»: текст человеку «заявка из формы получена».
+        "ext_reg_pending_text",
     ]
     expected_labels = [
         "📢 Источники", "🏙 Города (варианты)", "🎯 Направления обучения (варианты)",
         "🧰 Стек (варианты)", "💼 Опыт (варианты)", "🚀 Готовность (варианты)",
-        "🎓 Статусы образования (варианты)", "🎓 Кто считается учащимся",
+        "🎓 Статусы образования (варианты)",
+        *(SETTINGS_SCHEMA[k]["label"] for k in _DT.REG_OPTIONS_FIELD_ORDER),
+        "🎓 Кто считается учащимся",
         "🏆 Кейс-чемпионат: пояснение",
         "🎯 Максимум вариантов: Цель участия", "🧰 Максимум вариантов: Стек",
         "📝 Мультивыбор: подсказка лимита", "📝 Мультивыбор: счётчик выбранного",
@@ -456,6 +465,7 @@ def test_render_snapshot_reg(tmp_path):
         "✍️ Развилка резюме: вопрос «Опиши опыт текстом»",
         "✍️ Развилка резюме: ошибка «пришли текстом»",
         "🔄 При возврате заявки на пересмотр",
+        "📝 Текст: заявка из внешней формы получена",
     ]
     # Fresh DB -> nothing configured. Phase 17.1 (17.1-01): «⏳ Заявка на рассмотрении» —
     # первый ключ этой группы с непустым дефолтом в реестре, поэтому у него флаг
@@ -480,6 +490,7 @@ def test_render_snapshot_reg(tmp_path):
     # как forum_date, -> «— не задано».
     defaulted_labels = {
         "🏙 Выбор города: вопрос", "🏆 Кейс-чемпионат: пояснение",
+        "📝 Текст: заявка из внешней формы получена",  # text с непустым дефолтом
         "🔒 Город закрыт: текст", "🔒 Все города закрыты: текст",
         "📝 Мультивыбор: подсказка лимита", "📝 Мультивыбор: счётчик выбранного",
         "📝 Мультивыбор: ошибка превышения лимита",
@@ -603,6 +614,8 @@ def test_render_snapshot_apps(tmp_path):
         "forum_stats_card_caption_text",
         # 10.10 (бэклог «🛠» P1): подписи кнопок фоновых сообщений — новый хвост группы.
         *BACKGROUND_BUTTON_FIELD_ORDER,
+        # 28.10: фразы делегату, вынесенные из кода (возвращение, «Не пришёл», перенос).
+        *_DT.APPS_FIELD_ORDER,
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
@@ -738,6 +751,8 @@ def test_render_snapshot_pay(tmp_path):
         "payment_option_picker_header_text", "payment_details_template_text",
         "payment_pay_later_text", "payment_pay_later_menu_hint_text",
         "payment_receipt_received_text",
+        # 28.10: фразы и подписи экрана оплаты и загрузки чека, вынесенные из кода.
+        *_DT.PAY_FIELD_ORDER,
     ]
     expected_labels = [
         "💳 Варианты оплаты", "💰 Реквизиты оплаты", "💳 Реквизиты по ЛК",
@@ -753,8 +768,12 @@ def test_render_snapshot_pay(tmp_path):
         "⏭ «Оплачу позже»: ответ", "⏭ «Оплачу позже»: подсказка про меню",
         "✅ Чек получен: подтверждение",
     ]
+    # 28.10: у текстов напоминания и «оплата просрочена» дефолт переехал из кода планировщика
+    # в реестр — флаг «по умолчанию», место на экране прежнее.
+    defaulted_early = {"⏰ Текст напоминания об оплате", "⌛ Текст «оплата просрочена»"}
     for label in expected_labels:
-        assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
+        flag = "по умолчанию" if label in defaulted_early else "— не задано"
+        assert f"{label}: <i>{flag}</i>" in text, f"missing/wrong flag for {label}"
     for label in defaulted_labels:
         assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
     positions = [text.index(label) for label in expected_labels + defaulted_labels]
@@ -782,7 +801,8 @@ def test_render_snapshot_party(tmp_path):
     # DEFAULT_PARTY_FORK_TEXT literal as its registry default -> «по умолчанию».
     assert "🔀 Развилка формата: вопрос: <i>по умолчанию</i>" in text
 
-    expected_keys = ["party_closed_text", "approve_text__party", "party_fork_text"]
+    # 28.10: подписи трёх кнопок развилки формата — хвост группы.
+    expected_keys = ["party_closed_text", "approve_text__party", "party_fork_text", *_DT.PARTY_FIELD_ORDER]
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "admin_sec:form" in flat
@@ -1107,10 +1127,12 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # Квик 260914-rgr (D-11): chat_refresh_minutes — новый хвост _SYSTEM_FIELD_ORDER.
     # Квик 260916: daily_digest_time — новый хвост _SYSTEM_FIELD_ORDER.
     # Форум-ночь п.7 («❗ Важное»): +1 хвост -- important_broadcast_label, срез расширен до 9.
-    assert admin_settings._settings_group_keys("system")[-9:] == [
+    # 28.10 (готовность к форуму): +2 хвоста -- ready_remind_enabled/ready_remind_days, срез 11.
+    assert admin_settings._settings_group_keys("system")[-11:] == [
         "nudge_scan_minutes", "allowlist_refresh_minutes", "incomplete_sync_hours",
         "resume_retry_minutes", "uat_seed_enabled", "uat_seed_testers", "chat_refresh_minutes",
-        "daily_digest_time", "important_broadcast_label"]
+        "daily_digest_time", "important_broadcast_label",
+        "ready_remind_enabled", "ready_remind_days"]
     # Phase 20 (20-01): поля догонялки переехали из «📝 Регистрация» в «📋 Заявки» вместе
     # с остальными послеподачными текстами — сама пара ключей и её порядок не менялись.
     # Phase 23-01 (APP-TINDER-01, D-05): reject_reason_templates добавлен хвостом _APPS_FIELD_ORDER.
@@ -1139,9 +1161,13 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     # 10.10: +4 ключа QR/«Не пришёл» внутри среза — срез расширен до 35.
     # 10.10: хвост — подписи кнопок фоновых сообщений (BACKGROUND_BUTTON_FIELD_ORDER), срез
     # прежних ключей сдвинут на их число.
+    # 28.10: самый хвост — фразы делегату, вынесенные из кода (delegate_text_fields.APPS_FIELD_ORDER).
     _bg = len(BACKGROUND_BUTTON_FIELD_ORDER)
-    assert admin_settings._settings_group_keys("apps")[-_bg:] == BACKGROUND_BUTTON_FIELD_ORDER
-    assert admin_settings._settings_group_keys("apps")[-35 - _bg:-_bg] == [
+    _dt = len(_DT.APPS_FIELD_ORDER)
+    assert admin_settings._settings_group_keys("apps")[-_dt:] == _DT.APPS_FIELD_ORDER
+    _apps = admin_settings._settings_group_keys("apps")[:-_dt]
+    assert _apps[-_bg:] == BACKGROUND_BUTTON_FIELD_ORDER
+    assert _apps[-35 - _bg:-_bg] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_confirm_receipt_text",

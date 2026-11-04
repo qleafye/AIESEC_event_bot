@@ -32,4 +32,11 @@ async def ingest_answer(
         except Exception as e:  # noqa: BLE001
             logger.warning("delegations: хук ответа %s формы %s: %s",
                            answer_id, form["id"], type(e).__name__)
+        # Форма «📝 Регистрация»: ответ → заявка участника. Свой try по той же причине.
+        try:
+            from services.ext_forms.ext_forms_registration import on_answer_available as reg_hook
+            await reg_hook(form["id"], str(answer_id))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ext_forms: регистрация из ответа %s формы %s: %s",
+                           answer_id, form["id"], type(e).__name__)
     return inserted

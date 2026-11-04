@@ -141,6 +141,26 @@ MINIAPP_KEYS = [
     "miniapp_tasks_plate_eyebrow",
     "miniapp_leaderboard_plate_eyebrow",
     "miniapp_leaderboard_plate_unit",
+    # Магазин баллов: экран «🛍 Магазин» делегата.
+    "miniapp_shop_closed_text",
+    "miniapp_shop_empty_text",
+    "miniapp_shop_balance_text",
+    "miniapp_shop_price_text",
+    "miniapp_shop_stock_text",
+    "miniapp_shop_sold_out_text",
+    "miniapp_shop_limit_text",
+    "miniapp_shop_short_text",
+    "miniapp_shop_take_button_text",
+    "miniapp_shop_take_yes_text",
+    "miniapp_shop_cancel_text",
+    "miniapp_shop_reserve_off_text",
+    "miniapp_shop_reserved_text",
+    "miniapp_shop_my_title_text",
+    "miniapp_shop_code_text",
+    "miniapp_shop_qr_button_text",
+    "miniapp_shop_cancel_button_text",
+    "miniapp_shop_cancel_yes_text",
+    "miniapp_shop_keep_text",
     # пустые состояния менеджера (D-18) — раньше были литералами в роутерах
     "miniapp_empty_admin_tasks",
     "miniapp_empty_admin_tasks_archived",
@@ -336,7 +356,8 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # Квик 27.09 (ревью): +2 текста сбоя загрузки файла и обложки не-картинкой — раньше
     # литералы JS, EN-делегат видел их по-русски (195 -> 197).
     # Приёмка 10.10: +1 счётчик операций с баллами на главной (197 -> 198).
-    assert len(MINIAPP_KEYS) == 198
+    # Магазин баллов в приложении: +19 текстов экрана «🛍 Магазин» (198 -> 217).
+    assert len(MINIAPP_KEYS) == 217
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -408,7 +429,8 @@ def test_text_keys_have_human_defaults():
     # Квик 27.09: +1 текстовый ключ отказа Telegram по файлу сдачи (161 -> 162).
     # Квик 27.09 (ревью): +2 текста сбоя загрузки и обложки не-картинкой (162 -> 164).
     # Приёмка 10.10: +1 счётчик операций с баллами на главной (164 -> 165).
-    assert len(text_keys) == 165
+    # Магазин баллов в приложении: +19 текстов экрана «🛍 Магазин» (165 -> 184).
+    assert len(text_keys) == 184
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
