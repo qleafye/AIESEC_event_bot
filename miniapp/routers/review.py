@@ -35,7 +35,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
-from domain.cities import cities_module_on, city_label, city_scope, normalize_city
+from domain.cities import cities_module_on, city_label, city_scope, get_setting_typed_for_city, normalize_city
 from database.db import (
     add_coins,
     claim_submission,
@@ -129,7 +129,7 @@ async def review_next(
     parts = await get_submission_parts_or_legacy(row)
 
     attempt = None
-    limit = await get_setting_typed("game_resubmit_limit")
+    limit = await get_setting_typed_for_city("game_resubmit_limit", row.get("user_event_city"))
     if limit:
         rejected = await count_rejected_submissions(row["task_id"], row["user_id"])
         attempt = {"k": rejected + 1, "n": limit}
@@ -147,7 +147,7 @@ async def review_next(
     penalty_percent = None
     penalized = None
     if after_deadline:
-        percent = await get_setting_typed("game_late_penalty_percent")
+        percent = await get_setting_typed_for_city("game_late_penalty_percent", row.get("user_event_city"))
         if percent:
             penalty_percent = percent
             penalized = penalized_coins(row.get("task_coins") or 0, percent)

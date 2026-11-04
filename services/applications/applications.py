@@ -38,7 +38,7 @@ import logging
 from datetime import datetime, timedelta
 
 import domain.regform.moderation_card as moderation_card
-from domain.cities import cities_module_on, city_scope, normalize_city
+from domain.cities import cities_module_on, city_scope, get_setting_typed_for_city, normalize_city
 from database.db import (
     approve_all_pending,
     approve_user_atomic,
@@ -784,7 +784,10 @@ async def flush_due_decisions(now: datetime, enqueue) -> int:
 
 # ── Текст отказа (D-05) ──────────────────────────────────────────────────────────────────
 
-async def reject_message_text(reason: str | None, lang: str = "ru", tr_map: dict | None = None) -> str:
+async def reject_message_text(
+    reason: str | None, lang: str = "ru", tr_map: dict | None = None,
+    city_code: str | None = None,
+) -> str:
     """Единственная точка правды по тексту отказа делегату: `reject_text`-префикс (или
     дефолт) + `\\n\\n` + причина, экранирование — как в боте. Пустая/отсутствующая причина —
     только префикс, без хвоста.
@@ -800,7 +803,7 @@ async def reject_message_text(reason: str | None, lang: str = "ru", tr_map: dict
     `coins_manual_notify_text`/{reason} в user_actions.py: заранее неизвестный текст менеджера
     вне делегатского корпуса."""
     from services.i18n.i18n import tr as _tr
-    prefix = await get_setting("reject_text") or SETTINGS_SCHEMA["reject_text"]["default"]
+    prefix = await get_setting_typed_for_city("reject_text", city_code) or SETTINGS_SCHEMA["reject_text"]["default"]
     prefix = _tr(prefix, lang, tr_map or {})
     text = html_module.escape(prefix)
     if reason:

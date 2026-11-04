@@ -157,7 +157,7 @@ def tr_fmt(text, lang: str, tr_map: dict[str, str], **subs) -> str:
     return translated
 
 
-async def canonicalize(message, step_key: str, text):
+async def canonicalize(message, step_key: str, text, city_code: str | None = None):
     """Английская (или любая другая) подпись варианта -> русский канон, ДО `validate_answer`
     (LANG-06, план 27-05 Задача 3). Общая точка для пяти мест приёма ответа в чате
     (`reg_steps._thin_step`/`_store_choice`/`process_education_status`/`process_work_status`,
@@ -169,7 +169,7 @@ async def canonicalize(message, step_key: str, text):
     Не-`str`/пустой `text` идёт напрямую в `canonical_option` (там же — `None` сразу для
     не-`str`), поведение не меняется, если так и было раньше."""
     lang, tr_map = await ctx_for(message)
-    pairs = await option_pairs(step_key, lang, tr_map)
+    pairs = await option_pairs(step_key, lang, tr_map) if city_code is None else await option_pairs(step_key, lang, tr_map, city_code=city_code)
     canon = canonical_option(pairs, text)
     return canon if canon is not None else text
 
@@ -220,7 +220,7 @@ _SUMMARY_OPTION_STEP_BY_LABEL = {
 _SUMMARY_LITERAL_LABELS = {"Амбассадор", "Резюме", "Город форума"}
 
 
-async def summary_value_maps(lang: str, tr_map: dict[str, str]) -> dict[str, dict[str, str]]:
+async def summary_value_maps(lang: str, tr_map: dict[str, str], city_code: str | None = None) -> dict[str, dict[str, str]]:
     """`{step_key: {канон_ru: подпись}}` для всех closed-option полей сводки — считается ОДИН
     раз за рендер (`_advance`, перед `_build_summary`), не по шагу внутри цикла: `option_pairs`
     читает реестровые option-листы (city_options/source_options/...) через БД, N чтений на
@@ -230,7 +230,7 @@ async def summary_value_maps(lang: str, tr_map: dict[str, str]) -> dict[str, dic
         return {}
     maps: dict[str, dict[str, str]] = {}
     for step_key in set(_SUMMARY_OPTION_STEP_BY_LABEL.values()):
-        pairs = await option_pairs(step_key, lang, tr_map)
+        pairs = await option_pairs(step_key, lang, tr_map) if city_code is None else await option_pairs(step_key, lang, tr_map, city_code=city_code)
         if pairs:
             maps[step_key] = dict(pairs)
     return maps
@@ -258,7 +258,7 @@ def display_summary_value(label: str, value, lang: str, tr_map: dict[str, str],
     return by_canon.get(value, value)
 
 
-async def display_value_for_step(step_key: str, value, lang: str, tr_map: dict[str, str]):
+async def display_value_for_step(step_key: str, value, lang: str, tr_map: dict[str, str], city_code: str | None = None):
     """Тот же перевод канон -> подпись, что `display_summary_value`, но для ОДНОГО шага сразу
     (экран «Прошлый ответ» — `_show_recall_screen`, один вызов на экран, поход в БД внутри
     `option_pairs` не нужно объединять с чем-либо ещё). `step_key` берётся напрямую из вызова
@@ -269,7 +269,7 @@ async def display_value_for_step(step_key: str, value, lang: str, tr_map: dict[s
         return tr_text("не указан", lang, tr_map)
     if lang == "ru" or not isinstance(value, str) or not value:
         return value
-    pairs = await option_pairs(step_key, lang, tr_map)
+    pairs = await option_pairs(step_key, lang, tr_map) if city_code is None else await option_pairs(step_key, lang, tr_map, city_code=city_code)
     if not pairs:
         return value
     by_canon = dict(pairs)

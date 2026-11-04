@@ -209,15 +209,15 @@ async def _prompt(step_key: str, default: str, participant_type: str | None = No
     return await get_setting(f"reg_prompt_{step_key}") or default
 
 
-async def _payment_price_block() -> str:
+async def _payment_price_block(city_code: str | None = None) -> str:
     """Price list prepended to the payment-date question so the user sees the cost(s)
     while picking a plan date (prices otherwise appear only post-approval, in
     handlers.payment). Empty when the payment module is off or no options are set.
     Informational only — tariff selection still happens after approval."""
-    if not await _is_module_enabled("payment_enabled"):
+    if await get_setting_typed_for_city("payment_enabled", city_code) != "on":
         return ""
-    from handlers.payment import _parse_options  # local import avoids circular import
-    options = _parse_options(await get_setting("payment_options") or "")
+    from handlers.payment import _parse_options, _as_lines  # local import avoids circular import
+    options = _parse_options(_as_lines(await get_setting_typed_for_city("payment_options", city_code)))
     if not options:
         return ""
     lines = []
@@ -325,7 +325,7 @@ async def _stamp_reg_step(step_key: str, message: types.Message, state: FSMConte
         logger.error(f"reg_draft step-stamp failed for {message.chat.id} @ {step_key}: {e}")
 
 
-async def _recall_display(step_key: str, value, lang: str = "ru", tr_map: dict | None = None) -> str:
+async def _recall_display(step_key: str, value, lang: str = "ru", tr_map: dict | None = None, city_code: str | None = None) -> str:
     """Human-readable rendering of a prior answer for the recall screen. Booleans (Python
     True/False, or SQLite's int 0/1 -- aiosqlite returns is_ambassador_candidate as an int,
     not a bool, since SQLite has no native boolean type) render as «Да»/«Нет»; everything else
@@ -347,7 +347,7 @@ async def _recall_display(step_key: str, value, lang: str = "ru", tr_map: dict |
     if step_type_v2(step_key) == "repeatable":
         text = repeatable_display(parse_repeatable(value))
         return html.escape(text)
-    text = await reg_i18n.display_value_for_step(step_key, str(value), lang, tr_map or {})
+    text = await reg_i18n.display_value_for_step(step_key, str(value), lang, tr_map or {}, city_code)
     return html.escape(text)
 
 
@@ -395,14 +395,14 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await state.set_state(Registration.vk)
     elif step_key == "city":
         opt_key, default = SELECT_CONFIG["city"]
-        options = await _get_options(opt_key, default)
+        options = await _get_options(opt_key, default, city_code)
         await _safe_answer(message,
             f"{p}{await prompt('city', participant_type, city_code)}",
             reply_markup=_reply_kb(options, add_other=True),
         )
         await state.set_state(Registration.city)
     elif step_key == "source":
-        await _safe_answer(message, f"{p}{await prompt('source', participant_type, city_code)}", reply_markup=await get_source_kb())
+        await _safe_answer(message, f"{p}{await prompt('source', participant_type, city_code)}", reply_markup=await get_source_kb(city_code))
         await state.set_state(Registration.source)
     elif step_key == "local_committee":
         await _safe_answer(message, f"{p}{await prompt('local_committee', participant_type, city_code)}", reply_markup=get_local_committee_kb())
@@ -411,7 +411,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         await _safe_answer(message, f"{p}{await prompt('position', participant_type, city_code)}", reply_markup=get_position_kb())
         await state.set_state(Registration.position)
     elif step_key == "education_status":  # Phase 28 (28-01, R-A3): реестровый список, пусто = прежние три (D-06)
-        await _safe_answer(message, f"{p}{await prompt('education_status', participant_type, city_code)}", reply_markup=get_education_status_kb(await engine_options("education_status")))
+        await _safe_answer(message, f"{p}{await prompt('education_status', participant_type, city_code)}", reply_markup=get_education_status_kb(await engine_options("education_status", city_code)))
         await state.set_state(Registration.education_status)
     elif step_key == "university":
         # Mode toggle (reg_university_mode): "list" = pick from база вузов, "text" = free input.
@@ -419,13 +419,9 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         if mode == "text":
             await _safe_answer(message, f"{p}{await prompt('university', participant_type, city_code)}", reply_markup=get_skip_kb())
         else:
-            uni_opts = await get_setting("university_options")
-            if uni_opts and uni_opts.strip():
-                options = [l.strip() for l in uni_opts.splitlines() if l.strip()]
-                kb = _reply_kb(options, add_other=True)
-            else:
-                # Список не задан: чужие (питерские) вузы не подставляем — свободный ввод.
-                kb = get_skip_kb()
+            options = await engine_options("university", city_code)
+            # Список не задан: чужие (питерские) вузы не подставляем — свободный ввод.
+            kb = _reply_kb(options, add_other=True) if options else get_skip_kb()
             await _safe_answer(message, f"{p}{await prompt('university', participant_type, city_code)}", reply_markup=kb)
         await state.set_state(Registration.university)
     elif step_key == "course":
@@ -513,10 +509,15 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         # Deadline is pulled live from the payment_deadline setting (stored «ДД.ММ.ГГГГ ЧЧ:ММ»,
         # show just the date) — reg_engine.prompt() computes the same {dl_note} text; {deadline}
         # substitution below is only for an admin override that embeds the literal placeholder.
-        deadline = await get_setting("payment_deadline")
-        dl_date = deadline.split()[0] if deadline else ""
+        deadline = await get_setting_typed_for_city("payment_deadline", city_code)
+        if hasattr(deadline, "strftime"):
+            dl_date = deadline.strftime("%d.%m.%Y")
+        elif deadline:
+            dl_date = str(deadline).split()[0]
+        else:
+            dl_date = ""
         prompt_text = (await prompt('payment_plan_date', participant_type, city_code)).replace("{deadline}", dl_date)
-        price_block = await _payment_price_block()  # show tariff prices before asking the date
+        price_block = await _payment_price_block(city_code)  # show tariff prices before asking the date
         await _safe_answer(message, f"{p}{price_block}{prompt_text}", reply_markup=get_cancel_kb())
         await state.update_data(_current_date_step="payment_plan_date")
         await state.set_state(Registration.date_input)
@@ -556,14 +557,14 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
     elif REG_STEP_TYPES.get(step_key) == "select":
         # Configurable single-select (study_field etc.) — options from settings.
         opt_key, default = SELECT_CONFIG.get(step_key, (f"{step_key}_options", []))
-        options = await _get_options(opt_key, default)
+        options = await _get_options(opt_key, default, city_code)
         await _safe_answer(message, f"{p}{await prompt(step_key, participant_type, city_code)}", reply_markup=_reply_kb(options, add_other=True))
         await state.update_data(_current_select_step=step_key)
         await state.set_state(Registration.select_input)
     elif REG_STEP_TYPES.get(step_key) == "multi":
         # Configurable multi-select via inline toggle keyboard.
         opt_key, default = MULTI_CONFIG.get(step_key, (f"{step_key}_options", []))
-        options = await _get_options(opt_key, default)
+        options = await _get_options(opt_key, default, city_code)
         await state.update_data(_current_multi_step=step_key, **{f"_multi_{step_key}": []})
         # Приёмка 17.09 (находка 3): та же подсказка «сколько нужно выбрать», что видит
         # делегат в приложении (`step_spec()` дописывает её в `spec.help`) — до этой правки
@@ -586,7 +587,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         # Phase 4 (MOD-03, D-03/D-04): one consent per step, PDF attached if configured.
         consent_key = step_key.split(":", 1)[1]
         label = next(
-            (lbl for lbl, k in await _consent_entries() if k == consent_key), consent_key
+            (lbl for lbl, k in await _consent_entries(city_code) if k == consent_key), consent_key
         )
         pdf_file_id = await get_setting(f"consent_pdf_{consent_key}")
         # Ссылки на документы уже в приветственном сообщении — показываем короткий вопрос.
@@ -598,7 +599,7 @@ async def _ask_step(step_key: str, message: types.Message, state: FSMContext, st
         prompt_text = await _prompt(f'consent_{consent_key}', label, participant_type)
         lang, _tr_map = await reg_i18n.ctx_for(message)
         caption = html.escape(reg_i18n.tr_text(prompt_text, lang, {}))
-        btn_text = await get_setting("consent_button_text") or "Согласен(-на)"
+        btn_text = await get_setting_typed_for_city("consent_button_text", city_code) or "Согласен(-на)"
         # Квик 260917-en (приёмка 17.09): кнопка — не юридический текст согласия (caption/PDF
         # выше остаются НЕпереведёнными, LANG-09), переводим только её через reg_i18n (ярус A
         # содержит «Согласен(-на)» → «I agree»; ручная правка менеджера через «🌐 Английские
@@ -823,7 +824,7 @@ async def _show_recall_screen(step_key: str, value, message: types.Message, stat
     p = await _progress(step, total) if step else ""
     lang, tr_map = await reg_i18n.ctx_for(message)
     label = reg_i18n.tr_text(delegate_step_label(step_key), lang, tr_map)
-    display = await _recall_display(step_key, value, lang, tr_map)
+    display = await _recall_display(step_key, value, lang, tr_map, data.get("event_city"))
     # Phase 17.1 (17.1-02): экран «прошлый ответ» — из реестра. Подстановка цепочкой
     # .replace, не .format: текст менеджера может содержать посторонние {}.
     tpl = await get_setting_typed("recall_generic_prompt_text")
@@ -1419,7 +1420,7 @@ async def incomplete_sheet_headers(city_code: str | None = None) -> list[str]:
     (clear + write) rather than appending — unlike the main sheet, there are no previously
     written rows that could be misaligned by a header-width change.
     """
-    if await get_setting_typed("registration_mode") == SHORT_TRACK or await has_short_incomplete():
+    if await get_setting_typed_for_city("registration_mode", city_code) == SHORT_TRACK or await has_short_incomplete():
         out = []
         for header, gate, _fn in SHEET_COLUMNS:
             if (
@@ -1865,7 +1866,7 @@ async def _start_registration_flow(message: types.Message, state: FSMContext, re
         else "Отлично, ты пришёл по приглашению друга. Начинаем регистрацию."
     )
     # Tatiana: согласие — САМЫЙ первый шаг (перед ФИО). Run consents first; ФИО follows.
-    consent_steps = await _get_consent_steps()
+    consent_steps = await _get_consent_steps(saved_city)
     if consent_steps:
         await state.update_data(_consent_queue=consent_steps, _consent_i=0)
         await _ask_step_or_recall(consent_steps[0], message, state, 1, len(consent_steps))

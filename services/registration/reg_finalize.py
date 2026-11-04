@@ -49,7 +49,7 @@ from datetime import datetime, timedelta
 
 import domain.regform.engine as reg_engine
 from domain.regform.labels import REG_LABELS
-from domain.cities import get_setting_for_city
+from domain.cities import get_setting_for_city, get_setting_typed_for_city
 from config import config
 from database.db import (
     add_user,
@@ -631,10 +631,11 @@ async def _finalize_data_impl(telegram_id: int, username: str | None, draft: dic
                     telegram_id, score_patch, allowed_columns=["score", "is_it_3plus"]
                 )
 
-            reg_mode = await get_setting_typed("registration_mode")
-            full_setting = await get_setting_typed("full_approval")
-            short_setting = await get_setting_typed("short_approval")
-            party_setting = await get_setting_typed("party_approval")
+            app_city = data.get("event_city")
+            reg_mode = await get_setting_typed_for_city("registration_mode", app_city)
+            full_setting = await get_setting_typed_for_city("full_approval", app_city)
+            short_setting = await get_setting_typed_for_city("short_approval", app_city)
+            party_setting = await get_setting_typed_for_city("party_approval", app_city)
             status = reg_engine.decide_status(
                 reg_mode, full_setting, short_setting,
                 participant_type=data.get("participant_type", "full"),
@@ -1092,7 +1093,9 @@ async def post_finalize(
     status = full.get("status")
     if mode == "new":
         notify_admins = status == "approved" or (
-            status == "pending" and await get_setting_typed("pending_notify_mode") == "instant"
+            status == "pending" and await get_setting_typed_for_city(
+                "pending_notify_mode", full.get("event_city"),
+            ) == "instant"
         ) or (status == "rejected" and is_new_auto_reject)
         if status == "rejected" and is_new_auto_reject:
             admin_text = _auto_reject_admin_text(full, auto_reject_texts, await _first_rule_name(full))

@@ -162,7 +162,7 @@ STEPS: tuple[WizardStep, ...] = (
     WizardStep(
         key="su_options",
         title="🎓 СкиллАп: направления и стек",
-        hint="Списки направлений, стека, опыта, готовности и статуса образования анкеты СкиллАп.",
+        hint="Пресет включит списки направлений, стека, опыта, готовности и статуса образования.",
         kind="fields",
         fields=("stack_options", "experience_options", "readiness_options", "education_status_options"),
         event_types=frozenset({"skillup"}),
@@ -170,7 +170,7 @@ STEPS: tuple[WizardStep, ...] = (
     WizardStep(
         key="su_score",
         title="🎓 СкиллАп: скоринг",
-        hint="Хотя бы одно правило скоринга анкеты СкиллАп.",
+        hint="Пресет включит правила скоринга. Задайте хотя бы одно.",
         kind="fields",
         fields=(
             "score_it_fields", "score_senior_statuses", "score_readiness_counts",
@@ -182,7 +182,7 @@ STEPS: tuple[WizardStep, ...] = (
     WizardStep(
         key="su_resume",
         title="🎓 СкиллАп: резюме",
-        hint="Разрешённые ссылки на резюме (whitelist доменов).",
+        hint="Пресет включит проверку ссылок на резюме по списку доменов.",
         kind="fields",
         fields=("reg_resume_link_whitelist",),
         event_types=frozenset({"skillup"}),
@@ -190,7 +190,7 @@ STEPS: tuple[WizardStep, ...] = (
     WizardStep(
         key="su_rebuild",
         title="🎓 СкиллАп: пересборка таблицы",
-        hint="После первой настройки пересоберите таблицу под анкету СкиллАп: /admin → 📊 Данные → «♻️ Пересобрать таблицу».",
+        hint="После применения пресета пересоберите таблицу под новую анкету: /admin → 📊 Данные → «♻️ Пересобрать таблицу».",
         kind="note",
         event_types=frozenset({"skillup"}),
     ),

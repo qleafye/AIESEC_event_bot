@@ -196,7 +196,7 @@ async def _load_context(telegram_id: int) -> dict:
 
 async def _pre_items(
     pre_tokens: list[str], prior_city: str | None = None, prior_track: str | None = None,
-    lang: str = "ru", tr_map: dict[str, str] | None = None,
+    lang: str = "ru", tr_map: dict[str, str] | None = None, city_code: str | None = None,
 ) -> list[dict]:
     """Данные для рендера pre-flow экранов мастера (план 21-11): согласия — карточка с
     названием/PDF/подписью чекбокса; вилки города/трека — интерактивные пикеры: `field` —
@@ -230,8 +230,8 @@ async def _pre_items(
         return []
     items: list[dict] = []
     consent_tokens = [t for t in pre_tokens if t.startswith("consent:")]
-    consent_labels = dict([(k, lbl) for lbl, k in await reg_engine.consent_entries()]) if consent_tokens else {}
-    button_text = await get_setting_typed("consent_button_text") if consent_tokens else None
+    consent_labels = dict([(k, lbl) for lbl, k in await reg_engine.consent_entries(city_code)]) if consent_tokens else {}
+    button_text = await get_setting_typed_for_city("consent_button_text", city_code) if consent_tokens else None
     for token in pre_tokens:
         if token.startswith("consent:"):
             key = token.split(":", 1)[1]
@@ -344,7 +344,7 @@ async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_userna
     # экран. Submit-гейт (D-23, ниже по файлу) не меняется — сверяет ЛЮБУЮ версию, это
     # отдельный жёсткий чек, не UI-удобство.
     pending_consents = [key for _label, key in await outstanding_consents(
-        telegram_id, await reg_engine.consent_entries(),
+        telegram_id, await reg_engine.consent_entries(ctx["event_city"]), ctx["event_city"],
     )]
     spec = await reg_engine.form_spec(
         ctx["answers"], ctx["participant_type"], ctx["event_city"], prior=ctx["prior"],
@@ -430,7 +430,7 @@ async def _draft_response_impl(telegram_id: int, ctx: dict | None, *, bot_userna
         "version": ctx["version"],
         "pre": spec["pre"],
         "pre_items": await _pre_items(
-            spec["pre"], ctx.get("prior_city"), ctx.get("prior_track"), lang, tr_map,
+            spec["pre"], ctx.get("prior_city"), ctx.get("prior_track"), lang, tr_map, ctx["event_city"],
         ),
         "steps": spec["steps"],
         "progress": spec["progress"],
@@ -558,7 +558,9 @@ def _unwrap_other(raw: Any) -> Any:
     return raw
 
 
-async def _canonicalize_answer(step_key: str, raw: Any, lang: str, tr_map: dict[str, str]) -> Any:
+async def _canonicalize_answer(
+    step_key: str, raw: Any, lang: str, tr_map: dict[str, str], city_code: str | None = None,
+) -> Any:
     """Phase 27 (27-04, LANG-06, T-27-04-01): английская подпись варианта -> русский канон —
     ОБЯЗАТЕЛЬНО до `validate_answer`. Шаги `_CHOICE_STEPS`/`_BESPOKE_CHOICE`/`_MEMBERSHIP_STEPS`
     принимают любой текст и сохранили бы английскую подпись молча (без ошибки, но с
@@ -566,7 +568,7 @@ async def _canonicalize_answer(step_key: str, raw: Any, lang: str, tr_map: dict[
     отдаёт `[]` -> `canonical_option` тривиально `None` -> `raw` без изменений (свободный
     текст/шаги без выбора не трогаются). Multi-шаги (список) канонизируются поэлементно —
     тождественно на каноне, если элемент и так канон (см. докстринг задачи 3 плана)."""
-    pairs = await reg_engine.option_pairs(step_key, lang, tr_map)
+    pairs = await reg_engine.option_pairs(step_key, lang, tr_map, city_code=city_code)
     if not pairs:
         return raw
     if isinstance(raw, list):
@@ -690,7 +692,9 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
             raise HTTPException(400, {"reason": "bad_field", "field": column})
         unwrapped = _unwrap_other(raw)
         if answer_lang != "ru":
-            unwrapped = await _canonicalize_answer(step_key, unwrapped, answer_lang, answer_tr_map)
+            unwrapped = await _canonicalize_answer(
+                step_key, unwrapped, answer_lang, answer_tr_map, city_code=ctx["event_city"],
+            )
         # Квик 27.09: код кнопки развилки («file»/«link»/«text»/«mini») — не резюме. Старые
         # закэшированные версии обзора правки слали его в resume_text; сервер отбивает сам,
         # независимо от версии клиента. Только в режиме `fork`: в других режимах кнопок
@@ -729,7 +733,7 @@ async def _draft_patch_impl(body: DraftPatch, request: Request, p: Principal) ->
     conflicts = reg_engine.conflicts(field_versions, body.version, touched_columns)
 
     # Phase 28 (28-01, SU-03): множество «учусь» — реестровое, пусто = прежнее правило.
-    edu_studying_set = await reg_engine.studying_statuses()
+    edu_studying_set = await reg_engine.studying_statuses(ctx["event_city"])
     new_answers = reg_engine.apply_answers(
         ctx["answers"], step_patch, studying_statuses=edu_studying_set,
     )
@@ -897,13 +901,15 @@ async def draft_consent(
     p: Principal = Depends(form_gate),
     _: Principal = Depends(require_section("form")),
 ) -> dict:
-    valid_keys = {consent_key for _label, consent_key in await reg_engine.consent_entries()}
+    person = await get_user(p.telegram_id)
+    consent_city = (person or {}).get("event_city")
+    valid_keys = {consent_key for _label, consent_key in await reg_engine.consent_entries(consent_city)}
     if key not in valid_keys:
         raise HTTPException(400, {"reason": "bad_key"})
     # Quick 260907-4ai: в вебе разметки кнопки на сервере нет — снимок берём из той же
     # настройки, которой отрисована форма (см. строку ~189 этого же файла).
-    raw_button = await get_setting_typed("consent_button_text") or "Согласен(-на)"
-    await record_user_consent(p.telegram_id, key, raw_button=raw_button)  # idempotent (INSERT OR IGNORE)
+    raw_button = await get_setting_typed_for_city("consent_button_text", consent_city) or "Согласен(-на)"
+    await record_user_consent(p.telegram_id, key, raw_button=raw_button, city_code=consent_city)
     return {"ok": True, "key": key}
 
 
@@ -1031,7 +1037,7 @@ async def draft_submit(
         })
 
     # T-21-05/D-23: серверная проверка обязательна — скрытия кнопки на фронте недостаточно.
-    consent_steps = await reg_engine.get_consent_steps()
+    consent_steps = await reg_engine.get_consent_steps(ctx["event_city"])
     required_keys = [step_key.split(":", 1)[1] for step_key in consent_steps]
     if required_keys:
         signed = set(await get_user_consents(p.telegram_id))
@@ -1177,7 +1183,9 @@ async def draft_submit(
             logger.exception("reg draft submit: delegate_state failed telegram_id=%s", p.telegram_id)
             amb_state = "open"
         if amb_state == "candidate":
-            response["ambassador_note"] = await i18n.tr_setting("amb_candidate_ack_text", lang, tr_map)
+            response["ambassador_note"] = await i18n.tr_setting_for_city(
+                "amb_candidate_ack_text", event_city, lang, tr_map,
+            )
             response["ambassador_link"] = await _ambassador_link_payload(request, p.telegram_id)
         elif amb_state not in ("full", "declined") and await get_setting_typed("reg_offer_ref_link") == "on":
             response["ambassador"] = {
@@ -1231,13 +1239,19 @@ async def draft_ambassador(
     if result.outcome in ("full", "declined"):
         lang, tr_map = await i18n.context(p.telegram_id)
         lang = lang if lang in ("ru", "en") else "ru"
-        return {"state": "full", "message": await i18n.tr_setting("amb_slots_full_text", lang, tr_map)}
+        full_city = (await get_user(p.telegram_id) or {}).get("event_city")
+        return {"state": "full", "message": await i18n.tr_setting_for_city(
+            "amb_slots_full_text", full_city, lang, tr_map,
+        )}
     payload = await _ambassador_link_payload(request, p.telegram_id)
     if result.outcome in ("candidate", "already_candidate"):
         lang, tr_map = await i18n.context(p.telegram_id)
         lang = lang if lang in ("ru", "en") else "ru"
         payload["state"] = "candidate"
-        payload["status_note"] = await i18n.tr_setting("amb_candidate_ack_text", lang, tr_map)
+        ack_city = (await get_user(p.telegram_id) or {}).get("event_city")
+        payload["status_note"] = await i18n.tr_setting_for_city(
+            "amb_candidate_ack_text", ack_city, lang, tr_map,
+        )
     else:
         payload["state"] = "active" if result.outcome in ("active", "already_active") else "none"
     return payload
