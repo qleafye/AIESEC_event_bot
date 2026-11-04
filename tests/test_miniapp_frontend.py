@@ -1120,11 +1120,15 @@ def test_hub_tiles_built_from_visible_nav_and_nav_icons():
     assert 'from "../app.js"' in text and "visibleNav" in text and "NAV_ICONS" in text
 
 
-def test_hub_manager_counters_are_fail_soft_per_tile():
+def test_hub_manager_hints_fail_soft_without_counter_loop():
+    """Отказ подсказки не роняет дом. Старый цикл счётчиков плиток снят вместе с группами:
+    ложного Promise.all ради сторожа нет."""
     text = _js_without_comments(SCREENS_DIR / "hub.js")
-    # Каждый счётчик — свой try/catch внутри общего Promise.all, отказ одной ручки не роняет хаб.
-    assert "Promise.all(items.map(async" in text
-    assert "try {" in text and "catch (_)" in text
+    assert "Promise.all(items.map(async" not in text
+    body = _manager_hub_body()
+    assert '"/admin/settings/hints"' in body
+    assert "try {" in body and "catch (_)" in body
+    assert '"/stats' not in body and '"#/stats"' not in body
 
 
 # ── сторож: replaceChildren не принимает null/false/undefined верхним аргументом (quick
@@ -1306,15 +1310,51 @@ def test_delegate_manager_sees_manager_groups_too():
     )
 
 
-def test_manager_hub_renders_group_headers():
+def _slice_between(body: str, start: str, end: str) -> str:
+    return body[body.index(start):body.index(end)]
+
+
+def test_manager_hub_renders_three_modes():
+    """Дом менеджера — три режима в фиксированном порядке, без групп разделов и без слова «Набор»."""
+    text = (SCREENS_DIR / "hub.js").read_text(encoding="utf-8")
     body = _manager_hub_body()
-    assert "SECTION_GROUPS" in body, "плитки менеджера раскладываются по SECTION_GROUPS"
-    assert "item.group" in body, "раздел плитки берётся из поля group записи NAV"
-    assert "continue" in body, "раздел без видимых плиток пропускается целиком (T-20-06)"
-    assert 'class: "sec"' in body, "у раздела есть заголовок — та же вёрстка, что в хабе делегата"
-    # Подпись ПЛИТКИ — по-прежнему из реестра (miniapp_section_*), а не из SECTION_GROUPS:
-    # иначе на плитках оказались бы подписи разделов и «Данные» вместо «Статистики».
-    assert "labels[item.section]" in body
+    assert body.index("Работа") < body.index("Настройки") < body.index("Форум")
+    assert "Набор" not in text
+    for gone in ("SECTION_GROUPS", "item.group", 'class: "sec"', "staffOnly", "hero hero-flat", "dashboardTile"):
+        assert gone not in body, gone
+    assert "sectionTitle(" not in body
+    assert '"aria-label": "Режим менеджера"' in body
+    assert 'role: "tab"' in body and '"aria-selected"' in body
+    assert "aiesec_miniapp_manager_mode_v1" in text
+    assert "aiesec_miniapp_hub_mode_v1" in text
+    role = text[text.index("const HUB_MODE_KEY"):text.index("function modeSwitch")]
+    for mode_value in ('"work"', '"settings"', '"forum"'):
+        assert mode_value not in role
+    work = _slice_between(body, "const workRows", "const settingsRows")
+    work_hashes = [
+        "#/applications", "#/scanner", "#/program", "#/forum-day", "#/questions",
+        "#/chat/broadcast", "#/coins-shop", "#/figures",
+    ]
+    assert [work.index(item) for item in work_hashes] == sorted(work.index(item) for item in work_hashes)
+    assert "Посмотреть сессии, не переставлять их." in work
+    assert "#/stats" not in work
+    settings = _slice_between(body, "const settingsRows", "const forumTiles")
+    settings_hashes = [
+        "#/settings/row-menu", "#/settings/row-texts", "#/settings/row-questions",
+        "#/sheets-forms", "#/settings/row-reminders", "#/settings/row-pay",
+        "#/settings/row-chat", "#/settings/row-amb", "#/settings/row-rare",
+    ]
+    assert [settings.index(item) for item in settings_hashes] == sorted(
+        settings.index(item) for item in settings_hashes
+    )
+    forum = _slice_between(body, "const forumTiles", "const visible")
+    forum_titles = ["Сканер QR", "Расписание", "Отметки", "SOS", "Находки", "Магазин", "Баллы"]
+    assert [forum.index(item) for item in forum_titles] == sorted(forum.index(item) for item in forum_titles)
+    for meta in ("Отметка на входе", "Посмотреть сессии", "Кто на площадке", "Пока в чате", "Стойка выдачи"):
+        assert meta in forum
+    assert "В этом режиме пусто" in body
+    assert "Для вашей роли здесь нет строк. Если дело пропало, попросите того, кто выдаёт доступ, проверить права." in body
+    assert '"#/setup"' in body and 'iconName: "sparkles"' in body and "show_tile" in body
 
 
 def test_manager_hub_dashboard_tile_driven_by_registry_not_literal():
@@ -1342,13 +1382,15 @@ def test_manager_hub_dashboard_tile_absent_when_url_empty():
     assert "if (!me.dashboard_url) return null;" in body
 
 
-def test_manager_hub_dashboard_tile_lives_in_data_group():
-    """Плитка встаёт в ту же группу «data», что «#/stats» — и рисует заголовок раздела, даже
-    если единственная видимая плитка в нём — сам дашборд (менеджер без права stats)."""
+def test_manager_hub_does_not_call_dashboard_tile():
+    """Плитка дашборда с дома менеджера снята. Функция в файле жива: сторож всего файла
+    читает me.dashboard_url и tg.openLink, но рендер её не вызывает."""
     body = _manager_hub_body()
-    assert 'token === "data"' in body
-    assert "dashboardTile(h, tg, me)" in body
-    assert "!groupItems.length && !dashTile" in body
+    assert "dashboardTile(" not in body
+    assert 'token === "data"' not in body
+    text = _js_without_comments(SCREENS_DIR / "hub.js")
+    assert "function dashboardTile(" in text
+    assert "me.dashboard_url" in text and "tg.openLink" in text
 
 
 def test_manager_hub_countdown_hint_is_fail_soft_and_server_driven():
@@ -1364,17 +1406,12 @@ def test_manager_hub_countdown_hint_is_fail_soft_and_server_driven():
     assert 'icon: "calendar"' in body
 
 
-def test_manager_hero_only_with_review_tile():
-    """Критерий успеха №4 ROADMAP: при выключенной гейме хаб остаётся осмысленным. Герой
-    считает очередь проверки сдач, и без плитки «#/review» его нечем заполнить — он показывал
-    бы вечный ноль «сдач на проверке». Проверяем, что создание героя не стоит на верхнем
-    уровне функции безусловно: до него есть проверка наличия «#/review»."""
+def test_manager_hub_has_no_review_hero():
+    """Герой «сдач на проверке» с дома менеджера снят: при выключенной гейме не остаётся
+    вечного нуля, а режима с этим героем больше нет."""
     body = _manager_hub_body()
-    hero_at = body.index('"hero hero-flat"')
-    assert '"#/review"' in body[:hero_at], (
-        "герой рисуется до/без проверки наличия плитки «#/review» — при выключенной "
-        "геймификации менеджер увидит вечный ноль «сдач на проверке»"
-    )
+    assert "hero hero-flat" not in body
+    assert "сдач на проверке" not in body
 
 
 # ── form.js: общие формо-компоненты анкеты (план 21-04, D-22, Reuse Contract фазы 22) ───
