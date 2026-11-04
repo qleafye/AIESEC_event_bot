@@ -1,8 +1,9 @@
 """Напоминания делегату о сессиях программы.
 
-1. «⏰ За N минут до сессии» — личное сообщение всем одобренным делегатам города (запись
-   на эту сессию не нужна), с залом и компетенциями. Своя джоба на каждую сессию
-   (`session_remind:{id}`).
+1. «⏰ За N минут до сессии» — личное сообщение с залом и компетенциями. По умолчанию всем
+   одобренным делегатам города (запись на эту сессию не нужна). Круг сужается до записанных
+   на эту сессию, только если менеджер так выбрал (`remind_audience`). Своя джоба на каждую
+   сессию (`session_remind:{id}`).
 2. «☀️ Программа на день» — утром в день программы список сессий делегата (его записи плюс общие
    сессии без трека — тот же `session_enroll.my_schedule`, что показывает «Моё расписание»).
    Своя джоба на пару город+день (`session_morning:{город}:{день}`).
@@ -12,7 +13,8 @@
 
 Идемпотентность — журнал `session_remind_sends` (`database/session_remind_db.py`): перезапуск,
 перепланирование и повторный тик не дублируют сообщения. Джоба перед отправкой перечитывает тумблер
-и сессию: сессию удалили или перенесли — сообщение не уйдёт. Отписка от сессии получателей не сужает.
+и сессию: сессию удалили или перенесли — сообщение не уйдёт. Отписка от сессии сужает круг,
+только когда менеджер выбрал записанных.
 
 Дедлайны: напоминание не уходит позже начала сессии, утренняя программа — позже начала первой
 сессии дня (бот был выключен — догнали, но не задним числом).
@@ -108,6 +110,13 @@ async def morning_enabled(city: str | None) -> bool:
 
 async def remind_minutes(city: str | None) -> int:
     return clamp_minutes(await get_setting_typed_for_city("session_remind_minutes", city))
+
+
+async def remind_audience(city: str | None) -> str:
+    """Единственное место, где решается круг напоминания и утренней программы.
+    Сужает только точная строка «enrolled»; пусто, дефолт и мусор — все одобренные."""
+    value = await get_setting_typed_for_city("session_remind_audience", city)
+    return "enrolled" if value == "enrolled" else "approved"
 
 
 async def morning_time(city: str | None) -> str:
@@ -229,7 +238,11 @@ async def _approved_delegates(city: str) -> list[dict]:
 
 
 async def remind_recipients(session: dict) -> list[dict]:
-    return await _approved_delegates(session["city"])
+    city = session["city"]
+    if await remind_audience(city) == "enrolled":
+        enrolled = await rdb.list_enrolled_approved(session["id"])
+        return await _city_delegates(enrolled, city)
+    return await _approved_delegates(city)
 
 
 async def morning_items_for_user(telegram_id: int, city: str, day: str) -> list[dict]:
@@ -336,6 +349,7 @@ async def deliver_morning_program(city: str, day: str) -> dict:
             return result  # день уже идёт: утренняя программа поздняя
         ref = f"{city}:{day}"
         tr_maps: dict = {}
+        audience = await remind_audience(city)
         users = await _approved_delegates(city)
         for user in users:
             tid = int(user["telegram_id"])
@@ -344,6 +358,8 @@ async def deliver_morning_program(city: str, day: str) -> dict:
                 continue
             items = await morning_items_for_user(tid, city, day)
             if not items:
+                continue
+            if audience == "enrolled" and not any(item.get("kind") == "chosen" for item in items):
                 continue
             lang, tr_map = await _lang_for(tid, tr_maps)
             text = await build_morning_text(city, items, lang=lang, tr_map=tr_map)
