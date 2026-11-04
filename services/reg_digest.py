@@ -29,7 +29,7 @@ import html
 import logging
 from datetime import datetime, timedelta
 
-from domain.cities import cities_module_on, normalize_city
+from domain.cities import cities_module_on, get_setting_typed_for_city, normalize_city
 from database.db import (
     auto_reject_summary, enqueue_reg_digest, get_setting, get_user, list_unsent_reg_digest,
     mark_reg_digest_sent,
@@ -205,11 +205,12 @@ def arm_digest_job(city: str | None, minutes: int, *, first_queued_at: str | Non
     )
 
 
-async def auto_rejects_go_to_summary() -> bool:
+async def auto_rejects_go_to_summary(city_code: str | None = None) -> bool:
     """Заявки приходят сводкой раз в N («🔔 Уведомление о заявке» = пачкой) и сама сводка
     включена -> автоотказ не шлётся отдельно: его имена попадают в ту же сводку ожидания
-    (services/comms/reminders.py). Иначе — прежний путь (сразу или пачкой уведомлений)."""
-    if await get_setting_typed("pending_notify_mode") != "batched":
+    (services/comms/reminders.py). Иначе — прежний путь (сразу или пачкой уведомлений).
+    `city_code` — город этой заявки."""
+    if await get_setting_typed_for_city("pending_notify_mode", city_code) != "batched":
         return False
     return await get_setting("pending_reminder_enabled") != "off"
 
@@ -233,9 +234,9 @@ async def notify_application(bot, *, telegram_id: int, admin_text: str, city_raw
     эти заявки ОТДЕЛЬНЫМ блоком «↩️ Возвращены на модерацию», не смешивая со счётчиком
     «Новые заявки»."""
     from handlers.access.admin_caps import notify_by_capability  # lazy: см. докстринг модуля
-    if is_new and auto_rejected and await auto_rejects_go_to_summary():
-        return  # владелец 23.09: автоотказы — той же периодической сводкой, что и заявки
     city = await resolve_city(city_raw)
+    if is_new and auto_rejected and await auto_rejects_go_to_summary(city):
+        return  # владелец 23.09: автоотказы — той же периодической сводкой, что и заявки
     mode = await get_setting_typed("reg_submit_notify_mode") if is_new else "each"
     if mode == "digest":
         await enqueue_reg_digest(

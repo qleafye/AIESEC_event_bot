@@ -72,7 +72,7 @@ async def _thin_step(step_key: str, message: types.Message, state: FSMContext, b
     из них идёт через ЭТУ функцию: city/source/local_committee/position/university/
     attendance_format/informal_day) иначе легла бы в базу и в таблицу молча на английском —
     у шагов без вариантов (`option_pairs` вернула `[]`) канонизация безопасный no-op."""
-    canon_text = await reg_i18n.canonicalize(message, step_key, message.text)
+    canon_text = await reg_i18n.canonicalize(message, step_key, message.text, (await state.get_data()).get("event_city"))
     value, err = validate_answer(step_key, canon_text)
     if err:
         # _err_kb смотрит на canon_text (не «сырой» message.text): английское «Other» уже
@@ -138,7 +138,7 @@ async def process_education_status(message: types.Message, state: FSMContext, bo
     # Phase 27 (27-05, Задача 3, LANG-06): канонизация ДО validate_answer — та же причина,
     # что у _thin_step (см. её докстринг): без этого английская подпись легла бы в apply_answer
     # молча (education_status используется для условной ветки «Да…» -> ВУЗ/курс/специальность).
-    canon_text = await reg_i18n.canonicalize(message, "education_status", message.text)
+    canon_text = await reg_i18n.canonicalize(message, "education_status", message.text, (await state.get_data()).get("event_city"))
     value, err = validate_answer("education_status", canon_text)
     if err:
         await reg_i18n.say(message, err)
@@ -146,7 +146,7 @@ async def process_education_status(message: types.Message, state: FSMContext, bo
     data = await state.get_data()
     # apply_answer (APPLY_GOLDEN): не «Да…» -> ВУЗ/курс/специальность/направление прочерком.
     # Phase 28 (28-01, SU-03): множество «учусь» — реестровое, пусто = прежнее правило.
-    edu_set = await studying_statuses()
+    edu_set = await studying_statuses(data.get("event_city"))
     await state.set_data(apply_answer(data, "education_status", value, studying_statuses=edu_set))
     await _advance("education_status", message, state, bot)
 
@@ -171,7 +171,7 @@ async def process_work_status(message: types.Message, state: FSMContext, bot: Bo
     # Phase 27 (27-05, Задача 3, LANG-06): work_status — _MEMBERSHIP_STEPS («Да»/«Нет» ->
     # bool); без канонизации английские «Yes»/«No» упёрлись бы в жёсткую ошибку
     # «Выбери «Да» или «Нет».» (второй режим отказа из докстринга _thin_step).
-    canon_text = await reg_i18n.canonicalize(message, "work_status", message.text)
+    canon_text = await reg_i18n.canonicalize(message, "work_status", message.text, (await state.get_data()).get("event_city"))
     value, err = validate_answer("work_status", canon_text)
     if err:
         await reg_i18n.say(message, err)
@@ -222,7 +222,7 @@ async def _store_choice(field: str, after: str, message: types.Message, state: F
     # Phase 27 (27-05, Задача 3, LANG-06): канонизация ДО validate_answer — _CHOICE_STEPS
     # принимает любой текст и записал бы английскую подпись молча (первый режим отказа из
     # докстринга _thin_step).
-    canon_text = await reg_i18n.canonicalize(message, field, message.text)
+    canon_text = await reg_i18n.canonicalize(message, field, message.text, (await state.get_data()).get("event_city"))
     value, err = validate_answer(field, canon_text)
     if err:
         await reg_i18n.say(message, err, reply_markup=_err_kb(canon_text))

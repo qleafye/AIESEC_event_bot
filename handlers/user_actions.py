@@ -70,7 +70,7 @@ from handlers.game.game_submit_counter import (  # Phase 16 (16-02): editable su
 )
 from domain.cities import (
     cities_module_on, normalize_city, city_scope,  # Phase 09.1 (B): show_game_tasks city filter
-    get_setting_for_city,  # Phase 09.2 (B): contacts/info screens resolve by delegate city
+    get_setting_for_city, get_setting_typed_for_city,  # Phase 09.2 (B): contacts/info by delegate city
     city_label,  # Трек «региональные форумы → Москва»: подпись города в ответах rnm_*
 )
 from keyboards.builders import (
@@ -122,11 +122,11 @@ async def ensure_registered(message: types.Message) -> bool:
         return True
     if kind == "pending":
         # Phase 17.1 (17.1-01): текст гейта — в реестре (сосед reject_text ниже уже был там).
-        await reg_i18n.say(message, await get_setting_typed("pending_gate_text"))
+        await reg_i18n.say(message, await get_setting_typed_for_city("pending_gate_text", user.get("event_city")))
     elif not await _say_auto_reject_again(message, user):  # rejected
         await reg_i18n.say(
             message,
-            await get_setting("reject_text") or SETTINGS_SCHEMA["reject_text"]["default"],
+            await get_setting_typed_for_city("reject_text", user.get("event_city")) or SETTINGS_SCHEMA["reject_text"]["default"],
         )
     return False
 
@@ -162,7 +162,7 @@ async def _say_auto_reject_again(message: types.Message, user: dict) -> bool:
         return False
     lang, tr_map = await reg_i18n.ctx_for(message)
     reason = "\n\n".join(reg_i18n.tr_text(t, lang, tr_map) for t in texts)
-    await registration._safe_answer(message, await reject_message_text(reason, lang, tr_map))
+    await registration._safe_answer(message, await reject_message_text(reason, lang, tr_map, city_code=user.get("event_city")))
     return True
 
 
@@ -252,10 +252,10 @@ async def render_leaderboard(
     Квик 260917-en: `lang`/`tr_map` — тот же контракт, что у `reg_i18n.tr_fmt` (шаблон
     переводится ДО подстановки {rank}/{balance}/{total}, не после — иначе src_hash
     подставленной строки никогда не совпадёт с хешем исходного шаблона в tr_map)."""
-    tr_map = tr_map or {}
-    lines = [reg_i18n.tr_text(await get_setting_typed("leaderboard_header_text"), lang, tr_map), ""]
+    tr_map = tr_map or {}; city = (await get_user(requester_id) or {}).get("event_city")
+    lines = [reg_i18n.tr_text(await get_setting_typed_for_city("leaderboard_header_text", city), lang, tr_map), ""]
     if not rows:
-        lines.append(reg_i18n.tr_text(await get_setting_typed("leaderboard_empty_text"), lang, tr_map))
+        lines.append(reg_i18n.tr_text(await get_setting_typed_for_city("leaderboard_empty_text", city), lang, tr_map))
     else:
         for i, row in enumerate(rows, start=1):
             name = row.get("full_name") or row.get("username") or str(row.get("user_id"))
@@ -265,7 +265,7 @@ async def render_leaderboard(
     # Same scale-acceptable idiom as _balance_screen (CLAUDE.md: 1000-1500 человек за сезон).
     total = len(await get_leaderboard(10_000))
     lines.append(reg_i18n.tr_fmt(
-        await get_setting_typed("leaderboard_rank_line_text"), lang, tr_map,
+        await get_setting_typed_for_city("leaderboard_rank_line_text", city), lang, tr_map,
         rank=rank_text, balance=requester_balance, total=total or "—",
     ))
     return "\n".join(lines)
@@ -305,23 +305,23 @@ async def _balance_screen(
     """Phase 16 (16-01, GAME-UI-01): «🪙 Баланс» summary -- header (balance/rank/total) + up
     to 5 most recent operations, «📜 История»/«🏆 Рейтинг» buttons. This IS the entry screen
     (reached from the reply-keyboard button), so no «◀️» row, unlike its two sub-screens."""
-    tr_map = tr_map or {}
+    tr_map = tr_map or {}; city = (await get_user(user_id) or {}).get("event_city")
     balance = await get_balance(user_id)
     rank = await get_user_rank(user_id)
     total = len(await get_leaderboard(10_000))  # scale-acceptable per CLAUDE.md (1000-1500/season)
     header = _game_fill(  # «{balance} баллов» согласуется с числом: «1 балл», «22 балла»
-        reg_i18n.tr_text(await get_setting_typed("balance_screen_header"), lang, tr_map),
+        reg_i18n.tr_text(await get_setting_typed_for_city("balance_screen_header", city), lang, tr_map),
         balance=balance, rank=rank if rank is not None else "—", total=total or "—",
     )
     rows = await list_coin_entries_for_user(user_id, limit=5, offset=0)
     rows = await amb_progress.mask_referral_coin_rows(user_id, rows, _amb_tr(lang, tr_map))
     lines = [header, ""]
     if not rows:
-        lines.append(reg_i18n.tr_text(await get_setting_typed("balance_history_empty"), lang, tr_map))
+        lines.append(reg_i18n.tr_text(await get_setting_typed_for_city("balance_history_empty", city), lang, tr_map))
     else:
-        manual_label = reg_i18n.tr_text(await get_setting_typed("balance_source_manual_label"), lang, tr_map)
-        task_label = reg_i18n.tr_text(await get_setting_typed("balance_source_task_label"), lang, tr_map)
-        referral_label = reg_i18n.tr_text(await get_setting_typed("balance_source_referral_label"), lang, tr_map)
+        manual_label = reg_i18n.tr_text(await get_setting_typed_for_city("balance_source_manual_label", city), lang, tr_map)
+        task_label = reg_i18n.tr_text(await get_setting_typed_for_city("balance_source_task_label", city), lang, tr_map)
+        referral_label = reg_i18n.tr_text(await get_setting_typed_for_city("balance_source_referral_label", city), lang, tr_map)
         for row in rows:
             lines.append(_format_coin_entry_line(row, manual_label, task_label, referral_label))
     text = "\n".join(lines)
@@ -339,15 +339,15 @@ async def _balance_history_screen(
     """Same LIMIT/OFFSET + «Страница K из N» + «← Раньше»/«Позже →» idiom as
     `admin_gamification._coins_journal_screen`, scoped to one user_id via
     `list_coin_entries_for_user`/`count_coin_entries_for_user`."""
-    tr_map = tr_map or {}
+    tr_map = tr_map or {}; city = (await get_user(user_id) or {}).get("event_city")
     limit = 10
     total = await count_coin_entries_for_user(user_id)
     rows = await list_coin_entries_for_user(user_id, limit=limit, offset=offset)
     rows = await amb_progress.mask_referral_coin_rows(user_id, rows, _amb_tr(lang, tr_map))
-    lines = [reg_i18n.tr_text(await get_setting_typed("balance_history_header_text"), lang, tr_map)]
+    lines = [reg_i18n.tr_text(await get_setting_typed_for_city("balance_history_header_text", city), lang, tr_map)]
     if total == 0:
         lines.append("")
-        lines.append(reg_i18n.tr_text(await get_setting_typed("balance_history_empty"), lang, tr_map))
+        lines.append(reg_i18n.tr_text(await get_setting_typed_for_city("balance_history_empty", city), lang, tr_map))
     else:
         total_pages = (total + limit - 1) // limit
         current_page = offset // limit + 1
@@ -355,9 +355,9 @@ async def _balance_history_screen(
         of_word = reg_i18n.tr_text("из", lang, tr_map)
         lines.append(f"{page_word} {current_page} {of_word} {total_pages}")
         lines.append("")
-        manual_label = reg_i18n.tr_text(await get_setting_typed("balance_source_manual_label"), lang, tr_map)
-        task_label = reg_i18n.tr_text(await get_setting_typed("balance_source_task_label"), lang, tr_map)
-        referral_label = reg_i18n.tr_text(await get_setting_typed("balance_source_referral_label"), lang, tr_map)
+        manual_label = reg_i18n.tr_text(await get_setting_typed_for_city("balance_source_manual_label", city), lang, tr_map)
+        task_label = reg_i18n.tr_text(await get_setting_typed_for_city("balance_source_task_label", city), lang, tr_map)
+        referral_label = reg_i18n.tr_text(await get_setting_typed_for_city("balance_source_referral_label", city), lang, tr_map)
         for row in rows:
             lines.append(_format_coin_entry_line(row, manual_label, task_label, referral_label))
     text = "\n".join(lines)
@@ -465,7 +465,7 @@ PAGE_SIZE = 6  # Phase 16 (16-01): delegate task-list page size (CONTEXT.md "5-6
 
 async def _render_game_task_line(
     index: int, task: dict, active: dict | None, user_id: int,
-    lang: str = "ru", tr_map: dict | None = None,
+    lang: str = "ru", tr_map: dict | None = None, city_code: str | None = None,
 ) -> tuple[str, bool]:
     """Renders one task's TWO-line status entry for the delegate list ("N. <emoji> <b>title</b>"
     / tail line). Returns (line, needs_submit_button) -- needs_submit_button is True only when
@@ -492,7 +492,7 @@ async def _render_game_task_line(
     # `_game_task_deadline_text` («без срока» по умолчанию), а не «до » с пустым хвостом.
     deadline_word = f"{tr('до')} {deadline}" if deadline else await _game_task_deadline_text(task)
 
-    limit = await get_setting_typed("game_resubmit_limit")
+    limit = await get_setting_typed_for_city("game_resubmit_limit", city_code)
     if limit:
         rejected = await count_rejected_submissions(task["id"], user_id)
         if active is None and rejected >= limit:
@@ -563,7 +563,7 @@ async def _game_task_list_screen(
         tasks, is_ambassador=is_ambassador, path=user.get("ambassador_path") if user else None,
     )
     if not tasks:
-        return reg_i18n.tr_text(await get_setting_typed("game_task_list_empty"), lang, tr_map), None
+        return reg_i18n.tr_text(await get_setting_typed_for_city("game_task_list_empty", (user or {}).get("event_city")), lang, tr_map), None
 
     total_pages = max(1, -(-len(tasks) // PAGE_SIZE))
     page = max(0, min(page, total_pages - 1))
@@ -571,7 +571,7 @@ async def _game_task_list_screen(
 
     lines = []
     if total_pages > 1:
-        page_label = await get_setting_typed("game_task_list_page_label")
+        page_label = await get_setting_typed_for_city("game_task_list_page_label", (user or {}).get("event_city"))
         lines.append(reg_i18n.tr_fmt(page_label, lang, tr_map, page=page + 1, total=total_pages))
 
     # Phase 32 (32-06, D-28): сколько первых элементов УЖЕ отсортированного списка — блок
@@ -584,10 +584,10 @@ async def _game_task_list_screen(
         global_index = page * PAGE_SIZE + offset
         i = global_index + 1
         if block_count and global_index == 0:
-            header = reg_i18n.tr_text(await get_setting_typed("ambassador_block_header_text"), lang, tr_map)
+            header = reg_i18n.tr_text(await get_setting_typed_for_city("ambassador_block_header_text", (user or {}).get("event_city")), lang, tr_map)
             lines.append(f"<b>{header}</b>")
         active = await get_active_submission(task["id"], user_id)
-        line, needs_button = await _render_game_task_line(i, task, active, user_id, lang, tr_map)
+        line, needs_button = await _render_game_task_line(i, task, active, user_id, lang, tr_map, (user or {}).get("event_city"))
         lines.append(line)
         if needs_button:
             buttons.append([InlineKeyboardButton(
@@ -714,7 +714,7 @@ async def mytask_open(callback: types.CallbackQuery):
         can_submit = False
         attempt = None
     else:
-        limit = await get_setting_typed("game_resubmit_limit")
+        limit = await get_setting_typed_for_city("game_resubmit_limit", (user or {}).get("event_city"))
         rejected = await count_rejected_submissions(task_id, callback.from_user.id) if limit else 0
         if limit and rejected:
             new_word = reg_i18n.tr_text("новое", lang, tr_map)
@@ -809,16 +809,16 @@ MAX_PARTS = 20
 MAX_TEXT_PART = 1000
 
 
-async def _build_proof_prompt(task: dict) -> str:
+async def _build_proof_prompt(task: dict, city_code: str | None = None) -> str:
     codes = parse_proof_types(task.get("proof_type"))
     if len(codes) == 1:
-        body = await get_setting_typed(f"game_proof_prompt_{codes[0]}")
+        body = await get_setting_typed_for_city(f"game_proof_prompt_{codes[0]}", city_code)
     else:
-        body = await get_setting_typed("game_proof_prompt_any")
+        body = await get_setting_typed_for_city("game_proof_prompt_any", city_code)
         if len(codes) > 1:
             for code in codes:
-                body += f"\n• {await get_setting_typed(f'game_proof_prompt_{code}')}"
-    hint = await get_setting_typed("game_proof_done_hint")
+                body += f"\n• {await get_setting_typed_for_city(f'game_proof_prompt_{code}', city_code)}"
+    hint = await get_setting_typed_for_city("game_proof_done_hint", city_code)
     return body + "\n\n" + hint
 
 
@@ -903,7 +903,7 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
     # T-14-03 (GAME-10): resubmit limit, counted server-side on every entry into this
     # handler (not cached in FSM/keyboard state) -- a limit=0/None both mean "no limit",
     # byte-identical to pre-phase behavior (regression guard).
-    limit = await get_setting_typed("game_resubmit_limit")
+    limit = await get_setting_typed_for_city("game_resubmit_limit", (user or {}).get("event_city"))
     if limit:
         rejected_count = await count_rejected_submissions(task_id, callback.from_user.id)
         if rejected_count >= limit:
@@ -919,7 +919,7 @@ async def mytask_submit_start(callback: types.CallbackQuery, state: FSMContext):
 
     await state.update_data(gs_task_id=task_id, gs_parts=[])
 
-    prompt = await _build_proof_prompt(task)
+    prompt = await _build_proof_prompt(task, (user or {}).get("event_city"))
     prompt = reg_i18n.tr_text(prompt, lang, tr_map)
     # Phase 32 (32-06, D-27): единственный разбор `deadline_at` — общий помощник
     # `game_labels.task_deadline_short` (тот же, что красит строку в списке/карточке), а не
@@ -1021,7 +1021,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
         # CONTEXT.md A: the ONE server-side validation -- state is NOT reset, delegate can
         # keep sending parts.
         await callback.answer(
-            reg_i18n.tr_text(await get_setting_typed("game_proof_empty_hint"), lang, tr_map), show_alert=True,
+            reg_i18n.tr_text(await get_setting_typed_for_city("game_proof_empty_hint", (await get_user(callback.from_user.id) or {}).get("event_city")), lang, tr_map), show_alert=True,
         )
         return
 
@@ -1060,7 +1060,7 @@ async def finalize_game_submission(callback: types.CallbackQuery, bot: Bot, stat
     await state.set_state(None)
     await callback.answer()
     await callback.message.answer(
-        reg_i18n.tr_text(await get_setting_typed("game_submit_accepted_text"), lang, tr_map),
+        reg_i18n.tr_text(await get_setting_typed_for_city("game_submit_accepted_text", (await get_user(callback.from_user.id) or {}).get("event_city")), lang, tr_map),
         reply_markup=await get_main_menu_kb(callback.from_user.id),
     )
 
@@ -1358,7 +1358,7 @@ async def my_referrals(message: types.Message, bot: Bot):
     if not referrals:
         bot_user = await bot.get_me()
         referral_link = build_referral_link(bot_user.username, message.from_user.id)
-        empty_tpl = await get_setting_typed("referral_list_empty_text")
+        empty_tpl = await get_setting_typed_for_city("referral_list_empty_text", (await get_user(message.from_user.id) or {}).get("event_city"))
         await message.answer(reg_i18n.tr_fmt(empty_tpl, lang, tr_map, link=referral_link))
         return
     if await amb_progress.hide_names_on():
@@ -1368,7 +1368,7 @@ async def my_referrals(message: types.Message, bot: Bot):
     names = "\n".join(f"• {html.escape(str(name))}" for name in referrals)
     # Phase 17.1 (17.1-01): заголовок из реестра; сам список имён строится ботом (не текст,
     # который менеджер может испортить) и приклеивается через тот же «\n\n», что и раньше.
-    header_tpl = await get_setting_typed("referral_list_header_text")
+    header_tpl = await get_setting_typed_for_city("referral_list_header_text", (await get_user(message.from_user.id) or {}).get("event_city"))
     await message.answer(
         f"{reg_i18n.tr_fmt(header_tpl, lang, tr_map, count=len(referrals))}\n\n{names}",
         parse_mode="HTML",
@@ -1688,7 +1688,7 @@ async def show_my_checkin_qr(message: types.Message):
     if denial is not None:  # 'no_user' (гонка удаления между ensure_registered и этим вызовом)
         # или 'not_approved' (легаси/NULL/waitlist, которых ensure_registered пропускает) —
         # тот же переведённый текст ожидания, что видят pending-делегаты у ensure_registered.
-        text = reg_i18n.tr_text(await get_setting_typed("pending_gate_text"), lang, tr_map)
+        text = reg_i18n.tr_text(await get_setting_typed_for_city("pending_gate_text", user.get("event_city")), lang, tr_map)
         await message.answer(text)
         return
     # Защитная перепроверка модуля (D-03/T-19-54 idiom): кнопка не рисуется в меню, пока
@@ -1835,7 +1835,7 @@ async def reg_handoff_idle_fallback(message: types.Message) -> None:
 # уже существующего callback_query-блока).
 
 async def _wave_rating_screen(
-    wave_id: int, viewer_id: int, lang: str = "ru", tr_map: dict | None = None,
+    wave_id: int, viewer_id: int, lang: str = "ru", tr_map: dict | None = None, city_code: str | None = None,
 ) -> tuple[str, InlineKeyboardMarkup]:
     """Phase 32 (32-06, D-29): экран рейтинга ТЕКУЩЕЙ волны — заголовок с номером волны, при
     включённом тумблере имён топ строками «место. имя — баллы» (имена экранированы,
@@ -1845,7 +1845,7 @@ async def _wave_rating_screen(
     заданий тем же `_game_task_list_screen`."""
     tr_map = tr_map or {}
     wave = await get_wave(wave_id)
-    header = reg_i18n.tr_text(await get_setting_typed("wave_rating_header_text"), lang, tr_map)
+    header = reg_i18n.tr_text(await get_setting_typed_for_city("wave_rating_header_text", city_code), lang, tr_map)
     # IN-06: «Волна N» — не через reg_i18n, слово переводится отдельно (номер языка не имеет).
     wave_word = reg_i18n.tr_text("Волна", lang, tr_map)
     lines = [f"{header} · {wave_word} {(wave or {}).get('number', '?')}"]
@@ -1860,7 +1860,7 @@ async def _wave_rating_screen(
     if own is not None:
         gap = own["gap_to_prize"] if own["gap_to_prize"] is not None else 0
         own_line = _game_fill(  # «{gap} баллов» согласуется с числом
-            reg_i18n.tr_text(await get_setting_typed("wave_rating_own_line_text"), lang, tr_map),
+            reg_i18n.tr_text(await get_setting_typed_for_city("wave_rating_own_line_text", city_code), lang, tr_map),
             rank=own["place"], total=own["total"], place=view["prize_places"], gap=gap,
         )
         lines.append("")
@@ -1899,10 +1899,10 @@ async def show_wave_rating(callback: types.CallbackQuery):
     if current_wave is None:
         closing = is_ambassador and await latest_closing_wave_for(user, city_scope=city_scope(code) if cities_on else None)
         if closing:
-            text, kb = await _wave_rating_screen(closing["id"], callback.from_user.id, lang, tr_map)
+            text, kb = await _wave_rating_screen(closing["id"], callback.from_user.id, lang, tr_map, (user or {}).get("event_city"))
             text += "\n\n" + reg_i18n.tr_text("Волна закончилась — итоги готовятся.", lang, tr_map)
         else:
-            text = reg_i18n.tr_text(await get_setting_typed("wave_rating_closed_text"), lang, tr_map)
+            text = reg_i18n.tr_text(await get_setting_typed_for_city("wave_rating_closed_text", (user or {}).get("event_city")), lang, tr_map)
             kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=reg_i18n.tr_text("◀️ Назад", lang, tr_map), callback_data="gtasks_back:0")]])
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
         await callback.answer()
@@ -1912,7 +1912,7 @@ async def show_wave_rating(callback: types.CallbackQuery):
         await callback.answer(reg_i18n.tr_text("Рейтинг волны виден только участникам текущей волны амбассадоров.", lang, tr_map), show_alert=True)
         return
 
-    text, kb = await _wave_rating_screen(current_wave["id"], callback.from_user.id, lang, tr_map)
+    text, kb = await _wave_rating_screen(current_wave["id"], callback.from_user.id, lang, tr_map, (user or {}).get("event_city"))
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
@@ -1940,7 +1940,7 @@ async def ambassador_leave_start(callback: types.CallbackQuery):
     (рассылки волны, место в рейтинге ТЕКУЩЕЙ волны), а что останется (баллы общего зачёта,
     D-32). Ничего в базе ещё не меняется — только показ подтверждения."""
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_confirm_text"), lang, tr_map)
+    text = reg_i18n.tr_text(await get_setting_typed_for_city("ambassador_leave_confirm_text", (await get_user(callback.from_user.id) or {}).get("event_city")), lang, tr_map)
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text=reg_i18n.tr_text("Да, выйти", lang, tr_map), callback_data="ambleave_go"),
         InlineKeyboardButton(text=reg_i18n.tr_text("Отмена", lang, tr_map), callback_data="ambleave_no"),
@@ -1962,7 +1962,7 @@ async def ambassador_leave_confirm(callback: types.CallbackQuery):
     """Выход из команды — `services.amb.amb_status.leave` (место без пакета освобождается, баллы остаются)."""
     await amb_status.leave(callback.from_user.id)
     lang, tr_map = await reg_i18n.ctx_for(callback)
-    text = reg_i18n.tr_text(await get_setting_typed("ambassador_leave_done_text"), lang, tr_map)
+    text = reg_i18n.tr_text(await get_setting_typed_for_city("ambassador_leave_done_text", (await get_user(callback.from_user.id) or {}).get("event_city")), lang, tr_map)
     await callback.message.edit_text(text)
     await callback.answer()
 
@@ -1973,7 +1973,7 @@ async def ambassador_join(callback: types.CallbackQuery, bot: Bot):
     result = await amb_status.request_join(callback.from_user.id, source="my_link")
     lang, tr_map = await reg_i18n.ctx_for(callback)
     if result.outcome in ("full", "declined"):
-        text = reg_i18n.tr_text(await get_setting_typed("amb_slots_full_text") or "", lang, tr_map)
+        text = reg_i18n.tr_text(await get_setting_typed_for_city("amb_slots_full_text", (await get_user(callback.from_user.id) or {}).get("event_city")) or "", lang, tr_map)
         await callback.answer(text if len(text) <= 200 else text[:199].rstrip() + "…", show_alert=True)
         return
     text, kb = await _referral_screen(callback.from_user.id, bot, lang, tr_map)

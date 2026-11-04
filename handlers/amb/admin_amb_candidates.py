@@ -29,14 +29,13 @@ import logging
 from aiogram import F, types
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
-from domain.cities import city_label_or_none
+from domain.cities import city_label_or_none, get_setting_typed_for_city
 from database import amb_status_db, amb_tiers_db
 from database import db as _db
 from handlers.admin import router
 from handlers.access.admin_caps import has_capability
 from services.amb import amb_status, amb_tiers
 from services.infra.timeutil import msk_now
-from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
@@ -300,7 +299,11 @@ async def _notify(bot, tid: int, key: str) -> bool | None:
         from services.scheduler import _now_moscow_naive
 
         lang, tr_map = await i18n_context(tid)
-        text = i18n_tr(await get_setting_typed(key) or "", lang, tr_map)
+        person = await _db.get_user(tid)
+        text = i18n_tr(
+            await get_setting_typed_for_city(key, (person or {}).get("event_city")) or "",
+            lang, tr_map,
+        )
         if "{link}" in text:
             me = await bot.get_me()
             text = text.replace("{link}", build_referral_link(me.username, tid))
@@ -436,7 +439,7 @@ async def remove_confirm(callback: types.CallbackQuery):
         slot_note = "Место освободится — можно взять следующего из запаса."
     else:
         slot_note = "Места у него нет — счётчик мест не изменится."
-    message_text = html.escape(await get_setting_typed("amb_removed_text") or "")
+    message_text = html.escape(await get_setting_typed_for_city("amb_removed_text", (user or {}).get("event_city")) or "")
     text = (
         f"<b>Вывести {_name(user)} из команды?</b>\n\n{slot_note}\n\n"
         f"Ему придёт сообщение: «{message_text}»\n\n"

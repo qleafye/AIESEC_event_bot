@@ -13,8 +13,8 @@ Mini App не могло позвать (aiogram-модуль), поэтому `
 эту функцию — формула считается в одном месте буквально."""
 from __future__ import annotations
 
+from domain.cities import get_setting_typed_for_city
 from domain.game.labels import penalized_coins, task_has_deadline
-from domain.settings.schema import get_setting_typed
 
 
 async def award_for(submission: dict, task: dict, base_coins: int) -> tuple[int, bool]:
@@ -24,5 +24,11 @@ async def award_for(submission: dict, task: dict, base_coins: int) -> tuple[int,
     late = task_has_deadline(task) and str(submission["submitted_at"]) > str(task["deadline_at"])
     if not late:
         return base_coins, False
-    percent = await get_setting_typed("game_late_penalty_percent")
+    city = None
+    uid = submission.get("user_id")
+    if uid is not None:
+        from database.db import get_user
+        person = await get_user(uid)
+        city = (person or {}).get("event_city")
+    percent = await get_setting_typed_for_city("game_late_penalty_percent", city)
     return penalized_coins(base_coins, percent), True
