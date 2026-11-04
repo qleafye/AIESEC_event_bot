@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+from config import config
 from database import db
 import domain.cities as cities
 from handlers.regform import admin_reg_config as regcfg
@@ -557,52 +558,111 @@ def test_toggle_rows_are_shared_with_the_settings_screen(tmp_path):
 # (5) Корень переключён на разделы (20-03, ADMIN-IA-01)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-def test_root_shows_at_most_ten_rows(tmp_path):
-    """Критерий успеха №1: шапка города + не больше девяти кнопок-разделов. До фазы 20 на
-    корне было 22 строки, и менеджер искал нужную глазами. 30.09: девятый раздел
-    «🤝 Амбассадоры» — у команды амбассадоров свой вход, лимит и списки, в «🎮 Геймификации»
-    они терялись среди заданий и монет."""
+def _root_section_tokens(*, amb: bool) -> list[str]:
+    return [token for token, _label, _rows in sec.SECTIONS if amb or token != "amb"]
+
+
+def _settings_webapp(kb):
+    found = [b for row in kb.inline_keyboard for b in row if b.web_app is not None]
+    return found
+
+
+def test_root_shows_at_most_ten_rows(tmp_path, monkeypatch):
+    """Корень: шапка города, если модуль включён, плюс видимые разделы, плюс не больше одной
+    WebApp. Лимит «не больше десяти строк» больше не договор: девять разделов, шапка и кнопка
+    «Настройки» вместе длиннее. Пустой адрес кнопки не рисует, разделы остаются."""
     _roles_ready(tmp_path)
     _enable_cities()
     from handlers.settings.admin_core import admin_keyboard_for
 
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert len(kb.inline_keyboard) <= 10, _flat_callback_data(kb)
     # «🤝 Амбассадоры» — только при включённом модуле «🤝 Отбор амбассадоров» (по умолчанию выкл).
-    assert len(kb.inline_keyboard) == len(sec.SECTIONS)
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False))
+    assert _settings_webapp(kb) == []
     asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert len(kb.inline_keyboard) == len(sec.SECTIONS) + 1  # суперадмину доступны все девять
+    assert len(kb.inline_keyboard) == 1 + len(sec.SECTIONS)
+    assert _settings_webapp(kb) == []
+
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test/")
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert len(kb.inline_keyboard) == 1 + len(sec.SECTIONS) + 1
+    assert len(_settings_webapp(kb)) == 1
+    asyncio.run(db.set_setting("amb_team_selection_enabled", "off"))
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False)) + 1
+    assert len(_settings_webapp(kb)) == 1
+
+    class _BadUrl(str):
+        def rstrip(self, chars=None):
+            raise RuntimeError("unusable public url")
+
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", _BadUrl("https://dash.example.test"))
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False))
+    assert _settings_webapp(kb) == []
 
 
-def test_root_rows_are_only_sections(tmp_path):
-    """Ни одной старой операции на корне не осталось: всё, кроме шапки города, — разделы,
-    и их порядок задаёт реестр (путь делегата), а не история появления фаз."""
+def test_root_rows_are_only_sections(tmp_path, monkeypatch):
+    """Кроме шапки города на корне только разделы в порядке реестра и, при праве settings и
+    непустом адресе, одна последняя кнопка «Настройки». Операций и callback work/settings/forum нет."""
     _roles_ready(tmp_path)
     _enable_cities()
     from handlers.settings.admin_core import admin_keyboard_for
 
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
     flat = _flat_callback_data(asyncio.run(admin_keyboard_for(ADMIN_ID)))
     assert flat[0] == "admin_city_switch"
-    assert flat[1:] == [f"admin_sec:{token}" for token, _label, _rows in sec.SECTIONS
-                        if token != "amb"]
+    assert flat[1:] == [f"admin_sec:{token}" for token in _root_section_tokens(amb=False)]
+    for banned in ("work", "settings", "forum"):
+        assert banned not in flat
+        assert f"admin_sec:{banned}" not in flat
+
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test")
+    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+    rows = kb.inline_keyboard
+    assert rows[0][0].callback_data == "admin_city_switch"
+    assert [row[0].callback_data for row in rows[1:-1]] == [
+        f"admin_sec:{token}" for token in _root_section_tokens(amb=False)
+    ]
+    last = rows[-1][0]
+    assert last.text == "Настройки"
+    assert last.callback_data is None
+    assert getattr(last, "style", None) is None
+    url = last.web_app.url
+    assert "open=settings" in url
+    assert url.endswith("/app?open=settings")
+    assert "#/settings" not in url and "#/hub" not in url and "#" not in url
+    cbs = [b.callback_data for row in rows for b in row if b.callback_data]
+    for banned in ("work", "settings", "forum"):
+        assert banned not in cbs
+        assert f"admin_sec:{banned}" not in cbs
 
 
-def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path):
+def test_root_of_moderate_reg_manager_is_only_the_applications_section(tmp_path, monkeypatch):
     """Критерий успеха №2, сквозной (не только на уровне visible_sections): одно право —
-    один раздел на корне, и никакого «пустого» экрана вокруг него."""
+    один раздел на корне, и никакого «пустого» экрана вокруг него. Права settings у роли нет,
+    поэтому кнопка приложения не появляется даже при непустом адресе."""
     _roles_ready(tmp_path)
     asyncio.run(db.add_staff(MANAGER_ID, "reg_manager", ADMIN_ID))
     _only_caps("reg_manager", "moderate_reg")
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test")
+    from handlers.access.admin_caps import resolve_capabilities
     from handlers.settings.admin_core import build_admin_keyboard
 
-    flat = _flat_callback_data(asyncio.run(build_admin_keyboard(MANAGER_ID)))
-    assert flat == ["admin_sec:apps", "admin_sec:data"]  # 09.10: + «📊 Данные» (список участников)
+    caps = asyncio.run(resolve_capabilities(MANAGER_ID))
+    assert "settings" not in caps
+    kb = asyncio.run(build_admin_keyboard(MANAGER_ID))
+    assert _flat_callback_data(kb) == ["admin_sec:apps", "admin_sec:data"]  # 09.10: + «📊 Данные»
+    assert _settings_webapp(kb) == []
 
 
-def test_root_of_a_stranger_stays_empty(tmp_path):
-    """T-20-09: у человека без прав корень пуст — чужой список разделов не утекает."""
+def test_root_of_a_stranger_stays_empty(tmp_path, monkeypatch):
+    """T-20-09: у человека без прав корень пуст — чужой список разделов не утекает,
+    и кнопка «Настройки» ему не достаётся, даже если публичный адрес задан."""
     _roles_ready(tmp_path)
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "https://dash.example.test")
     from handlers.settings.admin_core import build_admin_keyboard
 
     assert asyncio.run(build_admin_keyboard(STRANGER_ID)).inline_keyboard == []
