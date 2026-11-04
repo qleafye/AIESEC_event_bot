@@ -161,7 +161,7 @@ def test_valdone_empty_values_alerts_and_does_not_save(tmp_path, monkeypatch):
         calls.append((args, kwargs))
         return rule_id, None
 
-    monkeypatch.setattr(arc, "save_rule", _fake_save_rule)
+    monkeypatch.setattr("services.applications.reject_rules_editor.save_rule", _fake_save_rule)
     state = _new_state(SUPERADMIN_ID)
     _run(state.update_data(arc_fp=_fp(rule_id), arc_rule=rule_id, arc_group=-1, arc_step="course", arc_op="in", arc_checked=[]))
     callback = _FakeCallback(f"arc_valdone:{rule_id}:-1", user_id=SUPERADMIN_ID)
@@ -338,7 +338,7 @@ def test_card_shows_group_layout_after_building_via_handlers(tmp_path):
 
 def test_preset_new_creates_disabled_rule_with_condition_and_text(tmp_path):
     _ready(tmp_path)
-    callback = _FakeCallback("arc_preset:new:0", user_id=SUPERADMIN_ID)
+    callback = _FakeCallback("arc_preset:new:1", user_id=SUPERADMIN_ID)
     _run(arc.arc_preset_pick(callback))
     rules = _run(db.list_reject_rules())
     assert len(rules) == 1
@@ -399,6 +399,7 @@ def test_arc_gate_first_tap_shows_counter_does_not_enable(tmp_path):
 
 def test_arc_dry_go_enables_after_gate_confirm(tmp_path):
     _ready(tmp_path)
+    _run(db.set_setting("reg_q_resume", "on"))
     rule_id = _run(_create_rule(
         city="msk", enabled=0, reject_text="x",
         conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),

@@ -21,53 +21,53 @@
 конструктора (T-31-10-01) — клавиатуры в чате не истекают, а FSM-состояние может пережить правку.
 
 Форма шва — та же, что `admin_reject_rules.py`: общий `handlers.admin.router`, декоратор в
-одну строку. `render_rule_card` импортируется оттуда (публичная функция); `_load_rule`/
-`_save_patch` — свои копии той же формы (приватные имена соседнего модуля не импортируются)."""
+одну строку. `render_rule_card` импортируется оттуда (публичная функция). Чтение, запись,
+отпечаток и включение — общий редактор; старые имена оставлены алиасами в одну строку."""
 import html as html_module
-import hashlib
-import json
 
 from aiogram import F, types
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 
 from config import config
-from database.db import get_reject_rule, get_staff_city
+from database.db import get_staff_city
 from handlers.admin import router
 from handlers.applications import admin_reject_master as master
 from handlers.applications.admin_reject_rules import render_rule_card
 from handlers.states import RejectCond
 from keyboards.builders import get_cancel_kb
 from domain.regform.engine import (
-    REG_FLOW,
     condition_operators,
-    is_step_enabled_for_track,
     label_for,
     options,
     reject_condition_category,
 )
 from services.applications.reject_rules import (
+    OPERATOR_LABELS,
     RULE_PRESETS,
     can_edit_city,
-    dry_run_count,
+    enabled_steps,
     forum_date_for,
-    save_rule,
     validate_condition,
+)
+from services.applications.reject_rules_editor import (
+    conditions_fp,
+    create_from_preset,
+    load_rule,
+    preview,
+    save_patch,
+    set_enabled,
 )
 
 STEP_PAGE = 8
 VALUE_PAGE = 8
 
-# Человеческие подписи операторов (D-01/D-09) — своя копия, не импорт приватного словаря
-# соседнего модуля (та же дисциплина, что уже принята в admin_reject_rules.py).
-_OPERATOR_LABELS = {
-    "in": "один из", "not_in": "ни один из",
-    "lt": "меньше", "gt": "больше", "between": "между",
-    "before": "раньше", "after": "позже",
-    "age_on_forum_lt": "возраст на дату форума меньше",
-    "filled": "заполнено", "empty": "не заполнено",
-    "has_file": "есть", "no_file": "нет",
-}
+# Старые имена модуля: тесты и карточка зовут их напрямую. Логика — в общем редакторе.
+_OPERATOR_LABELS = OPERATOR_LABELS
+_load_rule = load_rule
+_save_patch = save_patch
+_enabled_steps = enabled_steps
+_conditions_fp = conditions_fp
 
 # Пример нужного формата ввода (CLAUDE.md: текстовый ввод только для произвольных величин, с
 # примером формата) — ключ (категория, оператор), значение — готовая подсказка.
@@ -100,58 +100,11 @@ def _short(text: str, limit: int) -> str:
     return stripped[: max(0, limit - 1)].rstrip() + "…"
 
 
-async def _load_rule(rule_id: int) -> dict | None:
-    """Свежая копия правила (T-31-10-01) — та же форма, что `admin_reject_rules._load_rule`;
-    своя копия, а не импорт приватного имени соседнего модуля."""
-    row = await get_reject_rule(rule_id)
-    if row is None:
-        return None
-    rule = dict(row)
-    try:
-        rule["tracks"] = json.loads(row.get("tracks") or "[]") or []
-    except (TypeError, ValueError):
-        rule["tracks"] = []
-    try:
-        rule["conditions"] = json.loads(row.get("conditions") or "[]") or []
-    except (TypeError, ValueError):
-        rule["conditions"] = []
-    return rule
-
-
-async def _save_patch(admin_id: int, rule: dict, **overrides) -> tuple[int | None, str | None]:
-    """Единственная дверь мутации (`save_rule` не умеет частичный PATCH) — та же форма, что
-    `admin_reject_rules._save_patch`."""
-    fields = {
-        "name": rule.get("name"), "city": rule.get("city"),
-        "tracks": rule.get("tracks") or ["full"], "conditions": rule.get("conditions") or [],
-        "action": rule.get("action"), "reject_text": rule.get("reject_text"),
-        "enabled": rule.get("enabled"),
-    }
-    fields.update(overrides)
-    return await save_rule(admin_id, rule["id"], **fields)
-
-
 async def _default_city(admin_id: int) -> str | None:
     """Тот же выбор дефолтного города, что `admin_reject_rules._default_new_rule_city`."""
     if admin_id in config.ADMIN_IDS:
         return None
     return await get_staff_city(admin_id)
-
-
-async def _enabled_steps(rule: dict) -> list[str]:
-    """Вопросы, реально включённые хотя бы для одного трека этого правила (D-14 anti-pattern
-    guard: выключенный вопрос предлагать нельзя — правило на нём сразу встанет на паузу).
-    Правило может стоять сразу на нескольких треках — шаг предлагается, если включён хотя бы
-    для одного из них."""
-    tracks = rule.get("tracks") or ["full"]
-    city = rule.get("city")
-    enabled: list[str] = []
-    for step_key, setting_key, _t in REG_FLOW:
-        for track in tracks:
-            if await is_step_enabled_for_track(setting_key, track, city):
-                enabled.append(step_key)
-                break
-    return enabled
 
 
 def _insert_condition(conditions: list[list[dict]], group: int, cond: dict) -> list[list[dict]]:
@@ -163,14 +116,6 @@ def _insert_condition(conditions: list[list[dict]], group: int, cond: dict) -> l
     else:
         groups[group].append(cond)
     return groups
-
-
-def _conditions_fp(conditions: list[list[dict]] | None) -> str:
-    """Короткий отпечаток ВСЕХ условий правила (8 hex): кнопка «удалить» держится на номерах
-    группы и строки, и если правило успели поменять (второй менеджер, второе устройство),
-    номер указывает уже на другое условие. Отпечаток в callback_data это ловит."""
-    raw = json.dumps(conditions or [], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:8]
 
 
 def _remove_condition(conditions: list[list[dict]], group: int, idx: int) -> list[list[dict]]:
@@ -263,21 +208,6 @@ async def _finish_condition_msg(
     if screen is not None:
         text, kb = screen
         await message.answer(text, parse_mode="HTML", reply_markup=kb)
-
-
-def _dry_run_text(matched: int, total: int) -> str:
-    """D-13/D-19: честное число + объяснение, что превью ничего не меняет — уже поданные
-    заявки не тронет ни одно значение этого счётчика."""
-    lines = [
-        f"Под это правило сейчас попали бы {matched} из {total} заявок.",
-        "",
-        "Это превью — уже поданные заявки не изменятся. Правило начнёт работать только для "
-        "тех, кто подаст заявку или поправит анкету ПОСЛЕ включения.",
-    ]
-    if total and matched > total / 2:
-        lines.append("")
-        lines.append("⚠️ Похоже, правило слишком широкое — проверьте условия.")
-    return "\n".join(lines)
 
 
 # ── Шаг 1: выбор вопроса ────────────────────────────────────────────────────────────────────
@@ -800,11 +730,11 @@ async def arc_preset_pick(callback: types.CallbackQuery):
         if not await can_edit_city(admin_id, city):
             await callback.answer("Нет прав создать правило в этом городе.", show_alert=True)
             return
-        target_id, error = await save_rule(
-            admin_id, None, name=preset.get("name"), city=city, tracks=["full"],
-            conditions=preset.get("conditions") or [], action=preset.get("action") or "reject",
-            reject_text=preset.get("reject_text"), enabled=0,
-        )
+        result = await create_from_preset(admin_id, n, city)
+        if result.error or not result.view:
+            await callback.answer(result.error or "Не получилось создать правило.", show_alert=True)
+            return
+        target_id = result.view["id"]
         made_text = "Правило создано из заготовки и выключено — поправьте значения и включите."
     else:
         try:
@@ -821,11 +751,11 @@ async def arc_preset_pick(callback: types.CallbackQuery):
             conditions=preset.get("conditions") or [], action=preset.get("action") or rule.get("action"),
             reject_text=rule.get("reject_text") or preset.get("reject_text"), enabled=0,
         )
+        if error:
+            await callback.answer(error, show_alert=True)
+            return
         made_text = "Правило заполнено заготовкой и выключено — поправьте значения и включите."
 
-    if error:
-        await callback.answer(error, show_alert=True)
-        return
     screen = await render_rule_card(admin_id, target_id)
     if screen is None:
         await callback.answer("Готово, но карточка не открылась — обновите список.", show_alert=True)
@@ -847,8 +777,14 @@ async def arc_dry(callback: types.CallbackQuery):
     if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
         await callback.answer("Правило недоступно — обновите список.", show_alert=True)
         return
-    matched, total = await dry_run_count(rule)
-    await callback.answer(_dry_run_text(matched, total), show_alert=True)
+    info = await preview(callback.from_user.id, rule)
+    text = info.get("text") or ""
+    if info.get("matched") is not None and "уже подан" not in text:
+        text += (
+            "\n\nЭто превью — уже поданные заявки не изменятся. Правило начнёт работать только для "
+            "тех, кто подаст заявку или поправит анкету ПОСЛЕ включения."
+        )
+    await callback.answer(text, show_alert=True)
 
 
 @router.callback_query(F.data.startswith("arc_gate:"))
@@ -866,9 +802,9 @@ async def arc_gate(callback: types.CallbackQuery):
         await callback.answer("Правило недоступно — обновите список.", show_alert=True)
         return
     if rule.get("enabled"):
-        _, error = await _save_patch(callback.from_user.id, rule, enabled=0)
-        if error:
-            await callback.answer(error, show_alert=True)
+        result = await set_enabled(callback.from_user.id, rule_id, False, confirm=False, base_rev=None)
+        if result.error:
+            await callback.answer(result.error, show_alert=True)
             return
         screen = await render_rule_card(callback.from_user.id, rule_id)
         text, kb = screen
@@ -878,8 +814,12 @@ async def arc_gate(callback: types.CallbackQuery):
             show_alert=True,
         )
         return
-    matched, total = await dry_run_count(rule)
-    lines = ["✅ <b>Включить правило?</b>", "", _dry_run_text(matched, total), *await master.gate_warning(callback.from_user.id)]
+    result = await set_enabled(callback.from_user.id, rule_id, True, confirm=False, base_rev=None)
+    if result.error:
+        await callback.answer(result.error, show_alert=True)
+        return
+    body = (result.needs_confirm or {}).get("text") or ""
+    lines = ["✅ <b>Включить правило?</b>", "", body, *await master.gate_warning(callback.from_user.id)]
     buttons = [
         [InlineKeyboardButton(text="✅ Всё равно включить", callback_data=f"arc_dry_go:{rule_id}")],
         [InlineKeyboardButton(text="← Назад", callback_data=f"arr_v:{rule_id}")],
@@ -898,9 +838,9 @@ async def arc_dry_go(callback: types.CallbackQuery):
     if rule is None or not await can_edit_city(callback.from_user.id, rule.get("city")):
         await callback.answer("Правило недоступно — обновите список.", show_alert=True)
         return
-    _, error = await _save_patch(callback.from_user.id, rule, enabled=1)
-    if error:
-        await callback.answer(error, show_alert=True)
+    result = await set_enabled(callback.from_user.id, rule_id, True, confirm=True, base_rev=None)
+    if result.error:
+        await callback.answer(result.error, show_alert=True)
         return
     screen = await render_rule_card(callback.from_user.id, rule_id)
     text, kb = screen

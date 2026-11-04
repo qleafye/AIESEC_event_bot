@@ -251,6 +251,8 @@ EXPECTED_ROUTES = {
     "#/faq": "screens/faq.js",
     # Quick 260906-nxp: менеджерский экран ведения того же списка.
     "#/admin-faq": "screens/admin_faq.js",
+    "#/admin-reject-rules": "screens/admin_reject_rules.js",
+    "#/admin-reject-rule/{id}": "screens/admin_reject_rule.js",
     # Phase 30 (30-05, задача 3): полноэкранный статус заявки.
     "#/status": "screens/status.js",
     # Квик 260915-4mu: мастер первой настройки события в приложении.
@@ -291,7 +293,8 @@ def test_route_table_matches_phase_plan_exactly():
     # настроек открывает саму настройку, не начало раздела.
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
-    assert len(routes) == 24
+    # Правила автоотказа: список и редактор (24 -> 26). Отдельного "#/admin-reject-rule/new" нет.
+    assert len(routes) == 26
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -432,6 +435,7 @@ EXPECTED_NAV = [
     # Quick 260906-nxp: менеджерское ведение FAQ — рядом с #/questions (менеджерские разделы
     # идут вместе), section "faq" — тот же чекбокс, что у делегатского #/faq.
     {"hash": "#/admin-faq", "section": "faq", "cap": "moderate_reg", "group": "apps"},
+    {"hash": "#/admin-reject-rules", "section": "settings", "cap": "settings", "group": "apps", "label": "🚫 Правила автоотказа"},
     {"hash": "#/review", "section": "review", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-tasks", "section": "admin_tasks", "cap": "moderate_game", "group": "game"},
     {"hash": "#/admin-coins", "section": "coins", "cap": "moderate_game", "staffOnly": True, "group": "game"},

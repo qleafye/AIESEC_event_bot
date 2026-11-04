@@ -220,7 +220,7 @@ def test_arr_new_screen_lists_presets_and_own_rule_option(tmp_path):
 
 def test_arr_preset_creates_disabled_rule_from_preset(tmp_path):
     _ready(tmp_path)
-    callback = _FakeCallback("arr_preset:0", user_id=SUPERADMIN_ID)
+    callback = _FakeCallback("arr_preset:1", user_id=SUPERADMIN_ID)
     _run(admin_reject_rules.arr_preset_pick(callback))
     rules = _run(db.list_reject_rules())
     assert len(rules) == 1
@@ -331,6 +331,7 @@ def test_arr_track_toggle_rejects_unchecking_last_track(tmp_path):
 
 def test_arr_track_toggle_adds_and_removes_party_pair_together(tmp_path):
     _ready(tmp_path)
+    _run(db.set_setting("reg_q_resume", "on"))
     rule_id = _run(_create_rule(tracks=json.dumps(["full"]), reject_text="x"))
     callback = _FakeCallback(f"arr_track:{rule_id}:party", user_id=SUPERADMIN_ID)
     _run(admin_reject_rules.arr_track_toggle(callback))
@@ -348,7 +349,7 @@ def test_arr_text_step_saves_via_save_rule_not_update_reject_rule_directly(tmp_p
         calls.append((admin_id, rid, fields))
         return rid, None
 
-    monkeypatch.setattr(admin_reject_rules, "save_rule", _fake_save_rule)
+    monkeypatch.setattr("services.applications.reject_rules_editor.save_rule", _fake_save_rule)
 
     def _boom(*args, **kwargs):
         raise AssertionError("update_reject_rule должен вызываться только внутри save_rule")
@@ -414,9 +415,39 @@ def test_copy_go_rejects_city_without_right(tmp_path):
 def test_rule_reject_count_no_longer_scans_journal_in_python():
     """WR-01: счётчик обязан считать в SQL, а не вычитывать журнал целиком (был `limit=100000`)
     в Python-цикле — сторож ловит регрессию к старой O(journal size) реализации."""
-    source = inspect.getsource(admin_reject_rules._rule_reject_count)
+    from services.applications import reject_rules_editor
+    source = inspect.getsource(reject_rules_editor.delete)
     assert "100000" not in source
     assert "count_auto_reject_log_for_rule" in source
+
+
+def test_chat_enable_guard_no_conditions(tmp_path):
+    """Включение пустого правила из чата отказывается фразой и не включает строку."""
+    from handlers.applications import admin_reject_cond as arc
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(
+        enabled=0, reject_text="Текст есть", conditions=json.dumps([]),
+    ))
+    callback = _FakeCallback(f"arc_dry_go:{rule_id}", user_id=SUPERADMIN_ID)
+    _run(arc.arc_dry_go(callback))
+    assert callback.answers and callback.answers[-1][1] is True
+    assert "нет ни одного условия" in callback.answers[-1][0]
+    assert _run(db.get_reject_rule(rule_id))["enabled"] == 0
+
+
+def test_chat_enable_guard_disabled_step(tmp_path):
+    """Включение правила на выключенном вопросе из чата отказывается и оставляет его выключенным."""
+    from handlers.applications import admin_reject_cond as arc
+    _ready(tmp_path)
+    rule_id = _run(_create_rule(
+        enabled=0, reject_text="Текст есть",
+        conditions=json.dumps([[{"step": "resume", "op": "no_file", "values": []}]]),
+    ))
+    callback = _FakeCallback(f"arc_dry_go:{rule_id}", user_id=SUPERADMIN_ID)
+    _run(arc.arc_dry_go(callback))
+    assert callback.answers and callback.answers[-1][1] is True
+    assert "выключен" in callback.answers[-1][0]
+    assert _run(db.get_reject_rule(rule_id))["enabled"] == 0
 
 
 def test_delete_confirm_shows_autodescription_and_disable_alternative(tmp_path):

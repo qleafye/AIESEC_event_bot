@@ -209,7 +209,7 @@ async function renderDelegateHub(root, ctx) {
       icon: NAV_ICONS[item.hash],
       // D-04 (план 23.1-07): строка уже несёт Lucide-иконку слева — ведущий эмодзи подписи
       // реестра (labelText, ui.js) здесь не дублируется рядом с ней.
-      title: labelText(labels[item.section] || item.section),
+      title: labelText(item.label || labels[item.section] || item.section),
       value: item.hash === "#/form" ? (ctx.me.form_status_label || "") : "",
       valueCls: item.hash === "#/form" && ctx.me.form_status === "approved" ? "ok" : undefined,
       chevron: true,
@@ -441,7 +441,7 @@ async function renderTilesOnlyHub(root, ctx, items) {
       iconName: NAV_ICONS[item.hash],
       // D-04: плитка уже несёт Lucide-иконку слева — ведущий эмодзи подписи реестра здесь
       // не дублируется рядом с ней (тот же приём, что renderDelegateHub чуть выше).
-      label: labelText(labels[item.section] || item.section),
+      label: labelText(item.label || labels[item.section] || item.section),
       meta: item.hash === "#/form" ? (ctx.me.form_status_label || "") : "",
     }));
   }
@@ -460,6 +460,7 @@ const MANAGER_FETCHERS = {
   "#/questions": { cap: "moderate_reg", path: "/questions?offset=0&limit=1" },
   "#/stats": { cap: "moderate_game", path: "/stats/game" },
   "#/settings": { cap: "settings", path: "/admin/settings" },
+  "#/admin-reject-rules": { cap: "settings", path: "/admin/reject-rules?limit=1" },
 };
 
 // Плитка «📊 Дашборд» (quick 260903): открывает веб-дашборд во внешнем браузере — НЕ раздел
@@ -512,6 +513,8 @@ function applyManagerTileData(hash, data, tileEl, hero) {
     small.textContent = `${data.participants} участников`;
   } else if (hash === "#/settings") {
     small.textContent = `${data.length} настроек`;
+  } else if (hash === "#/admin-reject-rules") {
+    small.textContent = data.paused_count ? `⚠️ ${data.paused_count} на паузе` : "Кого бот отклоняет сам";
   }
 }
 
@@ -623,7 +626,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
         iconName: NAV_ICONS[item.hash],
         // D-04: плитка уже несёт Lucide-иконку слева — labelText снимает ведущий эмодзи
         // подписи реестра, не дублируя его рядом с иконкой (тот же приём, что выше по файлу).
-        label: labelText(labels[item.section] || item.section),
+        label: labelText(item.label || labels[item.section] || item.section),
         meta: "…",
       });
       tileEls[item.hash] = el;
