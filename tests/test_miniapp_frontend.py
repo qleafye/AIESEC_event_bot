@@ -265,6 +265,10 @@ EXPECTED_ROUTES = {
     "#/forum-day": "screens/forum_day.js",
     # Папка баллов и стойки магазина.
     "#/coins-shop": "screens/coins_shop.js",
+    # Цифры регистраций — не #/stats геймы.
+    "#/figures": "screens/reg_figures.js",
+    # Три числа отметок площадки.
+    "#/arrivals": "screens/arrivals.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -299,7 +303,9 @@ def test_route_table_matches_phase_plan_exactly():
     # D-29: +1 маршрут "#/program" (23 -> 24).
     # Первая из пяти пар плана: "#/chat/{topic}" (24 -> 25). Итог будет 29.
     # Ещё две пары папок: "#/forum-day", "#/coins-shop" (25 -> 27).
-    assert len(routes) == 27
+    # Ещё две пары чтений: "#/figures", "#/arrivals" (27 -> 29).
+    # Пять маршрутов: #/chat/{topic}, #/forum-day, #/coins-shop, #/figures, #/arrivals.
+    assert len(routes) == 29
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -386,6 +392,41 @@ def test_forum_folders_source_contains_ui_spec_copy():
     assert "moderate_game" in shop
     assert "staffOnly" not in shop
     assert "is_delegate" not in shop
+
+
+def test_figures_and_arrivals_source_contains_placeholder_retry_and_home_figure():
+    """Сторож цифр и отметок читает экраны и app.css. Пустой render в ROUTES его не закрывает."""
+    figures = _exported_render_body(SCREENS_DIR / "reg_figures.js")
+    arrivals = _exported_render_body(SCREENS_DIR / "arrivals.js")
+    css = (MINIAPP_STATIC / "app.css").read_text(encoding="utf-8")
+    error = "Не удалось открыть экран. Проверьте интернет и нажмите «Открыть экран снова»."
+    assert ".home-figure" in css
+    for body, title in ((figures, "Цифры"), (arrivals, "Отметки")):
+        assert title in body
+        assert "…" in body
+        # Плейсхолдер числа — «…». Три ASCII-точки в кавычках на его месте не принимаются.
+        # Spread (`...nodes`) в теле функции — не плейсхолдер.
+        assert not re.search(r"""["'`]\.\.\.["'`]""", body)
+        assert error in body
+        assert "Открыть экран снова" in body
+        assert "home-figure" in body
+        assert "quiet" not in body
+    assert 'api("/stats/registrations")' in figures
+    assert 'api("/checkin/floor")' in arrivals
+    assert "Пока никто не отмечен. Числа появятся, когда сканер отметит вход." in arrivals
+    for literal in (
+        "Всего регистраций",
+        "Топ-3 вуза",
+        "Повторных",
+        "Прошлые сезоны",
+        "По городам",
+        "всего",
+        "на модерации",
+        "одобрено",
+    ):
+        assert literal in figures, literal
+    for literal in ("Сейчас на площадке", "Пришли", "Одобрено"):
+        assert literal in arrivals, literal
 
 
 def test_route_modules_are_lazily_imported():
