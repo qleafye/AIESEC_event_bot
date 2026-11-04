@@ -259,6 +259,8 @@ EXPECTED_ROUTES = {
     "#/scanner": "screens/scanner.js",
     # D-29: делегатский экран «📅 Программа».
     "#/program": "screens/program.js",
+    # Указатель рассылки, SOS и находок — один модуль на три темы.
+    "#/chat/{topic}": "screens/chat_pointer.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -291,7 +293,8 @@ def test_route_table_matches_phase_plan_exactly():
     # настроек открывает саму настройку, не начало раздела.
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
-    assert len(routes) == 24
+    # Первая из пяти пар плана: "#/chat/{topic}" (24 -> 25). Итог будет 29.
+    assert len(routes) == 25
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -303,6 +306,51 @@ def test_every_screen_module_is_registered_in_routes():
     existing = {p.name for p in SCREENS_DIR.glob("*.js")} if SCREENS_DIR.is_dir() else set()
     unregistered = existing - registered
     assert not unregistered, f"экраны без маршрута в app.js: {sorted(unregistered)}"
+
+
+def _exported_render_body(path: Path) -> str:
+    """Тело `export async function render` после снятия комментариев.
+
+    Пара в ROUTES без литералов внутри render этот разбор не закрывает: пустая функция
+    возвращает `{}`, и проверка строк падает.
+    """
+    text = _js_without_comments(path)
+    match = re.search(r"export\s+async\s+function\s+render\s*\([^)]*\)\s*\{", text)
+    assert match, f"{path.name}: нет export async function render"
+    start = match.end() - 1
+    depth = 0
+    for index in range(start, len(text)):
+        ch = text[index]
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:index + 1]
+    raise AssertionError(f"{path.name}: render не закрыт")
+
+
+def test_chat_pointer_source_contains_ui_spec_copy():
+    """Сторож копирайта указателя читает файл экрана, не список ожидания в тесте."""
+    path = SCREENS_DIR / "chat_pointer.js"
+    text = path.read_text(encoding="utf-8")
+    body = _exported_render_body(path)
+    for literal in (
+        "Рассылка в чате",
+        "Откройте в чате раздел «Общение» и кнопку рассылки. Письмо отсюда не отправить.",
+        "SOS в чате",
+        "Откройте в чате раздел дня форума и кнопку «SOS». Заявку отсюда не создать.",
+        "Находки в чате",
+        "Откройте в чате кнопку находок. Список вещей здесь не ведётся.",
+        "В этом режиме пусто",
+        "Для вашей роли здесь нет строк. Если дело пропало, попросите того, кто выдаёт доступ, проверить права.",
+    ):
+        assert literal in body, literal
+    assert "Открыть экран снова" not in text
+    lowered = text.lower()
+    assert "callback" not in lowered
+    assert "textarea" not in lowered
+    assert "input" not in lowered
 
 
 def test_route_modules_are_lazily_imported():
