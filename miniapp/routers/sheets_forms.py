@@ -2,8 +2,9 @@
 
 Вкладки и книга только читаются. Id формы пишется, если он есть в list_forms.
 Вопрос делегаций берётся из свежего list_columns по индексу, не из строки клиента.
-Включение: нет трёх вопросов — ничего не пишем и sweep не зовём; иначе просмотр числа,
-затем delegation_armed_form_id, затем sweep. Сезон эта ручка не закрывает.
+Смена формы делегаций гасит включение и три выбранных вопроса (пустая строка, ключ остаётся).
+Включение: вопроса нет или его нет в колонках этой формы — ничего не пишем и sweep не зовём;
+иначе просмотр числа, затем delegation_armed_form_id, затем sweep. Сезон эта ручка не закрывает.
 """
 from __future__ import annotations
 
@@ -93,6 +94,23 @@ async def _deny_city(admin_id: int) -> None:
         raise HTTPException(403, {"reason": "common_locked"})
 
 
+def _known_qkeys(columns: list[dict]) -> set[str]:
+    found: set[str] = set()
+    for col in columns:
+        qkey = col.get("qkey")
+        if qkey is None:
+            continue
+        text = str(qkey).strip()
+        if text:
+            found.add(text)
+    return found
+
+
+def _questions_selected(keys: dict, columns: list[dict]) -> bool:
+    known = _known_qkeys(columns)
+    return all(keys.get(which) in known for which in _REQUIRED)
+
+
 async def _card() -> dict:
     forms = await ext_forms_db.list_forms()
     by_id = {int(form["id"]): form for form in forms}
@@ -123,7 +141,7 @@ async def _card() -> dict:
         "book_connected": bool(sheet_id()),
         "slots": slots,
         "delegations_on": await delegations.is_armed(),
-        "questions_ready": all(keys.get(which) for which in _REQUIRED),
+        "questions_ready": _questions_selected(keys, columns),
         "questions": questions,
         "forms": [_public_name(form.get("title")) for form in forms],
         "question_choices": [_public_name(col.get("label")) for col in columns],
@@ -144,9 +162,10 @@ def _chosen_form(forms: list[dict], body: SlotIn) -> dict | None:
 
 async def _arm_block() -> str | None:
     keys = await delegations.field_keys()
-    if any(not keys.get(which) for which in _REQUIRED):
-        return _KEYS_MISSING
     fid = await delegations.delegation_form_id()
+    columns = await ext_forms_db.list_columns(fid) if fid is not None else []
+    if not _questions_selected(keys, columns):
+        return _KEYS_MISSING
     if fid is None or await ext_forms_db.get_form(fid) is None:
         return _NO_FORM
     return None
@@ -178,6 +197,8 @@ async def sheets_forms_slot(
     if body.slot == "delegation":
         # Пустая строка, не удаление ключа: старт базы не включит модуль сам.
         await set_setting_by_admin(p.telegram_id, "delegation_armed_form_id", "")
+        for _which, _label, setting_key in _QUESTIONS:
+            await set_setting_by_admin(p.telegram_id, setting_key, "")
     return await _card()
 
 
