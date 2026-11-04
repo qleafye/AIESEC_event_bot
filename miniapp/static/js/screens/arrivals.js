@@ -1,5 +1,5 @@
 // Тонкое чтение отметок площадки. Журнал, рассылка и CSV остаются в чате.
-// GET /checkin/floor: present, arrived, approved; live_sessions — названия, без кнопок.
+// GET /checkin/floor: present, arrived, approved; sessions — названия, без кнопок.
 
 import { isCoreHandledError } from "../ui.js";
 
@@ -64,7 +64,7 @@ export async function render(root, params, ctx) {
       text: "Пока никто не отмечен. Числа появятся, когда сканер отметит вход.",
     }));
   }
-  const raw = Array.isArray(data.live_sessions) ? data.live_sessions : [];
+  const raw = Array.isArray(data.sessions) ? data.sessions : [];
   for (const item of raw) {
     const title = typeof item === "string" ? item : (item && typeof item.title === "string" ? item.title : "");
     if (!title) continue;
