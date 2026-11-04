@@ -576,6 +576,78 @@ def _delegation_http(tmp_path):
     return _client(_cfg(config.DB_PATH)), fid
 
 
+def test_sheets_form_change_resets_delegation_questions(tmp_path, monkeypatch):
+    client = _sheets_client(tmp_path, "sheets_form_change.db")
+    old = _run(_make_form(
+        "Старая форма", secret="secret-old", external_id="ext-old",
+        columns=[("old-name", "ФИО"), ("old-uni", "Вуз"), ("old-course", "Курс")],
+    ))
+    new = _run(_make_form(
+        "Новая форма", secret="secret-new", external_id="ext-new",
+        columns=[("new-name", "Имя"), ("new-uni", "Университет"), ("new-course", "Курс обучения")],
+    ))
+    _set("delegation_form_id", str(old))
+    _set("delegation_armed_form_id", str(old))
+    _set("delegation_q_fullname", "old-name")
+    _set("delegation_q_university", "old-uni")
+    _set("delegation_q_course", "old-course")
+    _set("delegation_q_email", "old-mail")
+
+    changed = client.post(
+        SLOT_PATH, json={"slot": "delegation", "form_id": new}, headers=_hdr(ADMIN_ID),
+    )
+    assert changed.status_code == 200, changed.text
+    body = changed.json()
+    assert body["questions_ready"] is False
+    assert [q["text"] for q in body["questions"]] == [None, None, None]
+    assert [slot["slot"] for slot in body["slots"]] == [
+        "registration", "delegation", "ambassador",
+    ]
+    assert "game" not in body and "sessions" not in body
+    assert _raw_setting("delegation_q_fullname") == ""
+    assert _raw_setting("delegation_q_university") == ""
+    assert _raw_setting("delegation_q_course") == ""
+    assert _raw_setting("delegation_q_email") == "old-mail"
+    assert _raw_setting("delegation_armed_form_id") == ""
+
+    # Непустые ключи старой формы всё равно не считаются выбранными.
+    _set("delegation_q_fullname", "old-name")
+    _set("delegation_q_university", "old-uni")
+    _set("delegation_q_course", "old-course")
+    stale = client.get(SHEETS_PATH, headers=_hdr(ADMIN_ID))
+    assert stale.status_code == 200, stale.text
+    assert stale.json()["questions_ready"] is False
+
+    swept: list = []
+
+    async def _no_sweep(*_a, **_k):
+        swept.append(1)
+        return {"evaluated": 0, "linked": 0, "rechecked": 0}
+
+    import miniapp.routers.sheets_forms as sheets_forms
+    monkeypatch.setattr(sheets_forms.delegations, "sweep_pending", _no_sweep)
+    blocked = client.post(ARM_PATH, json={"action": "on"}, headers=_hdr(ADMIN_ID))
+    assert blocked.status_code == 200, blocked.text
+    assert blocked.json() == {"ok": False, "text": _KEYS_MISSING}
+    assert _raw_setting("delegation_armed_form_id") == ""
+    assert swept == []
+
+    for which, index in (("fullname", 0), ("university", 1), ("course", 2)):
+        picked = client.post(
+            QUESTION_PATH, json={"which": which, "index": index}, headers=_hdr(ADMIN_ID),
+        )
+        assert picked.status_code == 200, picked.text
+    assert picked.json()["questions_ready"] is True
+    assert _raw_setting("delegation_q_fullname") == "new-name"
+    assert _raw_setting("delegation_q_university") == "new-uni"
+    assert _raw_setting("delegation_q_course") == "new-course"
+    turned = client.post(ARM_PATH, json={"action": "on"}, headers=_hdr(ADMIN_ID))
+    assert turned.status_code == 200, turned.text
+    assert turned.json()["ok"] is True and turned.json()["delegations_on"] is True
+    assert _raw_setting("delegation_armed_form_id") == str(new)
+    assert swept == [1]
+
+
 def test_sheets_forms_on_without_questions_does_not_arm_or_sweep(tmp_path):
     from database import delegations_db as ddb
     from tests.test_delegations_core import _answer_from_fixture
