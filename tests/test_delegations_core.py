@@ -662,6 +662,66 @@ def test_welcome_not_marked_sent_without_bot(tmp_path, monkeypatch):
     assert len(bot.sent) == 1 and len(_effects_sent(601)) == 1
 
 
+def test_welcome_retry_return_does_not_close_the_debt(tmp_path, monkeypatch):
+    """Бот есть, send_with_retry возвращает исключение и не бросает его.
+    Долг остаётся, пока следующая отправка не пройдёт. Третий заход письмо не повторяет."""
+    from services.infra import telegram_send
+
+    bot, _storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _reg_started(605)
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form, _run(dlg.field_keys())))
+    real_send = telegram_send.send_with_retry
+
+    async def _refuse(_attempt):
+        return RuntimeError("telegram refused")
+
+    monkeypatch.setattr(telegram_send, "send_with_retry", _refuse)
+    first = _run(dlg.convert_to_delegate(605, row, fields, how="username", by=None))
+    assert first.get("welcomed") is not True
+    assert bot.sent == []
+    assert _effects_sent(605) == []
+    assert _journal(605) == []
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_PENDING
+
+    monkeypatch.setattr(telegram_send, "send_with_retry", real_send)
+    second = _run(dlg.convert_to_delegate(605, row, fields, how="username", by=None))
+    assert second.get("welcomed") is True
+    assert len(bot.sent) == 1
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_SENT
+    sent = _effects_sent(605)
+    assert len(sent) == 1 and sent[0]
+    third = _run(dlg.convert_to_delegate(605, row, fields, how="username", by=None))
+    assert third == {"already": True}
+    assert len(bot.sent) == 1
+    assert len(_effects_sent(605)) == 1
+
+
+def test_welcome_retry_return_keeps_existing_debt_without_journal(tmp_path, monkeypatch):
+    """Тот же отказ для уже одобренного: note остаётся welcome_pending_existing, журнала нет."""
+    from services.infra import telegram_send
+
+    bot, _storage = _env(tmp_path)
+    fid = _delegation_form()
+    _answer_from_fixture(fid, "a1", course="3 бакалавриат")
+    _user(606, "approved")
+    form = _run(ef.get_form(fid))
+    row, fields, _ = _run(dlg.evaluate(_run(ef.get_answer(fid, "a1")), form, _run(dlg.field_keys())))
+
+    async def _refuse(_attempt):
+        return RuntimeError("telegram refused")
+
+    monkeypatch.setattr(telegram_send, "send_with_retry", _refuse)
+    result = _run(dlg.convert_to_delegate(606, row, fields, how="username", by=None))
+    assert result.get("welcomed") is not True
+    assert bot.sent == []
+    assert _journal(606) == []
+    assert _effects_sent(606) == []
+    assert _drow(fid, "a1")["note"] == dlg._NOTE_WELCOME_PENDING_EXISTING
+
+
 def test_welcome_failure_is_retried_once(tmp_path, monkeypatch):
     bot, _storage = _env(tmp_path)
     fid = _delegation_form()
