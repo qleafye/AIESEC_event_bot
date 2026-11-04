@@ -524,9 +524,8 @@ async def apply_move(telegram_id: int, *, source_city: str | None) -> dict:
     (`regional_noshow_move_release_claim`), чтобы делегат мог повторить тап.
 
     `by_admin=0` — системный маркер (перенос инициирован делегатом по кнопке, не менеджером);
-    `history_source="system:regional_offer"` (решение координатора 25.09) отличает эту запись
-    `reg_answer_history` от ручного перевода менеджером карточкой (дефолт `move_user_city`,
-    `source="admin"`)."""
+    `history_source="system:regional_offer"` отличает действие `city_move_regional` в журнале
+    действий менеджера от ручного перевода карточкой (`city_move`)."""
     from database.db import regional_noshow_move_claim, regional_noshow_move_release_claim
     from services.cities.city_move import move_user_city
 

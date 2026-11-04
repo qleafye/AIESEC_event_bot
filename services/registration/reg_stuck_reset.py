@@ -39,7 +39,7 @@ from database.db import (
     get_reg_draft,
     get_reg_started_by_id,
     get_user,
-    record_answer_history,
+    record_admin_action,
 )
 from services.infra.timeutil import msk_now
 
@@ -141,12 +141,15 @@ async def reset_stuck_registration(
             logger.error(f"reset_stuck_registration: FSM делегата {telegram_id} не сброшен: {e}")
 
     try:
-        await record_answer_history(
-            telegram_id, [{"column": "reg_draft", "old": kind, "new": None}],
-            source=f"admin:{by_admin}",
+        await record_admin_action(
+            actor_id=by_admin,
+            subject_id=telegram_id,
+            action="reset_stuck",
+            before={"draft": kind},
+            after={"draft": None},
         )
     except Exception as e:
-        logger.warning(f"reset_stuck_registration: record_answer_history({telegram_id}) failed: {e}")
+        logger.warning(f"reset_stuck_registration: журнал действия ({telegram_id}) не записан: {e}")
 
     report: dict = {
         "ok": True, "error": None, "kind": kind,

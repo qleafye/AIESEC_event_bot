@@ -892,6 +892,9 @@ admin|message|shop_new_input|state:ShopAdmin:*
 admin|message|shop_edit_input|state:ShopAdmin:*
 admin|message|city_chat_limit_value|state:CityChatEdit:*
 admin|message|city_chat_days_value|state:CityChatEdit:*
+admin|message|find_person_cancel|state:FindPerson:*,state:FindPerson:*
+admin|message|find_person_cancel|state:FindPerson:*,state:FindPerson:*
+admin|message|find_person_message|state:FindPerson:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -2684,7 +2687,8 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после bciv_toggle и перед admin_event_preset, +1 user_actions.callback_query
     # consent_tap в хвосте после iv_moveto.
     # Вместе с чатом города: 1369 + 18 + 16 = 1403.
-    assert len(GOLDEN_SNAPSHOT) == 1403
+    # 03.11 (/find по id и пересылке): +3 admin.message после полей чата города (1403 -> 1406).
+    assert len(GOLDEN_SNAPSHOT) == 1406
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

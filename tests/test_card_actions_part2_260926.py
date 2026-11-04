@@ -483,10 +483,41 @@ def test_reset_records_answer_history(tmp_path):
         await reset_stuck_registration(
             _FakeBotWithId(), None, STARTED_ONLY_ID, by_admin=SUPERADMIN_ID, notify=False,
         )
-        return await db.get_answer_history(STARTED_ONLY_ID)
+        history = await db.get_answer_history(STARTED_ONLY_ID)
+        return history, await db.list_admin_actions(STARTED_ONLY_ID)
 
-    history = _run(scenario())
-    assert history and history[0]["source"] == f"admin:{SUPERADMIN_ID}"
+    history, actions = _run(scenario())
+    assert history == []
+    assert len(actions) == 1
+    assert actions[0]["action"] == "reset_stuck"
+    assert actions[0]["actor_id"] == SUPERADMIN_ID
+    assert actions[0]["before"] == {"draft": "new"}
+    assert actions[0]["after"] == {"draft": None}
+
+
+def test_reset_journal(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_draft(STARTED_ONLY_ID, kind="edit")
+        report = await reset_stuck_registration(
+            _FakeBotWithId(), None, STARTED_ONLY_ID, by_admin=SUPERADMIN_ID, notify=False,
+        )
+        gone = await reset_stuck_registration(
+            _FakeBotWithId(), None, STARTED_ONLY_ID, by_admin=SUPERADMIN_ID, notify=False,
+        )
+        actions = await db.list_admin_actions(STARTED_ONLY_ID)
+        history = await db.get_answer_history(STARTED_ONLY_ID)
+        return report, gone, actions, history
+
+    report, gone, actions, history = _run(scenario())
+    assert report["ok"] is True
+    assert gone["ok"] is False
+    assert history == []
+    assert len(actions) == 1
+    assert actions[0]["action"] == "reset_stuck"
+    assert actions[0]["before"] == {"draft": "edit"}
+    assert actions[0]["after"]["draft"] is None
 
 
 # ── handlers/applications/admin_reg_reset.py — UI-слой ───────────────────────────────────────────────────
@@ -1077,9 +1108,10 @@ def test_replace_resume_uploads_and_updates_sheet(tmp_path, monkeypatch):
         )
         user = await db.get_user(DELEGATE_ID)
         history = await db.get_answer_history(DELEGATE_ID)
-        return report, user, history
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        return report, user, history, actions
 
-    report, user, history = _run(scenario())
+    report, user, history, actions = _run(scenario())
     assert report["ok"] is True
     assert report["sheet_updated"] is True
     assert report["new_resume_url"] == "https://cloud.example.org/s/TOK/download?files=new.pdf"
@@ -1087,8 +1119,42 @@ def test_replace_resume_uploads_and_updates_sheet(tmp_path, monkeypatch):
     assert user["resume_url"] == "https://cloud.example.org/s/TOK/download?files=new.pdf"
     assert upload_calls and upload_calls[0][0] == "NEWFILE"
     assert sheet_calls
-    assert history and history[0]["source"] == f"admin:{SUPERADMIN_ID}"
-    assert history[0]["changes"] == [{"column": "resume_file_id", "old": True, "new": True}]
+    assert history == []
+    assert len(actions) == 1
+    assert actions[0]["action"] == "replace_resume"
+    assert actions[0]["before"] == {"had_file": True}
+    assert actions[0]["after"] == {"had_file": True}
+    assert "resume_file_id" not in actions[0]["before"]
+    assert "resume_file_id" not in actions[0]["after"]
+
+
+def test_resume_journal_has_no_file_id(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="approved")
+        report = await replace_resume(
+            _FakeBotWithId(), DELEGATE_ID, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        )
+        missing = await replace_resume(
+            _FakeBotWithId(), 999999999, "NEWFILE", "resume.pdf", by_admin=SUPERADMIN_ID,
+        )
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        history = await db.get_answer_history(DELEGATE_ID)
+        async with db._connect() as conn:
+            async with conn.execute("SELECT COUNT(*) FROM admin_actions") as cur:
+                total = (await cur.fetchone())[0]
+        return report, missing, actions, history, total
+
+    report, missing, actions, history, total = _run(scenario())
+    assert report["ok"] is True
+    assert missing["ok"] is False
+    assert history == []
+    assert total == 1
+    blob = str(actions[0]["before"]) + str(actions[0]["after"])
+    assert "resume_file_id" not in blob
+    assert actions[0]["before"] == {"had_file": False}
+    assert actions[0]["after"] == {"had_file": True}
 
 
 def test_replace_resume_upload_failure_reports_cloud_error(tmp_path, monkeypatch):

@@ -37,7 +37,9 @@ import gspread
 
 from config import config
 from services.sheets import sheet_target as _sheet_target
-from database.db import _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting
+from database.db import (
+    _csv_safe, get_all_users_dicts, get_all_users_ids, get_setting, record_admin_action,
+)
 from domain.settings.schema import get_setting_typed
 from domain.regform.engine import is_past_season_row
 from domain.regform.labels import STATUS_LABELS
@@ -367,7 +369,21 @@ def _scope_key(city_scope: tuple | None) -> str:
     return city_scope[0] if city_scope else "*"
 
 
-async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
+async def _remember_batch(action: str, by_admin: int | None, before: dict, after: dict) -> None:
+    """Пакет без одного делегата: в журнале только числа, не список людей и не ячейки."""
+    try:
+        await record_admin_action(
+            actor_id=by_admin,
+            subject_id=None,
+            action=action,
+            before=before,
+            after=after,
+        )
+    except Exception as e:
+        logger.warning("sheet_reconcile: журнал %s не записан: %s", action, e)
+
+
+async def apply_append_missing(*, city_scope: tuple | None = None, by_admin: int | None = None) -> dict:
     """Дописывает недостающие строки ТОЛЬКО на существующие вкладки (`services.sheets.sheets::
     append_to_existing_named_sheet` — никогда не создаёт, Phase 33 review R1), с шапкой
     (`ensure_sheet_header`/`ensure_named_sheet_header` перед первой строкой на вкладку — та же
@@ -390,6 +406,9 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
         if not report["ok"]:
             return {"ok": False, "error": report["error"] or "таблица недоступна"}
         if not report["missing_rows"]:
+            await _remember_batch(
+                "sheet_append_missing", by_admin, {"missing": 0}, {"appended": 0, "failed": 0},
+            )
             return {"ok": True, "done": 0, "failed": [], "total": 0}
         total = len(report["missing_rows"])
 
@@ -429,6 +448,10 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
                 else:
                     failed.append({**it, "reason": _SHEET_RESULT_TEXT.get(result, result)})
                 await asyncio.sleep(_APPEND_PAUSE_S)
+        await _remember_batch(
+            "sheet_append_missing", by_admin,
+            {"missing": total}, {"appended": done, "failed": len(failed)},
+        )
         return {"ok": True, "done": done, "failed": failed, "total": total}
     except Exception as e:
         logger.error(f"apply_append_missing: неожиданный сбой после done={done}/{total}: {e}")
@@ -440,7 +463,7 @@ async def apply_append_missing(*, city_scope: tuple | None = None) -> dict:
         _release(key)
 
 
-async def apply_fix_statuses(*, city_scope: tuple | None = None) -> dict:
+async def apply_fix_statuses(*, city_scope: tuple | None = None, by_admin: int | None = None) -> dict:
     """Правит статус ТОЛЬКО там, где на вкладке РОВНО одна строка делегата (дубли — только
     показываем, руками) — тем же путём, что решение модератора (`services.sheets.sheets::
     update_status_in_sheet`). По одному с паузой; сбой одного не прерывает остальные.
@@ -459,6 +482,9 @@ async def apply_fix_statuses(*, city_scope: tuple | None = None) -> dict:
         if not report["ok"]:
             return {"ok": False, "error": report["error"] or "таблица недоступна"}
         if not report["status_mismatch"]:
+            await _remember_batch(
+                "sheet_fix_statuses", by_admin, {"mismatch": 0}, {"fixed": 0, "failed": 0},
+            )
             return {"ok": True, "done": 0, "failed": [], "total": 0}
         total = len(report["status_mismatch"])
 
@@ -469,6 +495,10 @@ async def apply_fix_statuses(*, city_scope: tuple | None = None) -> dict:
             else:
                 failed.append({**item, "reason": "строка не найдена при записи"})
             await asyncio.sleep(_STATUS_PAUSE_S)
+        await _remember_batch(
+            "sheet_fix_statuses", by_admin,
+            {"mismatch": total}, {"fixed": done, "failed": len(failed)},
+        )
         return {"ok": True, "done": done, "failed": failed, "total": total}
     except Exception as e:
         logger.error(f"apply_fix_statuses: неожиданный сбой после done={done}/{total}: {e}")

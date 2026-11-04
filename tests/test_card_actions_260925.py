@@ -135,8 +135,13 @@ def test_revert_approved_reverts_status_and_records_history(tmp_path):
     user = _run(db.get_user(DELEGATE_ID))
     assert user["status"] == "pending"
     history = _run(db.get_answer_history(DELEGATE_ID))
-    assert history and history[0]["source"] == f"admin:{SUPERADMIN_ID}"
-    assert history[0]["changes"] == [{"column": "status", "old": "approved", "new": "pending"}]
+    actions = _run(db.list_admin_actions(DELEGATE_ID))
+    assert history == []
+    assert len(actions) == 1
+    assert actions[0]["action"] == "revert_pending"
+    assert actions[0]["actor_id"] == SUPERADMIN_ID
+    assert actions[0]["before"] == {"status": "approved"}
+    assert actions[0]["after"] == {"status": "pending"}
 
 
 def test_revert_rejected_reverts_status_too(tmp_path):
@@ -172,6 +177,53 @@ def test_revert_refuses_unknown_user(tmp_path):
     assert report["ok"] is False
 
 
+def test_revert_writes_admin_action(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        await db.update_payment_status(
+            DELEGATE_ID, "receipt_sent", payment_option="Полный участник — 5000 руб",
+        )
+        await db.update_payment_status(DELEGATE_ID, "paid")
+        report = await revert_to_pending(DELEGATE_ID, by_admin=SUPERADMIN_ID, notify=False)
+        user = await db.get_user(DELEGATE_ID)
+        history = await db.get_answer_history(DELEGATE_ID)
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        return report, user, history, actions
+
+    report, user, history, actions = _run(scenario())
+    assert report["ok"] is True
+    assert user["payment_status"] == "paid"
+    assert history == []
+    assert len(actions) == 1
+    assert actions[0]["action"] == "revert_pending"
+    assert actions[0]["before"]["status"] == "rejected"
+    assert actions[0]["after"]["status"] == "pending"
+    assert "payment_status" not in actions[0]["before"]
+    assert "payment_status" not in actions[0]["after"]
+
+
+def test_revert_noop_writes_nothing(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="pending")
+        pending = await revert_to_pending(DELEGATE_ID, by_admin=SUPERADMIN_ID, notify=False)
+        missing = await revert_to_pending(999999999, by_admin=SUPERADMIN_ID, notify=False)
+        history = await db.get_answer_history(DELEGATE_ID)
+        async with db._connect() as conn:
+            async with conn.execute("SELECT COUNT(*) FROM admin_actions") as cur:
+                actions = (await cur.fetchone())[0]
+        return pending, missing, history, actions
+
+    pending, missing, history, actions = _run(scenario())
+    assert pending["ok"] is False
+    assert missing["ok"] is False
+    assert history == []
+    assert actions == 0
+
+
 def test_revert_status_race_reports_error_without_crashing(tmp_path, monkeypatch):
     """Гонка T-23-02: `revert_user_to_pending` находит статус уже изменённым — сервис
     сообщает отказ, не поднимает исключение и не пишет историю."""
@@ -190,7 +242,9 @@ def test_revert_status_race_reports_error_without_crashing(tmp_path, monkeypatch
     assert report["ok"] is False
     assert "параллельно" in report["error"]
     history = _run(db.get_answer_history(DELEGATE_ID))
+    actions = _run(db.list_admin_actions(DELEGATE_ID))
     assert history == []
+    assert actions == []
 
 
 def test_revert_cancels_payment_reminders_only_when_was_approved(tmp_path, monkeypatch):
@@ -370,10 +424,20 @@ def test_revert_source_admin_prefix_does_not_break_history_screen(tmp_path):
     async def scenario():
         await _seed_user(DELEGATE_ID, status="approved")
         await revert_to_pending(DELEGATE_ID, by_admin=SUPERADMIN_ID, notify=False)
-        return await db.get_answer_history(DELEGATE_ID)
+        from_revert = await db.get_answer_history(DELEGATE_ID)
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        await db.record_answer_history(
+            DELEGATE_ID,
+            [{"column": "status", "old": "approved", "new": "pending"}],
+            source=f"admin:{SUPERADMIN_ID}",
+        )
+        screen = await db.get_answer_history(DELEGATE_ID)
+        return from_revert, actions, screen
 
-    history = _run(scenario())
-    source = history[0]["source"]
+    from_revert, actions, screen = _run(scenario())
+    assert from_revert == []
+    assert actions and actions[0]["action"] == "revert_pending"
+    source = screen[0]["source"]
     assert source == f"admin:{SUPERADMIN_ID}"
     # Тот же приём, что handlers/applications/admin_moderation.py::appr_history — не бросает исключение.
     label = EDITED_SOURCE_LABELS.get(source, source)
@@ -650,14 +714,19 @@ def test_grant_override_creates_active_row_and_records_history(tmp_path):
         )
         active = await delegate_overrides.active_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT)
         history = await db.get_answer_history(DELEGATE_ID)
-        return result, active, history
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        return result, active, history, actions
 
-    result, active, history = _run(scenario())
+    result, active, history, actions = _run(scenario())
     assert result["ok"] is True
     assert active is not None
     assert active["granted_by"] == SUPERADMIN_ID
-    assert history and history[0]["source"] == f"admin:{SUPERADMIN_ID}"
-    assert history[0]["changes"] == [{"column": "resubmit_override", "old": None, "new": "granted"}]
+    assert history == []
+    assert len(actions) == 1
+    assert actions[0]["action"] == "grant_resubmit"
+    assert actions[0]["actor_id"] == SUPERADMIN_ID
+    assert actions[0]["before"] == {"active": False}
+    assert actions[0]["after"] == {"active": True}
 
 
 def test_grant_override_refuses_duplicate_active(tmp_path):
@@ -772,11 +841,53 @@ def test_regrant_after_revoke_creates_new_row_history_keeps_both(tmp_path):
         await delegate_overrides.revoke_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
         result = await delegate_overrides.grant_override(DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID)
         history = await db.get_answer_history(DELEGATE_ID, limit=10)
-        return result, history
+        actions = await db.list_admin_actions(DELEGATE_ID, limit=10)
+        return result, history, actions
 
-    result, history = _run(scenario())
+    result, history, actions = _run(scenario())
     assert result["ok"] is True
-    assert len(history) == 3
+    assert history == []
+    assert [row["action"] for row in actions] == [
+        "grant_resubmit", "revoke_resubmit", "grant_resubmit",
+    ]
+
+
+def test_grant_and_revoke_override_journal(tmp_path):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed_user(DELEGATE_ID, status="rejected")
+        granted = await delegate_overrides.grant_override(
+            DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID,
+        )
+        again = await delegate_overrides.grant_override(
+            DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID,
+        )
+        revoked = await delegate_overrides.revoke_override(
+            DELEGATE_ID, delegate_overrides.KIND_RESUBMIT, SUPERADMIN_ID,
+        )
+        edit_on = await delegate_overrides.grant_override(
+            DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID,
+        )
+        edit_off = await delegate_overrides.revoke_override(
+            DELEGATE_ID, delegate_overrides.KIND_EDIT, SUPERADMIN_ID,
+        )
+        actions = await db.list_admin_actions(DELEGATE_ID, limit=10)
+        history = await db.get_answer_history(DELEGATE_ID)
+        return granted, again, revoked, edit_on, edit_off, actions, history
+
+    granted, again, revoked, edit_on, edit_off, actions, history = _run(scenario())
+    assert granted["ok"] is True
+    assert again["ok"] is False
+    assert revoked["ok"] is True
+    assert edit_on["ok"] is True
+    assert edit_off["ok"] is True
+    assert history == []
+    assert [row["action"] for row in actions] == [
+        "revoke_edit", "grant_edit", "revoke_resubmit", "grant_resubmit",
+    ]
+    assert actions[-1]["before"] == {"active": False}
+    assert actions[-1]["after"] == {"active": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════════════════
