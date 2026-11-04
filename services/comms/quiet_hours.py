@@ -305,6 +305,17 @@ async def queued_count() -> int:
     return await count_pending_delayed_notifications()
 
 
+async def _render_queued(user_id, text):
+    """Ссылка чата — в момент утренней отправки. Без {chat} функция ничего не спрашивает у Telegram."""
+    from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+    from services.city_chat_link import render_for_delegate
+    from services import scheduler as _sched
+
+    return await render_for_delegate(
+        text, int(user_id), client_from_bot(_sched._bot), notify=notify_if_bot_ready,
+    )
+
+
 async def flush_due(now: datetime) -> int:
     """Цель джобы: забирает строки с `due_at <= now`, закрытый диспетчер по `kind` (форма
     `services/infra/miniapp_outbox.py::_handle_row`) — неизвестный `kind` не исполняется никогда,
@@ -325,8 +336,9 @@ async def flush_due(now: datetime) -> int:
         payload = row.get("payload") or {}
         try:
             if kind == KIND_TEXT:
+                body = await _render_queued(user_id, payload.get("text", ""))
                 await _sched._bot.send_message(
-                    user_id, payload.get("text", ""),
+                    user_id, body,
                     parse_mode=payload.get("parse_mode", "HTML"),
                     reply_markup=_rebuild_markup(payload.get("reply_markup")),
                 )
@@ -336,11 +348,14 @@ async def flush_due(now: datetime) -> int:
             elif kind == KIND_MEDIA:
                 await _flush_media_row(row_id, user_id, payload, now_str)
             elif kind == KIND_COPY:
+                extra = {}
+                if payload.get("caption"):
+                    extra["caption"] = await _render_queued(user_id, payload["caption"])
                 await _sched._bot.copy_message(
                     chat_id=user_id,
                     from_chat_id=payload.get("from_chat_id"),
                     message_id=payload.get("message_id"),
-                    **({"caption": payload["caption"]} if payload.get("caption") else {}),
+                    **extra,
                 )
                 await mark_delayed_notification_sent(row_id, now_str)
             elif kind == KIND_POLL:
@@ -453,9 +468,10 @@ async def _flush_media_row(row_id: int, user_id: int, payload: dict, now_str: st
         logger.error(f"quiet_hours: unknown media method={method!r} for row id={row_id} — never executed")
         await mark_delayed_notification_sent(row_id, now_str, error=f"unknown media method: {method}")
         return
+    caption = await _render_queued(user_id, payload.get("caption"))
     await getattr(_sched._bot, method)(
         user_id, payload.get("file_id"),
-        caption=payload.get("caption"), parse_mode=payload.get("parse_mode"),
+        caption=caption, parse_mode=payload.get("parse_mode"),
     )
     await mark_delayed_notification_sent(row_id, now_str)
 
@@ -472,6 +488,7 @@ async def _flush_poll_row(row_id: int, user_id: int, payload: dict, now_str: str
     intro = payload.get("intro_text")
     if intro:
         try:
+            intro = await _render_queued(user_id, intro)
             await _sched._bot.send_message(user_id, intro)
         except Exception as e:
             logger.warning(f"quiet_hours: вступление к опросу (row id={row_id}) не ушло: {e}")

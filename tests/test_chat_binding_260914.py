@@ -599,6 +599,7 @@ def test_resolve_used_update_types_needs_group_chat_router():
     used = dp.resolve_used_update_types()
     assert "my_chat_member" in used
     assert "chat_member" in used
+    assert "chat_join_request" in used
 
 
 def test_start_in_group_does_not_reach_the_personal_router_behind_it(tmp_path):

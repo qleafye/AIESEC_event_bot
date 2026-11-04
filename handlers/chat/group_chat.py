@@ -241,8 +241,21 @@ async def on_bot_membership_changed(event: types.ChatMemberUpdated, bot: Bot):
             await _dm(bot, admin_id, text)
 
 
+async def _note_city_join(bot: Bot, chat_id: int, user_id: int) -> None:
+    """Чужой вход в привязанный чат — личная сводка. Сбой не откатывает учёт."""
+    try:
+        from handlers.chat.city_chat_summary_send import note_join
+
+        await note_join(bot, chat_id, user_id)
+    except Exception as exc:
+        logger.warning(
+            "group_chat: сводка входа не собралась, чат %s: %s",
+            chat_id, type(exc).__name__,
+        )
+
+
 @router.chat_member()
-async def on_chat_member_changed(event: types.ChatMemberUpdated):
+async def on_chat_member_changed(event: types.ChatMemberUpdated, bot: Bot | None = None):
     """Любое изменение статуса УЧАСТНИКА (не самого бота — тот выше, my_chat_member).
     Ботов пропускаем: gamification/сервисные боты в группе не в счёт."""
     user = event.new_chat_member.user
@@ -257,6 +270,8 @@ async def on_chat_member_changed(event: types.ChatMemberUpdated):
     now_present = new_status in CHAT_PRESENT_STATUSES
     if now_present and not was_present:
         await log_chat_event(event.chat.id, user.id, "join")
+        if bot is not None:
+            await _note_city_join(bot, event.chat.id, user.id)
     elif was_present and not now_present:
         await log_chat_event(event.chat.id, user.id, "kick" if new_status == "kicked" else "leave")
 
@@ -272,6 +287,8 @@ async def on_new_chat_members(message: types.Message, bot: Bot | None = None):
         await upsert_chat_member(message.chat.id, user.id, "member", source="message")
         await upsert_chat_username(user.id, user.username, user.first_name)
         await log_chat_event(message.chat.id, user.id, "join")
+        if bot is not None:
+            await _note_city_join(bot, message.chat.id, user.id)
     if bot is not None:
         await chat_cleanup.handle_service_message(bot, message.chat.id, message.message_id, "join")
 
@@ -604,3 +621,6 @@ async def on_chatbind_pick(callback: types.CallbackQuery, bot: Bot):
     reconcile_start = await get_setting_typed(chat_tracking.CHAT_BIND_RECONCILE_START_KEY)
     await _dm(bot, callback.from_user.id, reconcile_start)
     await chat_tracking.schedule_bind_reconcile(chat_id, code, callback.from_user.id)
+
+
+import handlers.chat.city_chat_join  # router уже создан: наблюдатель заявки на вход

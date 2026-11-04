@@ -186,6 +186,19 @@ async def _schedule_deadline_reminders(telegram_id: int):
         logger.error(f"Failed to schedule payment reminders for {telegram_id}: {e}")
 
 
+async def _render_chat_token(bot, telegram_id: int, text: str) -> str:
+    """Токен {chat} в тексте менеджера становится ссылкой прямо перед отправкой.
+    Письмо одобрения эту строку само не получает."""
+    if not isinstance(text, str) or "{chat}" not in text:
+        return text
+    from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+    from services.city_chat_link import render_for_delegate
+
+    return await render_for_delegate(
+        text, telegram_id, client_from_bot(bot), notify=notify_if_bot_ready,
+    )
+
+
 async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str = "full") -> Exception | None:
     """Entry point called from approve_user() when payment_enabled=on. Fail-soft.
 
@@ -220,6 +233,7 @@ async def start_payment_step(bot: Bot, telegram_id: int, participant_type: str =
             block = _format_requisites_block(await _resolve_requisites(telegram_id), lang, tr_map)
             if block:
                 text += f"\n\n{block}"
+            text = await _render_chat_token(bot, telegram_id, text)
             await bot.send_message(telegram_id, text, parse_mode="HTML", reply_markup=kb)
             return None
         if not visible:
@@ -390,6 +404,7 @@ async def _show_payment_details(
     # user approved-but-stateless. start_payment_step's except still delivers a fallback
     # menu for the single/free path; the multi-option path re-raises to the callback.
     await state.set_state(Registration.receipt_upload)
+    text = await _render_chat_token(bot, telegram_id, text)
     await bot.send_message(
         telegram_id, text, parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[_pay_later_btn(lang, tr_map)]]),

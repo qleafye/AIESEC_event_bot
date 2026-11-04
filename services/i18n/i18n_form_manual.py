@@ -1342,6 +1342,8 @@ FORM_DEFAULT_EN: dict[str, str] = {
     "⏰ Через {minutes} мин начнётся твоя сессия «{title}»\n🕒 {start}\n🏛 Зал «{hall}»\n🎯 На сессии получишь компетенцию: {competencies}": (
         "⏰ Your session “{title}” starts in {minutes} min\n🕒 {start}\n🏛 Hall “{hall}”\n🎯 You will gain the competency: {competencies}"
     ),
+    # Письмо одобрения дописывает эту строку, если менеджер сам не поставил {chat}.
+    "Чат города: {chat}": "City chat: {chat}",
 }
 
 

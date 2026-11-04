@@ -637,6 +637,9 @@ def _build_snapshot_lines():
 # RUNNING `_build_snapshot_lines()` и сверено difflib.SequenceMatcher: 3 вставки, 0 удалений, 0 реордеров.
 # admin.router: /shop + ввод (4 message) и shp_*/admin_shop (20 callback_query) из handlers/game/admin_shop.py, хвост admin.py;
 # user_actions.router: витрина shopv (handlers/game/shop_delegate.py) — ПЕРЕД reg_handoff_idle_fallback.
+# Дрифт-нота (03.11, экран чата города): +18 хендлеров admin.router, чистые вставки (1369 -> 1387).
+# 2 message (ввод лимита и срока) сразу после shop_edit_input; 5 callback сводки и 11 callback экрана
+# сразу после shop_sales_csv и перед prog_fbday. Пересчитано RUNNING `_build_snapshot_lines()`.
 GOLDEN_SNAPSHOT = """
 admin|message|cmd_admin_help|cmd:admin
 admin|message|cmd_coins|cmd:coins
@@ -886,6 +889,8 @@ admin|message|shop_command|cmd:shop
 admin|message|shop_find_input|state:ShopAdmin:*
 admin|message|shop_new_input|state:ShopAdmin:*
 admin|message|shop_edit_input|state:ShopAdmin:*
+admin|message|city_chat_limit_value|state:CityChatEdit:*
+admin|message|city_chat_days_value|state:CityChatEdit:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1813,6 +1818,22 @@ admin|callback_query|shop_top|shp_top:*
 admin|callback_query|shop_top_csv|shp_topcsv
 admin|callback_query|shop_sales|shp_sales:*
 admin|callback_query|shop_sales_csv|shp_salescsv
+admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
+admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
+admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
+admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
+admin|callback_query|on_summary_button|cchat:keep:*,cchat:ask:*,cchat:yes:*,cchat:no:*,cchat:page:*
+admin|callback_query|city_chat_open|admin_city_chat
+admin|callback_query|city_chat_pick|cchat:open:*
+admin|callback_query|city_chat_join_mode|cchat:req:*
+admin|callback_query|city_chat_open_mode|cchat:now:*
+admin|callback_query|city_chat_no_limit|cchat:lnone:*
+admin|callback_query|city_chat_no_days|cchat:dnone:*
+admin|callback_query|city_chat_ask_limit|cchat:lask:*
+admin|callback_query|city_chat_ask_days|cchat:dask:*
+admin|callback_query|city_chat_summary|cchat:sum:*
+admin|callback_query|city_chat_apply|cchat:apply:*
+admin|callback_query|city_chat_stay|cchat:stay:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2634,7 +2655,8 @@ def test_snapshot_total_handler_count_is_292():
     # 15.10 (напоминания о сессиях, handlers/forum/admin_session_remind.py): +7 admin prog_srm/srmon/srmmo/srmmin/srmtx/srmtm/srmex; чистая вставка (1264 -> 1271).
     # 29.10 (ссылка и QR конкретного опроса): +1 admin.callback_query survey_link_qr
     # (psv_link:*) сразу после survey_preview и перед survey_go; чистая вставка (1368 -> 1369).
-    assert len(GOLDEN_SNAPSHOT) == 1369
+    # 03.11 (экран чата города): +18 admin.router, чистая вставка (1369 -> 1387).
+    assert len(GOLDEN_SNAPSHOT) == 1387
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
