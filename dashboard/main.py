@@ -38,6 +38,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 import shared.web_theme as web_theme
 from shared.secret_redact import install_log_redaction, register_secret
 from dashboard import chat_rating
+from dashboard import portraits
 from dashboard import queries
 from dashboard import sources_daily
 from dashboard.access import has_stats, staff_city, viewer_scope
@@ -659,15 +660,22 @@ def _with_survey_links(block: dict, bot_username: str | None) -> dict:
     return block
 
 
+def _feedback_payload(conn, cfg: DashboardConfig, scope: queries.Scope) -> dict:
+    """Опросы за день и сводки «ФОРУМ: ИТОГИ». Оба куска читают базу заново на каждый запрос."""
+    block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
+    block["portraits"] = portraits.forum_portraits(conn, scope)
+    return block
+
+
 def build_feedback_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict,
 ) -> dict:
-    """Страница «Опросы и фидбек» — KPI + таблица форм за сегодня (МСК), те же цифры,
-    что `/feedback.json` для автообновления."""
+    """Страница «ФОРУМ: ИТОГИ» — портрет регистраций и дошедших, оценки форума,
+    плюс опросы за сегодня. Те же цифры отдаёт `/feedback.json`."""
     flags = queries.dashboard_flags(conn)
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
-    block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
+    block = _feedback_payload(conn, cfg, scope)
     q = urlencode({k: v for k, v in (("city", scope.city), ("season", scope.season)) if v})
     csv_summary_href = "/feedback.csv" + (f"?{q}" if q else "")
     csv_answers_href = "/feedback.csv?part=answers" + (f"&{q}" if q else "")
@@ -1233,7 +1241,7 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             if not has_stats(conn, telegram_id, cfg.admin_ids):
                 return JSONResponse({"error": "no_access"}, status_code=403)
             scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
-            block = _with_survey_links(queries.feedback_day(conn, scope), cfg.bot_username)
+            block = _feedback_payload(conn, cfg, scope)
         return block
 
     @app.get("/feedback.csv")
