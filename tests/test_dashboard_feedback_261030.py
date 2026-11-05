@@ -172,13 +172,16 @@ def test_feedback_page_requires_login_and_renders(tmp_path, monkeypatch):
     client = tdr._stats_manager_client(db_path)
     resp = client.get("/feedback")
     assert resp.status_code == 200
-    assert "Опросы и фидбек" in resp.text
+    assert "ФОРУМ: ИТОГИ" in resp.text
+    assert "Одобренные заявки" in resp.text
     assert "Оценки сессий" in resp.text
     assert "Скачать сводку CSV" in resp.text
     payload = client.get("/feedback.json").json()
     assert "totals" in payload and "arrived" in payload
     assert payload["totals"]["forms"] == 0
     assert "sessions_totals" in payload
+    assert payload["portraits"]["approved"] == 0
+    assert "Отметок входа" in payload["portraits"]["days_text"]
     csv_guest = guest.get("/feedback.csv", follow_redirects=False)
     assert csv_guest.status_code == 401
     csv_ok = client.get("/feedback.csv")
@@ -306,9 +309,11 @@ def test_feedback_day_question_distribution_and_session_ratings_even_if_off(tmp_
 
 
 def test_feedback_page_shows_questions_and_session_block(tmp_path, monkeypatch):
+    from datetime import datetime as dt
     from tests import test_dashboard_render as tdr
 
     db_path = tdr._use_tmp_db(tmp_path, "feedback_questions_page.db")
+    monkeypatch.setattr("dashboard.queries.msk_now", lambda: dt(2026, 10, 30, 19, 40, 0))
     monkeypatch.setattr(config, "ADMIN_IDS", [tdr.ADMIN_ID])
     _run(db.set_setting("event_season", SEASON))
     _run(db.set_setting("event_city_enabled", "on"))

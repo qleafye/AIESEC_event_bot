@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Опросы и фидбек — {{ event_name or "Дашборд статистики" }}{% endblock %}
+{% block title %}ФОРУМ: ИТОГИ — {{ event_name or "Дашборд статистики" }}{% endblock %}
 {% block body %}
 
   <header class="site-header">
@@ -9,8 +9,8 @@
         <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
       </a>
       <div class="title-block">
-        <h1>Опросы и фидбек</h1>
-        {% if event_season %}<div class="subtitle">Сезон {{ event_season }} · {{ day_label }}</div>{% endif %}
+        <h1>ФОРУМ: ИТОГИ</h1>
+        {% if event_season %}<div class="subtitle">Сезон {{ event_season }}</div>{% endif %}
       </div>
       <div class="event-logo-slot">
         {% if event_logo_url %}
@@ -61,8 +61,10 @@
     </div>
   </header>
 
+  {% include "_portraits.html" %}
+
   <section class="page-section" id="overview" aria-labelledby="overview-title">
-    <h2 class="section-title" id="overview-title">За {{ day_label }}</h2>
+    <h2 class="section-title" id="overview-title">Опросы за {{ day_label }}</h2>
     <section class="block">
       <div class="card">
         <div class="kpi-grid">
@@ -344,7 +346,62 @@
       function setText(el, value) {
         if (el) el.textContent = value;
       }
+      function paintRow(row, cols) {
+        if (!row || typeof CSS === "undefined" || !CSS.escape) return;
+        var tr = document.querySelector('#portraits tr[data-row="' + CSS.escape(row.key) + '"]');
+        if (!tr) return;
+        cols.forEach(function (col) {
+          if (row[col] === undefined) return;
+          var value = (col === "reg" || col === "arr" || col === "n") ? fmt(row[col]) : String(row[col]);
+          setText(tr.querySelector('[data-col="' + col + '"]'), value);
+        });
+      }
+      function paintPortraits(block) {
+        setText(document.querySelector('[data-kpi="p-approved"]'), fmt(block.approved));
+        setText(document.querySelector('[data-kpi="p-arrived"]'), fmt(block.arrived));
+        setText(document.getElementById("portrait-days"), block.days_text || "");
+        var outside = document.getElementById("portrait-outside");
+        if (outside) {
+          outside.textContent = block.outside_text || "";
+          outside.hidden = !block.outside_text;
+        }
+        document.querySelectorAll("[data-head='approved']").forEach(function (el) {
+          el.textContent = "Одобренные, " + fmt(block.approved);
+        });
+        document.querySelectorAll("[data-head='arrived']").forEach(function (el) {
+          el.textContent = "Дошли, " + fmt(block.arrived);
+        });
+        (block.cuts || []).forEach(function (cut) {
+          (cut.rows || []).forEach(function (row) {
+            paintRow(row, ["reg", "reg_pct", "arr", "arr_pct"]);
+          });
+          (cut.footer || []).forEach(function (line, index) {
+            setText(document.querySelector('[data-footer="' + cut.id + '-' + index + '"]'), line);
+          });
+        });
+        var scores = block.nps || {};
+        var sessions = scores.sessions || {};
+        setText(document.querySelector('[data-kpi="p-prompted"]'), fmt(sessions.prompted));
+        setText(document.querySelector('[data-kpi="p-rated"]'), fmt(sessions.rated));
+        setText(document.querySelector('[data-kpi="p-avg"]'), sessions.avg || "—");
+        (sessions.rows || []).forEach(function (row) { paintRow(row, ["n", "pct"]); });
+        (scores.groups || []).forEach(function (group) {
+          setText(document.querySelector('[data-note="g' + group.id + '"]'), group.note || "");
+          (group.rows || []).forEach(function (row) { paintRow(row, ["n", "avg"]); });
+        });
+        (scores.choices || []).forEach(function (choice) {
+          setText(document.querySelector('[data-total="' + choice.id + '"]'), fmt(choice.total));
+          setText(document.querySelector('[data-note="q' + choice.id + '"]'), choice.note || "");
+          (choice.rows || []).forEach(function (row) { paintRow(row, ["n", "pct"]); });
+        });
+      }
       function apply(data) {
+        var box = document.getElementById("portraits");
+        if (box && data.portraits && box.getAttribute("data-fp") !== data.portraits.fingerprint) {
+          window.location.reload();
+          return;
+        }
+        if (data.portraits) paintPortraits(data.portraits);
         setText(document.querySelector('[data-kpi="pct"]'), data.totals.pct + "%");
         setText(document.querySelector('[data-kpi="done"]'), fmt(data.totals.done));
         setText(document.querySelector('[data-kpi="started"]'), fmt(data.totals.started));

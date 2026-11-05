@@ -1,0 +1,147 @@
+<section class="page-section" id="portraits" data-fp="{{ portraits.fingerprint }}" aria-labelledby="portraits-title">
+  <h2 class="section-title" id="portraits-title">Кто зарегистрировался и кто дошёл</h2>
+  <section class="block">
+    <div class="card">
+      <div class="kpi-grid">
+        <div class="kpi primary">
+          <div class="num" data-kpi="p-approved">{{ portraits.approved | thousands }}</div>
+          <div class="lbl">Одобренные заявки</div>
+        </div>
+        <div class="kpi">
+          <div class="num" data-kpi="p-arrived">{{ portraits.arrived | thousands }}</div>
+          <div class="lbl">Отметились на входе</div>
+        </div>
+      </div>
+      <p class="empty-note" id="portrait-days">{{ portraits.days_text }}</p>
+      {% if portraits.outside_text %}
+      <p class="empty-note" id="portrait-outside">{{ portraits.outside_text }}</p>
+      {% else %}
+      <p class="empty-note" id="portrait-outside" hidden></p>
+      {% endif %}
+      <p class="empty-note">Слева одобренные заявки выбранного сверху сезона и города. Справа из них те, у кого есть скан QR на входе. Процент считается от своего столбца. Доля справа не показывает, сколько процентов вуза пришло: кто прошёл мимо QR, в цифру не попал.</p>
+    </div>
+  </section>
+
+  {% for cut in portraits.cuts %}
+  <section class="block">
+    <h2 class="block-title">{{ cut.title }}</h2>
+    <div class="card">
+      {% if cut.note %}<p class="empty-note">{{ cut.note }}</p>{% endif %}
+      <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              <th></th>
+              <th class="num" data-head="approved">Одобренные, {{ portraits.approved | thousands }}</th>
+              <th class="num">%</th>
+              <th class="num" data-head="arrived">Дошли, {{ portraits.arrived | thousands }}</th>
+              <th class="num">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in cut.rows %}
+            <tr data-row="{{ row.key }}">
+              <td data-label="">{{ row.label }}</td>
+              <td class="num" data-label="Одобренные" data-col="reg">{{ row.reg | thousands }}</td>
+              <td class="num" data-label="%" data-col="reg_pct">{{ row.reg_pct }}</td>
+              <td class="num" data-label="Дошли" data-col="arr">{{ row.arr | thousands }}</td>
+              <td class="num" data-label="%" data-col="arr_pct">{{ row.arr_pct }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% for line in cut.footer %}
+      <p class="empty-note" data-footer="{{ cut.id }}-{{ loop.index0 }}">{{ line }}</p>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+
+  <h2 class="section-title" id="scores-title">Оценки участников</h2>
+  <section class="block">
+    <div class="card">
+      {% if portraits.nps.asked %}
+      <p class="empty-note">В опросах есть шкала от 0 до 10 или вопрос NPS. Ниже его ответы и остальные оценки. Классический NPS здесь не выводится отдельной формулой.</p>
+      {% else %}
+      <p class="empty-note">Вопроса «порекомендуешь ли форум от 0 до 10» нет. NPS по этим ответам не считается. Ниже оценки сессий, площадки и настроение дня. Ноль в таблице значит «не могу оценить» и в среднее не входит.</p>
+      {% endif %}
+      {% if portraits.nps.sessions.available %}
+      <p class="empty-note">Сводка оценок сессий, шкала 1–5. Запросов: <span data-kpi="p-prompted">{{ portraits.nps.sessions.prompted | thousands }}</span>. Поставили оценку: <span data-kpi="p-rated">{{ portraits.nps.sessions.rated | thousands }}</span>. Среднее: <span data-kpi="p-avg">{{ portraits.nps.sessions.avg }}</span>. Это не все сессии и не все дошедшие.</p>
+      <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr><th>Оценка</th><th class="num">Ответов</th><th class="num">Доля</th></tr>
+          </thead>
+          <tbody>
+            {% for row in portraits.nps.sessions.rows %}
+            <tr data-row="{{ row.key }}">
+              <td>{{ row.label }}</td>
+              <td class="num" data-col="n">{{ row.n | thousands }}</td>
+              <td class="num" data-col="pct">{{ row.pct }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty-note">Оценок сессий в базе нет.</p>
+      {% endif %}
+    </div>
+  </section>
+
+  {% for group in portraits.nps.groups %}
+  <section class="block">
+    <h2 class="block-title">{{ group.title }}</h2>
+    <div class="card">
+      {% if group.note %}<p class="empty-note" data-note="g{{ group.id }}">{{ group.note }}</p>{% endif %}
+      <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr><th>Строка</th><th class="num">Оценок 1–5</th><th class="num">Среднее</th></tr>
+          </thead>
+          <tbody>
+            {% for row in group.rows %}
+            <tr data-row="{{ row.key }}">
+              <td>{{ row.label }}</td>
+              <td class="num" data-col="n">{{ row.n | thousands }}</td>
+              <td class="num" data-col="avg">{{ row.avg }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+
+  {% for choice in portraits.nps.choices %}
+  <section class="block">
+    <h2 class="block-title">{{ choice.title }}</h2>
+    <div class="card">
+      <p class="empty-note">Ответов: <span data-total="{{ choice.id }}">{{ choice.total | thousands }}</span>.{% if choice.note %} <span data-note="q{{ choice.id }}">{{ choice.note }}</span>{% endif %} Это не NPS и не все дошедшие.</p>
+      <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr><th>Ответ</th><th class="num">Людей</th><th class="num">Доля</th></tr>
+          </thead>
+          <tbody>
+            {% for row in choice.rows %}
+            <tr data-row="{{ row.key }}">
+              <td>{{ row.label }}</td>
+              <td class="num" data-col="n">{{ row.n | thousands }}</td>
+              <td class="num" data-col="pct">{{ row.pct }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+  <section class="block">
+    <div class="card">
+      <p class="empty-note">Отдельный опрос про бота сюда не входит.</p>
+    </div>
+  </section>
+</section>
