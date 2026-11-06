@@ -4602,116 +4602,137 @@ SETTINGS_SCHEMA = {
         "prompt": "Кнопка под витриной у каждого товара, который делегат может взять сам (когда включена «Бронь делегатом»).\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах",
         "default": "🛒 Взять: {title} · {price}",
         "placeholders": {"title": "товар", "price": "цена в баллах"},
+        "per_city": True,
     },
     "shop_reserve_hint_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: подсказка про бронь",
         "prompt": "Строка внизу витрины, когда включена «Бронь делегатом».",
         "default": "Нажми «Взять» — баллы спишутся сразу, а товар заберёшь на стойке магазина по коду или QR из «🎫 Мои брони».",
+        "per_city": True,
     },
     "shop_take_confirm_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: подтверждение брони",
         "prompt": "Вопрос перед списанием баллов за товар.\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах\n{left} — сколько баллов останется",
         "default": "Списать {price} баллов за «{title}»?\nОстанется {left}. Забрать товар — на стойке магазина по коду выдачи.",
         "placeholders": {"price": "цена в баллах", "title": "товар", "left": "сколько баллов останется"},
+        "per_city": True,
     },
     "shop_take_confirm_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Да, списать»",
         "prompt": "Кнопка, которой делегат подтверждает бронь и списание баллов.",
         "default": "✅ Да, списать",
+        "per_city": True,
     },
     "shop_reserved_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: бронь оформлена",
         "prompt": "Сообщение после брони, под ним приходит QR. Поддерживается HTML.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи\n{price} — списано баллов\n{balance} — осталось на счету",
         "default": "✅ Забронировано: «{title}»\nКод выдачи: <b>{code}</b>\nСписано {price} баллов, на счету {balance}.\n\nПокажи QR ниже или назови код на стойке магазина.",
         "placeholders": {"title": "товар", "code": "код выдачи брони", "price": "цена в баллах", "balance": "баланс после операции"},
+        "per_city": True,
     },
     "shop_my_reservations_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Мои брони»",
         "prompt": "Кнопка на витрине и на экране «🪙 Мои баллы», пока у делегата есть действующие брони.",
         "default": "🎫 Мои брони",
+        "per_city": True,
     },
     "shop_my_reservations_header_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: заголовок «Мои брони»",
         "prompt": "Первая строка экрана со списком броней делегата. Поддерживается HTML.",
         "default": "🎫 <b>Мои брони</b>",
+        "per_city": True,
     },
     "shop_my_reservations_empty_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: броней нет",
         "prompt": "Что видит делегат на экране «🎫 Мои брони», когда действующих броней нет.",
         "default": "Действующих броней нет.",
+        "per_city": True,
     },
     "shop_reservation_qr_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка QR брони",
         "prompt": "Кнопка в «🎫 Мои брони» — прислать QR брони ещё раз.\n\nПодставляется:\n{code} — код выдачи",
         "default": "🔳 QR {code}",
         "placeholders": {"code": "код выдачи брони"},
+        "per_city": True,
     },
     "shop_reservation_cancel_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка отмены брони",
         "prompt": "Кнопка в «🎫 Мои брони» — отменить бронь.\n\nПодставляется:\n{code} — код выдачи",
         "default": "✖ Отменить {code}",
         "placeholders": {"code": "код выдачи брони"},
+        "per_city": True,
     },
     "shop_cancel_confirm_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: подтверждение отмены брони",
         "prompt": "Вопрос перед отменой брони делегатом.\n\nПодставляются:\n{title} — товар\n{code} — код выдачи\n{price} — сколько баллов вернём",
         "default": "Отменить бронь «{title}» (код {code})?\n\nВернём {price} баллов, товар вернётся на витрину, код перестанет работать.",
         "placeholders": {"title": "товар", "code": "код выдачи брони", "price": "цена в баллах"},
+        "per_city": True,
     },
     "shop_cancel_confirm_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Да, отменить бронь»",
         "prompt": "Кнопка, которой делегат подтверждает отмену брони.",
         "default": "↩️ Да, отменить бронь",
+        "per_city": True,
     },
     "shop_cancel_keep_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Не отменять»",
         "prompt": "Кнопка, которой делегат передумал отменять бронь.",
         "default": "Не отменять",
+        "per_city": True,
     },
     "shop_cancelled_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: бронь отменена",
         "prompt": "Сообщение делегату после отмены брони.\n\nПодставляются:\n{title} — товар\n{price} — сколько баллов вернули\n{balance} — на счету после возврата",
         "default": "↩️ Бронь «{title}» отменена, {price} баллов вернулись. На счету: {balance}.",
         "placeholders": {"title": "товар", "price": "цена в баллах", "balance": "баланс после операции"},
+        "per_city": True,
     },
     "shop_reservation_gone_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: бронь уже неактуальна",
         "prompt": "Всплывающее сообщение, когда делегат жмёт кнопку брони, которую уже выдали или отменили.",
         "default": "Эта бронь уже выдана или отменена.",
+        "per_city": True,
     },
     "shop_reservation_qr_footer_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: подпись на QR брони",
         "prompt": "Строка внизу картинки QR брони.",
         "default": "Покажи этот QR на стойке магазина",
+        "per_city": True,
     },
     "shop_issued_notify_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: уведомление «бронь выдана»",
         "prompt": "Сообщение делегату, когда на стойке выдали его бронь.\n\nПодставляются:\n{shop} — название магазина\n{code} — код выдачи\n{title} — товар",
         "default": "🛍 {shop}: по брони {code} выдали «{title}».",
         "placeholders": {"shop": "название магазина", "code": "код выдачи брони", "title": "товар"},
+        "per_city": True,
     },
     "shop_cancelled_by_staff_notify_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: уведомление «бронь отменили на стойке»",
         "prompt": "Сообщение делегату, когда менеджер отменил его бронь.\n\nПодставляются:\n{shop} — название магазина\n{code} — код выдачи\n{title} — товар\n{price} — сколько баллов вернули\n{balance} — на счету после возврата",
         "default": "🛍 {shop}: бронь {code} «{title}» отменили на стойке, {price} баллов вернулись. На счету: {balance}.",
         "placeholders": {"shop": "название магазина", "code": "код выдачи брони", "title": "товар", "price": "цена в баллах", "balance": "баланс после операции"},
+        "per_city": True,
     },
     # Магазин баллов: фото товаров альбомом на витрине в чате.
     "shop_photos_button_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: кнопка «Фото товаров»",
         "prompt": "Кнопка на витрине: прислать фото товаров альбомом. Видна, пока витрина открыта и хотя бы у одного товара есть фото.\n\nПример: 🖼 Фото товаров",
         "default": "🖼 Фото товаров",
+        "per_city": True,
     },
     "shop_photo_caption_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: подпись к фото товара",
         "prompt": "Подпись под каждым фото в альбоме товаров.\n\nПодставляются:\n{title} — товар\n{price} — цена в баллах\n\nПример: {title} — {price} баллов",
         "placeholders": {"title": "товар", "price": "цена в баллах"},
         "default": "{title} — {price} баллов",
+        "per_city": True,
     },
     "shop_photos_failed_text": {
         "type": "text", "group": "game", "label": "🛍 Магазин: фото не загрузились",
         "prompt": "Всплывающее сообщение, если Телеграм не принял альбом с фото товаров.",
         "default": "Фото сейчас не загрузились — попробуй ещё раз через минуту.",
+        "per_city": True,
     },
     "leaderboard_header_text": {
         "type": "text", "group": "game", "label": "🏆 Рейтинг: заголовок",
@@ -4788,6 +4809,7 @@ SETTINGS_SCHEMA = {
         ),
         "min": 1,
         "default": 5,
+        "per_city": True,
     },
     "amb_invite_threshold_with_count_text": {
         "type": "text", "group": "amb",
@@ -4801,6 +4823,7 @@ SETTINGS_SCHEMA = {
             "Слова в фигурных скобках не удалять."
         ),
         "default": "По твоей ссылке анкету завершили: {count}. До порога {threshold} осталось {left}.",
+        "per_city": True,
     },
     "amb_invite_threshold_done_with_count_text": {
         "type": "text", "group": "amb",
@@ -4813,6 +4836,7 @@ SETTINGS_SCHEMA = {
             "Слова в фигурных скобках не удалять."
         ),
         "default": "По твоей ссылке анкету завершили: {count}. Порог {threshold} уже пройден.",
+        "per_city": True,
     },
     "amb_invite_threshold_left_text": {
         "type": "text", "group": "amb",
@@ -4825,6 +4849,7 @@ SETTINGS_SCHEMA = {
             "Слова в фигурных скобках не удалять."
         ),
         "default": "До порога {threshold} осталось {left}.",
+        "per_city": True,
     },
     "amb_invite_threshold_done_text": {
         "type": "text", "group": "amb",
@@ -4835,6 +4860,7 @@ SETTINGS_SCHEMA = {
             "Слово в фигурных скобках не удалять."
         ),
         "default": "Порог {threshold} уже пройден.",
+        "per_city": True,
     },
 
     # Phase 14 (GAME-09): текст уведомления делегату после ручного начисления/списания монет
@@ -9950,6 +9976,12 @@ from domain.settings.delegate_text_fields import DELEGATE_TEXT_SCHEMA as _DELEGA
 
 SETTINGS_SCHEMA.update(_DELEGATE_TEXT_SCHEMA)
 
+# Группы game/amb из delegate_text_fields: модуль реестр не импортирует, флаг здесь.
+# Мутируем ту же запись — тесты сверяют идентичность словаря.
+for _del_meta in _DELEGATE_TEXT_SCHEMA.values():
+    if _del_meta.get("group") in ("game", "amb") and _del_meta.get("per_city") is not True:
+        _del_meta["per_city"] = True
+del _del_meta
 
 # ── Phase 25 (CITYQ-01): группа "reg_prompts" — тексты вопросов анкеты, переопределяемые по
 # городу. Пары (step_key, setting_key) — байт-в-байт порядок `_prompt_steps()`
