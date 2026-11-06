@@ -291,10 +291,17 @@ def test_root_with_cities_puts_readiness_into_header_row(tmp_path):
     from handlers.settings.admin_core import admin_keyboard_for
     _ready(tmp_path)
     _cities_on()
-    asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))  # худший случай: 9 разделов
-    kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert [b.callback_data for b in kb.inline_keyboard[0]] == ["admin_city_switch", "ready_list"]
-    assert len(kb.inline_keyboard) <= 10
+    # Соседние тесты оставляют адрес дашборда на config. С ним в корне есть
+    # отдельная кнопка «Настройки», и девять разделов плюс шапка уже не десять рядов.
+    saved_url = config.DASHBOARD_PUBLIC_URL
+    config.DASHBOARD_PUBLIC_URL = ""
+    try:
+        asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))  # худший случай: 9 разделов
+        kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
+        assert [b.callback_data for b in kb.inline_keyboard[0]] == ["admin_city_switch", "ready_list"]
+        assert len(kb.inline_keyboard) <= 10
+    finally:
+        config.DASHBOARD_PUBLIC_URL = saved_url
 
 
 def test_ready_list_screen(tmp_path):
