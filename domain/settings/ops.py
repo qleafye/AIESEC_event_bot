@@ -132,6 +132,7 @@ HTML_SETTINGS = {
     # сюда НЕ входят. Инвариант «prompt говорит HTML <=> ключ здесь» сторожит
     # tests/test_delegate_texts_registry_260819.py::test_html_promise_in_prompt_matches_html_settings.
     "pending_gate_text",
+    "waitlist_delegate_text",  # лист ожидания: письмо уходит с parse_mode="HTML"
     "poll_intro_text",  # опросы: вступление шлётся send_message с parse_mode=HTML (default бота)
     "start_returning_cta_text", "recall_generic_prompt_text",
     "payment_option_picker_header_text", "payment_details_template_text",
@@ -1232,6 +1233,9 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # Название мероприятия (`services.comms.text_fill.event_label`): без «🎪 Название мероприятия» —
     # нейтральное слово, с ним — настоящее название (подменяется в `preview_samples`).
     "event": "мероприятие",
+    # Интервью ({when}) и порог приглашённых ({threshold}): бот подставляет сам.
+    "when": "6 ноября, 14:00",
+    "threshold": "5",
 }
 
 

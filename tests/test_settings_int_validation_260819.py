@@ -102,11 +102,15 @@ def test_schema_has_no_min_max_fields():
         "wave_deadline_reminder_hours",  # 10.10: за 0 часов напоминать поздно, больше недели — бессмысленно
         "question_stuck_minutes",  # 10.10: «залип» через 0 минут — каждый взятый вопрос
         "sos_escalation_minutes",  # 10.10: «напомнить через 0 мин» — не пауза
+        "amb_invite_threshold",  # 06.11: 0 завершивших анкету — не порог
+        "interview_slot_cap",  # 06.11: 0 человек на одно время — слота нет
+        "ready_remind_days",  # 06.11: prompt говорит целое от 1 до 30
     }
     # `max` — у числа ступеней амбассадоров (1–5) и максимума баллов варианта теста (1–10).
     with_max = {key for key, entry in SETTINGS_SCHEMA.items() if "max" in entry}
     assert with_max == {
         "amb_tiers_count", "quiz_points_max", "wave_deadline_reminder_hours", "question_stuck_minutes",
+        "ready_remind_days",  # 06.11: prompt говорит целое от 1 до 30
     }
 
 

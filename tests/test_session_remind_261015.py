@@ -392,7 +392,7 @@ def test_morning_splits_personal_schedule_and_day_list(tmp_path, monkeypatch):
 
     result, sent = run(go())
     assert result["sent"] == 2
-    assert sent[101].startswith("☀️ Сегодня на форуме:")
+    assert sent[101].startswith("☀️ Сегодня:")
     assert "«Сессия A»" in sent[101]
     assert "Твоя программа" not in sent[101]
     assert sent[102].startswith("☀️ Доброе утро! Твоя программа на сегодня:")
@@ -645,7 +645,7 @@ def test_example_sends_remind_and_morning_and_explains_empty_program(tmp_path, m
     empty, full = run(go())
     assert empty.answers[0][1] is True and "нет сессий" in empty.answers[0][0]
     sent = full.message.answers_sent
-    assert len(sent) == 4 and "Через 10 мин" in sent[1] and "Сегодня на форуме" in sent[3]
+    assert len(sent) == 4 and "Через 10 мин" in sent[1] and "☀️ Сегодня:" in sent[3]
 
 
 def test_enroll_settings_screen_links_to_reminders(tmp_path):
