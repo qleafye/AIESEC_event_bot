@@ -29,7 +29,7 @@ import re
 from shared.amb_tier_keys import tier_key
 from database import amb_tiers_db
 from services.infra.timeutil import msk_now
-from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,10 @@ async def deliver_tier_notification(bot, telegram_id: int, tier: int, left: int 
         logger.warning("amb_tiers_notify: неизвестная ступень %s (tid=%s)", tier, telegram_id)
         return False
     try:
-        template = await get_setting_typed(key) or SETTINGS_SCHEMA[key]["default"]
+        # Текст города получателя, {chat} — ссылка на его чат (services/game/city_texts.py).
+        from services.game import city_texts
+        template, city = await city_texts.city_template(key, telegram_id)
+        template = template or SETTINGS_SCHEMA[key]["default"]
         lang, tr_map = "ru", {}
         try:
             from services.i18n.i18n import context as i18n_context
@@ -91,7 +94,7 @@ async def deliver_tier_notification(bot, telegram_id: int, tier: int, left: int 
             logger.exception("amb_tiers_notify: язык не определён (tid=%s)", telegram_id)
         from services.i18n.i18n import tr
 
-        text = str(tr(template, lang, tr_map)).replace("{left}", str(max(int(left or 0), 0)))
+        text = str(await city_texts.fill_chat(tr(template, lang, tr_map), city)).replace("{left}", str(max(int(left or 0), 0)))
 
         from services.comms import quiet_hours
 
