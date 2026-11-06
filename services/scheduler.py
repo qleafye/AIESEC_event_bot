@@ -625,7 +625,7 @@ async def _safe_send(send_coro_factory, chat_id, on_permanent_failure=None) -> b
 
 async def _render_delegate_text(bot, chat_id: int, text):
     """{chat} в письме делегату становится ссылкой на этого человека. Без токена Telegram молчит."""
-    from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+    from services.chat.city_chat_api import client_from_bot, notify_if_bot_ready
     from services.city_chat_link import render_for_delegate
 
     return await render_for_delegate(
@@ -870,7 +870,7 @@ async def send_scheduled_broadcast(broadcast_id: int):
         if filter_spec:
             try:
                 spec = json.loads(filter_spec)
-                from handlers.comms.admin_broadcast_interview import peel_interview_flag
+                from services.comms.broadcast_interview import peel_interview_flag
                 interview_on, spec = peel_interview_flag(spec)
                 if not spec:
                     target_ids = await get_all_users_ids()
@@ -975,8 +975,8 @@ async def send_scheduled_broadcast(broadcast_id: int):
         sent_message_ids: dict[int, int] = {}
         # Языки получателей и кнопка «🔕» — один раз на рассылку, не походом в БД на каждого.
         langs = await load_recipient_langs() if not important else None
-        from handlers.comms.admin_broadcast_interview import with_interview_button
-        from handlers.comms.admin_broadcast_consent import with_consent_button
+        from services.comms.broadcast_interview import with_interview_button
+        from services.comms.broadcast_consent import with_consent_button
         interview_base = with_interview_button(None, interview_on)
         interview_base = await with_consent_button(interview_base, log_bid, consent_key)
         # Чекпоинт `mark_delivery` остаётся на КАЖДОГО получателя (он и есть защита от дубля
