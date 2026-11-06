@@ -239,7 +239,7 @@ _MISC = {
     "Взять": "Take",
     "Да, списать": "Yes, deduct",
     "Не надо": "No, thanks",
-    "Взять товар здесь пока нельзя — подходи к стойке магазина на форуме и покажи свой QR.": "You can't take items here yet — come to the shop desk at the forum and show your QR.",
+    "Взять товар здесь пока нельзя — подходи к стойке магазина на мероприятии и покажи свой QR.": "You can't take items here yet — come to the shop desk at the event and show your QR.",
     "Забронировано: «{title}». Код выдачи — {code}. Покажи QR или назови код на стойке магазина.": "Reserved: «{title}». Pickup code — {code}. Show the QR or tell the code at the shop desk.",
     "Мои брони": "My reservations",
     "Код выдачи: {code}": "Pickup code: {code}",

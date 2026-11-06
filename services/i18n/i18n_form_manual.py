@@ -1415,7 +1415,7 @@ FORM_DEFAULT_EN: dict[str, str] = {
         "we'll know how many people to expect in the hall."
     ),
     "☀️ Доброе утро! Твоя программа на сегодня:": "☀️ Good morning! Here is your program for today:",
-    "☀️ Сегодня на форуме:": "☀️ Today at the forum:",
+    "☀️ Сегодня:": "☀️ Today:",
     "⏰ Через {minutes} мин начнётся твоя сессия «{title}»\n🕒 {start}\n🏛 Зал «{hall}»\n🎯 На сессии получишь компетенцию: {competencies}": (
         "⏰ Your session “{title}” starts in {minutes} min\n🕒 {start}\n🏛 Hall “{hall}”\n🎯 You will gain the competency: {competencies}"
     ),
