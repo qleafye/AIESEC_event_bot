@@ -6,7 +6,7 @@ pytest-asyncio недоступен в этом окружении — async ч�
 `tests/test_reg_finalize.py`).
 
 Задача 1 (`services/scheduler.py::nudge_incomplete_registrations`/`_nudge_remaining_for`):
-- без `{remaining}` в тексте — ни одного вызова `get_reg_draft` (байт-в-байт прежнее поведение);
+- без `{remaining}` текст письма не подменяется; `get_reg_draft` всё равно читается ради `updated_at`;
 - с `{remaining}` — свой остаток на каждого кандидата, `.replace`, не `.format`;
 - черновик не прочитался -> человеческое слово вместо числа, никогда не голые фигурные скобки;
 - `mark_nudged` (D-14, ровно один раз) и тихие часы (пропуск без пометки) не тронуты.
@@ -58,7 +58,10 @@ def _patch_common(monkeypatch, sched, db_mod, *, candidates, nudge_text, marked_
     async def fake_mark_nudged(uid):
         marked_out.append(uid)
 
-    async def fake_get_setting(key):
+    async def fake_started(tid):
+        return {"telegram_id": tid, "event_city": None, "started_at": "2020-01-01 00:00:00"}
+
+    async def fake_city_setting(key, city_code=None):
         return {
             "nudge_enabled": "on",
             "nudge_after_minutes": "120",
@@ -67,10 +70,11 @@ def _patch_common(monkeypatch, sched, db_mod, *, candidates, nudge_text, marked_
 
     monkeypatch.setattr(db_mod, "get_nudge_candidates", fake_get_candidates)
     monkeypatch.setattr(db_mod, "mark_nudged", fake_mark_nudged)
-    monkeypatch.setattr(sched, "get_setting", fake_get_setting)
+    monkeypatch.setattr(db_mod, "get_reg_started_by_id", fake_started)
+    monkeypatch.setattr(sched, "get_setting_typed_for_city", fake_city_setting)
 
 
-# ── Задача 1: без {remaining} — поведение байт-в-байт, ни одного get_reg_draft ────────────
+# ── Задача 1: без {remaining} — текст как есть; черновик читается ради даты касания ──────
 
 def test_nudge_without_placeholder_unchanged(tmp_path, monkeypatch):
     _ready(tmp_path, "nudge_plain.db")
@@ -84,9 +88,9 @@ def test_nudge_without_placeholder_unchanged(tmp_path, monkeypatch):
         marked_out=marked,
     )
 
-    async def _boom(_tid):
-        raise AssertionError("get_reg_draft must not be called without {remaining}")
-    monkeypatch.setattr(db_mod, "get_reg_draft", _boom)
+    async def fake_get_reg_draft(_tid):
+        return {"updated_at": "2020-01-01 00:00:00"}
+    monkeypatch.setattr(db_mod, "get_reg_draft", fake_get_reg_draft)
 
     bot = _FakeMeBot()
     sched._bot = bot
@@ -197,7 +201,7 @@ def test_nudge_still_one_shot(tmp_path, monkeypatch):
     assert marked.count(DELEGATE_ONESHOT) == 1
 
 
-# ── Задача 1: тихие часы — пропуск без mark_nudged, ДО расчёта остатка ────────────────────
+# ── Задача 1: тихие часы — пропуск без mark_nudged (старт уже есть, дело в окне) ─────────
 
 def test_nudge_respects_quiet_hours(tmp_path, monkeypatch):
     _ready(tmp_path, "nudge_quiet.db")
@@ -214,18 +218,22 @@ def test_nudge_respects_quiet_hours(tmp_path, monkeypatch):
 
     from datetime import datetime
 
-    async def fake_defer_until(_now, _uid):
+    quiet_seen = []
+
+    async def fake_defer_until(_now, uid):
+        quiet_seen.append(uid)
         return datetime(2026, 9, 8, 9, 0, 0)  # «спит» -- конец окна тихих часов
     monkeypatch.setattr(quiet_hours, "defer_until", fake_defer_until)
 
-    async def _boom(_tid):
-        raise AssertionError("get_reg_draft must not be called for a quiet-hours candidate")
-    monkeypatch.setattr(db_mod, "get_reg_draft", _boom)
+    async def fake_get_reg_draft(_tid):
+        return {"updated_at": "2020-01-01 00:00:00", "answers": {}, "event_city": None}
+    monkeypatch.setattr(db_mod, "get_reg_draft", fake_get_reg_draft)
 
     bot = _FakeMeBot()
     sched._bot = bot
     asyncio.run(sched.nudge_incomplete_registrations())
 
+    assert quiet_seen == [DELEGATE_QUIET]
     assert bot.sent == []
     assert marked == []
 
