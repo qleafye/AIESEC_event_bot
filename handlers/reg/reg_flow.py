@@ -24,13 +24,15 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import config
 from database.db import get_user, get_setting, record_user_consent, delete_reg_draft
-from database.db import current_consent_version, get_user_consent_versions
+from database.db import get_user_consent_versions
 # Квик 260914-k74 (LEAK-01): набор колонок резюме для снимка process_confirm_edit — тот же
 # источник правды, которым уже пользуется reg_engine.has_prior_resume, второй список не заводим.
 from database.db import RESUME_RECALL_COLUMNS
 from domain.settings.schema import get_setting_typed
 from services.registration.consent import tapped_button_text
-from domain.cities import CITIES, is_city_registration_open, get_setting_typed_for_city
+from domain.cities import (
+    CITIES, current_consent_version, is_city_registration_open, get_setting_typed_for_city,
+)
 from handlers.states import Registration
 from keyboards.builders import get_confirm_kb, get_main_menu_kb
 from handlers.registration import (
@@ -633,7 +635,11 @@ async def process_consent_accept(callback: types.CallbackQuery, state: FSMContex
     # _send_renew_card/process_consent_ignore, третьего варианта дефолта не заводим.
     consent_city = data.get("event_city")
     raw_button = tapped_button_text(callback) or await get_setting_typed_for_city("consent_button_text", consent_city) or "Согласен(-на)"
-    await record_user_consent(callback.from_user.id, consent_key, raw_button=raw_button, city_code=consent_city)
+    version = await current_consent_version(consent_city)
+    await record_user_consent(
+        callback.from_user.id, consent_key, consent_version=version,
+        raw_button=raw_button, city_code=consent_city,
+    )
     # "✅ Принято" — обвязка экрана согласия (кнопка сработала), не сам текст согласия
     # (LANG-09 запрещает переводить ТОЛЬКО текст/PDF согласия, не UI вокруг него).
     await callback.answer(await reg_i18n.tr_for(callback, "✅ Принято"))
