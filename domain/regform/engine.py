@@ -1806,6 +1806,12 @@ async def option_hints_for(step_key: str) -> dict[str, str]:
 # существительное для подстановки в середину фразы).
 _LOOKUP_ENTITY_NAMES: dict[str, str] = {"university": "ВУЗ", "city": "город"}
 
+# До 28.10 у кнопки мультивыбора был свой ключ («Продолжить»), а на остальных шагах мастера —
+# «Дальше» (`reg_form_next_cta_text`): менеджер видел в админке два ключа на одну кнопку.
+# Ключ снят с реестра; сохранённое в bot_settings значение читается, пока менеджер не задал
+# общий — иначе подпись у тех, кто её уже правил, молча сменилась бы.
+_LEGACY_CONTINUE_BUTTON_KEY = "reg_form_continue_button_text"
+
 
 async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | None) -> dict:
     """Тексты новых типов шага (30-UI-SPEC.md § Copywriting Contract), публикуются В
@@ -1833,7 +1839,11 @@ async def _v2_texts_for(degraded_kind: str, step_key: str, event_city: str | Non
         texts["normalized_note"] = await get_setting_typed("reg_lookup_normalized_note_text")
     elif degraded_kind == "multi":
         texts["skip_button"] = await get_setting_typed("reg_form_skip_button_text")
-        texts["continue_button"] = await get_setting_typed("reg_form_continue_button_text")
+        legacy = (await get_setting(_LEGACY_CONTINUE_BUTTON_KEY) or "").strip()
+        if legacy and await get_setting("reg_form_next_cta_text") is None:
+            texts["continue_button"] = legacy
+        else:
+            texts["continue_button"] = await get_setting_typed("reg_form_next_cta_text")
         # Приёмка 17.09 (находка 2/3): подпись неактивной кнопки «Дальше», пока не набран
         # `spec.min_select` — тот же паттерн, что `pick_option` у select ниже (переиспользуем
         # приём «неактивная кнопка с понятной подписью», не сам текст — вопросы разные).
