@@ -103,17 +103,30 @@ def test_blocked_candidate_is_marked_nudged_and_not_retried(monkeypatch):
     async def fake_mark_nudged(telegram_id):
         marked.append(telegram_id)
 
-    async def fake_get_setting(key):
+    async def fake_started(tid):
+        return {"telegram_id": tid, "event_city": None, "started_at": "2020-01-01 00:00:00"}
+
+    async def fake_city_setting(key, city_code=None):
         return {"nudge_enabled": "on", "nudge_after_minutes": "120"}.get(key)
 
+    async def fake_get_reg_draft(_tid):
+        return {"updated_at": "2020-01-01 00:00:00"}
+
     class _FakeBot:
+        async def get_me(self):
+            class _Me:
+                username = "test_bot"
+            return _Me()
+
         async def send_message(self, chat_id, text, reply_markup=None):
             sent_attempts.append(chat_id)
             raise _forbidden()
 
     monkeypatch.setattr("database.db.get_nudge_candidates", fake_get_nudge_candidates)
     monkeypatch.setattr("database.db.mark_nudged", fake_mark_nudged)
-    monkeypatch.setattr(scheduler, "get_setting", fake_get_setting)
+    monkeypatch.setattr("database.db.get_reg_started_by_id", fake_started)
+    monkeypatch.setattr("database.db.get_reg_draft", fake_get_reg_draft)
+    monkeypatch.setattr(scheduler, "get_setting_typed_for_city", fake_city_setting)
     monkeypatch.setattr(scheduler, "_bot", _FakeBot())
 
     asyncio.run(scheduler.nudge_incomplete_registrations())

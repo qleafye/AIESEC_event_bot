@@ -796,8 +796,14 @@ def test_nudge_toggle_off_sends_and_marks_as_before(tmp_path, monkeypatch):
     async def fake_mark_nudged(uid):
         marked.append(uid)
 
-    async def fake_get_setting(key):
+    async def fake_started(tid):
+        return {"telegram_id": tid, "event_city": None, "started_at": "2020-01-01 00:00:00"}
+
+    async def fake_city_setting(key, city_code=None):
         return {"nudge_enabled": "on", "nudge_after_minutes": "120", "nudge_text": "Продолжите"}.get(key)
+
+    async def fake_get_reg_draft(_tid):
+        return {"updated_at": "2020-01-01 00:00:00"}
 
     class _FakeMeBot:
         async def get_me(self):
@@ -810,7 +816,9 @@ def test_nudge_toggle_off_sends_and_marks_as_before(tmp_path, monkeypatch):
 
     monkeypatch.setattr(db_mod, "get_nudge_candidates", fake_get_candidates)
     monkeypatch.setattr(db_mod, "mark_nudged", fake_mark_nudged)
-    monkeypatch.setattr(sched, "get_setting", fake_get_setting)
+    monkeypatch.setattr(db_mod, "get_reg_started_by_id", fake_started)
+    monkeypatch.setattr(db_mod, "get_reg_draft", fake_get_reg_draft)
+    monkeypatch.setattr(sched, "get_setting_typed_for_city", fake_city_setting)
     sched._bot = _FakeMeBot()
 
     asyncio.run(sched.nudge_incomplete_registrations())
