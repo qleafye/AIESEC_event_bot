@@ -11361,6 +11361,10 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # decided_by — id менеджера, авторская колонка: строка уходит целиком вместе с делегатом,
     # отдельно по менеджеру не чистим.
     ("delegation_answers", "linked_telegram_id", "forms"),
+    # Кто нажал кнопку согласия в рассылке — тот же след делегата, что user_consents.
+    ("broadcast_consent_taps", "user_id", "consents"),
+    # Личная запись на интервью.
+    ("interview_bookings", "user_id", "enrollments"),
 )
 
 USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
