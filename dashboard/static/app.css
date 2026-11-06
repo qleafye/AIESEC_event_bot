@@ -897,3 +897,8 @@ a.legend-item { color: var(--accent-text); }
     animation: none !important;
   }
 }
+
+/* Раздел «Опросы» страницы форума: подписи под заголовком карточки и свободные ответы. */
+.poll-note { color: var(--text-muted); margin: var(--sp-1) 0; }
+.poll-texts { margin: var(--sp-2) 0; padding-left: 1.2em; }
+.poll-texts li { margin-bottom: var(--sp-1); overflow-wrap: anywhere; }
