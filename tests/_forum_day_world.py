@@ -5,7 +5,8 @@
 
 Часы. Весь проект берёт «сейчас» из `services.infra.timeutil.msk_now` (и `miniapp.timeutil`);
 функции импортированы по имени во многих модулях, поэтому подменяется не функция, а `datetime`
-в глобалах этих двух модулей — подмена видна всем, кто зовёт `msk_now()`.
+в глобалах этих модулей — подмена видна всем, кто зовёт `msk_now()`. Третьи часы —
+`dashboard.timeutil`, их тоже морозит стенд, потому что срок роли читается оттуда.
 
 Роутеры — модульные синглтоны: `World.attached()` отцепляет их на время сценария и возвращает
 прежнего родителя (тот же приём, что `tests/test_sos_dispatch_261003.py`)."""
@@ -234,6 +235,8 @@ def base_db(tmp_path, monkeypatch, *, delegates: int = 50, city: str = "msk") ->
     monkeypatch.setattr(timeutil, "datetime", dt)
     import miniapp.timeutil as mt
     monkeypatch.setattr(mt, "datetime", dt)
+    import dashboard.timeutil as dtu
+    monkeypatch.setattr(dtu, "datetime", dt)
 
     ids = [700_000 + i for i in range(delegates)]
 
