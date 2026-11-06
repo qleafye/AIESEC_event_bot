@@ -464,7 +464,7 @@ async def preview_backfill() -> list[dict]:
         else:
             user = await _db.get_user(rid)
             city = (user or {}).get("event_city")
-            if await deadline_passed(city=city) or not await program_on(city):
+            if await deadline_passed(city=city):
                 continue
             rules = rules_cache.get(city)
             if rules is None:
