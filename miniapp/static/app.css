@@ -2236,6 +2236,26 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   cursor: pointer;
 }
 
+/* ── Магазин баллов: экран «🛍 Магазин» делегата (screens/shop.js) ───────────────────────── */
+/* Только токены темы: карточка товара — как плоская плита, фото — общий img.cover. */
+.shop-hint { margin: var(--sp-2) 0 0; white-space: pre-line; }
+.shop-list { display: flex; flex-direction: column; gap: var(--sp-3); margin: var(--sp-2) 0 var(--sp-4); }
+.shop-item {
+  padding: var(--sp-3); border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border);
+}
+.shop-item .cover {
+  display: block; width: 100%; height: auto; max-height: 50vh; object-fit: contain;
+  border-radius: var(--radius); margin-bottom: var(--sp-2);
+}
+.shop-item-title { font-weight: 700; }
+.shop-item-meta { margin-top: var(--sp-1); font-variant-numeric: tabular-nums; }
+.shop-item-note { margin-top: var(--sp-1); }
+.shop-confirm-text { white-space: pre-line; }
+.shop-qr:empty { display: none; }
+.shop-qr { margin-top: var(--sp-2); text-align: center; }
+.shop-qr-img { width: 100%; max-width: 280px; height: auto; }
+
 /* ── D17 (квик 260904-7e7): `.hidden` — САМЫЙ ПОСЛЕДНИЙ одноклассовый селектор файла,
    задающий `display` ──────────────────────────────────────────────────────────────────────
    Раньше правило жило у строки 357 (сразу после .error-inline), а одноклассовые правила вроде
