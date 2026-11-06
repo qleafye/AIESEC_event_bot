@@ -586,3 +586,8 @@ async def miniapp_theme_photo_step(message: types.Message, state: FSMContext):
 @router.message(StateFilter(MiniAppTheme.logo, MiniAppTheme.logo_dark, MiniAppTheme.cover, MiniAppTheme.cover_dark, MiniAppTheme.sticker_empty, MiniAppTheme.sticker_success, MiniAppTheme.sticker_error, MiniAppTheme.sticker_top1, MiniAppTheme.coin_icon, MiniAppTheme.pattern))
 async def miniapp_theme_photo_step_invalid(message: types.Message):
     await message.answer("Не понял — пришлите фото сообщением (документы и файлы не принимаются).")
+
+
+# Шов: экран «🎟 Карточка QR» регистрирует хендлеры на тот же router СЛЕДОМ за этим модулем
+# (вход — кнопкой с экрана «🎨 Оформление»; отдельный файл — из-за потолка размера).
+from handlers.settings import admin_qr_card_theme  # noqa: E402,F401

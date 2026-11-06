@@ -373,16 +373,26 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
     return buf.getvalue(), caption
 
 
+async def card_texts() -> tuple[str, str, str]:
+    """`(заголовок, подсказка плашки, надпись паттерна)` карточки — общие у карточки делегата и
+    превью оформления в админке (`qr_card_theme.sample_preview`), чтобы превью не разошлось."""
+    event = (await get_setting_typed("event_name") or "").strip()
+    title = f"Пропуск на {event}" if event else "Пропуск на форум"
+    return title, "Покажи этот QR на входе", (event or "АЙСЕК").upper()
+
+
 async def _render_card(user: dict, payload: str) -> bytes:
     """Оформленная карточка (`services.forum.qr_card`) — заголовок и фон из `event_name`,
-    город человеческим названием, а не кодом."""
+    город человеческим названием, а не кодом; оформление — из админки
+    (`services.forum.qr_card_theme`, без настроек — прежняя карточка)."""
     import asyncio
+    from functools import partial
 
     from domain.cities import city_label_or_none
     from services.forum.qr_card import render_qr_card
+    from services.forum.qr_card_theme import load_card_theme  # ленивый: тема лениво импортирует checkin
 
-    event = (await get_setting_typed("event_name") or "").strip()
-    title = f"Пропуск на {event}" if event else "Пропуск на форум"
+    title, footer, watermark = await card_texts()
     from services.i18n.i18n_glossary import split_leading_symbols
 
     # ведущий эмодзи подписи города шрифт карточки не рисует — был бы квадратик
@@ -390,8 +400,9 @@ async def _render_card(user: dict, payload: str) -> bytes:
     prefix, rest = split_leading_symbols(city)
     city = rest.strip() if prefix else city
     name = (user.get("full_name") or "").strip() or "—"
+    theme = await load_card_theme()
     return await asyncio.to_thread(
-        render_qr_card, payload, name, city, title, "Покажи этот QR на входе", (event or "АЙСЕК").upper(),
+        partial(render_qr_card, payload, name, city, title, footer, watermark, theme=theme),
     )
 
 
