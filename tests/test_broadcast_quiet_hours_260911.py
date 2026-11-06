@@ -147,11 +147,11 @@ def test_toggle_off_confirm_screen_is_byte_for_byte_today(tmp_path, monkeypatch)
         assert len(bot.sent_messages) == 1
         prompt = bot.sent_messages[0]
         assert prompt.text == "Получатели: Одобрены 3\n\nОтправить это 3 пользователям?"
-        # Форум-ночь п.7: экран несёт третью строку — тумблер «❗ Отметить как важное».
+        # Форум-ночь п.7: тумблер «❗ Отметить как важное»; перед ним ряд согласия.
         assert _btn_texts(prompt.markup) == [
-            "✅ Отправить 3 пользователям", "❗ Отметить как важное", "❌ Отмена",
+            "✅ Отправить 3 пользователям", "📸 Кнопка согласия", "❗ Отметить как важное", "❌ Отмена",
         ]
-        assert _cb_datas(prompt.markup) == ["bc_go", "bc_important_toggle", "bc_no"]
+        assert _cb_datas(prompt.markup) == ["bc_go", "bc_consent_open", "bc_important_toggle", "bc_no"]
         assert state.state == Broadcast.confirm
 
     asyncio.run(go())
@@ -177,9 +177,9 @@ def test_toggle_on_but_outside_window_is_byte_for_byte_today(tmp_path, monkeypat
         prompt = bot.sent_messages[0]
         assert prompt.text == "Получатели: Одобрены 3\n\nОтправить это 3 пользователям?"
         assert _btn_texts(prompt.markup) == [
-            "✅ Отправить 3 пользователям", "❗ Отметить как важное", "❌ Отмена",
+            "✅ Отправить 3 пользователям", "📸 Кнопка согласия", "❗ Отметить как важное", "❌ Отмена",
         ]
-        assert _cb_datas(prompt.markup) == ["bc_go", "bc_important_toggle", "bc_no"]
+        assert _cb_datas(prompt.markup) == ["bc_go", "bc_consent_open", "bc_important_toggle", "bc_no"]
         assert state.state == Broadcast.confirm
 
     asyncio.run(go())
@@ -210,7 +210,7 @@ def test_toggle_on_inside_window_warns_and_keeps_bc_go(tmp_path, monkeypatch):
         texts = _btn_texts(prompt.markup)
         assert any("Всё равно отправить сейчас" in t for t in texts)
         assert "❌ Отмена" in texts
-        assert _cb_datas(prompt.markup) == ["bc_go", "bc_important_toggle", "bc_no"]
+        assert _cb_datas(prompt.markup) == ["bc_go", "bc_consent_open", "bc_important_toggle", "bc_no"]
         assert state.state == Broadcast.confirm
 
     asyncio.run(go())
@@ -251,7 +251,7 @@ def test_window_edge_exactly_end_time_no_warning(tmp_path, monkeypatch):
         prompt = bot.sent_messages[0]
         assert prompt.text == "Получатели: Одобрены 1\n\nОтправить это 1 пользователям?"
         assert _btn_texts(prompt.markup) == [
-            "✅ Отправить 1 пользователям", "❗ Отметить как важное", "❌ Отмена",
+            "✅ Отправить 1 пользователям", "📸 Кнопка согласия", "❗ Отметить как важное", "❌ Отмена",
         ]
 
     asyncio.run(go())
@@ -308,7 +308,7 @@ def test_album_branch_gets_same_warning(tmp_path, monkeypatch):
 
         prompt = bot.sent_messages[0]
         assert any("Всё равно отправить сейчас" in t for t in _btn_texts(prompt.markup))
-        assert _cb_datas(prompt.markup) == ["bc_go", "bc_important_toggle", "bc_no"]
+        assert _cb_datas(prompt.markup) == ["bc_go", "bc_consent_open", "bc_important_toggle", "bc_no"]
 
     asyncio.run(go())
 

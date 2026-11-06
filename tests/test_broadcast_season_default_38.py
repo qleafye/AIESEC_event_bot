@@ -180,7 +180,7 @@ def test_schedule_all_only_current(tmp_path, monkeypatch):
 
     created = {}
 
-    async def fake_create(text, photo, spec, when, admin, important=False):
+    async def fake_create(text, photo, spec, when, admin, important=False, consent_key=None):
         created["spec"] = spec
         return 1
 
