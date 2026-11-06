@@ -342,10 +342,6 @@ def code_literals() -> list[tuple[str, str]]:
     ))
     items.append((
         "lit:reg_flow.process_resume",
-        "Принимаются только PDF или DOCX. Прикрепи файл ещё раз.",
-    ))
-    items.append((
-        "lit:reg_flow.process_resume",
         "❌ Файл слишком большой (максимум 10 МБ). Прикрепи резюме меньшего размера.",
     ))
     items.append((

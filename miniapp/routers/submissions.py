@@ -44,10 +44,13 @@ import hashlib
 import hmac
 import logging
 import os
+import re
+import secrets
 import time
-from dataclasses import dataclass
+from collections import OrderedDict
+from dataclasses import dataclass, field
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 import domain.regform.engine as reg_engine
@@ -233,9 +236,12 @@ async def _upload_resume(request: Request, actor: UploadActor, content: bytes, f
             "text": await i18n.tr_setting("reg_form_resume_text_only_text", lang, tr_map),
         })
     if not reg_engine.is_allowed_resume(filename):
+        # `{formats}` — после перевода: в английском тексте тоже «PDF, DOCX»; текст менеджера
+        # без плейсхолдера уходит как есть.
+        text = (await i18n.tr_setting("reg_form_resume_wrong_type_text", lang, tr_map) or "")
         raise HTTPException(400, {
             "reason": "bad_type",
-            "text": await i18n.tr_setting("reg_form_resume_wrong_type_text", lang, tr_map),
+            "text": text.replace("{formats}", reg_engine.resume_formats_label()),
         })
     if reg_engine.resume_too_large(len(content)):
         raise HTTPException(413, {
@@ -294,6 +300,10 @@ class _UploadStat:
     kind: str = "—"
     read_ms: int | None = None
     telegram_ms: int | None = None
+    total_ms: int | None = None
+    # Метка загрузки для отчёта клиента (`POST /app/api/uploads/timing`): уходит заголовком
+    # `X-Upload-Ref` и в конец строки лога — по ней `uploads.client:` встаёт рядом с этой строкой.
+    ref: str = field(default_factory=lambda: secrets.token_hex(6))
 
 
 def _ms_since(started: float) -> int:
@@ -307,15 +317,38 @@ def _log_upload(stat: _UploadStat, status: int) -> None:
     def ms(value: int | None) -> str:
         return "—" if value is None else str(value)
 
+    stat.total_ms = _ms_since(stat.started)
     logger.info(
-        "uploads: target=%s content_type=%s ext=%s size=%s kind=%s status=%s read_ms=%s telegram_ms=%s total_ms=%s",
+        "uploads: target=%s content_type=%s ext=%s size=%s kind=%s status=%s read_ms=%s telegram_ms=%s total_ms=%s ref=%s",
         stat.target, stat.content_type, stat.ext, "—" if stat.size is None else stat.size, stat.kind, status,
-        ms(stat.read_ms), ms(stat.telegram_ms), _ms_since(stat.started),
+        ms(stat.read_ms), ms(stat.telegram_ms), stat.total_ms, stat.ref,
     )
 
 
+# Последние загрузки процесса: ref -> (telegram_id, stat, status). Один процесс uvicorn —
+# памяти процесса хватает; после рестарта ref просто неизвестен (отчёт уйдёт с «—»).
+RECENT_UPLOADS_MAX = 256
+CLIENT_MS_MAX = 600_000  # 10 минут — дольше клиент всё равно не ждёт
+_REF_RE = re.compile(r"[0-9a-f]{12}")
+_RECENT_UPLOADS: "OrderedDict[str, tuple[int, _UploadStat, int]]" = OrderedDict()
+
+
+def _remember_upload(telegram_id: int, stat: _UploadStat, status: int) -> None:
+    _RECENT_UPLOADS[stat.ref] = (telegram_id, stat, status)
+    while len(_RECENT_UPLOADS) > RECENT_UPLOADS_MAX:
+        _RECENT_UPLOADS.popitem(last=False)
+
+
+def _bounded_int(value, lo: int, hi: int) -> int | None:
+    """Только JSON-целое (bool — подкласс int, отсекается) в диапазоне включительно."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if lo <= value <= hi else None
+
+
 @router.post("/app/api/uploads")
-async def upload_part(request: Request, actor: UploadActor = Depends(upload_actor)) -> dict:
+async def upload_part(request: Request, response: Response,
+                      actor: UploadActor = Depends(upload_actor)) -> dict:
     """Часть сдачи (или обложка/ассет) уходит в чат загрузившего через Bot API.
 
     Квик 27.09: для сдачи задания фото — только JPEG/PNG/GIF ≤10 МБ (`PHOTO_CONTENT_TYPES`),
@@ -333,12 +366,65 @@ async def upload_part(request: Request, actor: UploadActor = Depends(upload_acto
     try:
         result = await _upload_part(request, actor, stat)
         status = 200
+        response.headers["X-Upload-Ref"] = stat.ref
         return result
     except HTTPException as exc:
         status = exc.status_code
+        exc.headers = {**(exc.headers or {}), "X-Upload-Ref": stat.ref}
         raise
     finally:
         _log_upload(stat, status)
+        _remember_upload(actor.telegram_id, stat, status)
+
+
+@router.post("/app/api/uploads/timing", status_code=204)
+async def upload_timing(request: Request, actor: UploadActor = Depends(upload_actor)) -> Response:
+    """Отчёт Mini App о времени загрузки со стороны телефона (backlog п.25).
+
+    Сервер видит только свою часть (`read_ms` — приём тела, `telegram_ms` — Bot API), а путь
+    телефон → Cloudflare → туннель до первого байта ему не виден. Клиент меряет fetch загрузки
+    целиком и шлёт `{ref, client_ms, status, target, size}`; здесь — одна строка
+    `uploads.client:` с `client_ms` рядом с серверными этапами той же загрузки (связь по
+    `X-Upload-Ref`), `client_ms − total_ms` ≈ сеть телефона. Ответ ВСЕГДА 204 без тела:
+    клиенту показывать нечего, поэтому битое тело — не 422, а строка с «—».
+
+    Серверные поля берутся из `_RECENT_UPLOADS` только для СВОЕЙ загрузки (telegram_id
+    совпадает) — чужой ref ничего не раскрывает и запись владельца не трогает."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+
+    raw_ref = payload.get("ref")
+    entry = None
+    if isinstance(raw_ref, str) and _REF_RE.fullmatch(raw_ref):
+        found = _RECENT_UPLOADS.get(raw_ref)
+        if found is not None and found[0] == actor.telegram_id:
+            entry = _RECENT_UPLOADS.pop(raw_ref)
+
+    def show(value) -> str:
+        return "—" if value is None else str(value)
+
+    client_ms = _bounded_int(payload.get("client_ms"), 0, CLIENT_MS_MAX)
+    if entry is not None:
+        _, stat, status = entry
+        ref, target, size = stat.ref, stat.target, stat.size
+        read_ms, telegram_ms, total_ms = stat.read_ms, stat.telegram_ms, stat.total_ms
+    else:
+        ref = None
+        raw_target = payload.get("target")
+        target = _log_safe(raw_target) if isinstance(raw_target, str) and raw_target else "task"
+        size = _bounded_int(payload.get("size"), 0, MAX_UPLOAD_BYTES + MULTIPART_SLACK)
+        status = _bounded_int(payload.get("status"), 0, 599)
+        read_ms = telegram_ms = total_ms = None
+    logger.info(
+        "uploads.client: ref=%s target=%s size=%s status=%s read_ms=%s telegram_ms=%s total_ms=%s client_ms=%s",
+        show(ref), target, show(size), show(status), show(read_ms), show(telegram_ms), show(total_ms),
+        show(client_ms),
+    )
+    return Response(status_code=204)
 
 
 async def _upload_part(request: Request, actor: UploadActor, stat: _UploadStat) -> dict:

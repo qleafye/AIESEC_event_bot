@@ -34,6 +34,8 @@ CHAT_TEXT_GROUPS = [
         "reg_lookup_hint_default_text", "reg_lookup_found_title_text", "reg_lookup_empty_title_text",
         "reg_form_own_chip_text", "reg_form_own_option_text", "reg_form_pick_option_text",
         "reg_form_resume_text_only_text",
+        # Отказ резюме не того формата — тот же текст, что в приложении ({formats} — «PDF, DOCX»).
+        "reg_form_resume_wrong_type_text",
         "reg_resume_ttl_hours", "reg_resume_continue_label", "reg_resume_restart_label",
         "reg_resume_restart_confirm_text", "reg_resume_after_restart_text",
         "reg_form_cta_text", "reg_handoff_to_app_text", "reg_handoff_held_by_app_text",
