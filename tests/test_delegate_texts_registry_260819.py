@@ -282,9 +282,9 @@ def test_referral_link_prompt_uses_registry_default(tmp_path):
 
     message = FakeMessage()
     asyncio.run(ua_mod.my_referral_link(message, FakeBot()))
-    assert message.answers_sent == [
-        _default("referral_link_prompt_text").format(link=_referral_link())
-    ]
+    # Продукт дописывает строку прогресса («По твоей ссылке анкету завершили: 0…»).
+    sent = message.answers_sent[0]
+    assert _default("referral_link_prompt_text").format(link=_referral_link()) in sent
 
 
 def test_referral_link_prompt_setting_overrides_default(tmp_path):
@@ -294,7 +294,7 @@ def test_referral_link_prompt_setting_overrides_default(tmp_path):
 
     message = FakeMessage()
     asyncio.run(ua_mod.my_referral_link(message, FakeBot()))
-    assert message.answers_sent == [f"Зови друзей: {_referral_link()}"]
+    assert f"Зови друзей: {_referral_link()}" in message.answers_sent[0]
 
 
 def test_referral_list_empty_uses_registry_default_then_setting(tmp_path):

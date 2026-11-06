@@ -136,7 +136,7 @@ def test_composite_spec_exposes_studying_option_and_not_studying_options(tmp_pat
 def test_composite_spec_studying_option_none_when_options_list_empty(tmp_path, monkeypatch):
     _ready(tmp_path)
 
-    async def _empty_options(step_key):
+    async def _empty_options(step_key, event_city=None):
         return []
 
     import domain.regform.engine as reg_engine

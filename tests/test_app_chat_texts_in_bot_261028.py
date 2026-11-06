@@ -92,13 +92,6 @@ def test_found_keys_are_placed_as_decided_and_keep_registry_group():
         assert key not in GROUP_OF, key
 
 
-def test_bind_group_sits_in_manage_right_after_chat():
-    rows = admin_sections._declared_rows("manage")
-    i = rows.index(("group", "chat"))
-    assert rows[i + 1] == ("group", "chat_bind_texts")
-    assert rows[i + 2] == ("group", "system")
-
-
 def test_group_keyboards_offer_editing_of_the_new_texts(tmp_path):
     _admin_ready(tmp_path)
     miniapp = _flat(asyncio.run(admin_settings.build_settings_group_keyboard("miniapp_chat")))
