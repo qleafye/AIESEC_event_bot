@@ -2065,6 +2065,23 @@ async def init_db():
         # Последняя проблема приёма push-формы (запрос пришёл без ответов); снимается первым
         # нормальным ответом. Показывается в карточке формы.
         await _ensure_column(db, "external_forms", "push_warning", "TEXT")
+        # Предупреждение «форма с вопросом про вуз подключена, а делегации выключены»: когда
+        # фоновая проверка впервые увидела форму в таком состоянии и когда по ней ушло
+        # предупреждение менеджерам. Вышла из состояния — обе сбрасываются.
+        await _ensure_column(db, "external_forms", "dlg_off_seen_at", "TEXT")
+        await _ensure_column(db, "external_forms", "dlg_off_alerted_at", "TEXT")
+        # Назначение формы: 'delegations' | 'registration' | 'answers'. NULL — форма подключена
+        # до появления назначений: её назначение по прежнему правилу «относится к делегациям»
+        # даёт services/ext_forms/ext_forms_purpose.legacy_purpose (при старте бот записывает его
+        # один раз). purpose_since — когда менеджер сменил назначение в карточке: ответы,
+        # пришедшие раньше, по новой логике не пересчитываются.
+        await _ensure_column(db, "external_forms", "purpose", "TEXT")
+        await _ensure_column(db, "external_forms", "purpose_since", "TEXT")
+        # Настройки формы «Регистрация»: вопрос с ФИО, город заявок и одобрение ('queue' —
+        # в очередь заявок, 'auto' — сразу одобрять). Свои у каждой формы, как notify.
+        await _ensure_column(db, "external_forms", "reg_q_fullname", "TEXT")
+        await _ensure_column(db, "external_forms", "reg_city", "TEXT")
+        await _ensure_column(db, "external_forms", "reg_approve", "TEXT DEFAULT 'queue'")
         await db.execute('''
             CREATE TABLE IF NOT EXISTS external_form_answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2098,6 +2115,11 @@ async def init_db():
         # нет; NULL = ещё не разобран. Нужен дашборду для сопоставления с chat_usernames;
         # к сопоставлению с users (matched_telegram_id) отношения не имеет.
         await _ensure_column(db, "external_form_answers", "username_needle", "TEXT")
+        # Что регистрация из формы сделала с ответом: 'created' — заявка создана, 'linked' —
+        # человек уже был в боте, ответ привязан без дубля, 'waiting' — ждём его /start по нику,
+        # 'no_nick' / 'ambiguous' — узнать человека нельзя. reg_telegram_id — чья заявка.
+        await _ensure_column(db, "external_form_answers", "reg_telegram_id", "INTEGER")
+        await _ensure_column(db, "external_form_answers", "reg_state", "TEXT")
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_ext_answers_needle "
             "ON external_form_answers(username_needle)"
