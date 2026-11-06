@@ -13,6 +13,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from domain.regform.engine import broadcast_consent_entries
 from handlers.admin import router
 from handlers.states import Broadcast
+from services.comms.broadcast_consent import consent_button, with_consent_button
 
 _OPEN = "📸 Кнопка согласия"
 _CLEAR = "Убрать кнопку"
@@ -42,30 +43,6 @@ async def confirm_row(state: FSMContext) -> list:
         InlineKeyboardButton(text=f"✅ Кнопка: {label}", callback_data="bc_consent_open"),
         InlineKeyboardButton(text=_CLEAR, callback_data="bc_consent_clear"),
     ]]
-
-
-async def consent_button(broadcast_id, consent_key) -> InlineKeyboardMarkup | None:
-    """Один ряд с видимым названием. Ключа нет в текущем списке — None, рассылка без кнопки."""
-    key = (consent_key or "").strip()
-    if not key:
-        return None
-    entries = await broadcast_consent_entries()
-    label = next((lbl for lbl, item in entries if item == key), None)
-    if label is None:
-        return None
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=label, callback_data=f"cns:{int(broadcast_id)}"),
-    ]])
-
-
-async def with_consent_button(base, broadcast_id, consent_key):
-    """Кнопка согласия в уже собранную клавиатуру. «🔕» добавляет вызывающий после этого."""
-    extra = await consent_button(broadcast_id, consent_key)
-    if extra is None:
-        return base
-    rows = [list(row) for row in (base.inline_keyboard if base else [])]
-    rows.extend(list(row) for row in extra.inline_keyboard)
-    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def consent_tap_counts(ids) -> dict[int, tuple[int, int]]:

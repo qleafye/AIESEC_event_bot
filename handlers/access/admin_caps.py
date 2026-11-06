@@ -23,13 +23,13 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from config import config
-from database.db import get_staff_roles, get_staff_ids_by_role, get_staff_city, get_user
+from database.db import get_staff_roles, get_user
 from domain.settings.schema import get_setting_typed
-# Phase 09.2 (D): city filter for capability_holders/notify_by_capability. domain/cities.py imports
-# only config/database.db/settings_schema (see domain/cities.py's own module docstring) -- it never
-# imports handlers.*, so importing it here from handlers/access/admin_caps.py cannot form a cycle.
-from domain.cities import cities_module_on, normalize_city
 from services.access import staff_reach  # 29.09: отметка «уведомления не доходят», fail-soft
+# Реестр ролей и держатели права живут в services. Имена те же: monkeypatch
+# handlers.access.admin_caps.capability_holders и импорт из этого модуля не ломаются.
+from services.access.capability_holders import capability_holders
+from services.access.role_registry import ROLES, role_caps_key, role_enabled_key
 
 logger = logging.getLogger(__name__)
 
@@ -65,57 +65,6 @@ CAP_LABELS = {
     "source_links": "🔗 Ссылки с метками",
 }
 
-# D-07: roles fixed in code today (admin / reg_manager / game_manager), but the SHAPE is
-# data-driven — a fourth role costs exactly one entry here plus two SETTINGS_SCHEMA keys
-# (role_caps_<role>/role_<role>_enabled), no refactor. D-12: "admin" deliberately has NO
-# entry here and NO registry keys — admin access is config.ADMIN_IDS, un-revocable from the
-# bot; see resolve_capabilities()'s bootstrap short-circuit below.
-# Quick 260919 (ln7): stats_manager is exactly that promised next entry — one row here, two
-# SETTINGS_SCHEMA keys, nothing else.
-ROLES = {
-    "reg_manager": {
-        "label": "🛂 Менеджер регистраций",
-        "default_caps": ["moderate_reg", "moderate_receipts"],
-    },
-    "game_manager": {
-        "label": "🎮 Менеджер геймификации",
-        "default_caps": ["moderate_game"],
-    },
-    "stats_manager": {
-        "label": "📊 Менеджер статистики",
-        "default_caps": ["stats"],
-    },
-    # Идея №5 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): волонтёр,
-    # приглашённый ссылкой (`handlers/forum/admin_volunteer_invite.py`) или добавленный вручную тем
-    # же общим экраном «👥 Роли и доступы» — держит РОВНО право `checkin`, ничего больше.
-    # Заведена как обычная запись ROLES (не спецказус) — ссылка-приглашение зовёт тот же
-    # `database.db.add_staff(role="volunteer")`, что и ручная выдача.
-    "volunteer": {
-        "label": "🎗 Волонтёр форума",
-        "default_caps": ["checkin"],
-    },
-    # D-41 (ревью 28.09): волонтёр стойки регистрации — отметка входа И одобрение на месте.
-    # Выдаётся ссылкой-приглашением с опцией «с одобрением на месте» или вручную.
-    "reg_volunteer": {
-        "label": "🎗 Волонтёр регистрации",
-        "default_caps": ["checkin", "checkin_approve"],
-    },
-    # Маркетолог (запрос РилТолка): ставит свои метки на ссылки и смотрит, сколько заявок
-    # пришло по каждой, — без заявок, контактов и настроек.
-    "marketing_manager": {
-        "label": "📣 Маркетинг (метки)",
-        "default_caps": ["source_links"],
-    },
-}
-
-
-def role_caps_key(role: str) -> str:
-    return f"role_caps_{role}"
-
-
-def role_enabled_key(role: str) -> str:
-    return f"role_{role}_enabled"
-
 
 async def resolve_capabilities(telegram_id: int) -> set[str]:
     """Fresh SQLite read every call (D-05 — no cache). ADMIN_IDS bootstrap short-circuits to
@@ -150,64 +99,6 @@ async def has_capability(telegram_id: int, cap: str) -> bool:
 # config.ADMIN_IDS must still see new/pending applications. Two technical-failure sites
 # (services/sheets/sheets.py, services/scheduler.py) deliberately keep the old ADMIN_IDS loop -- D-13
 # explicitly does NOT route those to holders ("менеджер геймы не починит квоту Google API").
-
-async def capability_holders(cap: str, *, city: str | None = None) -> list[int]:
-    """Every telegram_id currently entitled to `cap`, order-preserving de-duped (D-08: a
-    person holding two roles that both grant `cap` is listed once). Bootstrap admins (D-12)
-    always come first -- they hold every capability regardless of `staff`/registry state --
-    followed by staff members of each enabled (D-10) role whose role_caps_* includes `cap`.
-    Deliberately mirrors resolve_capabilities()'s own role-iteration shape rather than calling
-    it per-candidate: resolve_capabilities would need every staff id up front to iterate over,
-    which is exactly what this function is computing.
-
-    Phase 09.2 (D, CITY-06): `city` is an OPTIONAL narrowing applied AFTER the list above is
-    built -- it never changes who is a holder, only who among the holders is addressed this
-    time. `city=None`, or the cities module being off, means "no filter", byte-identical to
-    the pre-09.2 return value (regression contract). With a real `city`, `normalize_city` is
-    applied to BOTH sides of the comparison (the requested city and each holder's
-    `get_staff_city` binding) so a stray label/garbage binding still resolves to a known code
-    the same way `admin_selected_city` does. A superadmin (`config.ADMIN_IDS`) is always kept
-    regardless of binding (D-12); a holder with no binding at all (`get_staff_city` empty) is
-    also always kept -- "all cities" is the pre-09.1 default for everyone (09.1 C).
-
-    Two-layer fallback (RESEARCH Pitfall 4) -- both live INSIDE this primitive, not at a call
-    site: (a) nobody holds `cap` at all -> `notify_by_capability` falls back to
-    `config.ADMIN_IDS` (existing, below); (b) somebody holds `cap` but the city filter leaves
-    NOBODY -> this function falls back to the unfiltered `holders` list, right here. Layer (b)
-    must live here rather than in the caller, or `notify_by_capability`'s returned
-    `sent_count` (the delegate-question UX branch depends on it) would stop reflecting reality
-    the moment a filtered list goes empty."""
-    holders: list[int] = []
-    seen: set[int] = set()
-    for admin_id in config.ADMIN_IDS:
-        if admin_id not in seen:
-            holders.append(admin_id)
-            seen.add(admin_id)
-    for role in ROLES:
-        if await get_setting_typed(role_enabled_key(role)) != "on":
-            continue  # D-10: role switched off entirely -> no holders from it
-        role_caps = await get_setting_typed(role_caps_key(role)) or []
-        if cap not in role_caps:
-            continue
-        for uid in await get_staff_ids_by_role(role):
-            if uid not in seen:
-                holders.append(uid)
-                seen.add(uid)
-    if city is None or not await cities_module_on():
-        return holders
-    target = normalize_city(city)
-    filtered: list[int] = []
-    for uid in holders:
-        if uid in config.ADMIN_IDS:  # D-12: superadmins never filtered out
-            filtered.append(uid)
-            continue
-        bound = await get_staff_city(uid)
-        if not bound or normalize_city(bound) == target:
-            filtered.append(uid)
-    if not filtered:
-        return holders  # layer (b): city filter emptied the list -> never drop the message
-    return filtered
-
 
 # Модератор заблокировал бота — сообщаем живым админам не чаще раза в сутки на человека;
 # словарь процессный (не в БД), после рестарта алерт повторится — это приемлемо.

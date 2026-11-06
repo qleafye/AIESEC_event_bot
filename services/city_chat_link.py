@@ -325,7 +325,7 @@ async def render_for_delegate(text, telegram_id: int, client, *, notify=None) ->
 async def recipients_for_city(city: str | None) -> list[int]:
     from database.db import get_staff_city, get_staff_ids_by_role
     from domain.settings.schema import get_setting_typed
-    from handlers.access.admin_caps import ROLES, role_caps_key, role_enabled_key
+    from services.access.role_registry import ROLES, role_caps_key, role_enabled_key
 
     holders: list[int] = []
     seen: set[int] = set()
