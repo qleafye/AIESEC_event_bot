@@ -21,6 +21,8 @@ def _ready(tmp_path, name="test_reject_rules_i18n.db"):
     config.DB_PATH = str(tmp_path / name)
     fast_init_db()
     config.ADMIN_IDS = [SUPERADMIN_ID]
+    # Условие смотрит на шаг resume: вопрос по умолчанию выключен, save_rule такое правило не пишет.
+    asyncio.run(db.set_setting("reg_q_resume", "on"))
 
 
 def _run(coro):

@@ -75,7 +75,6 @@ OWN_SCREENS = {
     "session_remind_text": "handlers/forum/admin_session_remind.py",
     "session_morning_head": "handlers/forum/admin_session_remind.py",
     "session_morning_overview_head": "handlers/forum/admin_session_remind.py",
-    "checkin_qr_broadcast_enabled": "handlers/forum/admin_checkin.py",
     "checkin_qr_broadcast_time": "handlers/forum/admin_checkin.py",
     "checkin_qr_morning_repeat_time": "handlers/forum/admin_checkin.py",
     "checkin_qr_morning_catchup_until": "handlers/forum/admin_checkin.py",

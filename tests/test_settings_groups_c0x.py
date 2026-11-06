@@ -537,6 +537,9 @@ def test_render_snapshot_apps(tmp_path):
     expected_keys = [
         # 10.10: ответ при автоприёме — рядом с обычным текстом одобрения.
         "reg_complete_text", "approve_text", "approve_text__auto", "reject_text", "pending_gate_text",
+        "waitlist_delegate_text",
+        "interview_reminder_text", "interview_slot_cancelled_text",
+        "interview_window_start", "interview_window_end",
         "pending_reminder_interval",
         # 10.10: порог «🔒 залип» у вопросов делегатов — сразу после интервала напоминаний.
         "question_stuck_minutes",
@@ -619,7 +622,11 @@ def test_render_snapshot_apps(tmp_path):
     ]
     expected_labels = [
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
-        "⏳ Заявка на рассмотрении", "🕒 Как часто присылать сводку о заявках",
+        "⏳ Заявка на рассмотрении",
+        "📋 Текст: лист ожидания",
+        "🗓 Напоминание об интервью", "🗓 Текст: время интервью отменили",
+        "🗓 Запись на интервью открыта с", "🗓 Запись на интервью закрыта",
+        "🕒 Как часто присылать сводку о заявках",
         "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл", "🎯 Предотбор: ссылка",
         "⏰ Догонялка: через сколько минут", "⏰ Догонялка: текст напоминания",
         "⏰ Догонялка: слово вместо числа при сбое",
@@ -669,7 +676,10 @@ def test_render_snapshot_apps(tmp_path):
     # 09.10: запасные тексты после регистрации/одобрения/отказа переехали из кода в дефолт реестра.
     defaulted_labels = {
         "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
-        "⏳ Заявка на рассмотрении", "🎯 Предотбор: нет @username",
+        "⏳ Заявка на рассмотрении",
+        "📋 Текст: лист ожидания",
+        "🗓 Напоминание об интервью", "🗓 Текст: время интервью отменили",
+        "🎯 Предотбор: нет @username",
         "🎯 Предотбор: не прошёл", "⏰ Догонялка: текст напоминания",
         # Phase 28 (28-09, SU-09): дефолт "несколько" — тоже настоящий текстовый дефолт.
         "⏰ Догонялка: слово вместо числа при сбое",
@@ -818,7 +828,11 @@ def test_render_snapshot_consent(tmp_path):
     assert "📋 Список согласий: <i>— не задано</i>" in text
 
     # quick 260822: +consent_version / +consent_recollect_text (версионирование согласий)
-    expected_keys = ["consent_button_text", "consent_list", "consent_version", "consent_recollect_text"]
+    expected_keys = [
+        "consent_button_text", "consent_list", "consent_broadcast_list",
+        "consent_version", "consent_recollect_text",
+    ]
+    assert "📸 Согласия только для рассылки: <i>— не задано</i>" in text
     edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
     assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
     assert "settings_group_noop" in flat

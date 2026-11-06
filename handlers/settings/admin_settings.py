@@ -180,6 +180,11 @@ _APPS_FIELD_ORDER = [
     # Phase 17.1 (17.1-01): гейт «заявка на рассмотрении» — рядом с reject_text, обе ветки
     # одного `_gate_decision` редактируются в одном месте.
     "pending_gate_text",
+    "waitlist_delegate_text",  # лист ожидания — сосед «заявка на рассмотрении»
+    # Тексты и окно записи — сосед тумблера interview_booking_enabled (сам тумблер
+    # на экране «🗓 Интервью», в этот список не входит).
+    "interview_reminder_text", "interview_slot_cancelled_text",
+    "interview_window_start", "interview_window_end",
     "pending_reminder_interval",
     # 10.10: порог «🔒 залип» у вопросов делегатов (журнал вопросов — в этом же разделе).
     "question_stuck_minutes",
@@ -299,7 +304,9 @@ _PARTY_FIELD_ORDER = [
     "party_fork_text", *_DT.PARTY_FIELD_ORDER,
 ]
 _CONSENT_FIELD_ORDER = [
-    "consent_button_text", "consent_list", "consent_version", "consent_recollect_text",
+    "consent_button_text", "consent_list",
+    "consent_broadcast_list",  # согласия рассылки — анкета их не задаёт
+    "consent_version", "consent_recollect_text",
 ]
 
 # Phase 09.1 (A): every editable text in the free-form submission flow, one group
