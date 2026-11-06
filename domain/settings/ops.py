@@ -137,6 +137,7 @@ HTML_SETTINGS = {
     "payment_option_picker_header_text", "payment_details_template_text",
     "payment_pay_later_text", "payment_pay_later_menu_hint_text",
     "payment_receipt_received_text",
+    "shop_reserved_text", "shop_my_reservations_header_text",  # бронь в магазине: сообщения с parse_mode=HTML
     "leaderboard_header_text", "leaderboard_rank_line_text",
     "balance_history_header_text", "referral_list_header_text",
     "game_wizard_preview_title",  # Phase 16 (16-03): заголовок превью финального шага визарда
@@ -1170,6 +1171,10 @@ PREVIEW_SAMPLES: dict[str, str] = {
     # для превью в веб-настройках (сам дефолт nudge_text плейсхолдер не содержит, менеджер
     # добавляет его сам).
     "remaining": "3",
+    # Бронь в магазине баллов: цена товара, код выдачи и название магазина.
+    "price": "150",
+    "code": "Ю-4821",
+    "shop": "Юлид-шоп",
     # Phase 30 (30-03/30-04): новые типы шагов — {entity} название справочника в lookup/multi
     # («Впиши {entity} сам…»), {left} остаток лимита мультивыбора в заголовке-подсказке,
     # {noun} название повторяемого блока («Добавить ещё {noun}»), {query} строка поиска
