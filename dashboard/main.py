@@ -40,6 +40,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 import shared.web_theme as web_theme
 from shared.secret_redact import install_log_redaction, register_secret
 from dashboard import chat_rating
+from dashboard import portraits
 from dashboard import queries
 from dashboard import skillup_block
 from dashboard import sources_daily
@@ -698,11 +699,23 @@ def _with_survey_links(block: dict, bot_username: str | None) -> dict:
     return block
 
 
+def _feedback_payload(
+    conn, cfg: DashboardConfig, scope: queries.Scope, day: str,
+) -> dict:
+    """Опросы за выбранный день и сводка «ФОРУМ: ИТОГИ». Оба куска читают базу заново."""
+    block = _with_survey_links(
+        queries.feedback_day(conn, scope, day=day), cfg.bot_username,
+    )
+    block["portraits"] = portraits.forum_portraits(conn, scope)
+    return block
+
+
 def build_feedback_context(
     conn, cfg: DashboardConfig, scope: queries.Scope, viewer: dict,
     *, event_code: str | None = None, day: str | None = None,
 ) -> dict:
-    """Страница «Опросы и фидбек» — один день программы. Те же цифры, что `/feedback.json`."""
+    """Страница «ФОРУМ: ИТОГИ»: портрет регистраций и дошедших, оценки форума
+    и опросы за выбранный день. Те же цифры отдаёт `/feedback.json`."""
     flags = queries.dashboard_flags(conn)
     city_options = queries.city_options(conn)
     bound_city_code = viewer.get("bound_city")
@@ -710,9 +723,7 @@ def build_feedback_context(
     selected = queries.resolve_feedback_day(
         day, program_days, queries.msk_now().strftime("%Y-%m-%d"),
     )
-    block = _with_survey_links(
-        queries.feedback_day(conn, scope, day=selected), cfg.bot_username,
-    )
+    block = _feedback_payload(conn, cfg, scope, selected)
     q_parts = {
         k: v for k, v in (
             ("city", scope.city), ("season", scope.season),
@@ -1421,11 +1432,8 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
         if multi_mode(cfg.events):
             return _data_event(
                 request, event,
-                lambda conn, scope, source: _with_survey_links(
-                    queries.feedback_day(
-                        conn, scope, day=_feedback_selected(conn, scope, day),
-                    ),
-                    cfg.bot_username,
+                lambda conn, scope, source: _feedback_payload(
+                    conn, cfg, scope, _feedback_selected(conn, scope, day),
                 ),
                 city=city, season=season,
             )
@@ -1438,9 +1446,8 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             if not has_stats(conn, telegram_id, cfg.admin_ids):
                 return JSONResponse({"error": "no_access"}, status_code=403)
             scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
-            block = _with_survey_links(
-                queries.feedback_day(conn, scope, day=_feedback_selected(conn, scope, day)),
-                cfg.bot_username,
+            block = _feedback_payload(
+                conn, cfg, scope, _feedback_selected(conn, scope, day),
             )
         return block
 

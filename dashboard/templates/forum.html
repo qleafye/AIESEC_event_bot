@@ -21,7 +21,7 @@
 
     <nav class="switchers" aria-label="Навигация">
       <a class="switch-link" href="/{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">← К статистике</a>
-      <a class="switch-link" href="/feedback{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">Опросы и фидбек</a>
+      <a class="switch-link" href="/feedback{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">ФОРУМ: ИТОГИ</a>
       {% if event_code %}
       <a class="switch-link" href="/compare">К сравнению событий</a>
       {% endif %}
