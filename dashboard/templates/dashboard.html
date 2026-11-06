@@ -1060,7 +1060,7 @@
   <section class="block">
     <div class="card">
       <a class="switch-link" href="/forum{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">🎪 Статистика форума</a>
-      <a class="switch-link" href="/feedback{% if event_code or scope.city %}?{% endif %}{% if event_code %}event={{ event_code | urlencode }}{% if scope.city %}&{% endif %}{% endif %}{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}">Опросы и фидбек</a>
+      <a class="switch-link" href="/feedback{% if event_code or scope.city %}?{% endif %}{% if event_code %}event={{ event_code | urlencode }}{% if scope.city %}&{% endif %}{% endif %}{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}">ФОРУМ: ИТОГИ</a>
       <a class="switch-link" href="/sources{% if event_code or scope.city %}?{% endif %}{% if event_code %}event={{ event_code | urlencode }}{% if scope.city %}&{% endif %}{% endif %}{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}">📈 Источники по дням</a>
     </div>
   </section>

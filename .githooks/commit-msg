@@ -1,6 +1,6 @@
 #!/bin/sh
-# Вырезает строку «Claude-Session: https://claude.ai/code/session_…», которую облачные сессии
-# Claude Code дописывают в сообщение коммита: репозиторий публичный, ссылкам на сессии в истории
+# Вырезает из сообщения коммита следы агентов: строку Claude-Session и трейлеры
+# Co-authored-by от Cursor и Claude. Репозиторий публичный, подписям агентов в истории
 # не место. Подключение (один раз на клон): git config core.hooksPath .githooks
 # Страховка на случай клона без хука — шаг «commit-trailers» в .github/workflows/tests.yml.
-sed -i.bak '/^Claude-Session:/d' "$1" && rm -f "$1.bak"
+sed -i.bak -E '/^Claude-Session:/d; /^[Cc]o-[Aa]uthored-[Bb]y:.*(Cursor|Claude|Anthropic)/d' "$1" && rm -f "$1.bak"
