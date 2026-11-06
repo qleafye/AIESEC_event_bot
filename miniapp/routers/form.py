@@ -43,6 +43,7 @@ from services.game.city_texts import city_text  # тексты геймы и в�
 from domain.cities import (
     cities_module_on,
     city_label,
+    current_consent_version,
     ensure_cities_fresh,
     get_setting_typed_for_city,
 )
@@ -913,7 +914,11 @@ async def draft_consent(
     # Quick 260907-4ai: в вебе разметки кнопки на сервере нет — снимок берём из той же
     # настройки, которой отрисована форма (см. строку ~189 этого же файла).
     raw_button = await get_setting_typed_for_city("consent_button_text", consent_city) or "Согласен(-на)"
-    await record_user_consent(p.telegram_id, key, raw_button=raw_button, city_code=consent_city)
+    version = await current_consent_version(consent_city)
+    await record_user_consent(
+        p.telegram_id, key, consent_version=version,
+        raw_button=raw_button, city_code=consent_city,
+    )
     return {"ok": True, "key": key}
 
 

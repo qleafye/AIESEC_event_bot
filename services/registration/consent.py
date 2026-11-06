@@ -12,8 +12,8 @@
 import html
 import logging
 
-from database.db import current_consent_version, get_user, get_user_consent_versions
-from domain.cities import get_setting_typed_for_city
+from database.db import get_user, get_user_consent_versions
+from domain.cities import current_consent_version, get_setting_typed_for_city
 
 logger = logging.getLogger(__name__)
 

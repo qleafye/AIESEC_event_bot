@@ -656,6 +656,14 @@ async def get_setting_typed_for_city(key: str, city_code: str | None):
     return await get_setting_typed(key, city_code=code)
 
 
+async def current_consent_version(city_code: str | None = None) -> str:
+    """Редакция согласия для города мероприятия. Без города, при «*» и при выключенном
+    модуле городов — общее значение. Пустая настройка -> DEFAULT_CONSENT_VERSION."""
+    from database.db import DEFAULT_CONSENT_VERSION
+    raw = await get_setting_typed_for_city("consent_version", city_code)
+    return (str(raw).strip() if raw else "") or DEFAULT_CONSENT_VERSION
+
+
 async def city_override_codes(key: str) -> list[str]:
     """Коды городов (в порядке `CITIES`), у которых есть непустое переопределение `key`.
     `[]`, если `key` не `per_city` или модуль городов выключен. Используется админ-UI для
