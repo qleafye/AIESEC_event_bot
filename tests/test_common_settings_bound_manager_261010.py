@@ -99,7 +99,7 @@ def test_bound_manager_cannot_write_with_an_old_input_or_enum_button(tmp_path):
 
 def test_bound_manager_cannot_change_a_common_list(tmp_path):
     _bound_manager(tmp_path)
-    cb = FakeCallback("settings_list_add:source_options", user_id=MANAGER_ID)
+    cb = FakeCallback("settings_list_add:local_committee_options", user_id=MANAGER_ID)
     asyncio.run(sl.settings_list_add_start(cb, _state(MANAGER_ID)))
     assert cb.answers == [(settings_ops.COMMON_DENIED_TEXT, True)]
 

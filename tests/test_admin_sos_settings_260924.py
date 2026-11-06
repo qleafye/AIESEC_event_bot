@@ -361,7 +361,7 @@ def test_forum_length_sits_next_to_forum_date():
 
     spec = SETTINGS_SCHEMA["sos_active_days"]
     assert spec["label"] == "🗓 Сколько дней идёт форум"
-    assert "1 — однодневный форум (регионы), 2 — Москва 30–31.10" in spec["prompt"]
+    assert "Сколько дней идёт форум, считая день начала." in spec["prompt"]
     assert spec["default"] == 2 and spec["per_city"] is True
     keys = _settings_group_keys("event")
     assert keys[keys.index("forum_date") + 1] == "sos_active_days"

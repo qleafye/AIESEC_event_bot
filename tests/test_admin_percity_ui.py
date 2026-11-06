@@ -422,12 +422,15 @@ def test_html_settings_branch_checked_against_base_key():
 
 
 def test_no_per_city_key_in_sheet_tab_write_mode_or_options_suffix():
-    per_city_keys = [
-        k for k, v in __import__("domain.settings.schema", fromlist=["_"]).SETTINGS_SCHEMA.items() if v.get("per_city")
-    ]
-    for k in per_city_keys:
+    schema = __import__("domain.settings.schema", fromlist=["_"]).SETTINGS_SCHEMA
+    per_city_keys = [(k, v) for k, v in schema.items() if v.get("per_city")]
+    for k, v in per_city_keys:
         assert k not in admin_settings._SHEET_TAB_WRITE_MODE, k
-        assert not k.endswith("_options"), k
+        # Городской список (source_options и др.) задуман с суффиксом _options.
+        # Суффикс допустим только у list и только вне вкладок таблицы.
+        if k.endswith("_options"):
+            assert v.get("type") == "list", k
+            assert k not in admin_settings._SHEET_TAB_WRITE_MODE, k
 
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

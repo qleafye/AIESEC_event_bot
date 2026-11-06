@@ -35,6 +35,12 @@ DELEGATE_ID = 940912
 def _db_ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_game_archive_260818.db")
     asyncio.run(db.init_db())
+    # Сдача задания закрыта, пока нет строки users (ensure_tasks_registered).
+    asyncio.run(db.add_user({
+        "telegram_id": DELEGATE_ID,
+        "full_name": "Делегат",
+        "registration_date": "2026-08-01",
+    }))
 
 
 def _new_state(uid: int = DELEGATE_ID) -> FSMContext:

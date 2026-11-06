@@ -136,11 +136,13 @@ def test_city_header_common_enum_has_buttons_and_label(tmp_path):
     assert "<b>Форум СкиллАп</b>" in text and "<b>skillup</b>" not in text
     assert "Общая настройка" in text and "Пришлите новое значение" not in text
     assert [r[0].callback_data for r in kb.inline_keyboard][:4] == [f"settings_enum_pick:{i}" for i in range(4)]
-    # on/off без option_labels — тоже словами.
+    # on/off без option_labels — тоже словами. Под шапкой города свой enum
+    # показывает общее значение и «Изменить для …», а не кнопки «✅ Включено».
     _run(db.set_setting("payment_enabled", "on"))
     text, kb = _run(admin_settings._settings_edit_screen("payment_enabled", "spb"))
+    assert "Как везде" in text and "Общее значение" in text
     assert "<b>Включено</b>" in text
-    assert [r[0].text for r in kb.inline_keyboard][:2] == ["✅ Включено", "Выключено"]
+    assert any(row[0].text.startswith("✏️ Изменить для ") for row in kb.inline_keyboard)
 
 
 def test_city_header_common_enum_pick_writes_common_key(tmp_path):
@@ -216,20 +218,29 @@ def test_city_own_text_key_keeps_text_input(tmp_path):
 
 def test_enum_screen_says_current_value_or_default_both_headers(tmp_path):
     """Без своего значения — подпись дефолта реестра «(по умолчанию)»; дефолта нет —
-    «не выбрано»; заданное — «Сейчас: <подпись>». Одинаково для «🌍 Все города» и шапки
-    города (общий ключ)."""
+    «не выбрано»; заданное — «Сейчас: <подпись>». Общий ключ одинаков для «🌍 Все города»
+    и шапки города. Городской ключ под шапкой города говорит «Как везде» / «Общее значение»
+    и «Изменить для …», но текущее значение всё равно видно."""
     from database import db
     _city_ready(tmp_path, "a3.db")
     for header in (None, "spb"):
         text, _kb = _run(admin_settings._settings_edit_screen("reg_university_mode", header))
         dflt = admin_settings_enum.enum_label("reg_university_mode", SETTINGS_SCHEMA_DEFAULT("reg_university_mode"))
         assert f"Сейчас: <b>{dflt}</b> (по умолчанию)" in text, header
-        text, _kb = _run(admin_settings._settings_edit_screen("payment_enabled", header))
-        assert "Сейчас: <b>" in text and "(по умолчанию)" in text, header
         text, _kb = _run(admin_settings._settings_edit_screen("event_type", header))
         assert "Сейчас: <b>Форум</b> (по умолчанию)" in text, header  # дефолт реестра — forum
-        text, _kb = _run(admin_settings._settings_edit_screen("pending_notify_mode", header))
-        assert "Сейчас: <b>" in text
+    text, _kb = _run(admin_settings._settings_edit_screen("payment_enabled", None))
+    assert "Сейчас: <b>Выключено</b> (по умолчанию)" in text
+    text, kb = _run(admin_settings._settings_edit_screen("payment_enabled", "spb"))
+    assert "Как везде" in text and "Общее значение" in text
+    assert "Выключено" in text
+    assert any("Изменить для" in row[0].text for row in kb.inline_keyboard)
+    text, _kb = _run(admin_settings._settings_edit_screen("pending_notify_mode", None))
+    assert "Сейчас: <b>Сводкой по таймеру</b> (по умолчанию)" in text
+    text, kb = _run(admin_settings._settings_edit_screen("pending_notify_mode", "spb"))
+    assert "Как везде" in text and "Общее значение" in text
+    assert "Сводкой по таймеру" in text
+    assert any("Изменить для" in row[0].text for row in kb.inline_keyboard)
     _run(db.set_setting("event_type", "conference"))
     for header in (None, "spb"):
         text, _kb = _run(admin_settings._settings_edit_screen("event_type", header))

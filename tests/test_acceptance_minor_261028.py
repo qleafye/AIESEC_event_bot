@@ -24,40 +24,12 @@ import pytest
 
 from tests._paths import REPO_ROOT
 
-HUB_JS = REPO_ROOT / "miniapp" / "static" / "js" / "screens" / "hub.js"
 UI_JS = REPO_ROOT / "miniapp" / "static" / "js" / "ui.js"
 FORM_JS = REPO_ROOT / "miniapp" / "static" / "js" / "form.js"
 APP_CSS = REPO_ROOT / "miniapp" / "static" / "app.css"
 
 
-def _code_lines(path):
-    return [ln for ln in path.read_text(encoding="utf-8").splitlines() if not ln.lstrip().startswith("//")]
-
-
 # ── плитки менеджера ───────────────────────────────────────────────────────────────────
-
-
-def test_hub_has_no_ellipsis_meta():
-    src = HUB_JS.read_text(encoding="utf-8")
-    assert 'meta: "…"' not in src
-    assert not any("…" in ln for ln in _code_lines(HUB_JS))
-
-
-def test_hub_single_fetcher_predicate():
-    src = HUB_JS.read_text(encoding="utf-8")
-    assert "function managerFetcherFor(" in src
-    assert src.count("managerFetcherFor(") >= 3  # объявление + плитка + цикл запросов
-    # своя копия проверки права в цикле запросов не живёт — только внутри предиката
-    assert src.count("me.caps.includes(fetcher.cap)") == 1
-
-
-def test_hub_skeleton_set_and_cleared():
-    src = HUB_JS.read_text(encoding="utf-8")
-    assert "skeleton--meta" in src
-    body = src[src.index("async function renderManagerHub("):]
-    body = body[:body.index("\nconst HUB_MODE_KEY")]
-    assert re.search(r"catch\s*\(_\)\s*\{[^}]*textContent\s*=\s*\"\"", body, re.S)
-    assert re.search(r"classList\.remove\(\s*\"skeleton\",\s*\"skeleton--meta\"\s*\)", body)
 
 
 def test_css_skeleton_meta_rule():

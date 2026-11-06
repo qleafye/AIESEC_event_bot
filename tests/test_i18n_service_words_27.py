@@ -377,35 +377,37 @@ def test_select_step_russian_canon_roundtrips_with_module_off(monkeypatch):
 def test_date_step_with_preset_english_label_canonicalizes(monkeypatch):
     tr_map = {}
     _patch_ctx(monkeypatch, "en", tr_map)
-    msg = _FakeMessage("November 1, 2026")
+    # Дата в будущем: arrival_date в прошлом не сохраняется (сегодня 2026-11-06).
+    msg = _FakeMessage("December 20, 2026")
     state = _new_state()
     asyncio.run(state.update_data(_current_date_step="arrival_date"))
 
-    async def _fake_option_pairs(step_key, lang, _tr_map):
+    async def _fake_option_pairs(step_key, lang, _tr_map, city_code=None):
         if step_key == "arrival_date":
-            return [("01.11.2026", "November 1, 2026"), ("02.11.2026", "November 2, 2026")]
+            return [("20.12.2026", "December 20, 2026"), ("21.12.2026", "December 21, 2026")]
         return []
 
+    # process_date_input канонизирует через reg_i18n.canonicalize; пары пресета — его вход.
     monkeypatch.setattr(reg_i18n, "option_pairs", _fake_option_pairs)
 
     asyncio.run(reg_flow.process_date_input(msg, state, bot=None))
 
     data = asyncio.run(state.get_data())
-    assert data.get("arrival_date") == "01.11.2026"
+    assert data.get("arrival_date") == "20.12.2026"
 
 
 def test_date_step_without_presets_free_text_unaffected(monkeypatch):
     # Реальность сегодняшнего дня: date-шаги без конфигурации вариантов -- canonicalize должна
     # остаться безопасным no-op, свободный ввод в формате даты доходит как есть.
     _patch_ctx(monkeypatch, "en", {})
-    msg = _FakeMessage("01.11.2026")
+    msg = _FakeMessage("20.12.2026")
     state = _new_state()
     asyncio.run(state.update_data(_current_date_step="arrival_date"))
 
     asyncio.run(reg_flow.process_date_input(msg, state, bot=None))
 
     data = asyncio.run(state.get_data())
-    assert data.get("arrival_date") == "01.11.2026"
+    assert data.get("arrival_date") == "20.12.2026"
 
 
 # ── Модуль выключен: все пять точек ведут себя как до фазы ──────────────────────────────────
