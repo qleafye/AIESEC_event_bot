@@ -5,6 +5,7 @@
 import json
 
 from database import db
+from domain.cities import per_city_key
 from domain.settings.schema import get_setting_typed
 from handlers.access.admin_caps import required_capability
 from handlers.applications import admin_reject_cond as arc
@@ -56,8 +57,15 @@ def test_card_silent_when_rules_work_or_rule_is_off(tmp_path):
     assert f"arr_master_on:{on_rule}" not in _cbs(kb)
 
 
+def _resume_on_for_msk():
+    """Условие фикстуры смотрит на резюме. Город правила — Москва, тумблер вопроса per-city."""
+    _run(db.set_setting("reg_q_resume", "on"))
+    _run(db.set_setting(per_city_key("reg_q_resume", "msk"), "on"))
+
+
 def test_enable_confirmation_says_rule_does_not_work_yet(tmp_path):
     _ready(tmp_path)
+    _resume_on_for_msk()
     _run(_setup_staff())
     rule_id = _new_rule(enabled=0)
     gate = _FakeCallback(f"arc_gate:{rule_id}", user_id=BOUND_MSK_ID)
@@ -75,6 +83,7 @@ def test_enable_confirmation_says_rule_does_not_work_yet(tmp_path):
 
 def test_enable_confirmation_unchanged_when_rules_work(tmp_path):
     _ready(tmp_path)
+    _resume_on_for_msk()
     _run(set_setting_by_admin(SUPERADMIN_ID, "reject_rules_enabled", "on"))
     rule_id = _new_rule(enabled=0)
     gate = _FakeCallback(f"arc_gate:{rule_id}", user_id=SUPERADMIN_ID)

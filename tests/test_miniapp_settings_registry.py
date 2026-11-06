@@ -296,8 +296,10 @@ def test_non_per_city_keys_stay_global_under_city_header(tmp_path):
     client = _setup(tmp_path)
     _set("event_city_enabled", "on")
     body = _all(client).json()
-    assert _item(body, "payment_deadline")["key"] == "payment_deadline"
-    assert _item(body, "payment_deadline")["city_override_count"] == 0
+    # payment_deadline теперь per_city и под шапкой города уезжает композитом.
+    # Контракт — про ключ без per_city: он остаётся собой, переопределений нет.
+    assert _item(body, "question_stuck_minutes")["key"] == "question_stuck_minutes"
+    assert _item(body, "question_stuck_minutes")["city_override_count"] == 0
 
 
 def test_post_city_switches_header_with_bot_function(tmp_path):
