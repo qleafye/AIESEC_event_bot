@@ -77,7 +77,7 @@ async def delegate_city_scope(user_id: int):
     return city_scope(normalize_city(user.get("event_city") if user else None))
 
 
-async def _ambassador_gate(user_id: int) -> tuple[dict | None, object, bool, set[int], set[int]]:
+async def _ambassador_gate(user_id: int, user: dict | None = None) -> tuple[dict | None, object, bool, set[int], set[int]]:
     """Phase 32 (32-06, D-28/D-31/D-36/D-38): ОДИН `get_user` — и городской скоуп (как у
     `delegate_city_scope`), и `is_ambassador`/`ambassador_path`/доступные волны берутся из него
     же. Возвращает `(user, city_scope, is_ambassador, eligible_wave_ids, open_wave_ids)` —
@@ -91,7 +91,9 @@ async def _ambassador_gate(user_id: int) -> tuple[dict | None, object, bool, set
     `open_wave_ids` не сужает такие задания). `wave_visibility_ids` — тот же аксессор, что
     зовёт `handlers/user_actions.py::_game_task_list_screen`, теперь Mini App читает волны им
     же, а не собирает вторую копию правила."""
-    user = await get_user(user_id)
+    # Хаб уже прочитал пользователя: второй get_user на тот же id — лишнее соединение.
+    if user is None:
+        user = await get_user(user_id)
     scope = city_scope(normalize_city(user.get("event_city") if user else None)) if await cities_module_on() else None
     is_ambassador = bool(user and user.get("is_ambassador"))
     wave_ids, open_ids = await wave_visibility_ids(user, city_scope=scope)
@@ -148,7 +150,7 @@ async def _list_item(
     }
 
 
-async def tasks_progress(user_id: int, city_scope) -> tuple[int, int]:
+async def tasks_progress(user_id: int, city_scope, user: dict | None = None) -> tuple[int, int]:
     """`(done, total)` — сколько активных заданий делегата уже принято (`status == "approved"`)
     из общего числа активных. Общий помощник для `/app/api/hub` (план 23.1-03, факт «N из M
     заданий сдано»): тот же `list_active_tasks(city_scope=…)` + `submission_state`, что и
@@ -157,7 +159,7 @@ async def tasks_progress(user_id: int, city_scope) -> tuple[int, int]:
     Rule 1 (32-06, D-28/D-36): без фильтра «N из M» считало бы амбассадорские задания в
     знаменателе для ОБЫЧНОГО делегата — плита хаба показала бы завышенный total, которого он
     физически не может закрыть (задания ему не видны вовсе)."""
-    _user, _scope, is_ambassador, wave_ids, open_ids = await _ambassador_gate(user_id)
+    _user, _scope, is_ambassador, wave_ids, open_ids = await _ambassador_gate(user_id, user)
     all_tasks = await list_active_tasks(city_scope=city_scope)
     all_tasks = visible_tasks_for(
         all_tasks, is_ambassador=is_ambassador, eligible_wave_ids=wave_ids, open_wave_ids=open_ids,
