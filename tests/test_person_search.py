@@ -131,6 +131,23 @@ def test_search_no_match_returns_empty(tmp_path):
     assert asyncio.run(person_search.search_people("Несуществующий Человек")) == []
 
 
+def test_search_by_live_chat_username_when_anketa_nick_stale(tmp_path):
+    """Стойка шопа: в анкете старый ник, в чате человек уже с новым."""
+    _db_ready(tmp_path)
+    asyncio.run(db.add_user({
+        "telegram_id": 900802, "username": "@akkk_eevna", "full_name": "Кущ Александра",
+        "registration_date": "2026-01-01",
+    }))
+    asyncio.run(db.upsert_chat_username(900802, "lexa_eevna"))
+
+    results = asyncio.run(person_search.search_people("@lexa_eevna"))
+
+    assert len(results) == 1
+    assert results[0]["user_id"] == 900802
+    assert results[0]["full_name"] == "Кущ Александра"
+    assert results[0]["source"] == "users"
+
+
 # ── тёзки: одинаковое ФИО, разные города — различимы в выдаче ─────────────────────────────
 
 def test_namesakes_distinguished_by_city(tmp_path):

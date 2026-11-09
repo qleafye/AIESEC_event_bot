@@ -157,7 +157,7 @@ async def shop_sell_start(callback: types.CallbackQuery, state: FSMContext):
         return
     await state.set_state(ShopAdmin.find)
     await callback.message.answer(
-        "Кому выдаём? Пришлите @username делегата или его фамилию.\n\nПример: <code>@ivanova</code> или <code>Иванова</code>",
+        "Кому выдаём? Пришлите текущий @ник Telegram, @ник из анкеты или фамилию.\n\nПример: <code>@ivanova</code> или <code>Иванова</code>",
         parse_mode="HTML", reply_markup=_kb([[("◀️ В магазин", "shp_home")]]),
     )
     await callback.answer()

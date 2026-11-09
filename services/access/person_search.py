@@ -113,6 +113,10 @@ async def search_people(
 
     if kind == "username":
         user = await db.get_user_by_username(value)
+        if user is None:
+            chat_tid = await db.get_telegram_id_by_chat_username(value)
+            if chat_tid is not None:
+                user = await db.get_user(chat_tid)
         if user is not None:
             if not _city_matches(user.get("event_city"), city_scope):
                 return []
