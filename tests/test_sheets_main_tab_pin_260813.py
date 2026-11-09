@@ -124,14 +124,17 @@ def test_get_sheet_explicit_tab_resolves_by_name(tmp_path, monkeypatch):
     assert ws.title == "Реги бот"
 
 
-def test_get_sheet_explicit_tab_auto_creates_when_missing(tmp_path, monkeypatch):
+def test_get_sheet_explicit_tab_missing_does_not_create(tmp_path, monkeypatch):
+    """A configured name that is not on the spreadsheet must not spawn an empty tab."""
     _use_tmp_db(tmp_path)
     _reset_module_state()
-    _patch_gspread_client(monkeypatch, ["Первая"])
+    fake_ss = _patch_gspread_client(monkeypatch, ["Первая"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "Новая вкладка")
 
-    ws = sheets._get_sheet()
-    assert ws.title == "Новая вкладка"
+    with pytest.raises(sheets.MainTabMissing) as exc:
+        sheets._get_sheet()
+    assert exc.value.tab == "Новая вкладка"
+    assert "Новая вкладка" not in fake_ss._sheets
 
 
 # ── Task 1 (revised 2026-08-14): unconfigured main tab REFUSES; it never guesses ───────────

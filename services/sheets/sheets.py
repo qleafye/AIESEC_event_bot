@@ -37,6 +37,10 @@ REFUSED_UNPINNED_TAB = -2
 # main.py wires this in at startup via set_alert_bot(bot).
 _alert_bot = None
 _alert_bot_warned = False
+# Цикл, на котором живёт бот. _get_sheet синхронный и часто внутри to_thread — оттуда
+# корутину не вызвать. Промах главной вкладки ставим на этот цикл (set_alert_bot зовут
+# уже с работающего цикла в main).
+_alert_loop = None
 
 # «🚦 Готовность к форуму» (бэклог №25): когда таблица последний раз приняла запись и когда
 # последний раз отказала — time.time(), в памяти процесса (после рестарта «записей ещё не было»).
@@ -56,8 +60,12 @@ def last_write_state() -> dict:
 
 
 def set_alert_bot(bot):
-    global _alert_bot
+    global _alert_bot, _alert_loop
     _alert_bot = bot
+    try:
+        _alert_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        _alert_loop = None
 
 
 async def _tab_explicitly_configured() -> bool:
@@ -148,6 +156,77 @@ async def _alert_row_ambiguous(telegram_id: int, tab_titles: list[str]) -> None:
         f"на нескольких вкладках с одинаковой шапкой ({tabs_text}), непонятно какая актуальна. "
         "Проверьте «🔄 Синхронизация таблицы» и таблицу вручную."
     )
+
+
+# Имя главной вкладки задано, а листа с таким названием в таблице нет (переименовали в
+# Google, в настройке осталось старое). Пустую вкладку не создаём — строки уехали бы туда,
+# а данные остались на переименованной. Алерт не чаще раза в час на одно и то же имя.
+_missing_main_tab_alert_at: dict[str, float] = {}
+_MISSING_MAIN_TAB_ALERT_COOLDOWN_S = 60 * 60
+
+
+def _missing_main_tab_text(tab: str) -> str:
+    return (
+        f"⚠️ Google Sheets: вкладка «{tab}» не найдена. Записи в неё не уходят.\n\n"
+        "Проверьте имя в «📄 Вкладки таблицы» или верните прежнее имя вкладки в Google."
+    )
+
+
+class MainTabMissing(RuntimeError):
+    """Имя главной вкладки задано, но такого листа нет. Это не повод создавать пустой."""
+
+    def __init__(self, tab: str):
+        self.tab = tab
+        super().__init__(_missing_main_tab_text(tab))
+
+
+async def _alert_missing_main_tab(tab: str) -> None:
+    import time
+
+    now = time.monotonic()
+    # None, а не 0.0: monotonic считает от загрузки машины — на свежем сервере (аптайм < 1 ч)
+    # «0.0» глушил САМЫЙ ПЕРВЫЙ алерт как «уже был в пределах часа».
+    last = _missing_main_tab_alert_at.get(tab)
+    if last is not None and now - last < _MISSING_MAIN_TAB_ALERT_COOLDOWN_S:
+        return
+    _missing_main_tab_alert_at[tab] = now
+    await _send_admin_alert(_missing_main_tab_text(tab))
+
+
+def _schedule_missing_main_tab_alert(tab: str) -> None:
+    """Поставить алерт на цикл бота. Синхронно и без исключений наружу: _get_sheet бывает
+    внутри to_thread, await оттуда нельзя, а сбой постановки не должен ронять поток."""
+    try:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = _alert_loop
+        if loop is None or not loop.is_running():
+            return
+        asyncio.run_coroutine_threadsafe(_alert_missing_main_tab(tab), loop)
+    except Exception as e:
+        logger.warning("Алерт о вкладке %r не поставлен: %s", tab, e)
+
+
+def _refuse_missing_main_tab(tab: str) -> None:
+    logger.error(
+        "Главная вкладка %r не найдена в Google-таблице — пустую не создаю, запись не идёт.",
+        tab,
+    )
+    _schedule_missing_main_tab_alert(tab)
+    raise MainTabMissing(tab)
+
+
+async def _give_up_missing_main_tab(exc: MainTabMissing) -> None:
+    """Промах постоянный: ретраи с паузами вкладку не вернут, а общий алерт «после N попыток»
+    ушёл бы на каждую строку. Здесь — тот же отказ, что у других сбоев листа, без новой вкладки."""
+    _reset_sheet_cache()
+    _note_write(False)
+    logger.warning(
+        "Google Sheets: вкладка %r не найдена — запись этого вызова пропущена.",
+        exc.tab,
+    )
+    await _alert_missing_main_tab(exc.tab)
 
 
 _startup_tab_warning_sent = False
@@ -291,27 +370,25 @@ def _get_sheet():
 
         # Quick 260815-3hw: priority chain, stage 1 — bot_settings.main_sheet_tab (admin screen
         # «📄 Вкладки таблицы»). Checked FIRST so a manager who names the tab from the button
-        # overrides a stale/wrong .env value without editing .env or restarting — same
-        # auto-create semantics as the .env stage below.
+        # overrides a stale/wrong .env value without editing .env or restarting. A missing
+        # title is a refusal, not add_worksheet: the tab was renamed in Google and the setting
+        # still has the old name — a new empty sheet would take the writes, the data stays put.
         tab = _load_main_tab_setting()
         if tab:
             try:
                 _sheet = sh.worksheet(tab)
             except gspread.WorksheetNotFound:
-                _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
+                _refuse_missing_main_tab(tab)
             return _sheet
 
         # Stage 2 — GOOGLE_SHEET_TAB (.env). Defensively strip stray quotes some .env parsers
-        # keep around the value.
+        # keep around the value. Same refusal as stage 1: do not invent an empty tab.
         tab = (config.GOOGLE_SHEET_TAB or "").strip().strip('"').strip("'").strip()
         if tab:
-            # Target the configured tab by name; auto-create it if the spreadsheet doesn't
-            # have it yet (mirrors the «Незавершённые» tab behaviour) so a fresh work-sheet
-            # doesn't silently drop every write with WorksheetNotFound.
             try:
                 _sheet = sh.worksheet(tab)
             except gspread.WorksheetNotFound:
-                _sheet = sh.add_worksheet(title=tab, rows=1000, cols=30)
+                _refuse_missing_main_tab(tab)
             return _sheet
 
         # Stage 3 — legacy pin (READ-ONLY, nothing writes a new one). Never resolve by raw
@@ -430,6 +507,9 @@ async def append_to_sheet(data: list):
             # and the file handler retains 5×10MB rotated logs on disk.
             logger.info(f"Successfully appended row for telegram_id={(data[0] if data else '?')!r} to Google Sheet")
             _note_write(True)
+            return
+        except MainTabMissing as e:
+            await _give_up_missing_main_tab(e)
             return
         except Exception as e:
             _reset_sheet_cache()  # drop possibly-stale client/handle before retrying
@@ -1087,6 +1167,9 @@ async def update_row_by_id(
             if code == "updated":
                 _note_write(True)
             return code == "updated"
+        except MainTabMissing as e:
+            await _give_up_missing_main_tab(e)
+            return False
         except Exception as e:
             _reset_sheet_cache()
             delay = RETRY_DELAYS[attempt] if attempt < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
@@ -1522,10 +1605,11 @@ async def tab_row_count(title: str) -> tuple[bool, int] | None:
 
 
 # --- Quick 260919-mlu (Task 1): rename-in-place instead of orphaning the old tab ------------
-# _get_sheet/_get_named_sheet auto-create a NEW empty tab on WorksheetNotFound when an admin
-# just retypes a key's name — the old tab with real data is left an orphan (memory: three
-# generations of "Незавершённые" on prod). gspread.Worksheet.update_title() renames a tab
-# in-place, keeping its rows and letting Google fix in-sheet formula references itself.
+# _get_named_sheet auto-creates a NEW empty tab on WorksheetNotFound when an admin just
+# retypes a key's name — the old tab with real data is left an orphan (three generations of
+# «Незавершённые» on prod). The main tab does not: _get_sheet refuses a missing configured
+# name instead of add_worksheet. gspread.Worksheet.update_title() renames a tab in-place,
+# keeping its rows and letting Google fix in-sheet formula references itself.
 
 def _list_worksheet_titles_sync() -> list[str]:
     gc = gspread.service_account(filename=config.GOOGLE_CREDENTIALS_FILE)
@@ -1741,6 +1825,9 @@ async def append_to_existing_named_sheet(tab_name: str, data: list) -> str:
                 f"to existing tab {tab_name!r}"
             )
             return result
+        except MainTabMissing as e:
+            await _give_up_missing_main_tab(e)
+            return "error"
         except Exception as e:
             if tab_name is None:
                 _reset_sheet_cache()

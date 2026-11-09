@@ -261,16 +261,21 @@ def test_get_sheet_main_sheet_tab_setting_beats_env_when_both_set(tmp_path, monk
     assert ws.title == "Из админки"
 
 
-def test_get_sheet_main_sheet_tab_setting_auto_creates_when_missing(tmp_path, monkeypatch):
+def test_get_sheet_main_sheet_tab_setting_missing_does_not_create(tmp_path, monkeypatch):
+    """Stage 1 name that is not on the spreadsheet must not spawn an empty tab."""
     _use_tmp_db(tmp_path)
     _reset_sheets_module_state()
     fast_init_db()
     _seed_setting("main_sheet_tab", "Новая от менеджера")
-    _patch_gspread_client(monkeypatch, ["STATISTICS"])
+    fake_ss = _patch_gspread_client(monkeypatch, ["STATISTICS"])
     monkeypatch.setattr(config, "GOOGLE_SHEET_TAB", "")
 
-    ws = sheets._get_sheet()
-    assert ws.title == "Новая от менеджера"
+    try:
+        sheets._get_sheet()
+        assert False, "missing main tab must not be created"
+    except sheets.MainTabMissing as e:
+        assert e.tab == "Новая от менеджера"
+    assert "Новая от менеджера" not in fake_ss._sheets
 
 
 # ── Stage 2: GOOGLE_SHEET_TAB still works when bot_settings is unset (back-compat) ─────────
