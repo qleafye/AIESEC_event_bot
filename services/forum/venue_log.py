@@ -77,6 +77,7 @@ DENIAL_LABELS = {
     "not_our_qr": "не QR-пропуск",
     "not_approved": "заявка не одобрена",
     "rejected": "заявка отклонена",
+    "reserve_not_invited": "резерв, сегодня не звали",
     "past_season": "делегат прошлого сезона",
     "wrong_city": "делегат другого города",
     "wrong_city_point": "сессия другого города",

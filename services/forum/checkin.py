@@ -164,6 +164,7 @@ DENIAL_REASON_TEXT = {
     # отдаёт (там и отказ, и «на рассмотрении» — `not_approved`), уточняет сканер
     # (`services.forum.onsite_reg.refine_denial`): волонтёр обязан видеть, что заявку ОТКЛОНИЛИ.
     "rejected": "Заявка отклонена менеджером",
+    "reserve_not_invited": "Ты в резерве, сегодня не звали — к стойке",
     "past_season": "Делегат прошлого сезона",
     "foreign_event": "QR другого мероприятия",
     # Приёмка 01.10: строка вообще не в формате пропуска (случайный QR, ссылка, текст) — не
@@ -185,22 +186,24 @@ async def checkin_denial(user: dict | None) -> str | None:
     (`handlers/user_actions.py::show_my_checkin_qr`), и БУДУЩЕЙ рассылкой QR накануне форума —
     обе точки обязаны звать её ПЕРЕД `build_checkin_qr`.
 
-    Допуск есть, только если ВСЕ три условия верны: (1) пользователь существует, (2) его
-    `status` строго `'approved'` (в отличие от `handlers.user_actions._gate_decision`, здесь
-    NULL/неизвестные/будущий `waitlist` НЕ допускаются — тот гейт разрешает их ради обратной
-    совместимости ~590 легаси-записей, а QR — материальный пропуск на площадку, легаси-станд
-    там неуместен), (3) делегат НЕ прошлого сезона (`reg_engine.is_past_season_row` сверяет
-    `users.season` с текущим `event_season`) — иначе 482 импортированных делегата 26/1 со
-    `status='approved'` получили бы пропуск на текущий форум.
+    Допуск есть, если пользователь есть, не прошлый сезон, и либо `status=='approved'`,
+    либо живой автоотказ с приглашением резерва на сегодня (фаза 46).
 
-    Возвращает код причины отказа (`'no_user' | 'not_approved' | 'past_season'`) или `None`,
-    если допуск есть. Чтение `event_season` — fail-soft (тот же приём, что у
+    Возвращает код отказа (`'no_user' | 'not_approved' | 'reserve_not_invited' | 'past_season'`)
+    или `None`, если допуск есть. Чтение `event_season` — fail-soft (тот же приём, что у
     `handlers/user_actions.py::_returning_text_if_past_season`): сбой чтения настройки не
     должен блокировать пропуск уже одобренному делегату текущего события."""
     if not user:
         return "no_user"
     if user.get("status") != "approved":
-        return "not_approved"
+        from services.forum.reserve import is_live_reserve, may_enter_as_reserve
+
+        if await may_enter_as_reserve(user):
+            pass  # живой резерв с приглашением на сегодня — как одобренный
+        elif await is_live_reserve(user):
+            return "reserve_not_invited"
+        else:
+            return "not_approved"
     try:
         event_season = await get_setting_typed("event_season") or None
         if is_past_season_row(user, event_season):

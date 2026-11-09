@@ -123,6 +123,7 @@ _REPORT_ROW_LIMIT = 20
 _DENIAL_LABELS = {
     "no_user": "не найден",
     "not_approved": "не одобрен",
+    "reserve_not_invited": "резерв, сегодня не звали",
     "past_season": "прошлый сезон",
     # Форум-ночь B1 (идея №10): QR перевыпущен (database.db.checkin_token_replacements) —
     # компактная версия DENIAL_REASON_TEXT["token_replaced"] для строки отчёта загрузки.
