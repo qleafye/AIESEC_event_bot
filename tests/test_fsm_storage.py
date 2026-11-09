@@ -75,3 +75,27 @@ def test_sqlite_fsm_survives_reopen_and_keeps_thread(tmp_path):
         assert str(mode[0]).lower() == "wal"
 
     _run(scenario())
+
+
+def test_purge_user_drops_fsm_row_for_that_person_only(tmp_path):
+    path = str(tmp_path / "forum.db")
+    config.DB_PATH = path
+    _run(bot_db.init_db())
+    gone = StorageKey(bot_id=1, chat_id=20, user_id=20)
+    kept = StorageKey(bot_id=1, chat_id=21, user_id=21)
+
+    async def scenario():
+        storage = SqliteStorage(path)
+        await storage.set_state(gone, "Registration:name")
+        await storage.set_data(gone, {"name": "Аня"})
+        await storage.set_state(kept, "Registration:name")
+        await storage.set_data(kept, {"name": "Боря"})
+        await storage.close()
+        await bot_db.purge_user(20)
+        again = SqliteStorage(path)
+        assert await again.get_state(gone) is None
+        assert await again.get_data(gone) == {}
+        assert await again.get_data(kept) == {"name": "Боря"}
+        await again.close()
+
+    _run(scenario())

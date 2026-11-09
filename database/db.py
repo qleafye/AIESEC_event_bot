@@ -11313,6 +11313,8 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("users", "telegram_id", "application"),
     ("reg_started", "telegram_id", "draft"),
     ("reg_drafts", "telegram_id", "draft"),
+    # Недописанная анкета в FSM: то же, что черновик, только ключ user_id.
+    ("fsm_storage", "user_id", "draft"),
     ("reg_answer_history", "telegram_id", "history"),
     ("reg_events", "telegram_id", "events"),
     ("user_consents", "user_id", "consents"),
