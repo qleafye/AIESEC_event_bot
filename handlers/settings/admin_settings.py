@@ -332,7 +332,7 @@ _GAME_FIELD_ORDER = [
     "game_proof_type_unspecified_text", "game_task_overdue_hint_text",
     "leaderboard_header_text", "leaderboard_rank_line_text", "leaderboard_empty_text",
     # Магазин баллов: тексты брони делегатом (витрина, «🎫 Мои брони», уведомления со стойки).
-    "shop_take_button_text", "shop_reserve_hint_text",
+    "shop_take_button_text", "shop_reserve_hint_text", "shop_hours_text",
     "shop_take_confirm_text", "shop_take_confirm_button_text",
     "shop_reserved_text", "shop_my_reservations_button_text",
     "shop_my_reservations_header_text", "shop_my_reservations_empty_text",

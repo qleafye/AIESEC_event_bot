@@ -128,6 +128,17 @@ def test_showcase_hidden_until_open(tmp_path):
     assert _run(shop_delegate.shop_button()).callback_data == "shopv"
     text = _run(shop_delegate.showcase_text(UID2))
     assert "не хватает 100" in text and "осталось 3" in text
+    assert "10:00" not in text
+
+
+def test_showcase_shows_hours_when_set(tmp_path):
+    _env(tmp_path)
+    _run(shop_db.add_item("Шоппер", 150, 3, None))
+    _run(shop_db.set_open(True))
+    _run(db.set_setting("shop_hours_text", "Юлид-шоп открыт 10:00–18:00"))
+    text = _run(shop_delegate.showcase_text(UID2))
+    assert "Юлид-шоп открыт 10:00–18:00" in text
+    assert text.index("Юлид-шоп") < text.index("На счету")
 
 
 def test_admin_new_item_wizard(tmp_path):

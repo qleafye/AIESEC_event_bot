@@ -100,9 +100,23 @@ async def _can_take(item: dict, telegram_id: int, balance: int) -> bool:
     return not (item["per_person"] and await shop_db.count_bought(telegram_id, item["id"]) >= item["per_person"])
 
 
+async def _hours_line(telegram_id: int, lang: str, tr_map: dict | None) -> str:
+    from database.db import get_user
+    from domain.cities import get_setting_typed_for_city
+
+    user = await get_user(telegram_id)
+    city = (user or {}).get("event_city")
+    raw = await get_setting_typed_for_city("shop_hours_text", city) or ""
+    return (reg_i18n.tr_text(raw, lang, tr_map or {}) or "").strip()
+
+
 async def showcase_text(telegram_id: int, lang: str = "ru", tr_map: dict | None = None) -> str:
     balance = await get_balance(telegram_id)
-    lines = [f"🛍 <b>{html.escape(await _title())}</b>", f"На счету: <b>{balance}</b> {points_word(balance)}", ""]
+    lines = [f"🛍 <b>{html.escape(await _title())}</b>"]
+    hours = await _hours_line(telegram_id, lang, tr_map)
+    if hours:
+        lines.append(html.escape(hours, quote=False))
+    lines += [f"На счету: <b>{balance}</b> {points_word(balance)}", ""]
     for item in await shop_db.list_items(active_only=True):
         line = f"• {html.escape(item['title'])} — {item['price']}"
         if item["stock_left"] is not None and item["stock_left"] <= 0:

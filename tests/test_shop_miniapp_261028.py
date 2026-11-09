@@ -96,6 +96,14 @@ def test_closed_404_and_empty(client):
     _open()
     body = _get(client).json()
     assert body["items"] == [] and body["empty_text"]
+    assert "hours_text" not in body
+
+
+def test_hours_text_when_set(client):
+    _open()
+    _set("shop_hours_text", "Юлид-шоп открыт 10:00–18:00")
+    body = _get(client).json()
+    assert body["hours_text"] == "Юлид-шоп открыт 10:00–18:00"
 
 
 def test_statuses_and_take_flags(client):
