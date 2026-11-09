@@ -10002,37 +10002,40 @@ async def mark_miniapp_outbox_failed(row_id: int, error: str) -> None:
         await db.commit()
 
 
-async def purge_miniapp_outbox_for_user(telegram_id: int) -> int:
-    """Квик 260911-mx6 (сеялка состояний приёмки): хвост, который `purge_user` сознательно
-    НЕ трогает — `miniapp_outbox` в `USER_PURGE_EXCLUDED`, потому что это очередь побочных
-    эффектов Mini App (объект бота, не делегатский след, см. комментарий у
-    USER_PURGE_EXCLUDED выше). Но сеялке эта таблица всё же нужна: если после сброса тестера
-    в ней остаётся необработанное событие по старому состоянию, делегату после /start
-    прилетает стухшее уведомление Mini App (и, отдельно, напоминание об оплате — то снимает
-    `cancel_payment_reminders`, это не про jobs.sqlite).
+async def _unprocessed_outbox_ids_for_user(db, telegram_id: int) -> list[int]:
+    """id необработанных `miniapp_outbox`, в payload которых этот человек.
 
-    Удаляет только НЕобработанные (`processed_at IS NULL`) события, чей payload несёт этого
-    человека (`user_id` ИЛИ `telegram_id` внутри JSON) — уже обработанные и чужие события не
-    трогает. Разбор JSON в Python (`json.loads` в try/except, битая строка пропускается) —
-    НЕ `json_extract`: JSON1 нигде в проекте не используется, заводить зависимость от сборки
-    SQLite ради одной функции незачем. Возвращает число удалённых строк; на пустой очереди —
-    0 без падения."""
+    Соединение и commit — у вызывающего. Разбор JSON в Python, не `json_extract`: битая
+    строка и не-объект пропускаются. Совпадение — `user_id` или `telegram_id` в payload."""
+    async with db.execute(
+        "SELECT id, payload FROM miniapp_outbox WHERE processed_at IS NULL"
+    ) as cursor:
+        rows = await cursor.fetchall()
+    matched: list[int] = []
+    for row in rows:
+        try:
+            payload = json.loads(row[1])
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("user_id") == telegram_id or payload.get("telegram_id") == telegram_id:
+            matched.append(row[0])
+    return matched
+
+
+async def purge_miniapp_outbox_for_user(telegram_id: int) -> int:
+    """Сеялка состояний приёмки по-прежнему зовёт эту функцию отдельно: своё соединение и
+    свой commit. `purge_user` тот же хвост чистит сам, внутри своей транзакции, и сюда не
+    заходит — второй коннект и второй commit разошлись бы с остальным удалением.
+
+    Таблица остаётся в `USER_PURGE_EXCLUDED`: у события нет простой колонки человека, только
+    JSON. Удаляет только НЕобработанные (`processed_at IS NULL`) события, чей payload несёт
+    этого человека (`user_id` или `telegram_id`). Уже обработанные и чужие события не трогает.
+    Разбор JSON в Python (`json.loads` в try/except, битая строка пропускается) — не
+    `json_extract`. Возвращает число удалённых строк; на пустой очереди — 0 без падения."""
     async with _connect() as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT id, payload FROM miniapp_outbox WHERE processed_at IS NULL"
-        ) as cursor:
-            rows = await cursor.fetchall()
-        matched_ids: list[int] = []
-        for row in rows:
-            try:
-                payload = json.loads(row["payload"])
-            except (TypeError, ValueError):
-                continue
-            if not isinstance(payload, dict):
-                continue
-            if payload.get("user_id") == telegram_id or payload.get("telegram_id") == telegram_id:
-                matched_ids.append(row["id"])
+        matched_ids = await _unprocessed_outbox_ids_for_user(db, telegram_id)
         if not matched_ids:
             return 0
         placeholders = ",".join("?" * len(matched_ids))
@@ -11304,8 +11307,10 @@ async def get_stored_lang(telegram_id: int) -> str | None:
 #
 # НЕ трогаем (и почему): staff — роли менеджера, это не делегатский след, удаление аккаунта
 # делегата не должно снимать чужие права; bot_settings/cities/faq_items/game_tasks/polls/
-# broadcasts/scheduled_broadcasts/translations/translation_queue/miniapp_outbox — справочники
-# и объекты, созданные менеджером, а не делегатом. Авторские колонки других таблиц
+# broadcasts/scheduled_broadcasts/translations/translation_queue — справочники и объекты,
+# созданные менеджером, а не делегатом. miniapp_outbox в том же списке исключений (нет
+# простой колонки), но необработанный хвост этого человека purge_user стирает сам.
+# Авторские колонки других таблиц
 # (changed_by/decided_by/answered_by/reviewed_by/created_by/added_by/admin_id) хранят id
 # менеджера, а не удаляемого делегата — таблицы, у которых ТОЛЬКО такие id-колонки, сторог
 # вообще не находит, в список их добавлять не нужно.
@@ -11319,6 +11324,11 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("reg_events", "telegram_id", "events"),
     ("user_consents", "user_id", "consents"),
     ("coins", "user_id", "coins"),
+    # Журнал «+N» в чате. Ключ — user_id: строка про делегата уходит целиком.
+    # awarded_by отдельно не чистим — где он только автор награды, строка остаётся.
+    ("chat_coin_awards", "user_id", "coins"),
+    # Журнал напоминаний о сессии. Группа queue уже есть в карточке.
+    ("session_remind_sends", "telegram_id", "queue"),
     ("delegate_questions", "user_id", "questions"),
     ("game_submissions", "user_id", "game"),
     ("game_submit_digest_queue", "user_id", "queue"),
@@ -11483,6 +11493,8 @@ USER_PURGE_EXCLUDED: frozenset[str] = frozenset({
     "scheduled_broadcasts",
     "translations",
     "translation_queue",
+    # Простой колонки человека нет — сторож схемы оставляет таблицу здесь. Необработанные
+    # события этого делегата purge_user стирает сам, в той же транзакции (группа queue).
     "miniapp_outbox",
     "sos_card_copies",
     # sos_relay_messages.chat_id — чат SOS (копии дописок в треде карточки), не делегат.
@@ -11559,6 +11571,7 @@ async def count_user_footprint(telegram_id: int) -> dict[str, int]:
         ) as cursor:
             row = await cursor.fetchone()
             result["referrals_kept"] = row[0] if row else 0
+        result["queue"] += len(await _unprocessed_outbox_ids_for_user(db, telegram_id))
     return result
 
 
@@ -11570,15 +11583,21 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
 
     НЕ трогает: staff (роли менеджера переживают удаление аккаунта делегата), bot_settings/
     cities/faq_items/game_tasks/polls/broadcasts/scheduled_broadcasts/translations/
-    translation_queue/miniapp_outbox (справочники и объекты менеджера, не делегата) и
-    авторские колонки других таблиц (changed_by/decided_by/answered_by/reviewed_by/
-    created_by/added_by/admin_id) — там id менеджера, не удаляемого делегата. Заявки
+    translation_queue (справочники и объекты менеджера, не делегата), уже обработанные
+    строки miniapp_outbox и чужие события очереди, и авторские колонки других таблиц
+    (changed_by/decided_by/answered_by/reviewed_by/created_by/added_by/admin_id) — там id
+    менеджера, не удаляемого делегата. Заявки
     делегатов, которых этот человек когда-то привёл (users.referrer_id), тоже не трогает —
     только пересчитывает их в возвращаемом `referrals_kept` (та же логика, что у
     count_user_footprint), карточка честно предупреждает менеджера до нажатия.
 
     `game_submission_parts` удаляется ПЕРВОЙ, по подзапросу на submission_id — если удалить
-    её ПОСЛЕ game_submissions, подзапрос вернёт пусто и части останутся сиротами."""
+    её ПОСЛЕ game_submissions, подзапрос вернёт пусто и части останутся сиротами.
+
+    Необработанный miniapp_outbox этого человека (payload `user_id` или `telegram_id`,
+    `processed_at IS NULL`) удаляется в этом же соединении до commit и входит в группу
+    queue. `purge_miniapp_outbox_for_user` отсюда не зовётся: у неё своё соединение и свой
+    commit. Обработанные строки остаются."""
     result: dict[str, int] = {g: 0 for g in _PURGE_RESULT_GROUPS}
     async with _connect() as db:
         cursor = await db.execute(
@@ -11628,6 +11647,13 @@ async def purge_user(telegram_id: int) -> dict[str, int]:
         ) as cur:
             row = await cur.fetchone()
             result["referrals_kept"] = row[0] if row else 0
+        outbox_ids = await _unprocessed_outbox_ids_for_user(db, telegram_id)
+        if outbox_ids:
+            placeholders = ",".join("?" * len(outbox_ids))
+            cursor = await db.execute(
+                f"DELETE FROM miniapp_outbox WHERE id IN ({placeholders})", outbox_ids
+            )
+            result["queue"] += cursor.rowcount
         await db.commit()
     return result
 
