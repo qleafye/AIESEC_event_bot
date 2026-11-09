@@ -13,6 +13,7 @@ from database import db
 import services.checkin_broadcast as cb
 import services.scheduler as sched
 from services.applications.reject_rules import forum_date_for
+from domain.settings.callback_token import city_reset_callback
 from tests._dbtpl import fast_init_db
 from tests.test_roles_phase8 import FakeCallback, _fresh_state
 
@@ -224,12 +225,12 @@ def test_clear_city_date_confirm_names_what_turns_off(tmp_path):
     _ready(tmp_path)
     _run(set_admin_city(ADMIN_ID, "spb"))
     _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
-    cbq = FakeCallback("settings_reset_city:forum_date", user_id=ADMIN_ID)
+    cbq = FakeCallback(city_reset_callback("ask", "forum_date"), user_id=ADMIN_ID)
     _run(settings_reset_city(cbq))
     assert "Стереть дату форума" in cbq.message.text and "SOS" in cbq.message.text
     assert "как везде" not in cbq.message.text.lower()
     cbs = [b.callback_data for row in cbq.message.markup.inline_keyboard for b in row]
-    assert "settings_reset_city_go:forum_date:spb" in cbs
+    assert city_reset_callback("go", "forum_date", "spb") in cbs
 
 
 def test_clear_city_date_go_says_date_erased_not_as_everywhere(tmp_path):
@@ -241,13 +242,13 @@ def test_clear_city_date_go_says_date_erased_not_as_everywhere(tmp_path):
     _ready(tmp_path)
     _run(set_admin_city(ADMIN_ID, "spb"))
     _run(db.set_setting("forum_date__city__spb", "03.10.2026"))
-    cbq = FakeCallback("settings_reset_city_go:forum_date:spb", user_id=ADMIN_ID)
+    cbq = FakeCallback(city_reset_callback("go", "forum_date", "spb"), user_id=ADMIN_ID)
     _run(settings_reset_city_go(cbq))
     answer = cbq.answers[-1][0]
     assert "дата стёрта" in answer and "как везде" not in answer
     assert _run(db.get_setting("forum_date__city__spb")) in (None, "")
     _run(db.set_setting("start_text__city__spb", "свой"))
-    cbq = FakeCallback("settings_reset_city_go:start_text:spb", user_id=ADMIN_ID)
+    cbq = FakeCallback(city_reset_callback("go", "start_text", "spb"), user_id=ADMIN_ID)
     _run(settings_reset_city_go(cbq))
     assert "как везде" in cbq.answers[-1][0]
 
@@ -271,7 +272,7 @@ def test_dash_on_city_date_asks_confirmation_instead_of_erasing(tmp_path):
     text, _mode, kb = msg.answers[-1]
     assert "Стереть дату форума" in text
     cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert "settings_reset_city_go:forum_date:spb" in cbs
+    assert city_reset_callback("go", "forum_date", "spb") in cbs
     assert _run(db.get_setting("forum_date__city__spb")) == "03.10.2026"
     assert _run(state.get_state()) is None
     # Даты нет — «-» объясняет, что стирать нечего, и ничего не пишет.
