@@ -763,6 +763,8 @@ async function renderSection(root, code, ctx, targetKey) {
   const needsConfirmState = new Map(); // key -> текст сервера
   const staleState = new Map(); // key -> {raw, value}
   let batchErrors = new Map(); // key -> текст ошибки
+  const delegatePreview = new Map(); // key -> {was, will}: текст глазами делегата
+  let delegatePreviewGen = 0;
 
   function onDiffKeydown(e) {
     if (e.key === "Escape") closeDiffDialog();
@@ -780,10 +782,50 @@ async function renderSection(root, code, ctx, targetKey) {
     needsConfirmState.clear();
     staleState.clear();
     batchErrors = new Map();
+    delegatePreview.clear();
+    const previewGen = ++delegatePreviewGen;
     renderDiffList();
     diffBackdrop.classList.remove("hidden");
     document.addEventListener("keydown", onDiffKeydown);
     diffSheet.focus();
+    fillDelegatePreviews(previewGen);
+  }
+
+  function delegatePreviewText(item, value) {
+    if (value == null) return item.default == null ? "" : String(item.default);
+    return String(toBatchValue(value) ?? "");
+  }
+
+  async function loadDelegatePreview(key, item, value, gen) {
+    const oldText = item.raw != null ? String(item.raw) : (item.default == null ? "" : String(item.default));
+    const query = (text) => `/admin/settings/preview?key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(text)}`;
+    try {
+      const [wasResp, willResp] = await Promise.all([
+        api(query(oldText)),
+        api(query(delegatePreviewText(item, value))),
+      ]);
+      if (gen !== delegatePreviewGen) return;
+      delegatePreview.set(key, { was: wasResp.text || "", will: willResp.text || "" });
+    } catch (err) {
+      if (gen !== delegatePreviewGen || isAuthError(err)) return;
+      delegatePreview.set(key, {
+        was: item.display || "",
+        will: humanDisplayValue(item, value, fileNames),
+      });
+    }
+  }
+
+  async function fillDelegatePreviews(gen) {
+    const jobs = [];
+    for (const [key, value] of pending) {
+      const item = originalItems.get(key);
+      if (!item || !item.delegate_preview) continue;
+      jobs.push(loadDelegatePreview(key, item, value, gen));
+    }
+    if (!jobs.length) return;
+    await Promise.all(jobs);
+    if (gen !== delegatePreviewGen || diffBackdrop.classList.contains("hidden")) return;
+    renderDiffList();
   }
 
   function closeDiffDialog() {
@@ -801,12 +843,15 @@ async function renderSection(root, code, ctx, targetKey) {
   function buildOrdinaryDiffRow(key, item, value) {
     const category = diffCategoryFor(item);
     const row = h("div", { class: `settings-diff-row${category === "dangerous" ? " dangerous" : ""}` });
+    const preview = item.delegate_preview ? delegatePreview.get(key) : null;
+    const wasText = preview ? preview.was : (item.delegate_preview ? "" : (item.display || ""));
+    const willText = preview ? preview.will : (item.delegate_preview ? "" : humanDisplayValue(item, value, fileNames));
     row.append(
       h("p", { class: "settings-diff-label", text: item.label }),
-      h("p", { class: "settings-diff-was" }, `${texts.miniapp_settings_diff_was_label_text || ""}: ${item.display || ""}`),
+      h("p", { class: "settings-diff-was" }, `${texts.miniapp_settings_diff_was_label_text || ""}: ${wasText}`),
       h("p", { class: "settings-diff-will" },
         `${texts.miniapp_settings_diff_will_label_text || ""}: `,
-        h("span", { class: "settings-diff-value", text: humanDisplayValue(item, value, fileNames) }),
+        h("span", { class: "settings-diff-value", text: willText }),
       ),
     );
     if (category === "dangerous") {

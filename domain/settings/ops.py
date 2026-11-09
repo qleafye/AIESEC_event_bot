@@ -970,6 +970,8 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
         # в реестре) получают None — фронт работает как раньше.
         "option_labels": entry.get("option_labels"),
         "placeholders": _text_placeholder_chips(key, entry.get("type")),
+        # Письмо делегату: диалог «Было / Станет» показывает preview_text, не сырые скобки.
+        "delegate_preview": needs_delegate_preview(key),
     }
     max_len = entry.get("max_len")
     if max_len is not None:
