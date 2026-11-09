@@ -11404,6 +11404,11 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # который отметил (CSV/manual), это авторская колонка, не трогаем отдельно: строка
     # целиком уходит вместе с делегатом.
     ("checkins", "telegram_id", "checkin"),
+    # Приглашение резерва на конкретный день — личный след, не статус заявки.
+    # invited_by — автор, строка уходит целиком вместе с приглашённым.
+    ("reserve_invites", "telegram_id", "checkin"),
+    # Первый скан настоящего QR на тренировке. by_staff_id — кто сканировал, не трогаем отдельно.
+    ("training_scan_log", "telegram_id", "checkin"),
     # Форум-ночь B1 (идея №10): checkin_token_replacements.telegram_id — тот же личный след,
     # что checkins выше (кто когда-то держал такой токен), группа общая "checkin".
     ("checkin_token_replacements", "telegram_id", "checkin"),

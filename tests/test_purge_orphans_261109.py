@@ -52,14 +52,32 @@ def test_purge_user_drops_award_remind_and_pending_outbox_for_that_person_only(t
                     ),
                 ],
             )
+            await conn.executemany(
+                "INSERT INTO reserve_invites (telegram_id, day, city, invited_by, invited_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                [
+                    (20, "2026-11-09", "msk", 99, "2026-11-09 12:00:00"),
+                    (21, "2026-11-09", "msk", 99, "2026-11-09 12:00:00"),
+                ],
+            )
+            await conn.executemany(
+                "INSERT INTO training_scan_log "
+                "(telegram_id, day, scanned_at, city, by_staff_id) VALUES (?, ?, ?, ?, ?)",
+                [
+                    (20, "2026-11-09", "2026-11-09 12:00:00", "msk", 99),
+                    (21, "2026-11-09", "2026-11-09 12:00:00", "msk", 99),
+                ],
+            )
             await conn.commit()
 
         before = await bot_db.count_user_footprint(20)
         assert before["coins"] == 1
         assert before["queue"] == 2
+        assert before["checkin"] == 2
         removed = await bot_db.purge_user(20)
         assert removed["coins"] == 1
         assert removed["queue"] == 2
+        assert removed["checkin"] == 2
 
         async with aiosqlite.connect(path) as conn:
             async with conn.execute(
@@ -75,8 +93,19 @@ def test_purge_user_drops_award_remind_and_pending_outbox_for_that_person_only(t
             ) as cursor:
                 outbox = [(json.loads(row[0]), row[1]) for row in await cursor.fetchall()]
 
+            async with conn.execute(
+                "SELECT telegram_id FROM reserve_invites ORDER BY telegram_id"
+            ) as cursor:
+                invites = [row[0] for row in await cursor.fetchall()]
+            async with conn.execute(
+                "SELECT telegram_id FROM training_scan_log ORDER BY telegram_id"
+            ) as cursor:
+                scans = [row[0] for row in await cursor.fetchall()]
+
         assert awards == [(21, 20)]
         assert reminds == [21]
+        assert invites == [21]
+        assert scans == [21]
         assert outbox == [
             ({"telegram_id": 21}, None),
             ({"user_id": 20}, "2026-11-09 12:05:00"),
@@ -84,8 +113,10 @@ def test_purge_user_drops_award_remind_and_pending_outbox_for_that_person_only(t
         kept = await bot_db.count_user_footprint(21)
         assert kept["coins"] == 1
         assert kept["queue"] == 2
+        assert kept["checkin"] == 2
         gone = await bot_db.count_user_footprint(20)
         assert gone["coins"] == 0
         assert gone["queue"] == 0
+        assert gone["checkin"] == 0
 
     _run(scenario())
