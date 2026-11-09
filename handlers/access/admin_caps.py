@@ -1162,6 +1162,11 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     # право на ключ, поэтому здесь «любое право панели», а пару проверяет сам хендлер
     # (handlers/forum/admin_checkin_training.py). Лист ничего не пишет и прав не даёт.
     "checkin_training_sheet": ANY_CAPABILITY,
+    # Перенос сканов с тренировки на сессию сегодня — менеджер, не волонтёр стойки.
+    "checkin_training_move": "moderate_reg",
+    "ctm_pick:*": "moderate_reg",
+    "ctm_go:*": "moderate_reg",
+    "ctm_no": "moderate_reg",
 
     # Форум-ночь п.3 (D-03, идея №2): рассылка QR перед форумом + её настройки — та же капа
     # «moderate_reg», что у перевыпуска QR выше (D-01, идея №10): массовая отправка сообщений

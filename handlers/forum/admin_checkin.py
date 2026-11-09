@@ -365,10 +365,9 @@ async def render_admin_checkin(admin_id: int, city: str | None = None) -> tuple[
         *qr_buttons,
         *not_arrived_buttons,
         [InlineKeyboardButton(text="📤 Загрузить файл сканера", callback_data="checkin_upload_start")],
-        # Форум-ночь B4 (идея №8): пробная выгрузка — ничего не отмечает, только проверяет
-        # формат/читаемость приложения волонтёра.
+        # Форум-ночь B4: пробная выгрузка — ничего не отмечает, только проверяет файл сканера.
         [InlineKeyboardButton(text="🧪 Проверить приложение-сканер", callback_data="checkin_test_start")],
-        [InlineKeyboardButton(text="🧪 Учебные QR", callback_data="checkin_training_sheet")],
+        *_training_menu_rows(is_manager),
         *await _venue_entry_rows(admin_id),
         [back_button("admin_checkin", "◀️ Назад")],
     ])
@@ -1046,4 +1045,4 @@ async def checkinqr_time_step(message: types.Message, state: FSMContext):
 from services.forum import venue_log as _venue_log  # noqa: E402
 from handlers.forum.admin_venue import venue_entry_rows as _venue_entry_rows  # noqa: E402
 from services.forum import checkin_training as _training  # noqa: E402
-from handlers.forum import admin_checkin_training  # noqa: E402,F401  (бэклог №7: «🧪 Учебные QR»)
+from handlers.forum.admin_checkin_training import training_menu_rows as _training_menu_rows  # noqa: E402

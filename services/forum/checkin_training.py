@@ -17,7 +17,8 @@
 - сканер Mini App (`miniapp/routers/checkin.py`): учебный QR в ЛЮБОЙ точке — только учебная
   плашка (`training_scan_response`), без записи и без строки журнала площадки;
 - точка «🧪 Тренировка» (`TRAINING_POINT`) с настоящим QR — плашка по реальным данным
-  (`preview_entry` — «отмечен»/«уже был» по сегодняшнему входу), тоже без записи;
+  (`preview_entry`), без строки `checkins`. Одобренный делегат своего города ещё
+  дописывается в `training_scan_log` (первый скан дня по Москве); отказ и `TRAIN-*` — нет;
 - загрузка CSV в боте (`handlers/forum/admin_checkin.py`): учебные коды считаются
   (`count_training_codes`) и выкидываются из записей (`drop_training_records`), в отчёте —
   строка «учебных: N (не записаны)».
@@ -39,7 +40,7 @@ from typing import TypedDict
 
 import segno
 
-from database.db import list_checkins_for_user
+from database.db import list_checkins_for_user, log_training_scan
 from services.i18n import i18n
 from services.forum.checkin import (
     DENIAL_REASON_TEXT,
@@ -184,6 +185,49 @@ async def preview_entry(user: dict, lang: str, tr_map: dict) -> dict:
 async def as_training_point(res: dict, lang: str, tr_map: dict) -> dict:
     """Любой ответ сканера в точке «Тренировка» -> пометка «ничего не записано»."""
     return await _mark(res, "checkin_training_note_text", lang, tr_map)
+
+
+def msk_stamp() -> tuple[str, str]:
+    """`(YYYY-MM-DD HH:MM:SS, YYYY-MM-DD)` по Москве. Часы — через модуль `timeutil`,
+    чтобы тест мог заморозить «сейчас»."""
+    from services.infra import timeutil
+
+    dt = timeutil.msk_now()
+    stamp = dt.strftime("%Y-%m-%d %H:%M:%S")
+    return stamp, stamp[:10]
+
+
+def msk_day() -> str:
+    return msk_stamp()[1]
+
+
+async def training_point_visible(city: str | None) -> bool:
+    """Точку прячем только в день форума известного города. Накануне, без даты форума
+    и пока город сканера не выбран — показываем."""
+    if not city:
+        return True
+    from services.forum import checkin_forum_day
+    from services.infra import timeutil
+
+    window = await checkin_forum_day.forum_window(city)
+    if window is None:
+        return True
+    today = timeutil.msk_now().date()
+    return not (window[0] <= today <= window[1])
+
+
+async def remember_training_scan(user: dict, staff_id: int | None) -> None:
+    """Настоящий допущенный QR в точке «Тренировка». Первый скан дня побеждает."""
+    tid = user.get("telegram_id")
+    if tid is None:
+        return
+    from domain.cities import normalize_city
+
+    stamp, day = msk_stamp()
+    await log_training_scan(
+        int(tid), day=day, scanned_at=stamp,
+        city=normalize_city(user.get("event_city")), by_staff_id=staff_id,
+    )
 
 
 async def training_point_entry(lang: str, tr_map: dict) -> dict:

@@ -2360,6 +2360,24 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_venue_log_staff ON venue_log(staff_id, id)"
         )
 
+        # Скан настоящего QR в точке «Тренировка»: не отметка, а журнал на перенос.
+        # Первый скан дня побеждает — UNIQUE(telegram_id, day), день по Москве.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS training_scan_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                scanned_at TEXT NOT NULL,
+                city TEXT NOT NULL,
+                by_staff_id INTEGER,
+                UNIQUE(telegram_id, day)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_training_scan_log_day_city "
+            "ON training_scan_log(day, city)"
+        )
+
         # Форум-ночь п.4 (расписание форума в боте — владелец отверг импорт из таблицы):
         # program_halls/program_sessions, per-city. `day`/`start_time`/`end_time` — простые
         # ISO/24ч строки ('YYYY-MM-DD'/'HH:MM'), не отдельный тип даты/времени — сравнение
@@ -12047,6 +12065,48 @@ async def record_session_checkin(
 
     status = "moved" if previous_session_id is not None else "new"
     return status, stamp, previous_session_id
+
+
+async def log_training_scan(
+    telegram_id: int, *, day: str, scanned_at: str, city: str, by_staff_id: int | None,
+) -> bool:
+    """Строка журнала тренировки. Повтор того же делегата в тот же день — IGNORE, первая побеждает.
+    `True` — строка вставлена. В `checkins` ничего не пишет."""
+    async with _connect() as db:
+        cursor = await db.execute(
+            "INSERT OR IGNORE INTO training_scan_log "
+            "(telegram_id, day, scanned_at, city, by_staff_id) VALUES (?, ?, ?, ?, ?)",
+            (telegram_id, day, scanned_at, city, by_staff_id),
+        )
+        await db.commit()
+        return bool(cursor.rowcount)
+
+
+async def list_training_scans(day: str, city: str) -> list[dict]:
+    """Журнал тренировки за день города: имя из `users`, если человек ещё в базе."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT l.telegram_id, l.day, l.scanned_at, l.city, l.by_staff_id, u.full_name "
+            "FROM training_scan_log l LEFT JOIN users u ON u.telegram_id = l.telegram_id "
+            "WHERE l.day = ? AND l.city = ? ORDER BY l.scanned_at, l.telegram_id",
+            (day, city),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
+async def delete_training_scans(day: str, telegram_ids: list[int]) -> None:
+    """Снять строки этих людей за день — повторный перенос их уже не видит."""
+    ids = [int(i) for i in telegram_ids]
+    if not ids:
+        return
+    marks = ",".join("?" for _ in ids)
+    async with _connect() as db:
+        await db.execute(
+            f"DELETE FROM training_scan_log WHERE day = ? AND telegram_id IN ({marks})",
+            [day, *ids],
+        )
+        await db.commit()
 
 
 # ── Идеи №31/№32 бэклога чек-ина: журнал площадки и снятие ошибочной отметки ─────────────────
