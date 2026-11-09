@@ -31,13 +31,9 @@ from handlers.states import Registration
 from tests._dbtpl import fast_init_db
 
 MAX_CONNECTS_PER_STEP_ANSWER = 15
-# /start для НОВОГО делегата (без deep-link) на этом сценарии ни разу не доходит до
-# `_ask_step`/`enabled_steps` внутри ОДНОГО вызова cmd_start (реально шлёт только приветствие +
-# экран выбора города/трека) -- снимок из этого плана его пассивно не касается, замер
-# «было»/«стало» здесь ОДИНАКОВ (36). Сам cmd_start (~300 строк, вперемешку settings-чтения и
-# Telegram-отправки) сознательно НЕ обёрнут снимком целиком в этом плане -- см. докстринг
-# `_advance`. Порог фиксирует ТЕКУЩЕЕ число как потолок регрессии, не как «после фикса».
-MAX_CONNECTS_START = 40
+# /start нового делегата обёрнут в settings_snapshot: чтения bot_settings — одно
+# соединение, не цикл по строкам. Замер после обёртки — 17. До неё было 41 при потолке 36.
+MAX_CONNECTS_START = 17
 
 
 class _ConnectCounter:
@@ -151,11 +147,7 @@ def test_date_step_answer_uses_bounded_connections(tmp_path):
 
 
 def test_start_for_new_delegate_uses_bounded_connections(tmp_path):
-    """`/start` не обёрнут снимком целиком (см. докстринг `_advance` — cmd_start вперемешку
-    читает настройки и шлёт Telegram-сообщения на ~300 строках, обёртывать весь хендлер вне
-    приоритета этого плана), но пассивно выигрывает от снимка внутри `enabled_steps`/
-    `form_v2_flags`, которые он зовёт ниже по цепочке (`_city_fork_then_continue` ->
-    `_ask_step_or_recall`)."""
+    """`/start` читает настройки внутри settings_snapshot (см. cmd_start)."""
     _use_tmp_db(tmp_path)
     from handlers import registration as reg
 
@@ -168,7 +160,7 @@ def test_start_for_new_delegate_uses_bounded_connections(tmp_path):
 
     assert counter.n <= MAX_CONNECTS_START, (
         f"{counter.n} SQLite-соединений на /start нового делегата — регрессия сверх текущего "
-        f"потолка (36, этот путь не задет фиксом 260917 — см. комментарий у MAX_CONNECTS_START)"
+        f"потолка ({MAX_CONNECTS_START}, см. комментарий у MAX_CONNECTS_START)"
     )
 
 

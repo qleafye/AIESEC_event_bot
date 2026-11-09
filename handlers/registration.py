@@ -2014,357 +2014,360 @@ async def is_subscribed(bot: Bot, channel, user_id: int) -> bool | None:
 # aiogram injects by name so position is purely a syntax constraint.
 @router.message(Command("start"), StateFilter("*"))
 async def cmd_start(message: types.Message, state: FSMContext, bot: Bot, command: CommandObject | None = None):
-    user_id = message.from_user.id
-    logger.info(f"User {user_id} requested /start")
-    if (await state.get_state() or "").startswith("BotAvatar:"):  # /start снимает ожидание аватара
-        await state.clear()
+    # Один SELECT bot_settings на весь /start. Иначе каждый get_setting — своё соединение
+    # (язык, сезон, приветствие, город, кнопка анкеты). Запись настройки по-прежнему в БД.
+    async with settings_snapshot():
+        user_id = message.from_user.id
+        logger.info(f"User {user_id} requested /start")
+        if (await state.get_state() or "").startswith("BotAvatar:"):  # /start снимает ожидание аватара
+            await state.clear()
 
-    # Phase 07.1 (CITY-03): moved up from its original position further down in this function
-    # (below the pre-selection gate) so the "start" funnel write right below can already carry
-    # the deep-link city. _extract_event_city is pure -- no await, no DB -- so hoisting it here
-    # is safe and does not duplicate any work; the other extractors below still parse the same
-    # already-computed `args`.
-    args = command.args if command else None
+        # Phase 07.1 (CITY-03): moved up from its original position further down in this function
+        # (below the pre-selection gate) so the "start" funnel write right below can already carry
+        # the deep-link city. _extract_event_city is pure -- no await, no DB -- so hoisting it here
+        # is safe and does not duplicate any work; the other extractors below still parse the same
+        # already-computed `args`.
+        args = command.args if command else None
 
-    # Идея №5 бэклога чек-ина: `?start=vol_<код>` -- полностью отдельный от анкеты делегата
-    # путь (выдача роли, не регистрация), интерцептится ПЕРЕД любым другим ветвлением cmd_start
-    # (вопросом о языке, funnel-логом, предотбором) -- ни один из них не должен сработать для
-    # человека, который вообще не собирается подавать анкету. Мёртвая/повторная ссылка ->
-    # _handle_volunteer_invite возвращает False, /start продолжает обычный путь ниже (план:
-    # «и /start продолжает обычный путь»).
-    vol_code = _extract_volunteer_invite_code(args)
-    if vol_code is not None and await _handle_volunteer_invite(message, bot, vol_code):
-        return
-    dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
-    # Квик 260905-qqg: поднято сюда, чтобы запись `start` уже несла метку кампании; функция
-    # чистая — ни await, ни БД, поднять её раньше безопасно.
-    source_tag = _extract_source_tag(args)
+        # Идея №5 бэклога чек-ина: `?start=vol_<код>` -- полностью отдельный от анкеты делегата
+        # путь (выдача роли, не регистрация), интерцептится ПЕРЕД любым другим ветвлением cmd_start
+        # (вопросом о языке, funnel-логом, предотбором) -- ни один из них не должен сработать для
+        # человека, который вообще не собирается подавать анкету. Мёртвая/повторная ссылка ->
+        # _handle_volunteer_invite возвращает False, /start продолжает обычный путь ниже (план:
+        # «и /start продолжает обычный путь»).
+        vol_code = _extract_volunteer_invite_code(args)
+        if vol_code is not None and await _handle_volunteer_invite(message, bot, vol_code):
+            return
+        dl_event_city = _extract_event_city(args)          # Phase 07.1 (CITY-03)
+        # Квик 260905-qqg: поднято сюда, чтобы запись `start` уже несла метку кампании; функция
+        # чистая — ни await, ни БД, поднять её раньше безопасно.
+        source_tag = _extract_source_tag(args)
 
-    # Phase 27 (27-04, LANG-01, D-06): вопрос о языке — РАНЬШЕ party-closed/приветствия/города/
-    # вилки трека ниже (единственные четыре гейта, чей порядок этот план обязан сохранить);
-    # funnel-лог сразу ниже не в счёт — это запись в БД, не делегатский текст. `offer_language`
-    # сам решает, показывать ли экран (module off / ask_on_start off / язык уже resolved ->
-    # `False`, поток не меняется ни на шаг); показанный экран стоит между /start и первым же
-    # делегатским текстом, поэтому `args` передаётся сырым — `lang_pick_choose` реинвокнёт
-    # `cmd_start` с той же атрибуцией кампании, как если бы вопроса о языке не было.
-    from handlers.reg.reg_lang import offer_language
-    if await offer_language(message, state, args):
-        return
-    # D-41: `?start=walkin_<город>` — короткая анкета на месте: после вопроса о языке (как у
-    # обычного /start), до funnel-лога и предотбора. Выбор языка реинвокнет /start с теми же args.
-    from handlers.reg.onsite_reg import try_walkin_start
-    if await try_walkin_start(message, state, args):
-        return
-    # `?start=sessions` и другие форумные deep-link'и; не обработан — идёт обычный /start.
-    from handlers.forum.forum_deeplinks import try_forum_deeplink
-    if await try_forum_deeplink(message, state, args):
-        return
-
-    # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate
-    # below (subscription check, pre-selection) so a Nextcloud/subscription/allowlist hiccup
-    # can never suppress it. Own try/except, fail-soft -- a log write must never block /start.
-    # City comes from the deep-link (dl_event_city) when the delegate used a city-tagged
-    # /start; a delegate without one has no city yet at this point and is backfilled later,
-    # on the form_started step below, once mark_reg_started/_resolve_track have settled saved_city.
-    try:
-        _season = await get_setting_typed("event_season") or None
-        await record_reg_event(
-            user_id, "start", event_city=dl_event_city, season=_season, source_tag=source_tag
-        )
-    except Exception as e:
-        logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
-
-    # Делегации вузов: человек из формы, нажавший /start раньше синка, — одобряем сразу,
-    # после funnel-лога и до гейтов подписки/предотбора. Вся логика — в services/delegations/delegations.py; форма «Регистрация» — ext_forms_registration.
-    from services.delegations.delegations import try_delegate_start
-    if await try_delegate_start(message, state, bot):
-        return
-    from services.ext_forms.ext_forms_registration import try_registration_start
-    if await try_registration_start(message, state, bot):
-        return
-
-    # QW-02: observe-only subscription check — never blocks the user (D-04), never crashes /start (D-07).
-    # HG-02: normalize the stored contact_tg link (t.me/foo) to a @username get_chat_member accepts.
-    # HG-01: set_user_subscribed only persists for an EXISTING row; a first-touch registrant has no
-    # row yet here, so finalize_registration re-runs this persist after add_user.
-    try:
-        channel = _normalize_channel_ref(await get_setting("contact_tg"))
-        if channel is not None:
-            result = await is_subscribed(bot, channel, user_id)
-            if result is not None:
-                await set_user_subscribed(user_id, result)
-    except Exception as e:
-        logger.warning(f"Subscription check skipped for {user_id}: {e}")
-
-    # ME-05: an already-registered (non-rejected) user must always reach their normal
-    # welcome/menu — the pre-selection gate below is an INTAKE filter for NEW registrants only.
-    # Fetch the user row up front so toggling pre-selection ON can never lock an existing
-    # approved delegate out of their own menu (e.g. they lost their @username, or the allowlist
-    # was rebuilt without them). A rejected user still falls through to re-register (D-05a).
-    user = await get_user(user_id)
-    _already_registered = bool(user) and (user.get("status") or "approved") != "rejected"
-
-    # VERIF-01/02: pre-selection gate (D-13, default off → live flow untouched).
-    # Fail-soft like the subscription check above: a glitch never crashes /start.
-    try:
-        # Phase 17.1 (17.1-03): ключи предотбора — в реестре; get_setting_typed даёт тот же
-        # результат, что прежний `get_setting(k) or <литерал>` (enum: falsy -> "off"; text:
-        # None -> дефолт).
-        if not _already_registered and await get_setting_typed("preselect_enabled") == "on":
-            from services.access.allowlist import is_allowed, allowlist_size, _parse_manual_ids
-            if allowlist_size() == 0:
-                # Owner-confirmed fail-open (Open Q2): admit everyone; the refresh job
-                # alerts admins. Do NOT lock out a whole event over a sheet/quota glitch.
-                logger.warning(f"Pre-selection ON but allowlist empty — fail-open admit for {user_id}")
-            else:
-                manual_ids = _parse_manual_ids(await get_setting("preselect_manual_ids"))
-                uname = message.from_user.username
-                if uname is None and user_id not in manual_ids:
-                    prompt = await get_setting_typed("preselect_no_username_text")
-                    await message.answer(html.escape(await reg_i18n.tr_for(message, prompt)))  # Quick 260906
-                    return
-                if uname is not None and not is_allowed(uname) and user_id not in manual_ids:
-                    fail = await get_setting_typed("preselect_fail_text")
-                    link = await get_setting_typed("preselect_link")  # ссылка — не переводим
-                    text = html.escape(await reg_i18n.tr_for(message, fail))
-                    if link:
-                        text += "\n" + html.escape(link)
-                    await message.answer(text)
-                    return
-    except Exception as e:
-        logger.warning(f"Pre-selection gate skipped for {user_id}: {e}")
-
-    # user already fetched above (ME-05 gate bypass); do not re-query.
-    # args/dl_event_city/source_tag already resolved above (hoisted for the "start" funnel write).
-    # amb_<id> — второй, именованный формат того же referrer_id; взаимоисключим с пятью
-    # остальными деп-линк-форматами по построению (см. docstring extract_ambassador_ref).
-    # Решение владельца (17.09): один разбор для ОБОИХ форматов — числовой `?start=<id>`
-    # (уже разосланные ссылки на проде) проходит ту же проверку `resolve_referrer`
-    # (существование в `users` + опциональный гейт «только амбассадоры»), что и новый
-    # amb_-формат; отдельной необлегчённой ветки для числового больше нет.
-    raw_referrer_id = _extract_referrer_id(args, user_id) or _extract_ambassador_ref(args, user_id)
-    referrer_id = await resolve_referrer(raw_referrer_id)
-    party_track = _extract_party_track(args)          # Phase 5 (D-10)
-    dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
-    if referrer_id:
-        logger.info(f"Deep-link referrer_id={referrer_id} for user {user_id}")
-    resume_arg = _extract_resume_arg(args)  # Phase 21 (21-09, D-18): "continue" | "edit" | None
-
-    # Phase 21 (21-09, D-18): branch (a) — a fresh in-flight kind='new' draft (no `users` row
-    # yet, or a current-season rejected one) takes priority over EVERY other /start branch
-    # below, including the returning-delegate banner just below — a delegate mid-registration
-    # must see «Продолжить/Заново», not a fresh welcome or a past-season banner. Fail-soft: a
-    # draft-lookup glitch degrades to "no draft", never crashes /start.
-    try:
-        _draft_probe = await get_reg_draft(user_id)
-    except Exception as e:
-        logger.error(f"reg_resume draft lookup failed for {user_id}: {e}")
-        _draft_probe = None
-    _not_registered_or_rejected = (not user) or ((user.get("status") or "approved") == "rejected")
-    # Квик 260922-wrg (задача 1): черновик первичной подачи отклонённого делегата предлагаем
-    # «Продолжить/Заново» только если ему вообще можно подать заново в этом сезоне — при
-    # запрете поток обязан дойти до ветки возвращенца ниже и увидеть текст закрытия, а не
-    # экран восстановления черновика, который всё равно упрётся в finalize_registration.
-    # Для незарегистрированного (user is None) resubmit_gate не наш гейт вовсе (True, None).
-    _draft_resume_allowed = True
-    if user and (user.get("status") or "approved") == "rejected":
-        _draft_resume_allowed, _ = await reg_edit_policy.resubmit_gate(user)
-    if _draft_probe and _draft_probe.get("kind") == "new" and _not_registered_or_rejected and _draft_resume_allowed:
-        try:
-            _resume_ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
-        except Exception as e:
-            logger.error(f"reg_resume_ttl_hours resolve failed for {user_id}: {e}")
-            _resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
-        if resume_arg in ("continue", "edit") or _draft_is_fresh(_draft_probe, _resume_ttl_hours):
-            from handlers.reg.reg_resume import offer_resume
-            await offer_resume(message, _draft_probe, referrer_id=referrer_id)
+        # Phase 27 (27-04, LANG-01, D-06): вопрос о языке — РАНЬШЕ party-closed/приветствия/города/
+        # вилки трека ниже (единственные четыре гейта, чей порядок этот план обязан сохранить);
+        # funnel-лог сразу ниже не в счёт — это запись в БД, не делегатский текст. `offer_language`
+        # сам решает, показывать ли экран (module off / ask_on_start off / язык уже resolved ->
+        # `False`, поток не меняется ни на шаг); показанный экран стоит между /start и первым же
+        # делегатским текстом, поэтому `args` передаётся сырым — `lang_pick_choose` реинвокнёт
+        # `cmd_start` с той же атрибуцией кампании, как если бы вопроса о языке не было.
+        from handlers.reg.reg_lang import offer_language
+        if await offer_language(message, state, args):
+            return
+        # D-41: `?start=walkin_<город>` — короткая анкета на месте: после вопроса о языке (как у
+        # обычного /start), до funnel-лога и предотбора. Выбор языка реинвокнет /start с теми же args.
+        from handlers.reg.onsite_reg import try_walkin_start
+        if await try_walkin_start(message, state, args):
+            return
+        # `?start=sessions` и другие форумные deep-link'и; не обработан — идёт обычный /start.
+        from handlers.forum.forum_deeplinks import try_forum_deeplink
+        if await try_forum_deeplink(message, state, args):
             return
 
-    start_text = await get_setting("start_text") or DEFAULT_START_TEXT
-    start_photo = await get_setting("start_photo_file_id")
-    logger.info(f"Settings: start_text={start_text[:80]!r}, start_photo={start_photo!r}")
-
-    # Phase 07.3 (RET-02): a "прошлый делегат" (rejected, or a PAST season's pending/approved
-    # row) must never dead-end at /start — hand them the returning banner + rereg_start button
-    # instead of falling into the already-registered branch below (which return()s without a
-    # path forward) or silently dropping into a fresh registration (rejected's old behaviour).
-    # Placed BEFORE the already-registered branch so it intercepts BOTH cases (CONTEXT B).
-    # Fail-soft like every other lookup in this function: a resolve glitch degrades to "not
-    # returning", never crashes /start (T-073-03-04).
-    try:
-        event_season = await get_setting("event_season")
-        is_returning = _is_returning_row(user, event_season)
-    except Exception as e:
-        logger.error(f"returning-delegate predicate failed for {user_id}: {e}")
-        is_returning = False
-    if is_returning:
-        # Приёмка 09.10 (D3): прошлый сезон — баннер возвращенца, отклонённый в этом — свой экран.
-        from handlers.reg.reg_returning import offer_returning
-        await offer_returning(message, state, user, event_season, start_text, start_photo,
-                              referrer_id=referrer_id, source_tag=source_tag,
-                              party_track=party_track, dl_event_city=dl_event_city)
-        return
-
-    # Phase 21 (21-09, D-18): branch (b) — a delegate already registered THIS season (not
-    # rejected, not is_returning — that branch already returned above) either (1) already has
-    # a kind='edit' draft (started editing in Mini App, D-26) → same «Продолжить/Заново» screen
-    # as branch (a), or (2) came with `?start=edit` and has NO draft yet → the bot-side fallback
-    # entry point (D-18: "мастер правки — в приложении", this is only the fallback), which
-    # reuses the SAME recall-per-step engine rereg_start already uses for a past-season row
-    # (T-073-03-02 idiom: snapshot the TAPPER's own row, never anything from the callback/
-    # deep-link payload) — _start_registration_flow resolves kind='edit' itself for this exact
-    # case (see its own docstring), no separate flag needs to travel through the city/party
-    # fork chain.
-    if user and (user.get("status") or "approved") != "rejected":
+        # Phase 15 (STAT-03, D-06): funnel log -- top of the funnel, BEFORE every other gate
+        # below (subscription check, pre-selection) so a Nextcloud/subscription/allowlist hiccup
+        # can never suppress it. Own try/except, fail-soft -- a log write must never block /start.
+        # City comes from the deep-link (dl_event_city) when the delegate used a city-tagged
+        # /start; a delegate without one has no city yet at this point and is backfilled later,
+        # on the form_started step below, once mark_reg_started/_resolve_track have settled saved_city.
         try:
-            _cur_season = await get_setting_typed("event_season") or None
+            _season = await get_setting_typed("event_season") or None
+            await record_reg_event(
+                user_id, "start", event_city=dl_event_city, season=_season, source_tag=source_tag
+            )
         except Exception as e:
-            logger.error(f"event_season resolve failed for {user_id}: {e}")
-            _cur_season = None
-        if (user.get("season") or None) == _cur_season:
-            _edit_draft = _draft_probe if (_draft_probe and _draft_probe.get("kind") == "edit") else None
-            if _edit_draft or resume_arg == "edit":
-                # Квик 260911-w2m (Р-4 #1, #2): гейт СТОИТ ТОЛЬКО когда делегат реально идёт
-                # в правку — обычный /start зарегистрированного не платит лишним чтением
-                # реестра и не теряет свой обычный экран (ветка ниже, вне этого if).
-                _edit_can, _edit_text = await reg_edit_policy.edit_gate(user)
-                if not _edit_can:
-                    await reg_i18n.say(message, _edit_text, reply_markup=await get_main_menu_kb(user_id))
-                    return
-            if _edit_draft:
+            logger.warning(f"record_reg_event(start) failed for {user_id}: {e}")
+
+        # Делегации вузов: человек из формы, нажавший /start раньше синка, — одобряем сразу,
+        # после funnel-лога и до гейтов подписки/предотбора. Вся логика — в services/delegations/delegations.py; форма «Регистрация» — ext_forms_registration.
+        from services.delegations.delegations import try_delegate_start
+        if await try_delegate_start(message, state, bot):
+            return
+        from services.ext_forms.ext_forms_registration import try_registration_start
+        if await try_registration_start(message, state, bot):
+            return
+
+        # QW-02: observe-only subscription check — never blocks the user (D-04), never crashes /start (D-07).
+        # HG-02: normalize the stored contact_tg link (t.me/foo) to a @username get_chat_member accepts.
+        # HG-01: set_user_subscribed only persists for an EXISTING row; a first-touch registrant has no
+        # row yet here, so finalize_registration re-runs this persist after add_user.
+        try:
+            channel = _normalize_channel_ref(await get_setting("contact_tg"))
+            if channel is not None:
+                result = await is_subscribed(bot, channel, user_id)
+                if result is not None:
+                    await set_user_subscribed(user_id, result)
+        except Exception as e:
+            logger.warning(f"Subscription check skipped for {user_id}: {e}")
+
+        # ME-05: an already-registered (non-rejected) user must always reach their normal
+        # welcome/menu — the pre-selection gate below is an INTAKE filter for NEW registrants only.
+        # Fetch the user row up front so toggling pre-selection ON can never lock an existing
+        # approved delegate out of their own menu (e.g. they lost their @username, or the allowlist
+        # was rebuilt without them). A rejected user still falls through to re-register (D-05a).
+        user = await get_user(user_id)
+        _already_registered = bool(user) and (user.get("status") or "approved") != "rejected"
+
+        # VERIF-01/02: pre-selection gate (D-13, default off → live flow untouched).
+        # Fail-soft like the subscription check above: a glitch never crashes /start.
+        try:
+            # Phase 17.1 (17.1-03): ключи предотбора — в реестре; get_setting_typed даёт тот же
+            # результат, что прежний `get_setting(k) or <литерал>` (enum: falsy -> "off"; text:
+            # None -> дефолт).
+            if not _already_registered and await get_setting_typed("preselect_enabled") == "on":
+                from services.access.allowlist import is_allowed, allowlist_size, _parse_manual_ids
+                if allowlist_size() == 0:
+                    # Owner-confirmed fail-open (Open Q2): admit everyone; the refresh job
+                    # alerts admins. Do NOT lock out a whole event over a sheet/quota glitch.
+                    logger.warning(f"Pre-selection ON but allowlist empty — fail-open admit for {user_id}")
+                else:
+                    manual_ids = _parse_manual_ids(await get_setting("preselect_manual_ids"))
+                    uname = message.from_user.username
+                    if uname is None and user_id not in manual_ids:
+                        prompt = await get_setting_typed("preselect_no_username_text")
+                        await message.answer(html.escape(await reg_i18n.tr_for(message, prompt)))  # Quick 260906
+                        return
+                    if uname is not None and not is_allowed(uname) and user_id not in manual_ids:
+                        fail = await get_setting_typed("preselect_fail_text")
+                        link = await get_setting_typed("preselect_link")  # ссылка — не переводим
+                        text = html.escape(await reg_i18n.tr_for(message, fail))
+                        if link:
+                            text += "\n" + html.escape(link)
+                        await message.answer(text)
+                        return
+        except Exception as e:
+            logger.warning(f"Pre-selection gate skipped for {user_id}: {e}")
+
+        # user already fetched above (ME-05 gate bypass); do not re-query.
+        # args/dl_event_city/source_tag already resolved above (hoisted for the "start" funnel write).
+        # amb_<id> — второй, именованный формат того же referrer_id; взаимоисключим с пятью
+        # остальными деп-линк-форматами по построению (см. docstring extract_ambassador_ref).
+        # Решение владельца (17.09): один разбор для ОБОИХ форматов — числовой `?start=<id>`
+        # (уже разосланные ссылки на проде) проходит ту же проверку `resolve_referrer`
+        # (существование в `users` + опциональный гейт «только амбассадоры»), что и новый
+        # amb_-формат; отдельной необлегчённой ветки для числового больше нет.
+        raw_referrer_id = _extract_referrer_id(args, user_id) or _extract_ambassador_ref(args, user_id)
+        referrer_id = await resolve_referrer(raw_referrer_id)
+        party_track = _extract_party_track(args)          # Phase 5 (D-10)
+        dl_party_track = party_track  # preserved for the fork-suppression check below (D-10)
+        if referrer_id:
+            logger.info(f"Deep-link referrer_id={referrer_id} for user {user_id}")
+        resume_arg = _extract_resume_arg(args)  # Phase 21 (21-09, D-18): "continue" | "edit" | None
+
+        # Phase 21 (21-09, D-18): branch (a) — a fresh in-flight kind='new' draft (no `users` row
+        # yet, or a current-season rejected one) takes priority over EVERY other /start branch
+        # below, including the returning-delegate banner just below — a delegate mid-registration
+        # must see «Продолжить/Заново», not a fresh welcome or a past-season banner. Fail-soft: a
+        # draft-lookup glitch degrades to "no draft", never crashes /start.
+        try:
+            _draft_probe = await get_reg_draft(user_id)
+        except Exception as e:
+            logger.error(f"reg_resume draft lookup failed for {user_id}: {e}")
+            _draft_probe = None
+        _not_registered_or_rejected = (not user) or ((user.get("status") or "approved") == "rejected")
+        # Квик 260922-wrg (задача 1): черновик первичной подачи отклонённого делегата предлагаем
+        # «Продолжить/Заново» только если ему вообще можно подать заново в этом сезоне — при
+        # запрете поток обязан дойти до ветки возвращенца ниже и увидеть текст закрытия, а не
+        # экран восстановления черновика, который всё равно упрётся в finalize_registration.
+        # Для незарегистрированного (user is None) resubmit_gate не наш гейт вовсе (True, None).
+        _draft_resume_allowed = True
+        if user and (user.get("status") or "approved") == "rejected":
+            _draft_resume_allowed, _ = await reg_edit_policy.resubmit_gate(user)
+        if _draft_probe and _draft_probe.get("kind") == "new" and _not_registered_or_rejected and _draft_resume_allowed:
+            try:
+                _resume_ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
+            except Exception as e:
+                logger.error(f"reg_resume_ttl_hours resolve failed for {user_id}: {e}")
+                _resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
+            if resume_arg in ("continue", "edit") or _draft_is_fresh(_draft_probe, _resume_ttl_hours):
                 from handlers.reg.reg_resume import offer_resume
-                await offer_resume(message, _edit_draft)
-                return
-            if resume_arg == "edit":
-                await state.update_data(_prior_answers=dict(user))
-                if referrer_id:
-                    await state.update_data(referrer_id=referrer_id)
-                if source_tag:
-                    await state.update_data(source=source_tag, _source_from_tag=True)
-                await _city_fork_then_continue(
-                    message, state, user.get("event_city"), referrer_id, source_tag, None, None,
-                    # Квик 260923-p37 (D-07): правка уже поданной анкеты — город уже
-                    # зафиксирован в users, закрытие регистрации на город её не гейтит.
-                    city_gate=False,
-                )
+                await offer_resume(message, _draft_probe, referrer_id=referrer_id)
                 return
 
-    if user and (user.get("status") or "approved") != "rejected":
-        # D-05a: a rejected user falls through to re-register; others see the welcome menu.
-        # UAT 17.08: a returning delegate gets its OWN text, never the newcomer's start_text
-        # (which reads "заявка займёт 5-7 минут…" and made testers think registration reset).
-        logger.info(f"User {user_id} already registered")
-        # Phase 09.2-04 (CITY-04/CONTEXT B): registered delegate's welcome-back text resolves
-        # by their own event_city — reuse the `user` row already fetched above (ME-05), no
-        # second get_user call. Each step is its own try/except: a city-resolve glitch must
-        # never cost the delegate their welcome-back message (falls back to the global text).
-        _registered_city = None
+        start_text = await get_setting("start_text") or DEFAULT_START_TEXT
+        start_photo = await get_setting("start_photo_file_id")
+        logger.info(f"Settings: start_text={start_text[:80]!r}, start_photo={start_photo!r}")
+
+        # Phase 07.3 (RET-02): a "прошлый делегат" (rejected, or a PAST season's pending/approved
+        # row) must never dead-end at /start — hand them the returning banner + rereg_start button
+        # instead of falling into the already-registered branch below (which return()s without a
+        # path forward) or silently dropping into a fresh registration (rejected's old behaviour).
+        # Placed BEFORE the already-registered branch so it intercepts BOTH cases (CONTEXT B).
+        # Fail-soft like every other lookup in this function: a resolve glitch degrades to "not
+        # returning", never crashes /start (T-073-03-04).
         try:
-            if await cities_module_on():
-                _registered_city = normalize_city(user.get("event_city"))
+            event_season = await get_setting("event_season")
+            is_returning = _is_returning_row(user, event_season)
         except Exception as e:
-            logger.error(f"per-city city resolve for start_text_registered failed for {user_id}: {e}")
+            logger.error(f"returning-delegate predicate failed for {user_id}: {e}")
+            is_returning = False
+        if is_returning:
+            # Приёмка 09.10 (D3): прошлый сезон — баннер возвращенца, отклонённый в этом — свой экран.
+            from handlers.reg.reg_returning import offer_returning
+            await offer_returning(message, state, user, event_season, start_text, start_photo,
+                                  referrer_id=referrer_id, source_tag=source_tag,
+                                  party_track=party_track, dl_event_city=dl_event_city)
+            return
+
+        # Phase 21 (21-09, D-18): branch (b) — a delegate already registered THIS season (not
+        # rejected, not is_returning — that branch already returned above) either (1) already has
+        # a kind='edit' draft (started editing in Mini App, D-26) → same «Продолжить/Заново» screen
+        # as branch (a), or (2) came with `?start=edit` and has NO draft yet → the bot-side fallback
+        # entry point (D-18: "мастер правки — в приложении", this is only the fallback), which
+        # reuses the SAME recall-per-step engine rereg_start already uses for a past-season row
+        # (T-073-03-02 idiom: snapshot the TAPPER's own row, never anything from the callback/
+        # deep-link payload) — _start_registration_flow resolves kind='edit' itself for this exact
+        # case (see its own docstring), no separate flag needs to travel through the city/party
+        # fork chain.
+        if user and (user.get("status") or "approved") != "rejected":
+            try:
+                _cur_season = await get_setting_typed("event_season") or None
+            except Exception as e:
+                logger.error(f"event_season resolve failed for {user_id}: {e}")
+                _cur_season = None
+            if (user.get("season") or None) == _cur_season:
+                _edit_draft = _draft_probe if (_draft_probe and _draft_probe.get("kind") == "edit") else None
+                if _edit_draft or resume_arg == "edit":
+                    # Квик 260911-w2m (Р-4 #1, #2): гейт СТОИТ ТОЛЬКО когда делегат реально идёт
+                    # в правку — обычный /start зарегистрированного не платит лишним чтением
+                    # реестра и не теряет свой обычный экран (ветка ниже, вне этого if).
+                    _edit_can, _edit_text = await reg_edit_policy.edit_gate(user)
+                    if not _edit_can:
+                        await reg_i18n.say(message, _edit_text, reply_markup=await get_main_menu_kb(user_id))
+                        return
+                if _edit_draft:
+                    from handlers.reg.reg_resume import offer_resume
+                    await offer_resume(message, _edit_draft)
+                    return
+                if resume_arg == "edit":
+                    await state.update_data(_prior_answers=dict(user))
+                    if referrer_id:
+                        await state.update_data(referrer_id=referrer_id)
+                    if source_tag:
+                        await state.update_data(source=source_tag, _source_from_tag=True)
+                    await _city_fork_then_continue(
+                        message, state, user.get("event_city"), referrer_id, source_tag, None, None,
+                        # Квик 260923-p37 (D-07): правка уже поданной анкеты — город уже
+                        # зафиксирован в users, закрытие регистрации на город её не гейтит.
+                        city_gate=False,
+                    )
+                    return
+
+        if user and (user.get("status") or "approved") != "rejected":
+            # D-05a: a rejected user falls through to re-register; others see the welcome menu.
+            # UAT 17.08: a returning delegate gets its OWN text, never the newcomer's start_text
+            # (which reads "заявка займёт 5-7 минут…" and made testers think registration reset).
+            logger.info(f"User {user_id} already registered")
+            # Phase 09.2-04 (CITY-04/CONTEXT B): registered delegate's welcome-back text resolves
+            # by their own event_city — reuse the `user` row already fetched above (ME-05), no
+            # second get_user call. Each step is its own try/except: a city-resolve glitch must
+            # never cost the delegate their welcome-back message (falls back to the global text).
             _registered_city = None
+            try:
+                if await cities_module_on():
+                    _registered_city = normalize_city(user.get("event_city"))
+            except Exception as e:
+                logger.error(f"per-city city resolve for start_text_registered failed for {user_id}: {e}")
+                _registered_city = None
+            try:
+                registered_text = await get_setting_for_city("start_text_registered", _registered_city) or DEFAULT_START_REGISTERED_TEXT
+            except Exception as e:
+                logger.error(f"per-city start_text_registered resolve failed for {user_id}: {e}")
+                registered_text = await get_setting("start_text_registered") or DEFAULT_START_REGISTERED_TEXT
+            await _send_welcome(message, registered_text, start_photo, await get_main_menu_kb(user_id), user_id)
+            await maybe_offer_consent_recollect(message, user_id)  # quick 260822: гейт пересогласия (дефолт off)
+
+            if user_id in config.ADMIN_IDS:
+                # quick-260817-4pj: inline button, NOT a second reply-keyboard + FSM state — a
+                # second ReplyKeyboardMarkup here would overwrite the main menu just sent above,
+                # and the old admin-rereg FSM state swallowed the admin's first tap on ANY menu button.
+                kb = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text=ADMIN_REREG_BUTTON_TEXT, callback_data="admin_rereg")
+                ]])
+                await message.answer(  # Quick 260906: НЕ переводим — адресовано админу (см. guard allowlist)
+                    "Вы админ — можете пройти регистрацию заново для теста.",
+                    reply_markup=kb,
+                )
+            return
+
+        # Ночь 09.10: чистый /start менеджера — подсказка про /admin вместо анкеты делегата
+        # (reg_started не пишется, пока он сам не нажмёт «Всё-таки заполнить анкету»).
+        from handlers.reg.reg_manager_start import offer_manager_hint
+        if await offer_manager_hint(message, state, user, args):
+            return
+
+        # Phase 5 (D-11a): master toggle. Placed AFTER the already-registered branch above so it
+        # fires ONLY for a user with no existing non-rejected users row — an already-registered
+        # delegate tapping a stale/shared party link still gets their normal welcome + main menu
+        # above, never this closed message. Same fail-soft posture as the pre-selection gate: a
+        # gate bug must never crash /start.
         try:
-            registered_text = await get_setting_for_city("start_text_registered", _registered_city) or DEFAULT_START_REGISTERED_TEXT
+            if party_track and await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
+                closed_text = await get_setting("party_closed_text") or (
+                    "Регистрация на вечеринку сейчас закрыта."
+                )
+                kb = InlineKeyboardMarkup(inline_keyboard=[[
+                    InlineKeyboardButton(text="Перейти к полной регистрации", callback_data="party_fallback_full")
+                ]])
+                await reg_i18n.say(message, closed_text, reply_markup=kb)  # Quick 260906: "party" в корпусе
+                return  # D-11a: NEVER silently reroute — user must tap the button to opt into `full`
         except Exception as e:
-            logger.error(f"per-city start_text_registered resolve failed for {user_id}: {e}")
-            registered_text = await get_setting("start_text_registered") or DEFAULT_START_REGISTERED_TEXT
-        await _send_welcome(message, registered_text, start_photo, await get_main_menu_kb(user_id), user_id)
-        await maybe_offer_consent_recollect(message, user_id)  # quick 260822: гейт пересогласия (дефолт off)
+            logger.error(f"party_enabled gate failed for {user_id}: {e}")
+            party_track = None  # fail-soft: never into a party track, never into a dead end
 
-        if user_id in config.ADMIN_IDS:
-            # quick-260817-4pj: inline button, NOT a second reply-keyboard + FSM state — a
-            # second ReplyKeyboardMarkup here would overwrite the main menu just sent above,
-            # and the old admin-rereg FSM state swallowed the admin's first tap on ANY menu button.
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text=ADMIN_REREG_BUTTON_TEXT, callback_data="admin_rereg")
-            ]])
-            await message.answer(  # Quick 260906: НЕ переводим — адресовано админу (см. guard allowlist)
-                "Вы админ — можете пройти регистрацию заново для теста.",
-                reply_markup=kb,
-            )
-        return
-
-    # Ночь 09.10: чистый /start менеджера — подсказка про /admin вместо анкеты делегата
-    # (reg_started не пишется, пока он сам не нажмёт «Всё-таки заполнить анкету»).
-    from handlers.reg.reg_manager_start import offer_manager_hint
-    if await offer_manager_hint(message, state, user, args):
-        return
-
-    # Phase 5 (D-11a): master toggle. Placed AFTER the already-registered branch above so it
-    # fires ONLY for a user with no existing non-rejected users row — an already-registered
-    # delegate tapping a stale/shared party link still gets their normal welcome + main menu
-    # above, never this closed message. Same fail-soft posture as the pre-selection gate: a
-    # gate bug must never crash /start.
-    try:
-        if party_track and await get_setting_typed("party_enabled") != "on":  # REG-02: registry-backed
-            closed_text = await get_setting("party_closed_text") or (
-                "Регистрация на вечеринку сейчас закрыта."
-            )
-            kb = InlineKeyboardMarkup(inline_keyboard=[[
-                InlineKeyboardButton(text="Перейти к полной регистрации", callback_data="party_fallback_full")
-            ]])
-            await reg_i18n.say(message, closed_text, reply_markup=kb)  # Quick 260906: "party" в корпусе
-            return  # D-11a: NEVER silently reroute — user must tap the button to opt into `full`
-    except Exception as e:
-        logger.error(f"party_enabled gate failed for {user_id}: {e}")
-        party_track = None  # fail-soft: never into a party track, never into a dead end
-
-    # Phase 5 (D-02): a bare repeat /start (no deep-link arg) recovers the track from the
-    # still-open reg_started row written by the first /start — only for a user who has no
-    # users row yet (an already-registered user returned above and never reaches this line).
-    # Quick 260820-rms: окно восстановления. «Тот же самый /start посреди анкеты» и «человек
-    # вернулся через две недели» — разные ситуации, а строка reg_started у них одна и та же:
-    # она живёт до конца регистрации и никем не чистится. Без окна вторая ситуация молча
-    # наследовала прежний город, и `_should_show_city_fork` больше НИКОГДА не показывал экран
-    # выбора города (выход на непустом `effective_city`). Читается той же fail-soft лесенкой,
-    # что и всё остальное в /start: сбой резолва настройки не должен стоить делегату входа.
-    try:
-        resume_ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
-    except Exception as e:
-        logger.error(f"reg_resume_ttl_hours resolve failed for {user_id}: {e}")
-        resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
-
-    recovered_track = None
-    try:
-        if not party_track and not user:
-            recovered_track = await get_reg_started_track(user_id, resume_ttl_hours) or None
-            party_track = recovered_track
-    except Exception as e:
-        logger.error(f"get_reg_started_track failed for {user_id}: {e}")
-
-    # Phase 07.1 (CITY-03): same fail-soft recovery pattern as the track above — a bare
-    # repeat /start (no city deep-link) recovers the city already chosen in this in-flight
-    # registration, so the city screen is not shown twice.
-    recovered_city = None
-    try:
-        if not dl_event_city and not user:
-            recovered_city = await get_reg_started_city(user_id, resume_ttl_hours) or None
-    except Exception as e:
-        logger.error(f"get_reg_started_city failed for {user_id}: {e}")
-    effective_city = dl_event_city or recovered_city
-
-    # Phase 09.2-04 (CITY-04/CONTEXT A/B): before the city screen, an unknown city correctly
-    # keeps the global start_text (that IS the right answer — CONTEXT A). Once the city is
-    # already known (deep-link or recovered from an in-flight reg_started row), the newcomer
-    # should see their own city's welcome text before ever reaching the city-fork screen.
-    # Квик 260923-p37 (D-05): пропускаем per-city подмену для города, закрытого по дате/
-    # выключенного — иначе делегат сначала видит приветствие закрытого города, а СЛЕДОМ экран
-    # «регистрация закрыта» (send_city_closed ниже, в _city_fork_then_continue). Глобальный
-    # start_text в этой ветке — верное поведение, не деградация (CONTEXT A).
-    if effective_city:
+        # Phase 5 (D-02): a bare repeat /start (no deep-link arg) recovers the track from the
+        # still-open reg_started row written by the first /start — only for a user who has no
+        # users row yet (an already-registered user returned above and never reaches this line).
+        # Quick 260820-rms: окно восстановления. «Тот же самый /start посреди анкеты» и «человек
+        # вернулся через две недели» — разные ситуации, а строка reg_started у них одна и та же:
+        # она живёт до конца регистрации и никем не чистится. Без окна вторая ситуация молча
+        # наследовала прежний город, и `_should_show_city_fork` больше НИКОГДА не показывал экран
+        # выбора города (выход на непустом `effective_city`). Читается той же fail-soft лесенкой,
+        # что и всё остальное в /start: сбой резолва настройки не должен стоить делегату входа.
         try:
-            if await is_city_registration_open(effective_city):
-                start_text = await get_setting_for_city("start_text", effective_city) or DEFAULT_START_TEXT
+            resume_ttl_hours = await get_setting_typed("reg_resume_ttl_hours")
         except Exception as e:
-            logger.error(f"per-city start_text resolve failed for {user_id}: {e}")
+            logger.error(f"reg_resume_ttl_hours resolve failed for {user_id}: {e}")
+            resume_ttl_hours = SETTINGS_SCHEMA["reg_resume_ttl_hours"]["default"]
 
-    logger.info(f"User {user_id} not registered, showing welcome then registration")
-    cta_kb = await _reg_form_cta_kb(message)  # Phase 21 (21-09, D-01): ОДИН раз, рядом с приветствием
-    await _send_welcome(message, start_text, start_photo, cta_kb, user_id)
+        recovered_track = None
+        try:
+            if not party_track and not user:
+                recovered_track = await get_reg_started_track(user_id, resume_ttl_hours) or None
+                party_track = recovered_track
+        except Exception as e:
+            logger.error(f"get_reg_started_track failed for {user_id}: {e}")
 
-    await _city_fork_then_continue(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
+        # Phase 07.1 (CITY-03): same fail-soft recovery pattern as the track above — a bare
+        # repeat /start (no city deep-link) recovers the city already chosen in this in-flight
+        # registration, so the city screen is not shown twice.
+        recovered_city = None
+        try:
+            if not dl_event_city and not user:
+                recovered_city = await get_reg_started_city(user_id, resume_ttl_hours) or None
+        except Exception as e:
+            logger.error(f"get_reg_started_city failed for {user_id}: {e}")
+        effective_city = dl_event_city or recovered_city
+
+        # Phase 09.2-04 (CITY-04/CONTEXT A/B): before the city screen, an unknown city correctly
+        # keeps the global start_text (that IS the right answer — CONTEXT A). Once the city is
+        # already known (deep-link or recovered from an in-flight reg_started row), the newcomer
+        # should see their own city's welcome text before ever reaching the city-fork screen.
+        # Квик 260923-p37 (D-05): пропускаем per-city подмену для города, закрытого по дате/
+        # выключенного — иначе делегат сначала видит приветствие закрытого города, а СЛЕДОМ экран
+        # «регистрация закрыта» (send_city_closed ниже, в _city_fork_then_continue). Глобальный
+        # start_text в этой ветке — верное поведение, не деградация (CONTEXT A).
+        if effective_city:
+            try:
+                if await is_city_registration_open(effective_city):
+                    start_text = await get_setting_for_city("start_text", effective_city) or DEFAULT_START_TEXT
+            except Exception as e:
+                logger.error(f"per-city start_text resolve failed for {user_id}: {e}")
+
+        logger.info(f"User {user_id} not registered, showing welcome then registration")
+        cta_kb = await _reg_form_cta_kb(message)  # Phase 21 (21-09, D-01): ОДИН раз, рядом с приветствием
+        await _send_welcome(message, start_text, start_photo, cta_kb, user_id)
+
+        await _city_fork_then_continue(message, state, effective_city, referrer_id, source_tag, dl_party_track, recovered_track)
 
 
 async def _persist_fork_attribution(
