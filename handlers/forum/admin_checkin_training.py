@@ -17,7 +17,7 @@ import asyncio
 import logging
 
 from aiogram import F, types
-from aiogram.types import BufferedInputFile, InputMediaPhoto
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InputMediaPhoto
 
 from handlers.admin import router
 from handlers.access.admin_caps import resolve_capabilities
@@ -66,3 +66,16 @@ async def checkin_training_sheet(callback: types.CallbackQuery):
     )
     if not fits:
         await callback.message.answer(caption)
+
+
+def training_menu_rows(is_manager: bool) -> list[list[InlineKeyboardButton]]:
+    """«Учебные QR» — всем, кому виден экран. Перенос — только менеджеру заявок."""
+    rows = [[InlineKeyboardButton(text="🧪 Учебные QR", callback_data="checkin_training_sheet")]]
+    if is_manager:
+        rows.append([InlineKeyboardButton(
+            text="Перенести сканы с тренировки", callback_data="checkin_training_move",
+        )])
+    return rows
+
+
+from handlers.forum import admin_checkin_training_move  # noqa: E402,F401

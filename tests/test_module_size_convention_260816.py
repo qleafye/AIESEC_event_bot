@@ -864,7 +864,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1632,
+        1637,
+        "Перенос сканов с тренировки: +5 строк — права checkin_training_move/ctm_pick:*/ctm_go:*/ctm_no (moderate_reg); 1632 -> 1637. "
         "«✅ Одобрить» rejected с /find: +5 строк — права apprej_start:*/apply:*/cancel:* (moderate_reg); 1627 -> 1632. "
         "«✉️ Написать» с карточки /find: +4 строки — права findw_start:*/findw_cancel:*/state:FindWrite:* (moderate_reg); 1623 -> 1627. "
         "Потолок по фактическому размеру: одно право уже было в файле, записанный потолок отставал; 1622 -> 1623. "

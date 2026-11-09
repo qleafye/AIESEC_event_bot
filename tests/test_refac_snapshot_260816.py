@@ -1486,6 +1486,10 @@ admin|callback_query|venue_revoke_user|vrv_u:*
 admin|callback_query|venue_revoke_confirm|vrv_p:*
 admin|callback_query|venue_revoke_go|vrv_go:*
 admin|callback_query|checkin_training_sheet|checkin_training_sheet
+admin|callback_query|training_move_open|checkin_training_move
+admin|callback_query|training_move_pick|ctm_pick:*
+admin|callback_query|training_move_go|ctm_go:*
+admin|callback_query|training_move_cancel|ctm_no
 admin|callback_query|admin_sos|admin_sos
 admin|callback_query|asos_city_open|asos_city:*
 admin|callback_query|asos_page|asos:*
@@ -2790,7 +2794,9 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после survey_copy (1468 -> 1470).
     # 09.11 («✅ Одобрить» rejected с /find): +3 admin.callback_query apprej_start/apply/cancel
     # сразу после findw_cancel (1470 -> 1473).
-    assert len(GOLDEN_SNAPSHOT) == 1473
+    # Перенос сканов с тренировки: +4 admin.callback_query training_move_open/pick/go/cancel
+    # сразу после checkin_training_sheet и перед admin_sos (1473 -> 1477).
+    assert len(GOLDEN_SNAPSHOT) == 1477
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

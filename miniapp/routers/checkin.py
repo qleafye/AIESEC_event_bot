@@ -361,6 +361,10 @@ async def _training_preview(
             "city": (user or {}).get("event_city") or (parsed or {}).get("city") or None,
         }, lang, tr_map)
     res = await _entry_city_denial(bound, user) or await checkin_training.preview_entry(user, lang, tr_map)
+    # Отказ и поиск по фамилии в лог не пишем: переносить есть что только с настоящего QR,
+    # который точка пропустила бы на вход.
+    if parsed is not None and res.get("status") in ("new", "duplicate"):
+        await checkin_training.remember_training_scan(user, p.telegram_id)
     return await checkin_training.as_training_point({**res, **_person_fields(user)}, lang, tr_map)
 
 
@@ -716,9 +720,10 @@ async def checkin_points(
         ),
         "capacity": None,
     }]
-    # Бэклог чек-ина №7 (D-28 «Вход всегда первым»): «🧪 Тренировка» — сразу за входом.
-    lang, tr_map = await i18n.context(p.telegram_id)
-    points.append(await checkin_training.training_point_entry(lang, tr_map))
+    # «🧪 Тренировка» — сразу за входом, но не в день форума этого города.
+    if await checkin_training.training_point_visible(resolved):
+        lang, tr_map = await i18n.context(p.telegram_id)
+        points.append(await checkin_training.training_point_entry(lang, tr_map))
     from miniapp.routers import checkin_shop  # «🛍 Магазин» — только с правом магазина
     if (shop := await checkin_shop.point_entry(p.caps)) is not None:
         points.append(shop)
