@@ -1055,4 +1055,5 @@ from handlers.chat import admin_city_chat_summary  # noqa: E402,F401 — кно�
 from handlers.chat import admin_city_chat  # noqa: E402,F401 — экран «Чат города»
 from handlers.applications import admin_find  # noqa: E402,F401 — /find: id, пересылка, чужой город
 from handlers.applications import admin_find_write  # noqa: E402,F401 — «✉️ Написать» с карточки /find
+from handlers.applications import admin_approve_rejected  # noqa: E402,F401 — «✅ Одобрить» rejected с /find
 _find_email_line = admin_find._find_email_line

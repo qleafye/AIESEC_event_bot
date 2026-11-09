@@ -191,6 +191,10 @@ async def _answer_users_card(message: types.Message, user: dict) -> None:
         rows.append([InlineKeyboardButton(
             text="📝 Ответы форм", callback_data=f"extf_view:{user['telegram_id']}",
         )])
+    if user.get("status") == "rejected":
+        rows.append([InlineKeyboardButton(
+            text="✅ Одобрить", callback_data=f"apprej_start:{user['telegram_id']}",
+        )])
     if user.get("status") in ("approved", "rejected"):
         rows.append([InlineKeyboardButton(
             text="↩️ Вернуть в ожидание", callback_data=f"revertp_start:{user['telegram_id']}",
