@@ -52,7 +52,7 @@ def test_mute_mechanism_confined_to_broadcast_owners():
     offenders = []
     for path in sorted(REPO_ROOT.rglob("*.py")):
         rel = path.relative_to(REPO_ROOT).as_posix()
-        if rel.startswith("tests/") or rel.startswith(".git/"):
+        if rel.startswith(("tests/", ".git/", ".claude/")) or "/.git/" in rel:
             continue
         if rel in _ALLOWED_OWNERS:
             continue
