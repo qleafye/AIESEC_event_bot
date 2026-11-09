@@ -44,9 +44,10 @@ def test_delete_text_reject_rule(tmp_path):
     _ready(tmp_path)
     rule_id = _run(_create_rule(name="Младше 18"))
     text = _delete_screen(rule_id)
-    assert "🗑 <b>Удалить правило «Младше 18»?</b>" in text
-    assert "Правило пропадёт из списка. Уже отклонённые им заявки и журнал останутся как есть." in text
-    assert "Вернуть правило нельзя — если сомневаетесь, лучше выключите его." in text
+    assert "Удалить правило «Младше 18»?" in text
+    assert "пропадёт совсем" in text
+    assert "вернуть его будет нельзя" in text
+    assert "Условия, текст отказа и настройки правила будут потеряны." in text
     assert "Уже отклонило заявок" not in text and "Пока не отклонило" not in text
 
 
