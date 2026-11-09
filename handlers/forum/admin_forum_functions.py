@@ -183,6 +183,10 @@ async def _render_hub(admin_id: int, code: str) -> tuple[str, InlineKeyboardMark
             text="📝 Регистрация на месте", callback_data=f"onsitereg_cfg:{_encode_city(code)}",
         )])
 
+    lines.append("📮 Резерв на сегодня: зовём живой автоотказ, статус заявки не меняется")
+    if visible("rsv:h"):
+        buttons.append([InlineKeyboardButton(text="Позвать резерв", callback_data="rsv:h")])
+
     # 6. Программа (кнопка делегата, D-29) — статус ровно тот, что у меню делегата и Mini App:
     # `services.forum.program.program_menu_visible` (тумблер menu_program города И есть фото или
     # сессии). Раньше строка смотрела только на сессии и писала «Вкл» при выключенной кнопке.

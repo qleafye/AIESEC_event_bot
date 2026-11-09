@@ -8693,6 +8693,30 @@ async def get_auto_reject_log_entry(entry_id: int) -> dict | None:
             return dict(row) if row else None
 
 
+async def list_live_reserve_rows(*, city_scope=None, rule_id: int | None = None) -> list[dict]:
+    """Живой автоотказ и `users.status = rejected`. Ручной отказ без строки журнала
+    не попадает. `rule_id` оставляет одно правило (`json_each`, как у счётчика журнала)."""
+    where = ["l.returned_to_moderation_at IS NULL", "u.status = 'rejected'"]
+    params: list = []
+    city_frag, city_params = _city_clause(city_scope, "u.event_city")
+    if city_frag:
+        where.append(city_frag)
+        params.extend(city_params)
+    if rule_id is not None:
+        where.append("EXISTS (SELECT 1 FROM json_each(l.rule_ids) je WHERE je.value = ?)")
+        params.append(int(rule_id))
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT u.telegram_id, u.full_name, u.username, u.event_city, l.rule_ids "
+            "FROM auto_reject_log l JOIN users u ON u.telegram_id = l.telegram_id "
+            f"WHERE {' AND '.join(where)} "
+            "ORDER BY u.full_name COLLATE NOCASE, u.telegram_id",
+            tuple(params),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
 async def invite_reserve(telegram_ids, day: str, *, city: str | None, invited_by: int | None) -> int:
     """Идемпотентно: повтор (telegram_id, day) не плодит строку. Возвращает сколько НОВЫХ."""
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")

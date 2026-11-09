@@ -937,6 +937,7 @@ admin|message|find_person_cancel|state:FindPerson:*,state:FindPerson:*
 admin|message|find_person_message|state:FindPerson:*
 admin|message|findw_cancel_text|state:FindWrite:*
 admin|message|findw_receive|state:FindWrite:*
+admin|message|rsv_file|state:ReserveInvite:*
 admin|callback_query|show_admin_stats|admin_stats
 admin|callback_query|show_admin_monthly_stats|admin_monthly_stats
 admin|callback_query|show_admin_source_stats|admin_source_stats
@@ -1942,6 +1943,8 @@ admin|callback_query|findw_cancel|findw_cancel:*
 admin|callback_query|apprej_start|apprej_start:*
 admin|callback_query|apprej_apply|apprej_apply:*
 admin|callback_query|apprej_cancel|apprej_cancel:*
+admin|callback_query|rsv_open|rsv
+admin|callback_query|rsv_act|rsv:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2796,7 +2799,9 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после findw_cancel (1470 -> 1473).
     # Перенос сканов с тренировки: +4 admin.callback_query training_move_open/pick/go/cancel
     # сразу после checkin_training_sheet и перед admin_sos (1473 -> 1477).
-    assert len(GOLDEN_SNAPSHOT) == 1477
+    # «Позвать резерв»: +1 admin.message rsv_file после findw_receive и +2 admin.callback_query
+    # rsv_open/rsv_act сразу после apprej_cancel, перед prog_fbday_open (1477 -> 1480).
+    assert len(GOLDEN_SNAPSHOT) == 1480
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

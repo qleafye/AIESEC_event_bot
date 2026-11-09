@@ -1000,6 +1000,9 @@ _REGISTRY_TEXTS_EN = {
     "Ты отмечен на входе в {time} ✅ Добро пожаловать на Юлид!": (
         "You're checked in at {time} ✅ Welcome to YouLead!"
     ),
+    "{name}, вас зовут на площадку из резерва. Вход — только {date}. Город: {city}.": (
+        "{name}, you're called to the venue from the reserve list. Entry is only on {date}. City: {city}."
+    ),
     # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» (кнопка «🎟 Мой QR», хаб Mini
     # App) — group "reg", checked_in_status_text. Ключ БЕЗ ведущего «✅ » — `handlers.i18n.reg_i18n.
     # tr_text`/`split_leading_symbols` отделяет ведущий эмодзи-префикс ДО перевода и
