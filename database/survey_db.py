@@ -436,6 +436,15 @@ async def list_survey_progress(poll_id: int) -> list[dict]:
             return [dict(r) for r in await cur.fetchall()]
 
 
+async def finished_survey_user_ids(poll_id: int) -> set[int]:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT user_id FROM survey_progress WHERE poll_id = ? AND state = 'done'",
+            (poll_id,),
+        ) as cur:
+            return {int(r[0]) for r in await cur.fetchall()}
+
+
 async def count_survey_progress(poll_id: int) -> tuple[int, int]:
     """(начали, закончили)."""
     async with _db._connect() as db:
