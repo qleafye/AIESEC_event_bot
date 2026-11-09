@@ -796,6 +796,13 @@ async def settings_batch(
             # Фаза 2 — записи. Аудит «кто правит» — та же строка, что у бота (Quick 260820-rms).
             # Имя бота: прежнее значение — в очередь, бот вернёт его, если Telegram откажет.
             prev_bot_name = await get_setting("bot_name")
+            # До записи сырое значение ещё прежнее. В очередь попадут только ключи, которые
+            # реально сохранились: переход модерации в «авто», не повтор уже стоящего авто.
+            raw_now = {change.key: await get_setting(change.key) for change in body.changes}
+            turned_auto = settings_ops.approval_keys_turned_auto(
+                [(change.key, checked.get(change.key)) for change in body.changes],
+                raw_now,
+            )
             # Ключи, которые ФАКТИЧЕСКИ тронуты записью: событие для бота ставится по ним, даже
             # если пакет упал на середине — иначе бот не применит хуки уже сохранённого.
             event_keys: list[str] = []
@@ -846,8 +853,11 @@ async def settings_batch(
             if event_keys:
                 # Реакции на правку (описание бота, время «Итогов дня», автоотказ) живут в
                 # процессе бота — просим его через очередь, как после записи из бота.
+                # Алерт «модерацию выключили» бот шлёт сам: у процесса приложения бота нет.
+                alert_keys = [key for key in turned_auto if key in set(saved)]
+                extra = {"approval_turned_auto": alert_keys} if alert_keys else {}
                 bot_applied = await _tell_bot(list(dict.fromkeys(event_keys)), p.telegram_id,
-                                              prev_bot_name=prev_bot_name)
+                                              prev_bot_name=prev_bot_name, **extra)
             if failure:
                 raise HTTPException(500, {
                     "reason": "partial_save",

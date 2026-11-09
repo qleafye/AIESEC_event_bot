@@ -20,7 +20,7 @@
     onsite_approved            {telegram_id}
     amb_tier_reached           {telegram_id, tier, left}
     bot_profile_changed        {}
-    settings_changed           {keys, by, prev_bot_name}
+    settings_changed           {keys, by, prev_bot_name, approval_turned_auto?}
     reject_rules_recheck       {keys}
 
 `reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
