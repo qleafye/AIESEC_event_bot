@@ -58,13 +58,33 @@ async def _global_only(callback: types.CallbackQuery) -> bool:
     return False
 
 
-async def _show_preview(callback: types.CallbackQuery) -> None:
-    from domain.cities import get_setting_typed_for_city, is_per_city
+async def _referral_coins_off() -> bool:
+    """Баллы за приглашённого — 0. Ключ городской: смотрим общее и каждое своё значение,
+    иначе пустой догон врёт «уже начислены»."""
+    from database.db import get_setting
+    from domain.cities import city_codes, get_setting_typed_for_city, is_per_city, per_city_key
 
-    if (
-        not is_per_city("ambassador_referral_coins")
-        and int(await get_setting_typed_for_city("ambassador_referral_coins", None) or 0) <= 0
-    ):
+    key = "ambassador_referral_coins"
+    base = int(await get_setting_typed_for_city(key, None) or 0)
+    if not is_per_city(key):
+        return base <= 0
+    for code in city_codes():
+        composed = per_city_key(key, code)
+        raw = await get_setting(composed) if composed else None
+        if raw is None or str(raw).strip() == "":
+            value = base
+        else:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                value = base
+        if value > 0:
+            return False
+    return True
+
+
+async def _show_preview(callback: types.CallbackQuery) -> None:
+    if await _referral_coins_off():
         await _edit(
             callback,
             "<b>🔁 Начислить за прошлых приглашённых</b>\n\n"
