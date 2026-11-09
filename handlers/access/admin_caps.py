@@ -1419,6 +1419,10 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "onsitereg_cfg:*": "moderate_reg",
     "onsitereg_toggle:*": "moderate_reg",
     "onsitereg_qr:*": "moderate_reg",
+    # «Позвать резерв»: письмо живому автоотказу на сегодня, без смены статуса заявки.
+    "rsv": "moderate_reg",
+    "rsv:*": "moderate_reg",
+    "state:ReserveInvite:*": "moderate_reg",
 }
 
 

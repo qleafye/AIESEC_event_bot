@@ -866,7 +866,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "callback-хендлеров) дописаны в хвост файла; потолок поднят до фактического размера.",
     ),
     "admin_caps.py": (
-        1643,
+        1647,
+        "«Позвать резерв»: +4 строки — права rsv, rsv:* и state:ReserveInvite:* (moderate_reg); 1643 -> 1647. "
         "Второй владелец: +6 строк — роль owner в ROLES, дефолт прав ссылкой на ALL_CAPABILITIES; 1637 -> 1643. "
         "Перенос сканов с тренировки: +5 строк — права checkin_training_move/ctm_pick:*/ctm_go:*/ctm_no (moderate_reg); 1632 -> 1637. "
         "«✅ Одобрить» rejected с /find: +5 строк — права apprej_start:*/apply:*/cancel:* (moderate_reg); 1627 -> 1632. "

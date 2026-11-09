@@ -474,6 +474,7 @@ EXPECTED_PER_CITY_KEYS = {
     "checkin_not_arrived_text",
     "forum_welcome_enabled",
     "forum_welcome_text",
+    "reserve_invite_text",
     "forum_day_report_enabled",
     "forum_day_report_time",
     "forum_noshow_poll_enabled",

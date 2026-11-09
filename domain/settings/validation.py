@@ -60,7 +60,8 @@ def is_command_like(value: str | None) -> bool:
 # текст приходит как есть — поэтому разметку проверяем здесь, на обеих поверхностях.
 FORUM_HTML_KEYS = frozenset({
     "checkin_qr_broadcast_text", "checkin_qr_morning_text", "checkin_not_arrived_text",
-    "checkin_volunteer_guide_text", "forum_welcome_text", "forum_noshow_poll_question_text",
+    "checkin_volunteer_guide_text", "forum_welcome_text", "reserve_invite_text",
+    "forum_noshow_poll_question_text",
     "forum_stats_card_caption_text",
 })
 # Подписи к фото: Telegram режет всё, что длиннее 1024 видимых символов, — отправка падает.

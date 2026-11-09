@@ -178,6 +178,7 @@ _REG_FIELD_ORDER = [
 # группировка экрана.
 _APPS_FIELD_ORDER = [
     "reg_complete_text", "approve_text", "approve_text__auto", "reject_text",  # __auto — ответ при автоприёме
+    "reserve_invite_text",  # письмо резерву на день; статус заявки не меняется
     # Phase 17.1 (17.1-01): гейт «заявка на рассмотрении» — рядом с reject_text, обе ветки
     # одного `_gate_decision` редактируются в одном месте.
     "pending_gate_text",
