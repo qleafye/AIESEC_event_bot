@@ -120,6 +120,18 @@ async def _reservations_out(tid: int, lang: str, tr_map: dict) -> list[dict]:
     return out
 
 
+async def _hours_text(telegram_id: int, lang: str, tr_map: dict) -> str:
+    from database.db import get_user
+    from domain.cities import get_setting_typed_for_city
+
+    user = await get_user(telegram_id)
+    city = (user or {}).get("event_city")
+    raw = (await get_setting_typed_for_city("shop_hours_text", city) or "").strip()
+    if not raw:
+        return ""
+    return i18n.tr(raw, lang, tr_map)
+
+
 _TEXT_KEYS = {
     "hint": "shop_reserve_hint_text",
     "reserve_off": "miniapp_shop_reserve_off_text",
@@ -155,6 +167,9 @@ async def showcase(p: Principal = Depends(game_gate), _: Principal = Depends(req
         "reservations": await _reservations_out(tid, lang, tr_map),
         "texts": {name: await _t(key, lang, tr_map) for name, key in _TEXT_KEYS.items()},
     }
+    hours = await _hours_text(tid, lang, tr_map)
+    if hours:
+        body["hours_text"] = hours
     if not items:
         body["empty_text"] = await _t("miniapp_shop_empty_text", lang, tr_map)
     return body

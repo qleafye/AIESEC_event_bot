@@ -47,7 +47,8 @@ def test_calls_shop_api():
 def test_server_decides_and_confirms_before_charge():
     text = _text()
     for needle in ("confirm-box", "fileUrl(", "item.can_take", "item.note", "confirm_text",
-                   "cancel_confirm_text", "errorText(err", "busy", "shop_closed", "emptyState("):
+                   "cancel_confirm_text", "errorText(err", "busy", "shop_closed", "emptyState(",
+                   "hours_text", "shop-hours"):
         assert needle in text, needle
 
 

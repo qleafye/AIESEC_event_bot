@@ -103,6 +103,7 @@ async function draw(root, params, ctx) {
     h("section", { class: "plate plate--list" },
       h("div", { class: "plate-eyebrow", text: page.title || "" }),
       h("div", { class: "plate-title", text: page.balance_text || "" }),
+      page.hours_text ? h("p", { class: "shop-hours", text: page.hours_text }) : null,
       h("p", { class: "shop-hint", text: page.reserve_on ? texts.hint : texts.reserve_off }),
     ),
     notice.el,
