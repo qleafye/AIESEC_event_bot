@@ -298,7 +298,7 @@ def http(tmp_path, monkeypatch):
 def _force_full(monkeypatch):
     from services.amb import amb_status
 
-    async def _full():
+    async def _full(_city=None):
         return True
 
     monkeypatch.setattr(amb_status, "slots_full", _full)
