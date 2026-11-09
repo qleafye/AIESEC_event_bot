@@ -21,6 +21,7 @@ def _card(admin_id, rule_id):
 
 
 def _new_rule(**kw):
+    _run(db.set_setting("reg_q_resume", "on"))
     return _run(_create_rule(city="msk", reject_text="x", **kw))
 
 
