@@ -700,7 +700,7 @@ def test_broadcast_schedule_quiet_shift_rewrites_to_window_end(tmp_path, monkeyp
         await admin_broadcasts.broadcast_schedule_quiet_choice(callback, state)
         assert await state.get_state() == Broadcast.schedule_message
         data = await state.get_data()
-        assert data["schedule_dt"] == datetime(2026, 7, 2, 9, 0)
+        assert data["schedule_dt"] == "2026-07-02 09:00:00"
 
     try:
         asyncio.run(scenario())
@@ -726,7 +726,7 @@ def test_broadcast_schedule_quiet_keep_preserves_entered_time(tmp_path, monkeypa
         await admin_broadcasts.broadcast_schedule_quiet_choice(callback, state)
         assert await state.get_state() == Broadcast.schedule_message
         data = await state.get_data()
-        assert data["schedule_dt"] == datetime(2026, 7, 1, 23, 0)
+        assert data["schedule_dt"] == "2026-07-01 23:00:00"
 
     try:
         asyncio.run(scenario())
