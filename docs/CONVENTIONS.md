@@ -88,3 +88,9 @@ python -m pytest -q -n auto
 сначала commit, потом `git pull` и `docker compose`. Запрещены `docker compose up --build` из
 грязного дерева, копирование `.py` в контейнер и «срочно на форуме — без коммита». Операции в
 SQLite (одобрение, баллы, рассылки) — не код, в git не пишутся.
+
+Перед сборкой дерево чистое (`git diff-index --quiet HEAD`: неотслеживаемые и gitignore
+не считаются). В окружение сборки передаётся `GIT_SHA` текущего HEAD. После
+`docker compose up -d --build` проверьте запущенное: `python tools/check_prod_git.py`
+(код 0 — образы `bot`, `miniapp` и `yl26-dashboard` совпали с диском, дерево чистое).
+Команда ничего не пересобирает.

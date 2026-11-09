@@ -28,3 +28,7 @@ USER appuser
 HEALTHCHECK --interval=60s --timeout=5s --start-period=60s --retries=3 CMD python -m services.heartbeat --check
 
 CMD ["python", "main.py"]
+
+# Метка коммита — после pip и COPY: смена GIT_SHA не пересобирает зависимости.
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=$GIT_SHA
