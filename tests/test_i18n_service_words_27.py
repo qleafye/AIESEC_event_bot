@@ -374,16 +374,30 @@ def test_select_step_russian_canon_roundtrips_with_module_off(monkeypatch):
 # (option_pairs может стать непустой для date-типа с пресетами в будущем), поэтому канонизация
 # заведена симметрично и здесь, а не только в process_select_input.
 
+def _future_arrival():
+    """Дата приезда в прошлом не сохраняется. Берём день через 40 суток, чтобы тест не протух."""
+    from datetime import date, timedelta
+
+    day = date.today() + timedelta(days=40)
+    canonical = day.strftime("%d.%m.%Y")
+    english = f"{day.strftime('%B')} {day.day}, {day.year}"
+    nxt = day + timedelta(days=1)
+    other = nxt.strftime("%d.%m.%Y")
+    other_en = f"{nxt.strftime('%B')} {nxt.day}, {nxt.year}"
+    return canonical, english, other, other_en
+
+
 def test_date_step_with_preset_english_label_canonicalizes(monkeypatch):
     tr_map = {}
     _patch_ctx(monkeypatch, "en", tr_map)
-    msg = _FakeMessage("November 1, 2026")
+    canonical, english, other, other_en = _future_arrival()
+    msg = _FakeMessage(english)
     state = _new_state()
     asyncio.run(state.update_data(_current_date_step="arrival_date"))
 
     async def _fake_option_pairs(step_key, lang, _tr_map):
         if step_key == "arrival_date":
-            return [("01.11.2026", "November 1, 2026"), ("02.11.2026", "November 2, 2026")]
+            return [(canonical, english), (other, other_en)]
         return []
 
     monkeypatch.setattr(reg_i18n, "option_pairs", _fake_option_pairs)
@@ -391,21 +405,22 @@ def test_date_step_with_preset_english_label_canonicalizes(monkeypatch):
     asyncio.run(reg_flow.process_date_input(msg, state, bot=None))
 
     data = asyncio.run(state.get_data())
-    assert data.get("arrival_date") == "01.11.2026"
+    assert data.get("arrival_date") == canonical
 
 
 def test_date_step_without_presets_free_text_unaffected(monkeypatch):
     # Реальность сегодняшнего дня: date-шаги без конфигурации вариантов -- canonicalize должна
     # остаться безопасным no-op, свободный ввод в формате даты доходит как есть.
     _patch_ctx(monkeypatch, "en", {})
-    msg = _FakeMessage("01.11.2026")
+    canonical, _english, _other, _other_en = _future_arrival()
+    msg = _FakeMessage(canonical)
     state = _new_state()
     asyncio.run(state.update_data(_current_date_step="arrival_date"))
 
     asyncio.run(reg_flow.process_date_input(msg, state, bot=None))
 
     data = asyncio.run(state.get_data())
-    assert data.get("arrival_date") == "01.11.2026"
+    assert data.get("arrival_date") == canonical
 
 
 # ── Модуль выключен: все пять точек ведут себя как до фазы ──────────────────────────────────
