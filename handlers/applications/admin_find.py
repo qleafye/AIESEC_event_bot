@@ -179,6 +179,9 @@ async def _answer_users_card(message: types.Message, user: dict) -> None:
         [InlineKeyboardButton(
             text="🔄 Перевыпустить QR", callback_data=f"checkin_reissue:{user['telegram_id']}",
         )],
+        [InlineKeyboardButton(
+            text="✉️ Написать", callback_data=f"findw_start:{user['telegram_id']}",
+        )],
     ]
     if await _show_city_move(message, user.get("event_city")):
         rows.append([InlineKeyboardButton(
@@ -268,7 +271,11 @@ async def _answer_started_card(message: types.Message, started: dict) -> None:
         f"Город (по анкете): {html_module.escape(str(city_text))}\n\n"
         "<i>Нажимал(а) /start, анкету пока не подавал(а) — записи делегата в базе нет.</i>"
     )
-    rows = []
+    rows = [
+        [InlineKeyboardButton(
+            text="✉️ Написать", callback_data=f"findw_start:{started['telegram_id']}",
+        )],
+    ]
     viewer_id = _viewer_id(message)
     if viewer_id is not None and await has_capability(viewer_id, "settings"):
         rows.append([InlineKeyboardButton(

@@ -1054,4 +1054,5 @@ from handlers.game import admin_shop  # noqa: E402,F401 — «🛍 Магази�
 from handlers.chat import admin_city_chat_summary  # noqa: E402,F401 — кнопки сводки чата города
 from handlers.chat import admin_city_chat  # noqa: E402,F401 — экран «Чат города»
 from handlers.applications import admin_find  # noqa: E402,F401 — /find: id, пересылка, чужой город
+from handlers.applications import admin_find_write  # noqa: E402,F401 — «✉️ Написать» с карточки /find
 _find_email_line = admin_find._find_email_line
