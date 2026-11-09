@@ -872,6 +872,22 @@ async def dangerous_confirm_text(key: str, next_value: str) -> str | None:
     return plain_text(str(text)) if text else None
 
 
+# Длинный текст в реестре — тоже `text` (textarea на клиенте решает form.js по html/max_len).
+_PLACEHOLDER_TEXT_TYPES = frozenset({"text", "textarea"})
+
+
+def _text_placeholder_chips(key: str, entry_type: str | None) -> list[dict[str, str]]:
+    """Чипы вставки для текстового поля. Пустой список — чипов нет (тумблер, enum, фото, файл).
+    Подпись — из expected_placeholders; пустую не отдаём, сырой token подписью не подставляем."""
+    if entry_type not in _PLACEHOLDER_TEXT_TYPES:
+        return []
+    return [
+        {"token": token, "label": label}
+        for token, label in settings_placeholders.expected_placeholders(key).items()
+        if label
+    ]
+
+
 def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
     """Чистый конструктор словаря одного поля для ответа веб-API — ни одной подписи функция
     не сочиняет, всё из реестра. `search_terms` и per-city счётчики подмешивает роутер
@@ -911,6 +927,7 @@ def item_spec(key: str, *, raw: str | None, value, is_default: bool) -> dict:
         # остаётся значением, которое уезжает в batch. Ключи on/off (нет `option_labels`
         # в реестре) получают None — фронт работает как раньше.
         "option_labels": entry.get("option_labels"),
+        "placeholders": _text_placeholder_chips(key, entry.get("type")),
     }
     max_len = entry.get("max_len")
     if max_len is not None:

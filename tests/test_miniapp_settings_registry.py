@@ -50,6 +50,8 @@ ITEM_FIELDS = {
     # UAT 07.09 (T-d6t-05): подпись варианта enum из реестра (None у ключей без option_labels,
     # в т.ч. у всех on/off) — settings_schema.SETTINGS_SCHEMA[key]["option_labels"].
     "option_labels",
+    # Чипы вставки {token}: список есть у каждого поля, пустой — чипов нет.
+    "placeholders",
 }
 
 

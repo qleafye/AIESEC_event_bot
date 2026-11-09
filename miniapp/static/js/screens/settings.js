@@ -943,6 +943,39 @@ async function renderSection(root, code, ctx, targetKey) {
     }
   }
 
+  // Чипы подстановок под текстовым полем. Подпись кнопки — label с сервера, в текст
+  // вставляется {token}. Тот же input-слушатель field(), что у ручного набора, пишет pending.
+  function insertPlaceholderToken(control, token) {
+    const piece = `{${token}}`;
+    const hasCaret = typeof control.selectionStart === "number";
+    const start = hasCaret ? control.selectionStart : control.value.length;
+    const end = hasCaret && typeof control.selectionEnd === "number" ? control.selectionEnd : start;
+    const next = control.value.slice(0, start) + piece + control.value.slice(end);
+    control.value = next;
+    const caret = start + piece.length;
+    control.focus();
+    if (typeof control.setSelectionRange === "function") control.setSelectionRange(caret, caret);
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function mountPlaceholderChips(el, item) {
+    if (item.editable === false) return;
+    const chips = (item.placeholders || []).filter((chip) => chip && chip.token && chip.label);
+    if (!chips.length) return;
+    const control = el._nodes && el._nodes.control;
+    if (!control || (control.tagName !== "INPUT" && control.tagName !== "TEXTAREA")) return;
+    const row = h("div", { class: "chips settings-placeholder-chips" });
+    for (const chip of chips) {
+      row.append(h("button", {
+        type: "button",
+        class: "chip-pick",
+        onMouseDown: (event) => event.preventDefault(),
+        onClick: () => insertPlaceholderToken(control, chip.token),
+      }, chip.label));
+    }
+    control.after(row);
+  }
+
   // ── строка настройки: field() из form.js + маркер состояния. ────────────────────────────
   function buildRow(rawItem) {
     const item = withPendingOverride(rawItem);
@@ -983,6 +1016,7 @@ async function renderSection(root, code, ctx, targetKey) {
     if (item.editable === false) setFieldState(el, "disabled");
     applyMarker(el, item);
     applyActions(el, rawItem);
+    mountPlaceholderChips(el, item);
     paintHighlight(el, item);
     return { item: rawItem, el };
   }
