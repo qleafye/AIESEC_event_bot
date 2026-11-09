@@ -138,6 +138,15 @@ async def notify_approval_turned_auto(bot, keys, by) -> None:
         await notify_by_capability(bot, "moderate_reg", text)
 
 
+def _register_approval_notifier() -> None:
+    from services.infra.miniapp_outbox import register_approval_notifier
+
+    register_approval_notifier(notify_approval_turned_auto)
+
+
+_register_approval_notifier()
+
+
 async def ask_auto_confirm(callback: types.CallbackQuery, key: str, title: str) -> None:
     """Экран подтверждения — вызывается ИЗ `admin_settings._toggle_approval_setting` вместо
     немедленной записи, когда новое значение — «авто». Ничего не пишет в bot_settings."""
