@@ -6,7 +6,7 @@ import asyncio
 import io
 
 from aiogram.exceptions import TelegramBadRequest, TelegramRetryAfter
-from aiogram.methods import SetMyProfilePhoto
+from aiogram.methods import SendMessage
 from aiogram.types import BufferedInputFile, InputProfilePhotoStatic
 
 from handlers.settings import admin_bot_avatar as ava
@@ -43,7 +43,7 @@ def test_photo_is_downloaded_and_uploaded_as_static_profile_photo():
 
 
 def test_telegram_refusals_are_human():
-    method = SetMyProfilePhoto(photo=InputProfilePhotoStatic(photo="attach://x"))
+    method = SendMessage(chat_id=1, text="x")
     limited = _Bot(fail=TelegramRetryAfter(method=method, message="Too Many Requests", retry_after=3600))
     text = asyncio.run(ava.set_avatar_from_photo(limited, "F"))
     assert "1 ч" in text and "Retry" not in text
@@ -164,7 +164,7 @@ def test_confirm_without_pending_photo_sets_nothing():
 
 def test_refusal_on_confirm_keeps_waiting_for_another_photo():
     async def go():
-        method = SetMyProfilePhoto(photo=InputProfilePhotoStatic(photo="attach://x"))
+        method = SendMessage(chat_id=1, text="x")
         bot, state = _Bot(fail=TelegramRetryAfter(method=method, message="x", retry_after=60)), _state()
         await state.set_state(BotAvatar.confirm)
         await state.update_data(avatar_file_id="F")
