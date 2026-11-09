@@ -96,26 +96,11 @@ async def is_sos_active_for_city(city: str | None) -> bool:
 async def sos_active_window(city: str | None) -> tuple[date, date] | None:
     """Окно дней форума города `[первый, последний]` (включительно) для
     `is_sos_active_for_city` и напоминаний взявшему SOS; `None` — дата форума не задана или
-    не парсится."""
-    from services.applications.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
-    # что уже документирован в services/checkin_broadcast.py, reject_rules.py тяжелее этого
-    # модуля не нужно тянуть на уровне импорта ради одной функции.
+    не парсится. Считает `services.forum.forum_days.forum_window` (тот же модуль читает веб,
+    без aiogram)."""
+    from services.forum.forum_days import forum_window
 
-    raw = await forum_date_for(city)
-    if not raw:
-        return None
-    try:
-        start = datetime.strptime(raw.strip(), "%d.%m.%Y").date()
-    except ValueError:
-        return None
-    raw_days = await get_setting_typed_for_city("sos_active_days", city)
-    try:
-        days = int(raw_days)
-    except (TypeError, ValueError):
-        days = DEFAULT_ACTIVE_DAYS
-    if days < 1:
-        days = 1
-    return start, start + timedelta(days=days - 1)
+    return await forum_window(city)
 
 
 # ── Привязка чата SOS — форма services/chat_tracking.py (bound_chats/bind_chat) ──────────

@@ -19,7 +19,10 @@ DEFAULT_DAYS = 2  # тот же дефолт, что у `sos_active_days` в р�
 
 
 async def forum_window(city: str | None) -> tuple[date, date] | None:
-    """`[первый, последний]` день форума города по его СВОЕЙ дате; `None` — даты нет."""
+    """`[первый, последний]` день форума города по его СВОЕЙ дате; `None` — даты нет.
+
+    Единственный расчёт окна: пустая или кривая дата — `None`, число дней меньше 1 — один
+    день, нечисло — 2. `sos_active_window` и меню дня форума зовут сюда, не копируют формулу."""
     from domain.cities import get_setting_typed_for_city
     from services.applications.reject_rules import forum_date_for
 
