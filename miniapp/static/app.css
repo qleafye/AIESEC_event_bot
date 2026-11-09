@@ -1398,6 +1398,7 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
   padding: 0 1px;
 }
 .settings-row .field-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+.settings-placeholder-chips { margin-top: var(--sp-2); }
 .settings-row .field-actions .btn { width: auto; min-height: var(--tap-min); margin: 0; }
 /* Единый вертикальный ритм строк (D-17 Task 2, владелец 03.09: «отступы кривые, интерфейс
    как будто разный») — ОДИН источник вертикального отступа на строку, .settings-row сверху/
