@@ -4586,6 +4586,23 @@ async def approve_user_atomic(telegram_id: int) -> bool:
         return cursor.rowcount == 1
 
 
+async def approve_rejected_atomic(telegram_id: int) -> bool:
+    """Atomically approve one already-rejected user. True iff this call flipped the row.
+
+    Separate from `approve_user_atomic`: that WHERE stays pending/waitlist so moderation
+    cards and mass-approve never grab a rejected row. The /find card path is the only
+    caller. approved_at is stamped in the same UPDATE, same seam as the pending flip."""
+    approved_at = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE users SET status = 'approved', approved_at = ? "
+            "WHERE telegram_id = ? AND status = 'rejected'",
+            (approved_at, telegram_id),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
+
+
 async def reject_user(telegram_id: int) -> bool:
     """Atomically reject one pending or waitlisted user. True iff one row flipped.
     rejected_at (Phase 30, 30-05 задача 3) is stamped in the SAME UPDATE — the shared seam

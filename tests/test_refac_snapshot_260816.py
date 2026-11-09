@@ -1935,6 +1935,9 @@ admin|callback_query|city_chat_apply|cchat:apply:*
 admin|callback_query|city_chat_stay|cchat:stay:*
 admin|callback_query|findw_start|findw_start:*
 admin|callback_query|findw_cancel|findw_cancel:*
+admin|callback_query|apprej_start|apprej_start:*
+admin|callback_query|apprej_apply|apprej_apply:*
+admin|callback_query|apprej_cancel|apprej_cancel:*
 admin|callback_query|prog_fbday_open|prog_fbday:*
 admin|callback_query|prog_fbc_open|prog_fbc:*
 admin|callback_query|prog_fbset_open|prog_fbset:*
@@ -2785,7 +2788,9 @@ def test_snapshot_total_handler_count_is_292():
     # city_chat_stay (1464 -> 1468).
     # 09.11 (догонялка несдатчиков анкеты): +2 admin.callback_query psv_nudge/psv_nudge_go
     # сразу после survey_copy (1468 -> 1470).
-    assert len(GOLDEN_SNAPSHOT) == 1470
+    # 09.11 («✅ Одобрить» rejected с /find): +3 admin.callback_query apprej_start/apply/cancel
+    # сразу после findw_cancel (1470 -> 1473).
+    assert len(GOLDEN_SNAPSHOT) == 1473
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

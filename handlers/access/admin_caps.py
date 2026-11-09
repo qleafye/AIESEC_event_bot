@@ -1366,6 +1366,11 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "findw_start:*": "moderate_reg",
     "findw_cancel:*": "moderate_reg",
     "state:FindWrite:*": "moderate_reg",
+    # «✅ Одобрить» уже отклонённого с карточки /find
+    # (handlers/applications/admin_approve_rejected.py).
+    "apprej_start:*": "moderate_reg",
+    "apprej_apply:*": "moderate_reg",
+    "apprej_cancel:*": "moderate_reg",
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»
