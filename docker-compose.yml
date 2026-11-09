@@ -56,11 +56,17 @@ services:
   # `/app*` (docs/DEPLOY-DOMAIN.md). Healthcheck образа бота проверяет heartbeat long polling'а
   # и здесь всегда был бы unhealthy — переопределён на собственный `/app/health`. `TZ` сервису
   # не задаётся: время должно совпадать с ботом (T-19-64), а не с локалью хоста запуска.
+  # depends_on — старт контейнера `bot` (`service_started`), не `service_healthy`: здоровье
+  # бота — heartbeat поллинга Telegram, не схема. Ждать healthy значит не поднять Mini App
+  # без сети. Схему ждёт сам `/app/health` (503, пока user_version ниже готовой).
   miniapp:
     build: .
     container_name: youlead26-miniapp
     command: ["uvicorn", "miniapp.main:app", "--host", "0.0.0.0", "--port", "8001"]
     restart: always
+    depends_on:
+      bot:
+        condition: service_started
     env_file:
       - .env
     dns:
