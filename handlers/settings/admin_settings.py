@@ -202,6 +202,8 @@ _APPS_FIELD_ORDER = [
     # тумблеры «📋 Заявки»).
     "score_it_fields", "score_senior_statuses", "score_readiness_counts",
     "score_experience_counts", "score_course_from", "score_stack_from",
+    # Тексты в чат без своего экрана: лист ожидания и интервью. Редактор — этот список.
+    "waitlist_delegate_text", "interview_reminder_text", "interview_slot_cancelled_text",
     # Quick 260904-dq1: «🌙 Тихие часы» — редактор экрана и per-city пикер достаются
     # бесплатно попаданием в этот список; сам тумблер живёт в settings_toggle_rows.
     "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
