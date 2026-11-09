@@ -19,7 +19,10 @@ import asyncio
 
 from aiogram.exceptions import TelegramForbiddenError
 
+from config import config
+from database import db
 import services.scheduler as scheduler
+from tests._dbtpl import fast_init_db
 
 
 def _forbidden():
@@ -91,9 +94,24 @@ def test_safe_send_does_not_run_hook_on_success():
     assert hook_calls == []
 
 
-def test_blocked_candidate_is_marked_nudged_and_not_retried(monkeypatch):
+def test_blocked_candidate_is_marked_nudged_and_not_retried(tmp_path, monkeypatch):
     """The regression itself: before the fix `mark_nudged` ran only on a successful send, so a
     blocked user stayed a candidate on every 15-minute scan (2934 identical ERRORs in prod)."""
+    config.DB_PATH = str(tmp_path / "audit_nudge_blocked.db")
+    fast_init_db()
+
+    async def _seed():
+        await db.set_setting("nudge_enabled", "on")
+        await db.set_setting("nudge_after_minutes", "120")
+        async with db._connect() as conn:
+            await conn.execute(
+                "INSERT INTO reg_started (telegram_id, username, started_at) VALUES (?, ?, ?)",
+                (111, "@u", "2020-01-01 10:00:00"),
+            )
+            await conn.commit()
+
+    asyncio.run(_seed())
+
     marked = []
     sent_attempts = []
 
