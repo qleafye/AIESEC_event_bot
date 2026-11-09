@@ -53,6 +53,9 @@ _ROLE_DEFAULT_CAPS: dict[str, list[str]] = {
     # Маркетолог: право есть только в боте; Mini App его отбрасывает (miniapp/deps.py,
     # BOT_ONLY_CAPS), дашборд пускает лишь по `stats`.
     "marketing_manager": ["source_links"],
+    # Второй владелец: без этой записи роль есть в боте, а дашборд и Mini App
+    # (резолв через этот модуль) молча дают ноль прав.
+    "owner": list(ALL_CAPABILITIES),
 }
 
 
