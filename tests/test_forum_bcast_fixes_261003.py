@@ -645,7 +645,7 @@ def test_morning_repeat_waits_for_manual_send_no_duplicates(tmp_path, monkeypatc
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
     sent: list[int] = []
 
-    async def _slow_send(tid, png, caption, kb, on_permanent_failure=None):
+    async def _slow_send(tid, png, caption, kb, on_permanent_failure=None, **_extra):
         await asyncio.sleep(0.02)
         sent.append(tid)
         return True

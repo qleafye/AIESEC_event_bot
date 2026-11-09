@@ -2282,6 +2282,17 @@ async def init_db():
             )
         ''')
 
+        # Карточка «Мой QR» и утренняя рассылка: file_id уже отправленной картинки.
+        # Отпечаток — содержимое карточки (токен, имя, город, тема, адрес ВК). Сменилось —
+        # картинку рисуем заново. Подпись и строка «ты отмечен» в отпечаток не входят.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS checkin_qr_cards (
+                telegram_id INTEGER PRIMARY KEY,
+                fingerprint TEXT NOT NULL,
+                file_id TEXT NOT NULL
+            )
+        ''')
+
         # Форум-ночь п.6 (D-25, идея №14): «Не пришёл» — готовый шаблон рассылки с кнопками
         # ответа делегата («Уже еду»/«Не смогу прийти»/«Я на месте»). Одна строка = один
         # (делегат, день) — `UNIQUE(telegram_id, day)` даёт ДВОЙНУЮ службу без второй таблицы:
@@ -12553,6 +12564,31 @@ async def checkin_qr_mark_sent(telegram_id: int, event_city: str | None, sent_at
         )
         await db.commit()
         return bool(cursor.rowcount)
+
+
+async def checkin_qr_card_get(telegram_id: int) -> tuple[str, str] | None:
+    """`(отпечаток, file_id)` сохранённой карточки QR или None."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT fingerprint, file_id FROM checkin_qr_cards WHERE telegram_id = ?",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+    if not row or not row[1]:
+        return None
+    return row[0], row[1]
+
+
+async def checkin_qr_card_put(telegram_id: int, fingerprint: str, file_id: str) -> None:
+    """Запомнить file_id карточки. Повтор с тем же человеком заменяет отпечаток и файл."""
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO checkin_qr_cards (telegram_id, fingerprint, file_id) VALUES (?, ?, ?) "
+            "ON CONFLICT(telegram_id) DO UPDATE SET "
+            "fingerprint = excluded.fingerprint, file_id = excluded.file_id",
+            (telegram_id, fingerprint, file_id),
+        )
+        await db.commit()
 
 
 async def checkin_qr_sent_ids(*, city_scope=None, sent_since: str | None = None) -> set[int]:

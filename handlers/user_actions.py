@@ -6,7 +6,7 @@ from datetime import datetime
 from aiogram import Router, F, types, Bot
 from aiogram.filters import Command, StateFilter
 from aiogram.types import (
-    FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, BufferedInputFile,
+    FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo,
 )
 from aiogram.fsm.context import FSMContext
 from database.db import (
@@ -86,7 +86,7 @@ from services.infra.background import spawn as _spawn
 from services.game_digest import notify_submission as notify_game_submission  # Quick 260822
 from services.forum.faq import apply_city_overrides, short as _faq_short  # Quick 260906-8uq
 from services.infra.timeutil import msk_now  # Квик 260912-mcj: сравнение с deadline_at (ввод МСК)
-from services.forum.checkin import build_checkin_qr, checkin_denial  # Квик 260923: форум-чекин, D-01..D-04
+from services.forum.checkin import cached_checkin_photo, checkin_denial, deliver_checkin_card  # Квик 260923: форум-чекин, D-01..D-04
 from services.checkin_broadcast import confirm_receipt  # Форум-ночь п.3, D-03/идея №2
 from services.amb import amb_progress  # СкиллАп 5: прогресс амбассадора, имена приглашённых скрыты
 from services.amb import amb_status  # правила входа/выхода амбассадора — одна точка
@@ -1775,7 +1775,7 @@ async def show_my_checkin_qr(message: types.Message):
         return
     try:
         user = await get_user(message.from_user.id)
-        png_bytes, caption = await build_checkin_qr(user)
+        media, caption, fp = await cached_checkin_photo(user)
     except Exception as e:
         # Fail-soft: сбой генерации QR (например, гонка удаления пользователя) не должен
         # ронять обработчик — тот же приём, что у open_miniapp_button выше.
@@ -1802,8 +1802,7 @@ async def show_my_checkin_qr(message: types.Message):
                 sessions=status["sessions_count"],
             )
             caption = f"{status_line}\n\n{caption}"
-    photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
-    await message.answer_photo(photo, caption=caption)
+    await deliver_checkin_card(message, user, media, fp, caption)
 
 
 # Форум-ночь п.4 (расписание форума в боте): экран «🗓 Программа» — импорт СРАЗУ ПОСЛЕ
@@ -2148,14 +2147,13 @@ async def checkin_not_arrived_show_qr(callback: types.CallbackQuery):
         )
         return
     try:
-        png_bytes, caption = await build_checkin_qr(user)
+        media, caption, fp = await cached_checkin_photo(user)
     except Exception as e:
         logger.error(f"checkin_not_arrived_show_qr: build_checkin_qr failed for {callback.from_user.id}: {e}")
         await callback.answer()
         return
     caption = reg_i18n.tr_text(caption, lang, tr_map)
-    photo = BufferedInputFile(png_bytes, filename="checkin_qr.png")
-    await callback.message.answer_photo(photo, caption=caption)
+    await deliver_checkin_card(callback.message, user, media, fp, caption)
     await callback.answer()
 
 
