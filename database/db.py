@@ -2752,6 +2752,16 @@ async def init_db():
         # Заморозка прежних дефолтов ступеней (user_version = 4): строго после статуса (3).
         from database import amb_tiers_db
         await amb_tiers_db.freeze_legacy_tier_defaults(db)
+        # Где отбор уже включён, баллы и место на «Моя ссылка» остаются видимыми и после
+        # развязки. Выключенный отбор строку не получает: пустой ключ и дальше повторяет отбор.
+        # user_version не трогаем — повторный старт ничего не перетирает (INSERT OR IGNORE).
+        await db.execute(
+            "INSERT OR IGNORE INTO bot_settings (key, value) "
+            "SELECT 'amb_show_link_stats' || substr(key, length('amb_team_selection_enabled') + 1), 'on' "
+            "FROM bot_settings "
+            "WHERE value = 'on' AND (key = 'amb_team_selection_enabled' "
+            "OR key LIKE 'amb_team_selection_enabled__city__%')"
+        )
 
         # Делегации вузов включаются кнопкой менеджера. Стенды/РилТолк, где форма уже выбрана и
         # модуль работал до гейта, остаются включёнными; прод без формы — выключен. Выключение

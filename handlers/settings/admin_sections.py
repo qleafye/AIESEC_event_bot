@@ -203,9 +203,8 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         ("group", "game"),
     ]),
     # Всё амбассадорское: вход и места, кандидаты, баллы, ступени, волны, исключения, закрепление.
-    # Волны и ступени переехали сюда из «🎮 Геймификации». Пока модуль «🤝 Отбор амбассадоров»
-    # выключен, раздела в корне нет, и эти две строки показываются в «🎮 Геймификации»
-    # (`_AMB_OFF_GAME_ROWS`) — иначе волны и ступени Юлида стали бы недостижимы.
+    # Раздел в корне у того, у кого есть право геймификации, даже когда отбор выключен.
+    # Выключенный блок на экране свёрнут, данные и настройки не стираются.
     ("amb", "🤝 Амбассадоры", [
         ("screen", "admin_amb_entry", "🚪 Вход и лимит"),
         ("screen", "admin_amb_candidates", "🙋 Кандидаты и команда"),
@@ -289,7 +288,7 @@ _SECTION_HINTS = {
     "pay": "Чеки делегатов, реквизиты, сроки и напоминания об оплате.",
     "comms": "Рассылки и опросы — всё, что уходит делегатам разом.",
     "game": "Задания, проверка сдач и баллы.",
-    "amb": "Команда амбассадоров: вход и места, кандидаты, баллы за приглашённых, ступени, волны, исключения.",
+    "amb": "Команда амбассадоров: вход и места, кандидаты, баллы за приглашённых, ступени, волны, исключения. Выключенное свёрнуто, данные сохранены.",
     "data": "Статистика, выгрузки и Google-таблица.",
     "manage": "Города, роли, оформление и запуск нового сезона.",
 }
@@ -368,12 +367,9 @@ def back_button(callback_data: str, text: str = "← Назад") -> InlineKeybo
     return InlineKeyboardButton(text=text, callback_data=f"admin_sec:{token}" if token else "admin_menu")
 
 
-# Экраны раздела «🤝 Амбассадоры», у которых есть собственный тумблер и которые должны жить и
-# при выключенном «🤝 Отборе амбассадоров» (волны, ступени): раздела в корне тогда нет, а эти две
-# строки показываются в «🎮 Геймификации».
-# 09.10: баллы, исключения и закрепление от отбора не зависят — тоже доступны при выключенном.
-# Подзаголовки внутри «🤝 Амбассадоры» (владелец 09.10): строки раздела группируются по смыслу,
-# логика кнопок та же. Группа без единой доступной строки не рисуется вместе с заголовком.
+# Подзаголовки внутри «🤝 Амбассадоры»: строки группируются по смыслу, логика кнопок та же.
+# Группа без единой доступной строки не рисуется вместе с заголовком. Выключенные отбор и
+# ступени прячут свои кнопки уже после этой группировки — в одну строку «выключено».
 AMB_SEPARATOR_CALLBACK = "amb_sep"
 _AMB_SUBGROUPS = (
     ("Общее", ("admin_amb_points", "ambt_excl_list:0", "admin_amb_attach")),
@@ -397,16 +393,8 @@ def _amb_rows_with_separators(rows: list[tuple]) -> list[tuple]:
     return out + [r for r in rows if row_callback(r) not in placed]  # новая строка не теряется
 
 
-_AMB_OFF_GAME_ROWS = ("admin_game_waves", "admin_amb_tiers", "admin_amb_points", "ambt_excl_list:0",
-                      "admin_amb_attach")  # порядок = порядок в «🎮 Геймификации»
-
-
 async def owner_back_button(callback_data: str, text: str = "← Назад") -> InlineKeyboardButton:
-    """`back_button`, но с учётом выключенного модуля отбора: волны и ступени при выключенном
-    модуле возвращают в «🎮 Геймификацию» (раздела «🤝 Амбассадоры» тогда нет — кнопка вела бы
-    в алерт «раздел выключен»)."""
-    if callback_data in _AMB_OFF_GAME_ROWS and not await _amb_section_on():
-        return InlineKeyboardButton(text=text, callback_data="admin_sec:game")
+    """Возврат в раздел-владелец. Волны, ступени и баллы всегда ведут в «🤝 Амбассадоры»."""
     return back_button(callback_data, text)
 
 
@@ -601,18 +589,10 @@ async def build_section_keyboard(token: str, admin_id: int, *, caps: set | None 
     if caps is None:
         caps = await resolve_capabilities(admin_id)
     rows = visible_rows(token, caps, admin_id in config.ADMIN_IDS)
-    if token == "game" and not await _amb_section_on():
-        # Модуль отбора выключен — раздела «🤝 Амбассадоры» нет, волны и ступени живут здесь,
-        # сразу после «Задания», как до переезда.
-        extra = sorted((r for r in visible_rows("amb", caps, admin_id in config.ADMIN_IDS)
-                        if row_callback(r) in _AMB_OFF_GAME_ROWS),
-                       key=lambda r: _AMB_OFF_GAME_ROWS.index(row_callback(r)))
-        at = 1 if rows and rows[0][1] == "admin_game_tasks" else 0
-        if extra:  # амбассадорский блок отделён подзаголовками от игровых строк
-            extra = [_sep("🤝 Амбассадоры"), *extra] + ([_sep("🎮 Проверка и баллы")] if rows[at:] else [])
-        rows = rows[:at] + extra + rows[at:]
-    elif token == "amb":
+    if token == "amb":
         rows = _amb_rows_with_separators(rows)
+        from handlers.amb.amb_panel import prepare_amb_rows  # ленивый шов: модуль без хендлеров
+        rows = await prepare_amb_rows(rows, admin_id, caps)
     op_labels = {callback_data: text for text, callback_data in _ADMIN_MENU_ROWS}
     code = await admin_selected_city(admin_id)  # ЕДИНСТВЕННОЕ чтение шапки на рендер
     toggles = await settings_toggle_rows(admin_id, header_code=code) if any(r[0] == "toggle" for r in rows) else {}
@@ -673,12 +653,6 @@ def is_section(token: str | None) -> bool:
     return bool(token) and token in _SECTION_LABELS
 
 
-async def _amb_section_on() -> bool:
-    """Раздел «🤝 Амбассадоры» есть только при включённом модуле «🤝 Отбор амбассадоров»."""
-    from services.amb.amb_status import selection_enabled  # ленивый шов
-    return await selection_enabled()
-
-
 async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineKeyboardMarkup] | None:
     """Пара (текст, клавиатура) экрана раздела — или `None`, если раздела нет либо в нём не
     осталось ни одной доступной строки (права отозвали между нажатием и перерисовкой).
@@ -686,8 +660,6 @@ async def section_screen(admin_id: int, token: str | None) -> tuple[str, InlineK
     ОДИН предикат «раздел показуем» на весь проект: и экран раздела, и возврат из
     переключателя города спрашивают здесь, а не каждый по-своему."""
     if not is_section(token):
-        return None
-    if token == "amb" and not await _amb_section_on():
         return None
     caps = await resolve_capabilities(admin_id)
     if not visible_rows(token, caps, admin_id in config.ADMIN_IDS):
@@ -709,10 +681,6 @@ async def show_admin_section(callback: types.CallbackQuery):
     # T-20-03: токен ищется в SECTIONS точным сравнением; неизвестный — алерт и выход, в
     # сообщение пользовательская строка не форматируется никогда.
     token = callback.data.split(":", 1)[1]
-    if token == "amb" and not await _amb_section_on():
-        from handlers.amb.admin_amb_section import SECTION_OFF_ALERT  # ленивый шов
-        await callback.answer(SECTION_OFF_ALERT, show_alert=True)
-        return
     screen = await section_screen(callback.from_user.id, token)
     if screen is None:
         # T-20-04: текст не перечисляет существующие разделы — чужая раскладка не утекает.

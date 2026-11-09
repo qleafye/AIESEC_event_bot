@@ -381,6 +381,7 @@ EXPECTED_PER_CITY_KEYS = {
     "amb_referral_catchup_reason_text",
     "amb_referral_restore_reason_text",
     "amb_team_selection_enabled",
+    "amb_show_link_stats",
     "amb_join_mode",
     "amb_slots_limit",
     "amb_candidate_ack_text",

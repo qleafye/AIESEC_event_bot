@@ -725,7 +725,8 @@ def test_menu_admin_sees_all_sections(tmp_path):
         kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
         flat = _flat_callback_data(kb)
         assert flat[0] == "ready_list"
-        assert section_callbacks(kb) == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS if token != "amb"]
+        # «🤝 Амбассадоры» в корне и при выключенном отборе.
+        assert section_callbacks(kb) == [f"admin_sec:{token}" for token, _label, _rows in SECTIONS]
         asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
         kb = asyncio.run(admin_mod.build_admin_keyboard(ADMIN_ID))
         flat = _flat_callback_data(kb)

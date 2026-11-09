@@ -1,8 +1,7 @@
-"""Раздел «🤝 Амбассадоры» собран целиком: волны и ступени переехали из «🎮 Геймификации».
+"""Раздел «🤝 Амбассадоры» собран целиком: волны и ступени живут в нём.
 
-При выключенном «🤝 Отборе амбассадоров» раздела в корне нет, и волны со ступенями остаются
-достижимы из «🎮 Геймификации» — Юлид после выката не теряет экраны. pytest-asyncio нет —
-async через `asyncio.run()`.
+Раздел в корне и при выключенном отборе. Выключенные команда и ступени свёрнуты в одну
+строку, волны и баллы остаются в разделе. pytest-asyncio нет — async через `asyncio.run()`.
 """
 from __future__ import annotations
 
@@ -53,14 +52,20 @@ def test_back_buttons_lead_to_owner_section():
 def test_on_section_shows_everything_and_game_has_no_waves(tmp_path):
     _ready(tmp_path, selection=True)
     text, kb = _run(sec.section_screen(ADMIN_ID, "amb"))
-    # 09.10: строки сгруппированы подзаголовками «Общее» / «Команда и волны» / «Ступени».
-    assert _callbacks(kb)[:len(AMB_ROWS) + 3] == [
+    cbs = _callbacks(kb)
+    # Пульт сверху. Ступени по умолчанию выключены — строка экрана свёрнута.
+    assert cbs[:5] == [
+        "amb_addon_ask:offer", "amb_addon_ask:team", "amb_addon_ask:steps",
+        "amb_addon_ask:stats", "admin_game_waves",
+    ]
+    assert cbs[5:15] == [
         "amb_sep", "admin_amb_points", "ambt_excl_list:0", "admin_amb_attach",
         "amb_sep", "admin_amb_entry", "admin_amb_candidates", "admin_game_waves",
-        "amb_sep", "admin_amb_tiers",
+        "amb_sep", "amb_off_note",
     ]
-    assert "settings_group:amb" not in _callbacks(kb)
-    assert set(AMB_ROWS) <= set(_callbacks(kb))
+    assert "admin_amb_tiers" not in cbs
+    assert "settings_group:amb" not in cbs
+    assert set(AMB_ROWS) - {"admin_amb_tiers"} <= set(cbs)
     seps = [b.text for row in kb.inline_keyboard for b in row if b.callback_data == "amb_sep"]
     assert seps == ["── Общее ──", "── Команда и волны ──", "── Ступени ──"]
     _t, game_kb = _run(sec.section_screen(ADMIN_ID, "game"))
@@ -70,33 +75,31 @@ def test_on_section_shows_everything_and_game_has_no_waves(tmp_path):
     assert back.callback_data == "admin_sec:amb"
 
 
-def test_off_section_hidden_but_waves_and_tiers_reachable_from_game(tmp_path):
+def test_off_section_stays_and_collapses_team(tmp_path):
     _ready(tmp_path, selection=False)
-    assert _run(sec.section_screen(ADMIN_ID, "amb")) is None
+    screen = _run(sec.section_screen(ADMIN_ID, "amb"))
+    assert screen is not None
+    _t, kb = screen
+    cbs = _callbacks(kb)
+    texts = [b.text for row in kb.inline_keyboard for b in row]
+    assert "admin_amb_entry" not in cbs and "admin_amb_candidates" not in cbs
+    assert "admin_game_waves" in cbs
+    assert "admin_amb_points" in cbs and "ambt_excl_list:0" in cbs and "admin_amb_attach" in cbs
+    assert any(t.startswith("Выключено: команда с отбором") for t in texts)
+    assert any(t.startswith("Выключено: ступени") for t in texts)
     _t, game_kb = _run(sec.section_screen(ADMIN_ID, "game"))
-    cbs = _callbacks(game_kb)
-    assert cbs.index("admin_game_tasks") < cbs.index("admin_game_waves") < cbs.index("admin_amb_tiers")
-    # 09.10: амбассадорский блок внутри «🎮 Геймификации» отделён подзаголовками.
-    seps = [b.text for row in game_kb.inline_keyboard for b in row if b.callback_data == "amb_sep"]
-    assert seps == ["── 🤝 Амбассадоры ──", "── 🎮 Проверка и баллы ──"]
-    assert cbs.index("admin_game_tasks") < cbs.index("amb_sep") < cbs.index("admin_game_waves")
-    # 09.10: вход и кандидаты — экраны отбора, при выключенном не видны; баллы, исключения и
-    # закрепление от отбора не зависят — доступны из «🎮 Геймификации».
-    for hidden in ("admin_amb_entry", "admin_amb_candidates"):
-        assert hidden not in cbs
-    for shown in ("admin_amb_points", "ambt_excl_list:0", "admin_amb_attach"):
-        assert shown in cbs
-    assert "settings_group:amb" not in cbs
-    assert _run(sec.owner_back_button("admin_amb_points")).callback_data == "admin_sec:game"
-    back = _run(sec.owner_back_button("admin_game_waves"))
-    assert back.callback_data == "admin_sec:game"
+    game_cbs = _callbacks(game_kb)
+    assert "admin_game_waves" not in game_cbs and "admin_amb_tiers" not in game_cbs
+    assert "admin_amb_points" not in game_cbs
+    assert _run(sec.owner_back_button("admin_amb_points")).callback_data == "admin_sec:amb"
+    assert _run(sec.owner_back_button("admin_game_waves")).callback_data == "admin_sec:amb"
 
 
 def test_waves_screen_back_follows_toggle(tmp_path):
     from handlers.game.admin_game_waves import _wave_list_screen
     _ready(tmp_path, selection=False)
     _t, kb = _run(_wave_list_screen(ADMIN_ID))
-    assert _callbacks(kb)[-1] == "admin_sec:game"
+    assert _callbacks(kb)[-1] == "admin_sec:amb"
     _run(db.set_setting("amb_team_selection_enabled", "on"))
     _t, kb = _run(_wave_list_screen(ADMIN_ID))
     assert _callbacks(kb)[-1] == "admin_sec:amb"
@@ -213,6 +216,7 @@ def test_points_toggles_flip_shared_settings(tmp_path):
 def test_points_stale_button_when_module_off(tmp_path):
     from handlers.amb import admin_amb_section as sect
     _ready(tmp_path, selection=False)
-    assert sect.is_section_callback("admin_amb_points")
-    assert sect.is_section_callback("ambpt_toggle:hide")
-    assert _run(sect._section_off(_Cb("admin_amb_points"))) is True
+    assert not sect.is_section_callback("admin_amb_points")
+    assert not sect.is_section_callback("ambpt_toggle:hide")
+    assert _run(sect._section_off(_Cb("admin_amb_points"))) is False
+    assert _run(sect._section_off(_Cb("admin_amb_entry"))) is True

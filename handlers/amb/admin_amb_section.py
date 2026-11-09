@@ -106,22 +106,21 @@ async def _edit_or_send(message: types.Message, text: str, kb: InlineKeyboardMar
 
 
 # ── тумблер модуля «🤝 Отбор амбассадоров» ────────────────────────────────────────────────
-# Выключен — раздела нет в корне /admin (handlers/admin_core.build_admin_keyboard), а устаревшие
-# кнопки раздела в чате отвечают алертом, как его включить. Кнопка тумблера — на экране группы
-# «🎮 Геймификация → ⚙️ Тексты и настройки» (handlers/admin_settings), не в самом разделе:
-# иначе выключенный раздел было бы нечем включить.
+# Раздел в корне есть и при выключенном отборе. Устаревшие кнопки входа и кандидатов в чате
+# отвечают алертом, где включить отбор. Кнопка на экране группы «🎮 Геймификация» пишет сразу;
+# пульт раздела сначала показывает, что изменится у делегата.
 
 SECTION_OFF_ALERT = (
     "Раздел «🤝 Амбассадоры» выключен. Включить: /admin → 🎮 Геймификация → "
     "⚙️ Тексты и настройки → «🤝 Отбор амбассадоров»."
 )
 
-_SECTION_CALLBACKS = ("admin_amb_entry", "admin_amb_candidates", "admin_amb_points")
-_SECTION_PREFIXES = ("ambs_", "ambc", "ambp:", "ambpt_")
+_SECTION_CALLBACKS = ("admin_amb_entry", "admin_amb_candidates")
+_SECTION_PREFIXES = ("ambs_", "ambc", "ambp:")
 
 
 def is_section_callback(data: str | None) -> bool:
-    """Кнопка раздела «🤝 Амбассадоры» (вход, кандидаты, массовые действия, выгрузки)."""
+    """Кнопки отбора (вход, кандидаты, массовые действия). Баллы, волны и ступени — нет."""
     data = data or ""
     return data in _SECTION_CALLBACKS or data.startswith(_SECTION_PREFIXES)
 
@@ -335,3 +334,7 @@ from handlers.amb import admin_amb_candidates  # noqa: E402,F401
 async def amb_separator(callback: types.CallbackQuery):
     # Подзаголовок «── Общее ──» и соседи в разделе — не кнопка действия.
     await callback.answer("Это подзаголовок — кнопки группы под ним.")
+
+
+# Пульт надстроек — сразу после подзаголовка, чтобы снимок роутера вставил хендлеры следом.
+from handlers.amb import admin_amb_panel  # noqa: E402,F401

@@ -1079,6 +1079,10 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "ambs_limit_cancel": "moderate_game",
     "ambs_texts": "moderate_game",
     "amb_sep": "moderate_game",  # подзаголовок внутри раздела, ничего не делает
+    "amb_addon_ask:*": "settings",
+    "amb_addon_go:*": "settings",
+    "amb_addon_look": "moderate_game",
+    "amb_off_note": "moderate_game",
     "state:AmbSlotsEdit:*": "moderate_game",
     # «🙋 Кандидаты и команда» (handlers/amb/admin_amb_candidates.py). Анкета человека — ПДн, как в
     # очереди заявок: moderate_reg. Префиксы: "ambc:*" не ловит "ambc_*", "ambc_rm:*" — "ambc_rm_go:*".

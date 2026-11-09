@@ -90,7 +90,7 @@ def test_amb_group_reachable_with_module_on_and_off(tmp_path):
     group_kb = _run(st.build_settings_group_keyboard("amb", ADMIN_ID))
     cbs = _callbacks(group_kb)
     assert "toggle_wave_rating_show_names" in cbs
-    # section_of("settings_group:amb") is None и callback больше не в _AMB_OFF_GAME_ROWS.
+    # section_of("settings_group:amb") is None — группа не строка раздела.
     assert cbs[-1] == "admin_menu"
     assert cbs[-1] not in ("admin_sec:game", "admin_sec:amb")
     game_cbs = _callbacks(_run(st.build_settings_group_keyboard("game", ADMIN_ID)))
