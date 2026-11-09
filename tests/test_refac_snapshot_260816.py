@@ -1456,8 +1456,8 @@ admin|callback_query|survey_qsave|psv_qsave
 admin|callback_query|survey_results|psv_res:*
 admin|callback_query|survey_text_answers|psv_txt:*
 admin|callback_query|survey_copy|psv_copy:*
-admin|callback_query|survey_nudge_ask|psv_nudge:*
 admin|callback_query|survey_nudge_go|psv_nudge_go:*
+admin|callback_query|survey_nudge_ask|psv_nudge:*
 admin|callback_query|delete_user_confirm|delu_go:*
 admin|callback_query|delete_user_cancel|delu_no
 admin|callback_query|show_admin_checkin|admin_checkin

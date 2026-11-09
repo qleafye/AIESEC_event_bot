@@ -437,6 +437,7 @@ async def list_survey_progress(poll_id: int) -> list[dict]:
 
 
 async def finished_survey_user_ids(poll_id: int) -> set[int]:
+    """Кто уже сдал эту анкету — догонялка их больше не трогает."""
     async with _db._connect() as db:
         async with db.execute(
             "SELECT user_id FROM survey_progress WHERE poll_id = ? AND state = 'done'",
