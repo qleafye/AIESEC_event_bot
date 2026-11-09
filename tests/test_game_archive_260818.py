@@ -37,6 +37,18 @@ def _db_ready(tmp_path):
     asyncio.run(db.init_db())
 
 
+def _seed_approved_delegate():
+    """Гейт сдачи требует строку users. В тесте её не было — заводим одобренного делегата."""
+    async def _go():
+        await db.add_user({
+            "telegram_id": DELEGATE_ID,
+            "registration_date": "2026-01-01 00:00:00",
+        })
+        await db.set_user_status(DELEGATE_ID, "approved")
+
+    asyncio.run(_go())
+
+
 def _new_state(uid: int = DELEGATE_ID) -> FSMContext:
     return FSMContext(storage=MemoryStorage(), key=StorageKey(bot_id=1, chat_id=uid, user_id=uid))
 
@@ -207,6 +219,7 @@ def test_submit_button_label_short_and_truncated():
 
 def test_mytask_submit_start_archived_task_blocks_with_alert(tmp_path):
     _db_ready(tmp_path)
+    _seed_approved_delegate()
     task_id = _mk_task()
     asyncio.run(db.archive_task(task_id))
 
@@ -223,6 +236,7 @@ def test_mytask_submit_start_archived_task_blocks_with_alert(tmp_path):
 
 def test_mytask_submit_start_resubmit_limit_blocks_at_limit(tmp_path):
     _db_ready(tmp_path)
+    _seed_approved_delegate()
     task_id = _mk_task()
     asyncio.run(db.set_setting("game_resubmit_limit", "2"))
     _reject_submission(task_id, DELEGATE_ID)
@@ -242,6 +256,7 @@ def test_mytask_submit_start_resubmit_limit_blocks_at_limit(tmp_path):
 
 def test_mytask_submit_start_resubmit_limit_allows_below_limit(tmp_path):
     _db_ready(tmp_path)
+    _seed_approved_delegate()
     task_id = _mk_task()
     asyncio.run(db.set_setting("game_resubmit_limit", "2"))
     _reject_submission(task_id, DELEGATE_ID)
@@ -256,6 +271,7 @@ def test_mytask_submit_start_resubmit_limit_allows_below_limit(tmp_path):
 
 def test_mytask_submit_start_default_limit_zero_means_no_limit(tmp_path):
     _db_ready(tmp_path)
+    _seed_approved_delegate()
     task_id = _mk_task()
     # game_resubmit_limit not set -> default 0 -> regression: behaves exactly like pre-phase
     for _ in range(5):
