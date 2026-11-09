@@ -15,6 +15,7 @@ import services.scheduler as sched
 from services.applications.reject_rules import forum_date_for
 from domain.settings.callback_token import city_reset_callback
 from tests._dbtpl import fast_init_db
+from tests._delegate_preview import confirm_delegate_preview
 from tests.test_roles_phase8 import FakeCallback, _fresh_state
 
 ADMIN_ID = 261003001
@@ -282,11 +283,13 @@ def test_dash_on_city_date_asks_confirmation_instead_of_erasing(tmp_path):
     msg = FakeMessage("-", user_id=ADMIN_ID)
     _run(settings_edit_value(msg, state))
     assert "стирать нечего" in msg.answers[-1][0]
-    # Обычная городская настройка: «-» по-прежнему сбрасывает сразу.
+    # Обычный текст города: «-» стирает ключ после «Сохранить» на экране «как прочитает».
     _run(db.set_setting("start_text__city__spb", "свой"))
     state = _fresh_state(ADMIN_ID)
     _run(settings_edit_city(FakeCallback("settings_edit_city:start_text", user_id=ADMIN_ID), state))
-    _run(settings_edit_value(FakeMessage("-", user_id=ADMIN_ID), state))
+    dash = FakeMessage("-", user_id=ADMIN_ID)
+    _run(settings_edit_value(dash, state))
+    _run(confirm_delegate_preview(dash, state))
     assert _run(db.get_setting("start_text__city__spb")) in (None, "")
 
 

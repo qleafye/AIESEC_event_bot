@@ -78,6 +78,8 @@ def _edit(tmp_path, key, text, preset=None):
         if preset is not None:
             await db.set_setting(key, preset)
         await admin_settings.settings_edit_value(message, state)
+        from tests._delegate_preview import confirm_delegate_preview
+        await confirm_delegate_preview(message, state)
         return await db.get_setting(key)
 
     saved = asyncio.run(go())

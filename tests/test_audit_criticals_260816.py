@@ -228,6 +228,8 @@ def test_normal_text_value_still_saves(tmp_path):
 
     async def go():
         await admin_settings.settings_edit_value(message, state)
+        from tests._delegate_preview import confirm_delegate_preview
+        await confirm_delegate_preview(message, state)
         return await db.get_setting("event_place_name")
 
     saved = asyncio.run(go())

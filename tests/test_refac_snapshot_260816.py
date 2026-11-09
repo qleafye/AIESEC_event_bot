@@ -712,6 +712,7 @@ admin|message|prog_description_step|state:ProgramSessionField:*
 admin|message|prog_hallname_cancel|state:ProgramHallName:*
 admin|message|prog_hallname_step|state:ProgramHallName:*
 admin|message|interview_admin_value|state:InterviewAdmin:*
+admin|message|txtprev_wait|state:EditSetting:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|cancel_city_form|state:CityForm:*,state:CityForm:*
 admin|message|city_add_label_step|state:CityForm:*
@@ -1154,6 +1155,8 @@ admin|callback_query|ready_remind_toggle|ready_remind_toggle
 admin|callback_query|phchk_save|phchk_save
 admin|callback_query|phchk_fix|phchk_fix
 admin|callback_query|phchk_retry|phchk_retry
+admin|callback_query|txtprev_save|txtprev_save
+admin|callback_query|txtprev_drop|txtprev_drop
 admin|callback_query|settings_edit_all|settings_edit_all:*
 admin|callback_query|show_partner_export|admin_export_partner
 admin|callback_query|sync_sheet|admin_sync_sheet
@@ -2809,7 +2812,9 @@ def test_snapshot_total_handler_count_is_292():
     # rsv_open/rsv_act сразу после apprej_cancel, перед prog_fbday_open (1477 -> 1480).
     # Пульт надстроек амбассадоров: +4 admin.callback_query сразу после amb_separator (1480 -> 1484).
     # 10.11 (страницы витрины): +1 admin shp_hp:* после shp_home, +1 user_actions shopv_p:* после shopv (1484 -> 1486).
-    assert len(GOLDEN_SNAPSHOT) == 1486
+    # Превью текста делегата: +1 admin.message txtprev_wait после interview_admin_value,
+    # +2 admin.callback_query txtprev_save/txtprev_drop после phchk_retry (1486 -> 1489).
+    assert len(GOLDEN_SNAPSHOT) == 1489
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

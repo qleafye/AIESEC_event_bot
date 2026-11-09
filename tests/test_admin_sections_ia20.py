@@ -18,6 +18,7 @@
 pytest-asyncio в этом окружении нет — каждый async-вызов через asyncio.run(), config.DB_PATH
 смотрит в tmp_path (конвенция проекта, conftest.py нет).
 """
+from tests._delegate_preview import confirm_delegate_preview
 from tests._paths import REPO_ROOT
 import asyncio
 import re
@@ -968,7 +969,9 @@ def test_edit_value_returns_to_its_group_screen(tmp_path):
     сторожит перекладку ключа — «После одобрения» после 20-01 лежит в «📋 Заявки»."""
     _roles_ready(tmp_path)
     msg = FakeAnswerMessage("Ждём тебя на форуме!")
-    asyncio.run(st.settings_edit_value(msg, FakeState({"setting_key": "approve_text"})))
+    state = FakeState({"setting_key": "approve_text"})
+    asyncio.run(st.settings_edit_value(msg, state))
+    asyncio.run(confirm_delegate_preview(msg, state))
 
     assert asyncio.run(db.get_setting("approve_text")) == "Ждём тебя на форуме!"
     _assert_is_group_screen(msg.screen[1], "apps")

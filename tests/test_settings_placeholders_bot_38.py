@@ -14,6 +14,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.settings.ops as settings_ops
 from config import config
 from database import db
+from domain.settings.ops import PREVIEW_SAMPLES
+from handlers.access.admin_caps import required_capability
 from handlers.settings import admin_settings, admin_settings_placeholders as ph
 from handlers.states import EditSetting
 from tests._dbtpl import fast_init_db
@@ -110,34 +112,45 @@ def test_bot_confirm_saves(tmp_path):
         await _start(state)
         msg = _Msg("Вы записаны, ждём вас")
         await admin_settings.settings_edit_value(msg, state)
-        cb = _Cb("phchk_save", msg)
-        await ph.phchk_save(cb, state)
-        return await db.get_setting(KEY), await state.get_state()
+        await ph.phchk_save(_Cb("phchk_save", msg), state)
+        held = await db.get_setting(KEY)
+        st = await state.get_state()
+        screen = msg.sent[-1]
+        await ph.txtprev_save(_Cb("txtprev_save", msg), state)
+        return held, st, screen, await db.get_setting(KEY), await state.get_state(), msg
 
-    saved, st = _run(go())
+    held, st, screen, saved, done, msg = _run(go())
+    assert held is None
+    assert st == EditSetting.waiting_for_text_confirm.state
+    assert "Как прочитает делегат" in screen
     assert saved == "Вы записаны, ждём вас"
-    assert st is None
+    assert done is None
+    assert not any(s.startswith("Так увидит делегат:") for s in msg.sent)
 
 
 def test_bot_unknown_fix_and_keep(tmp_path):
     _ready(tmp_path)
 
     async def go(button):
+        await db.delete_setting(KEY)
         state = _state()
         await _start(state)
         msg = _Msg("Оплатите до {dedline}")
         await admin_settings.settings_edit_value(msg, state)
         first = msg.sent[0]
         btns = _buttons(msg.markups[0])
-        cb = _Cb(button, msg)
-        await getattr(ph, button)(cb, state)
-        return first, btns, await db.get_setting(KEY)
+        await getattr(ph, button)(_Cb(button, msg), state)
+        held = await db.get_setting(KEY)
+        await ph.txtprev_save(_Cb("txtprev_save", msg), state)
+        return first, btns, held, await db.get_setting(KEY)
 
-    first, btns, saved = _run(go("phchk_fix"))
+    first, btns, held, saved = _run(go("phchk_fix"))
     assert "Не знаю {dedline} — может, {deadline}?" in first
     assert btns == ["phchk_fix", "phchk_save"]
+    assert held is None
     assert saved == "Оплатите до {deadline}"
-    _, _, kept = _run(go("phchk_save"))
+    _, _, held_keep, kept = _run(go("phchk_save"))
+    assert held_keep is None
     assert kept == "Оплатите до {dedline}"
 
 
@@ -158,20 +171,31 @@ def test_bot_retry_returns_to_input(tmp_path):
 
 def test_bot_clean_text_unchanged_and_preview(tmp_path):
     _ready(tmp_path)
+    fresh = "Ждём вас, оплата до {deadline}"
 
     async def go():
         state = _state()
         await _start(state)
-        msg = _Msg("Ждём вас, оплата до {deadline}")
+        msg = _Msg(fresh)
         await admin_settings.settings_edit_value(msg, state)
-        return msg, await db.get_setting(KEY), await state.get_state()
+        held = await db.get_setting(KEY)
+        st = await state.get_state()
+        screen = msg.sent[-1]
+        await ph.txtprev_drop(_Cb("txtprev_drop", msg), state)
+        kept = await db.get_setting(KEY)
+        await admin_settings.settings_edit_value(msg, state)
+        await ph.txtprev_save(_Cb("txtprev_save", msg), state)
+        return msg, held, st, screen, kept, await db.get_setting(KEY)
 
-    msg, saved, st = _run(go())
-    assert saved == "Ждём вас, оплата до {deadline}"
-    assert st is None
+    msg, held, st, screen, kept, saved = _run(go())
+    assert held is None and kept is None
+    assert st == EditSetting.waiting_for_text_confirm.state
+    assert "Было:" in screen and "Как прочитает делегат:" in screen
+    assert PREVIEW_SAMPLES["deadline"] in screen
+    assert "{deadline}" not in screen
     assert not any("Сохранить всё равно" in s for s in msg.sent)
-    preview = [s for s in msg.sent if s.startswith("Так увидит делегат:")]
-    assert preview and "{deadline}" not in preview[0]
+    assert saved == fresh
+    assert not any(s.startswith("Так увидит делегат:") for s in msg.sent)
 
 
 def test_no_preview_without_placeholders(tmp_path):
@@ -214,10 +238,57 @@ def test_ack_is_one_shot(tmp_path):
     async def go():
         state = _state()
         await _start(state)
+        msg = _Msg("Другой текст")
         await state.update_data(ph_ack="Подтверждённый текст без подстановок")
-        await admin_settings.settings_edit_value(_Msg("Другой текст"), state)
-        return await db.get_setting(KEY), (await state.get_data()).get("ph_ack")
+        await admin_settings.settings_edit_value(msg, state)
+        shown = msg.sent[-1]
+        ack = (await state.get_data()).get("ph_ack")
+        held = await db.get_setting(KEY)
+        await ph.txtprev_drop(_Cb("txtprev_drop", msg), state)
+        later = _Msg("Совсем другой день, до {deadline}")
+        await admin_settings.settings_edit_value(later, state)
+        return held, ack, shown, later.sent[-1], await db.get_setting(KEY)
 
-    saved, ack = _run(go())
-    assert ack is None
-    assert saved == "Подтверждённый текст без подстановок"
+    held, ack, shown, later, saved = _run(go())
+    assert ack is None and held is None and saved is None
+    assert "Подтверждённый текст без подстановок" in shown
+    assert "Совсем другой день" in later and PREVIEW_SAMPLES["deadline"] in later
+    assert "Подтверждённый текст без подстановок" not in later
+
+
+def test_dash_waits_and_int_saves_now(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        state = _state()
+        await db.set_setting(KEY, "Свой текст")
+        await _start(state)
+        msg = _Msg("-")
+        await admin_settings.settings_edit_value(msg, state)
+        held = await db.get_setting(KEY)
+        screen = msg.sent[-1]
+        await ph.txtprev_wait(_Msg("ещё текст"), state)
+        still = await db.get_setting(KEY)
+        waited = await state.get_state()
+        await ph.txtprev_save(_Cb("txtprev_save", msg), state)
+        cleared = await db.get_setting(KEY)
+
+        numbers = _state()
+        await _start(numbers, "nudge_after_minutes")
+        immediate = _Msg("90")
+        await admin_settings.settings_edit_value(immediate, numbers)
+        return held, screen, still, waited, cleared, await db.get_setting("nudge_after_minutes"), immediate.sent
+
+    held, screen, still, waited, cleared, minutes, sent = _run(go())
+    assert held == "Свой текст" and still == "Свой текст"
+    assert waited == EditSetting.waiting_for_text_confirm.state
+    assert "Как прочитает делегат:" in screen and PREVIEW_SAMPLES["deadline"] in screen
+    assert cleared is None
+    assert minutes == "90"
+    assert not any("Как прочитает делегат" in s for s in sent)
+
+
+def test_text_preview_callbacks_are_settings():
+    assert required_capability(callback_data="txtprev_save") == "settings"
+    assert required_capability(callback_data="txtprev_drop") == "settings"
+    assert required_capability(raw_state="EditSetting:waiting_for_text_confirm") == "settings"

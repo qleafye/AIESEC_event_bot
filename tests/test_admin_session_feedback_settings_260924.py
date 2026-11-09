@@ -308,6 +308,8 @@ def test_text_edit_saves_through_generic_editor_and_delegate_reads_it(tmp_path):
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(sf_handlers.prog_fbtext_edit(_FakeCallback("prog_fbtext:thanks"), state))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _FakeMessage(text="Спасибо большое!", user_id=SUPERADMIN_ID)
     _run(admin_settings.settings_edit_value(msg, state))
+    _run(confirm_delegate_preview(msg, state))
     assert _run(db.get_setting("session_feedback_thanks_text")) == "Спасибо большое!"

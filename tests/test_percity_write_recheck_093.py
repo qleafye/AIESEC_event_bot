@@ -19,6 +19,7 @@ from handlers.settings import admin_settings
 from handlers.access.admin_caps import role_caps_key, role_enabled_key
 import domain.cities as cities
 from tests._dbtpl import fast_init_db
+from tests._delegate_preview import confirm_delegate_preview
 
 
 ADMIN_ID = 930601
@@ -219,11 +220,12 @@ def test_percity_write_lands_as_before_when_binding_and_header_unchanged(tmp_pat
     asyncio.run(admin_settings.settings_edit_city(FakeCallback("settings_edit_city:start_text"), state))
     msg = FakeMsgIn("Питерский текст")
     asyncio.run(admin_settings.settings_edit_value(msg, state))
+    asyncio.run(confirm_delegate_preview(msg, state))
 
     assert asyncio.run(db.get_setting("start_text__city__spb")) == "Питерский текст"
     assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
     assert state.data == {} and state.state is None
-    assert msg.answers and msg.answers[0].startswith("🏙 ")  # back on the header editor
+    assert msg.answers and msg.answers[-1].startswith("🏙 ")  # back on the header editor
 
     # bound manager, unchanged binding -> write lands too
     _add_bound_manager(MANAGER_ID, "msk")
@@ -232,12 +234,14 @@ def test_percity_write_lands_as_before_when_binding_and_header_unchanged(tmp_pat
         FakeCallback("settings_edit_city:start_text", user_id=MANAGER_ID), state2))
     msg2 = FakeMsgIn("Московский текст", user_id=MANAGER_ID)
     asyncio.run(admin_settings.settings_edit_value(msg2, state2))
+    asyncio.run(confirm_delegate_preview(msg2, state2))
     assert asyncio.run(db.get_setting("start_text__city__msk")) == "Московский текст"
 
-    # clear path unchanged
     state3 = FakeState()
     asyncio.run(admin_settings.settings_edit_city(FakeCallback("settings_edit_city:start_text"), state3))
-    asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("-"), state3))
+    msg3 = FakeMsgIn("-")
+    asyncio.run(admin_settings.settings_edit_value(msg3, state3))
+    asyncio.run(confirm_delegate_preview(msg3, state3))
     assert asyncio.run(db.get_setting("start_text__city__spb")) is None
     assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
 
@@ -254,13 +258,16 @@ def test_non_percity_key_write_path_untouched_by_recheck(tmp_path):
     asyncio.run(state.update_data(setting_key="start_text"))
     msg = FakeMsgIn("Общий текст")
     asyncio.run(admin_settings.settings_edit_value(msg, state))
+    asyncio.run(confirm_delegate_preview(msg, state))
     assert asyncio.run(db.get_setting("start_text")) == "Общий текст"
     assert state.data == {} and state.state is None
 
     asyncio.run(db.set_setting("event_city_enabled", "off"))
     state2 = FakeState()
     asyncio.run(state2.update_data(setting_key="start_text"))
-    asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("Ещё текст"), state2))
+    msg_more = FakeMsgIn("Ещё текст")
+    asyncio.run(admin_settings.settings_edit_value(msg_more, state2))
+    asyncio.run(confirm_delegate_preview(msg_more, state2))
     assert asyncio.run(db.get_setting("start_text")) == "Ещё текст"
 
 

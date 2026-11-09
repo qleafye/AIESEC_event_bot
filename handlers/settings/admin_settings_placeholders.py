@@ -20,7 +20,7 @@ from database.db import get_setting
 from handlers.admin import router
 from handlers.states import EditSetting
 from domain.cities import admin_selected_city
-from domain.settings.ops import preview_samples, preview_text
+from domain.settings.ops import needs_delegate_preview, preview_samples, preview_text
 from domain.settings.placeholders import TOKEN_RE, check, hint, problem_text
 from domain.settings.schema import SETTINGS_SCHEMA
 
@@ -110,8 +110,92 @@ async def phchk_retry(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("Хорошо, пришлите исправленный текст одним сообщением.")
 
 
+_PREVIEW_HALF = 1500
+
+
+def _clip(text: str) -> str:
+    if len(text) <= _PREVIEW_HALF:
+        return text
+    return text[: _PREVIEW_HALF - 1].rstrip() + "…"
+
+
+def _reset_source(key: str) -> str:
+    """Текст, который вернётся после «-»: дефолт реестра базового ключа."""
+    from domain.cities import split_per_city_key
+    split = split_per_city_key(key)
+    base = split[0] if split else key
+    default = SETTINGS_SCHEMA.get(base, {}).get("default")
+    return default if isinstance(default, str) else ""
+
+
+async def offer_text_preview(message: types.Message, state: FSMContext, key: str, value: str) -> bool:
+    """True — экран показан, запись отложена. False — этот текст уже подтверждён или он не письмо."""
+    if not needs_delegate_preview(key):
+        return False
+    data = await state.get_data()
+    ack = data.get("text_preview_ack")
+    if ack is not None and ack == value:
+        await state.update_data(text_preview_ack=None)
+        return False
+    samples = await preview_samples(await admin_selected_city(message.from_user.id))
+    previous = await _previous_text(key)
+    was = preview_text(key, previous, samples=samples) if isinstance(previous, str) else ""
+    incoming = _reset_source(key) if value == "-" else value
+    will = preview_text(key, incoming, samples=samples)
+    await state.update_data(text_preview_key=key, text_preview_value=value)
+    await state.set_state(EditSetting.waiting_for_text_confirm)
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Сохранить", callback_data="txtprev_save")],
+        [InlineKeyboardButton(text="Не сохранять", callback_data="txtprev_drop")],
+    ])
+    await message.answer(
+        f"Было:\n{_clip(was)}\n\nКак прочитает делегат:\n{_clip(will)}",
+        parse_mode=None,
+        reply_markup=keyboard,
+    )
+    return True
+
+
+async def _commit_preview(callback: types.CallbackQuery, state: FSMContext, value: str):
+    await state.update_data(text_preview_ack=value, ph_ack=value)
+    await state.set_state(EditSetting.waiting_for_value)
+    await callback.answer()
+    from handlers.settings.admin_settings import settings_edit_value
+    copy = callback.message.model_copy(update={"text": value, "from_user": callback.from_user, "entities": None})
+    await settings_edit_value(copy, state)
+
+
+@router.callback_query(F.data == "txtprev_save", EditSetting.waiting_for_text_confirm)
+async def txtprev_save(callback: types.CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    value = data.get("text_preview_value")
+    if not isinstance(value, str):
+        await state.set_state(EditSetting.waiting_for_value)
+        await callback.answer()
+        await callback.message.answer("Не вижу текст, который подтверждаем. Пришлите его ещё раз.")
+        return
+    await _commit_preview(callback, state, value)
+
+
+@router.callback_query(F.data == "txtprev_drop", EditSetting.waiting_for_text_confirm)
+async def txtprev_drop(callback: types.CallbackQuery, state: FSMContext):
+    await state.update_data(text_preview_ack=None, text_preview_key=None, text_preview_value=None)
+    await state.set_state(EditSetting.waiting_for_value)
+    await callback.answer()
+    await callback.message.answer("Не сохраняю. Прежний текст на месте.")
+
+
+@router.message(EditSetting.waiting_for_text_confirm)
+async def txtprev_wait(message: types.Message, state: FSMContext):
+    await message.answer(
+        "Сначала нажмите «Сохранить» или «Не сохранять». Пока кнопку не нажали, текст не меняется."
+    )
+
+
 async def send_preview(message: types.Message, key: str, value: str) -> None:
-    """«Так увидит делегат:» — только если в тексте есть подстановки."""
+    """«Так увидит делегат:» после записи — только если экран до записи этот текст не показывал."""
+    if needs_delegate_preview(key):
+        return
     if not isinstance(value, str) or not TOKEN_RE.search(value):
         return
     # Шапка админа: None (модуль выключен) и «*» (все города) preview_samples оставляет общими.

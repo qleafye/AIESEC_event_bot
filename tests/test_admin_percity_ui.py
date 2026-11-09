@@ -21,6 +21,7 @@ from handlers.access.admin_caps import required_capability, role_caps_key, role_
 from domain.settings.callback_token import city_reset_callback
 import domain.cities as cities
 from tests._dbtpl import fast_init_db
+from tests._delegate_preview import confirm_delegate_preview
 
 
 ADMIN_ID = 920501
@@ -397,6 +398,7 @@ def test_text_roundtrip_write_read_clear_via_header_does_not_touch_global(tmp_pa
 
     msg = FakeMsgIn("Питерский текст")
     asyncio.run(admin_settings.settings_edit_value(msg, state))
+    asyncio.run(confirm_delegate_preview(msg, state))
 
     assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
@@ -410,6 +412,7 @@ def test_text_roundtrip_write_read_clear_via_header_does_not_touch_global(tmp_pa
     asyncio.run(admin_settings.settings_edit_city(edit_cb2, state2))
     msg_clear = FakeMsgIn("-")
     asyncio.run(admin_settings.settings_edit_value(msg_clear, state2))
+    asyncio.run(confirm_delegate_preview(msg_clear, state2))
 
     assert asyncio.run(db.get_setting("start_text")) == "Глобальный текст"
     resolved_after = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
