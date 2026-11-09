@@ -1664,6 +1664,20 @@ async def init_db():
             "ON auto_reject_log(telegram_id) WHERE returned_to_moderation_at IS NULL"
         )
 
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS reserve_invites (
+                telegram_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                city TEXT,
+                invited_by INTEGER,
+                invited_at TEXT NOT NULL,
+                PRIMARY KEY (telegram_id, day)
+            )
+        ''')
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_reserve_invites_day ON reserve_invites(day, city)"
+        )
+
         # Phase 15 (STAT-03, D-06): append-only registration-funnel event log -- the top of
         # the funnel (start / form_started / form_completed) is otherwise physically
         # unrecoverable from `reg_started` (a keyed UPSERT, not a log). No UNIQUE: every call
@@ -8638,6 +8652,39 @@ async def get_auto_reject_log_entry(entry_id: int) -> dict | None:
         ) as cursor:
             row = await cursor.fetchone()
             return dict(row) if row else None
+
+
+async def invite_reserve(telegram_ids, day: str, *, city: str | None, invited_by: int | None) -> int:
+    """Идемпотентно: повтор (telegram_id, day) не плодит строку. Возвращает сколько НОВЫХ."""
+    now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    inserted = 0
+    async with _connect() as db:
+        for tid in telegram_ids:
+            cur = await db.execute(
+                "INSERT OR IGNORE INTO reserve_invites "
+                "(telegram_id, day, city, invited_by, invited_at) VALUES (?, ?, ?, ?, ?)",
+                (int(tid), day, city, invited_by, now),
+            )
+            inserted += cur.rowcount or 0
+        await db.commit()
+    return inserted
+
+
+async def is_invited_reserve(telegram_id: int, day: str, *, city: str | None = None) -> bool:
+    async with _connect() as db:
+        if city:
+            sql, params = (
+                "SELECT 1 FROM reserve_invites WHERE telegram_id = ? AND day = ? "
+                "AND (city IS NULL OR city = ?)",
+                (telegram_id, day, city),
+            )
+        else:
+            sql, params = (
+                "SELECT 1 FROM reserve_invites WHERE telegram_id = ? AND day = ?",
+                (telegram_id, day),
+            )
+        async with db.execute(sql, params) as cursor:
+            return await cursor.fetchone() is not None
 
 
 async def get_live_auto_reject_log_entry(telegram_id: int) -> dict | None:
