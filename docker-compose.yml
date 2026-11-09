@@ -1,6 +1,10 @@
 services:
   bot:
-    build: .
+    build:
+      context: .
+      args:
+        # Метка org.opencontainers.image.revision; без GIT_SHA в окружении будет unknown.
+        GIT_SHA: "${GIT_SHA:-unknown}"
     restart: always
     env_file:
       - .env
@@ -29,6 +33,8 @@ services:
     build:
       context: .
       dockerfile: dashboard/Dockerfile
+      args:
+        GIT_SHA: "${GIT_SHA:-unknown}"
     container_name: youlead26-dashboard
     restart: always
     env_file:
@@ -60,7 +66,10 @@ services:
   # бота — heartbeat поллинга Telegram, не схема. Ждать healthy значит не поднять Mini App
   # без сети. Схему ждёт сам `/app/health` (503, пока user_version ниже готовой).
   miniapp:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: "${GIT_SHA:-unknown}"
     container_name: youlead26-miniapp
     command: ["uvicorn", "miniapp.main:app", "--host", "0.0.0.0", "--port", "8001"]
     restart: always

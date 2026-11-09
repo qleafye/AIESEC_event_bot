@@ -42,3 +42,7 @@ HEALTHCHECK --interval=60s --timeout=5s --start-period=20s --retries=3 \
 # Без --proxy-headers: X-Forwarded-* разбирает ProxyHeadersMiddleware внутри create_app()
 # по подсети DASHBOARD_TRUSTED_PROXIES (exec-форма CMD переменные окружения не разворачивает).
 CMD ["uvicorn", "dashboard.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+# Метка коммита — после pip и COPY: смена GIT_SHA не пересобирает зависимости.
+ARG GIT_SHA=unknown
+LABEL org.opencontainers.image.revision=$GIT_SHA
