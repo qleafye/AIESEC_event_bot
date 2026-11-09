@@ -42,7 +42,16 @@ logger = logging.getLogger(__name__)
 _CAP = "moderate_game"
 _NO_ACCESS = "Недостаточно прав: нужна роль «🎮 Менеджер геймификации»."
 _PAGE = 25
+# Строки витрины на главном экране. 12 штук с длинным названием остаются внутри 4096 символов.
+_HOME_PAGE = 12
 _sell_lock = asyncio.Lock()
+
+
+def _chunk(items: list, page: int, size: int) -> tuple[list, int, int]:
+    pages = max(1, (len(items) + size - 1) // size) if items else 1
+    page = min(max(page, 0), pages - 1)
+    start = page * size
+    return items[start:start + size], page, pages
 
 
 def _kb(rows: list[list[tuple[str, str]]]) -> InlineKeyboardMarkup:
@@ -79,9 +88,10 @@ async def _edit_or_answer(callback: types.CallbackQuery, text: str, kb: InlineKe
 
 # ── главный экран ──────────────────────────────────────────────────────────────────────
 
-async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
+async def home_text_kb(page: int = 0) -> tuple[str, InlineKeyboardMarkup]:
     items = await shop_db.list_items()
     active = [i for i in items if i["active"]]
+    shown, page, pages = _chunk(active, page, _HOME_PAGE)
     stats = await shop_db.sales_stats()
     is_open, reserve_on = await shop_db.is_open(), await shop_db.is_reserve_on()
     lines = [
@@ -93,21 +103,31 @@ async def home_text_kb() -> tuple[str, InlineKeyboardMarkup]:
     if stats["reserved"]:
         lines[-1:-1] = [f"Ждут выдачи броней: {stats['reserved']}"]
     if active:
-        lines.append("<b>На витрине</b>")
-        for i in active:
+        head = "<b>На витрине</b>"
+        if pages > 1:
+            head += f" · {page + 1} из {pages}"
+        lines.append(head)
+        for i in shown:
             lines.append(f"• {html.escape(i['title'])} — {i['price']} · {_stock(i)}")
     else:
         lines.append("Товаров пока нет — добавьте их в «📦 Товары».")
     lines += ["", "На стойке: «🛒 Выдать товар» → ник или фамилия делегата → товар. Быстрый вход — команда /shop."]
-    kb = _kb([
+    rows = [
         [("🛒 Выдать товар", "shp_sell"), ("🎫 Выдать бронь по коду", "shp_code")],
         [("📦 Товары", "shp_items"), ("🏆 Рейтинг баллов", "shp_top:0")],
         [("🧾 Последние выдачи", "shp_sales:0")],
         [("🙈 Скрыть витрину у делегатов" if is_open else "👁 Показать витрину делегатам", "shp_open")],
         [("🚫 Выключить бронь делегатом" if reserve_on else "🎫 Включить бронь делегатом", "shp_resv")],
-        [("◀️ Назад", "admin_sec:game")],
-    ])
-    return "\n".join(lines), kb
+    ]
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(("◀️ Предыдущие", "shp_home" if page == 1 else f"shp_hp:{page - 1}"))
+        if page + 1 < pages:
+            nav.append(("▶️ Следующие", f"shp_hp:{page + 1}"))
+        rows.append(nav)
+    rows.append([("◀️ Назад", "admin_sec:game")])
+    return "\n".join(lines), _kb(rows)
 
 
 @router.message(Command("shop"))
@@ -132,6 +152,15 @@ async def shop_home(callback: types.CallbackQuery, state: FSMContext):
 async def shop_home_edit(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(None)
     text, kb = await home_text_kb()
+    await _edit_or_answer(callback, text, kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("shp_hp:"))
+async def shop_home_page(callback: types.CallbackQuery, state: FSMContext):
+    await state.set_state(None)
+    raw = callback.data.split(":", 1)[1]
+    text, kb = await home_text_kb(int(raw) if raw.isdigit() else 0)
     await _edit_or_answer(callback, text, kb)
     await callback.answer()
 

@@ -1899,6 +1899,7 @@ admin|callback_query|certadm_clrgo|certadm_clrgo:*
 admin|callback_query|certadm_preview|certadm_preview
 admin|callback_query|shop_home|admin_shop
 admin|callback_query|shop_home_edit|shp_home
+admin|callback_query|shop_home_page|shp_hp:*
 admin|callback_query|shop_toggle_open|shp_open
 admin|callback_query|shop_sell_start|shp_sell
 admin|callback_query|shop_card|shp_u:*
@@ -2130,6 +2131,7 @@ user_actions|callback_query|certificate_get|cert_get
 user_actions|callback_query|certificate_edit|cert_edit
 user_actions|callback_query|certificate_send|cert_ok
 user_actions|callback_query|shop_showcase|shopv
+user_actions|callback_query|shop_showcase_page|shopv_p:*
 user_actions|callback_query|shop_photos|shopv_ph
 user_actions|callback_query|shop_take|shopv_take:*
 user_actions|callback_query|shop_take_go|shopv_go:*
@@ -2806,7 +2808,8 @@ def test_snapshot_total_handler_count_is_292():
     # «Позвать резерв»: +1 admin.message rsv_file после findw_receive и +2 admin.callback_query
     # rsv_open/rsv_act сразу после apprej_cancel, перед prog_fbday_open (1477 -> 1480).
     # Пульт надстроек амбассадоров: +4 admin.callback_query сразу после amb_separator (1480 -> 1484).
-    assert len(GOLDEN_SNAPSHOT) == 1484
+    # 10.11 (страницы витрины): +1 admin shp_hp:* после shp_home, +1 user_actions shopv_p:* после shopv (1484 -> 1486).
+    assert len(GOLDEN_SNAPSHOT) == 1486
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
