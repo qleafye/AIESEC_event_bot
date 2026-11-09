@@ -141,6 +141,74 @@ def test_showcase_shows_hours_when_set(tmp_path):
     assert text.index("Юлид-шоп") < text.index("На счету")
 
 
+def _long_catalog(n=40):
+    ids = []
+    titles = []
+    for i in range(n):
+        title = f"Товар {i:02d} " + ("очень длинное название " * 6)
+        title = title.rstrip()
+        titles.append(title)
+        ids.append(_run(shop_db.add_item(title, 10, None, None)))
+    _run(shop_db.set_open(True))
+    _run(shop_db.set_reserve(True))
+    return ids, titles
+
+
+def _datas(kb):
+    return [button.callback_data for row in kb.inline_keyboard for button in row]
+
+
+def test_showcase_and_admin_home_page_long_catalog(tmp_path):
+    _env(tmp_path)
+    ids, titles = _long_catalog()
+    text = _run(shop_delegate.showcase_text(UID))
+    kb = _run(shop_delegate.showcase_kb(UID))
+    assert len(text) < 4096
+    assert "Страница 1 из 4" in text
+    assert titles[0] in text and titles[11] in text and titles[12] not in text
+    datas = _datas(kb)
+    assert datas.count("shopv_p:1") == 1
+    assert "shopv" not in datas
+    assert [d for d in datas if d.startswith("shopv_take:")] == [f"shopv_take:{i}" for i in ids[:12]]
+
+    page1 = _run(shop_delegate.showcase_text(UID, page=1))
+    kb1 = _run(shop_delegate.showcase_kb(UID, page=1))
+    assert titles[12] in page1 and titles[0] not in page1
+    assert "shopv" in _datas(kb1) and "shopv_p:2" in _datas(kb1)
+    last = _run(shop_delegate.showcase_kb(UID, page=3))
+    last_datas = _datas(last)
+    assert "shopv_p:2" in last_datas
+    assert not any(d == "shopv_p:4" for d in last_datas)
+    assert len([d for d in last_datas if d.startswith("shopv_take:")]) == 4
+
+    home, home_kb = _run(adm.home_text_kb())
+    assert len(home) < 4096 and "1 из 4" in home
+    assert titles[-1] not in home
+    home_datas = _datas(home_kb)
+    assert "shp_hp:1" in home_datas and "shp_sell" in home_datas and "shp_items" in home_datas
+    _text1, kb_admin = _run(adm.home_text_kb(1))
+    admin_datas = _datas(kb_admin)
+    assert "shp_home" in admin_datas and "shp_hp:2" in admin_datas and "shp_sell" in admin_datas
+
+    state = SimpleNamespace(set_state=AsyncMock())
+    msg = SimpleNamespace(edit_text=AsyncMock(), answer=AsyncMock())
+    callback = SimpleNamespace(data="shp_hp:abc", message=msg, answer=AsyncMock())
+    _run(adm.shop_home_page(callback, state))
+    assert "1 из 4" in msg.edit_text.call_args.args[0]
+
+
+def test_one_page_has_no_nav(tmp_path):
+    _env(tmp_path)
+    _run(shop_db.add_item("Шоппер", 10, None, None))
+    _run(shop_db.set_open(True))
+    text = _run(shop_delegate.showcase_text(UID))
+    assert "Страница" not in text and "на форуме" in text
+    assert "shopv_p:" not in "".join(_datas(_run(shop_delegate.showcase_kb(UID))))
+    home, kb = _run(adm.home_text_kb())
+    assert "из" not in home
+    assert "shp_hp:" not in "".join(_datas(kb))
+
+
 def test_admin_new_item_wizard(tmp_path):
     _env(tmp_path)
     store = {"shp_step": 0, "shp_new": {}}

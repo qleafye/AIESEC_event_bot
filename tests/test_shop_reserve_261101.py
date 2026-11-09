@@ -449,7 +449,7 @@ def test_my_reservations_screen_and_cancel(tmp_path):
 def test_delegate_callbacks_are_not_admin():
     from handlers.access.admin_caps import required_capability
 
-    for data in ("shopv_take:1", "shopv_go:ab", "shopv_my", "shopv_qr:1", "shopv_cancel:1", "shopv_cgo:1"):
+    for data in ("shopv_take:1", "shopv_go:ab", "shopv_my", "shopv_qr:1", "shopv_cancel:1", "shopv_cgo:1", "shopv_p:1"):
         assert required_capability(callback_data=data) is None, data
 
 

@@ -41,6 +41,15 @@ from services.infra.ru_plural import agree_placeholder, points_word
 logger = logging.getLogger(__name__)
 
 _take_lock = asyncio.Lock()
+# Страница витрины: текст короче 4096 и кнопка «Взять» на каждый товар этой страницы, не на все.
+_PAGE = 12
+
+
+def _chunk(items: list, page: int, size: int) -> tuple[list, int, int]:
+    pages = max(1, (len(items) + size - 1) // size) if items else 1
+    page = min(max(page, 0), pages - 1)
+    start = page * size
+    return items[start:start + size], page, pages
 
 
 async def _title() -> str:
@@ -110,14 +119,17 @@ async def _hours_line(telegram_id: int, lang: str, tr_map: dict | None) -> str:
     return (reg_i18n.tr_text(raw, lang, tr_map or {}) or "").strip()
 
 
-async def showcase_text(telegram_id: int, lang: str = "ru", tr_map: dict | None = None) -> str:
+async def showcase_text(telegram_id: int, lang: str = "ru", tr_map: dict | None = None, page: int = 0) -> str:
     balance = await get_balance(telegram_id)
     lines = [f"🛍 <b>{html.escape(await _title())}</b>"]
     hours = await _hours_line(telegram_id, lang, tr_map)
     if hours:
         lines.append(html.escape(hours, quote=False))
     lines += [f"На счету: <b>{balance}</b> {points_word(balance)}", ""]
-    for item in await shop_db.list_items(active_only=True):
+    shown, page, pages = _chunk(await shop_db.list_items(active_only=True), page, _PAGE)
+    if pages > 1:
+        lines.append(f"Страница {page + 1} из {pages}")
+    for item in shown:
         line = f"• {html.escape(item['title'])} — {item['price']}"
         if item["stock_left"] is not None and item["stock_left"] <= 0:
             line += " · закончился"
@@ -139,15 +151,23 @@ async def showcase_text(telegram_id: int, lang: str = "ru", tr_map: dict | None 
     return "\n".join(lines)
 
 
-async def showcase_kb(telegram_id: int, lang: str = "ru", tr_map: dict | None = None) -> InlineKeyboardMarkup:
+async def showcase_kb(telegram_id: int, lang: str = "ru", tr_map: dict | None = None, page: int = 0) -> InlineKeyboardMarkup:
     tr_map = tr_map or {}
     rows: list[list[InlineKeyboardButton]] = []
+    shown, page, pages = _chunk(await shop_db.list_items(active_only=True), page, _PAGE)
     if await _reserve_live():
         balance = await get_balance(telegram_id)
-        for item in await shop_db.list_items(active_only=True):
+        for item in shown:
             if await _can_take(item, telegram_id, balance):
                 label = await _t("shop_take_button_text", lang, tr_map, title=item["title"], price=item["price"])
                 rows.append([_btn(label, f"shopv_take:{item['id']}")])
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(_btn("◀️ Предыдущие", "shopv" if page == 1 else f"shopv_p:{page - 1}"))
+        if page + 1 < pages:
+            nav.append(_btn("▶️ Следующие", f"shopv_p:{page + 1}"))
+        rows.append(nav)
     my = await _my_button(telegram_id, lang, tr_map)
     if my is not None:
         rows.append([my])
@@ -164,9 +184,9 @@ async def _photo_items() -> list[dict]:
     return [i for i in await shop_db.list_items(active_only=True) if i.get("photo_file_id")]
 
 
-async def showcase_screen(telegram_id: int, lang: str = "ru", tr_map: dict | None = None):
+async def showcase_screen(telegram_id: int, lang: str = "ru", tr_map: dict | None = None, page: int = 0):
     """Экран витрины `(text, kb)` — общий для `shopv` и повторной витрины после альбома."""
-    return await showcase_text(telegram_id, lang, tr_map), await showcase_kb(telegram_id, lang, tr_map)
+    return await showcase_text(telegram_id, lang, tr_map, page), await showcase_kb(telegram_id, lang, tr_map, page)
 
 
 async def _show(callback: types.CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
@@ -210,6 +230,16 @@ async def _own_active(sale_id: int, telegram_id: int) -> dict | None:
 async def shop_showcase(callback: types.CallbackQuery):
     lang, tr_map = await reg_i18n.ctx_for(callback)
     text, kb = await showcase_screen(callback.from_user.id, lang, tr_map)
+    await _show(callback, text, kb)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("shopv_p:"))
+async def shop_showcase_page(callback: types.CallbackQuery):
+    lang, tr_map = await reg_i18n.ctx_for(callback)
+    raw = callback.data.split(":", 1)[1]
+    page = int(raw) if raw.isdigit() else 0
+    text, kb = await showcase_screen(callback.from_user.id, lang, tr_map, page)
     await _show(callback, text, kb)
     await callback.answer()
 
