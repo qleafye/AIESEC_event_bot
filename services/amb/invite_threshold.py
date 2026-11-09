@@ -16,11 +16,14 @@ def _fmt(template: str, **subs) -> str:
         return template
 
 
-async def threshold_line(user_id: int, *, progress_shown: bool, tr) -> str:
-    """Одна строка. `progress_shown` — числа приглашённых на экране уже есть, count не повторять."""
+async def threshold_line(user_id: int, *, progress_shown: bool, tr, referrals=None) -> str:
+    """Одна строка. `progress_shown` — числа приглашённых на экране уже есть, count не повторять.
+    `referrals` — уже прочитанный список: второй get_referrals на том же экране не нужен."""
     raw = await get_setting_typed("amb_invite_threshold")
     threshold = raw if isinstance(raw, int) and raw >= 1 else 5
-    count = len(await get_referrals(user_id))
+    if referrals is None:
+        referrals = await get_referrals(user_id)
+    count = len(referrals)
     left = max(0, threshold - count)
     if left == 0:
         key = (

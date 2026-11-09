@@ -49,16 +49,16 @@ def _fmt(template: str | None, **subs) -> str:
 _LEGACY_KINDS = {2: "o2o", 3: "networking"}
 
 
-async def progress_view(user_id: int) -> dict | None:
+async def progress_view(user_id: int, user: dict | None = None) -> dict | None:
     """None, если программа выключена или человек не амбассадор. Иначе счётчики и цель:
     `next_tier` — ближайшая недостигнутая ступень с непустой подписью «сколько до неё»
     (пустая подпись ступень пропускает; `None` — все взяты), `n` — сколько ещё прошедших
     нужно до неё. `next_kind` оставлен для старых потребителей: "o2o" (ступень 2),
     "networking" (ступень 3), "tier{N}" для остальных, "done" — все взяты."""
     city = None
-    user = None
     if is_per_city("amb_qualified_program"):
-        user = await _db.get_user(user_id)
+        if user is None:
+            user = await _db.get_user(user_id)
         city = (user or {}).get("event_city")
     if not await amb_tiers.program_on(city):
         return None
@@ -80,9 +80,9 @@ async def progress_view(user_id: int) -> dict | None:
     return {**counts, "next_tier": next_tier, "next_kind": next_kind, "n": n}
 
 
-async def render_progress(user_id: int, tr_key: TrKey) -> str | None:
+async def render_progress(user_id: int, tr_key: TrKey, user: dict | None = None) -> str | None:
     """Строка «По твоей ссылке: …» или None (программа выключена / не амбассадор)."""
-    view = await progress_view(user_id)
+    view = await progress_view(user_id, user)
     if view is None:
         return None
     key = "amb_next_step_done_text" if view["next_tier"] is None else tier_key(view["next_tier"], "next")

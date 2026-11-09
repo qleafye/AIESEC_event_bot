@@ -220,17 +220,19 @@ async def _referral_block(
     # ссылки, поэтому от `menu_invites` не зависит). Программа выключена — прежний счётчик.
     # Fail-soft: сбой БД (например, таблиц ступеней ещё нет) не роняет хаб — прежний счётчик.
     try:
-        invites_text = await amb_progress.render_progress(telegram_id, tr_key)
+        invites_text = await amb_progress.render_progress(telegram_id, tr_key, user)
     except Exception:
         logging.getLogger(__name__).exception("hub: прогресс амбассадора не посчитан (tid=%s)", telegram_id)
         invites_text = None
+    referrals = None
     if invites_text is None and await get_setting_typed_for_city("menu_invites", event_city) == "on":
-        count = len(await get_referrals(telegram_id))
+        referrals = await get_referrals(telegram_id)
+        count = len(referrals)
         invites_tpl = await i18n.tr_setting("miniapp_hub_referral_invites_text", lang, tr_map or {})
         invites_text = invites_tpl.format(count=count) if invites_tpl else None
     if invites_text:
         extra = await invite_threshold.threshold_line(
-            telegram_id, progress_shown=True, tr=tr_key,
+            telegram_id, progress_shown=True, tr=tr_key, referrals=referrals,
         )
         if extra:
             invites_text = f"{invites_text}\n\n{extra}"
@@ -269,7 +271,9 @@ async def _hub_impl(request: Request, p: Principal) -> dict:
 
     tasks_fact = None
     if not game_off:
-        done, total = await tasks_progress(p.telegram_id, await delegate_city_scope(p.telegram_id))
+        done, total = await tasks_progress(
+            p.telegram_id, await delegate_city_scope(p.telegram_id), user,
+        )
         tasks_fact_text = await i18n.tr_setting("miniapp_hub_tasks_fact_text", lang, tr_map)
         tasks_fact = tasks_fact_text.format(done=done, total=total) if tasks_fact_text else None
 
