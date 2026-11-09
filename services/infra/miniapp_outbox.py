@@ -296,6 +296,12 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
 
             await apply_name_from_app(bot, payload.get("by"), payload.get("prev_bot_name"))
         await run_setting_hooks_batch([str(key) for key in payload.get("keys") or []])
+        # Выключение модерации из приложения. Кнопка бота это поле не ставит и шлёт текст сама.
+        from handlers.settings.admin_settings_audit import notify_approval_turned_auto
+
+        await notify_approval_turned_auto(
+            bot, payload.get("approval_turned_auto") or [], payload.get("by"),
+        )
         return
     raise ValueError(f"unknown miniapp_outbox kind: {kind!r}")
 

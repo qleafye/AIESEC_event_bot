@@ -14,12 +14,17 @@
 `tests/test_roles_phase8.py`). Импортируется последней строкой `handlers/settings/admin_sections.py`
 (тот же хвостовой приём, что и соседи).
 """
+import logging
+
 from aiogram import Bot, F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from domain.settings.ops import APPROVAL_MODE_KEYS, base_setting_key
 from handlers.admin import router
 from handlers.access.admin_caps import notify_by_capability
 from services.settings.audit import set_setting_by_admin
+
+logger = logging.getLogger(__name__)
 
 # Одна человеческая формулировка на три места (экран подтверждения, тост, алерт держателям
 # moderate_reg) — второй копии текста нет. (родительный падеж, предложный падеж).
@@ -30,6 +35,107 @@ _FORMS: dict[str, tuple[str, str]] = {
 }
 
 _STALE_BUTTON_TEXT = "Кнопка устарела, откройте раздел заново"
+
+
+def approval_auto_alert_text(
+    key: str,
+    *,
+    user_id: int | None,
+    full_name: str | None,
+    username: str | None,
+    city_name: str | None = None,
+) -> str | None:
+    """Текст держателям `moderate_reg`. Его зовут и кнопка бота, и очередь приложения.
+
+    Без `parse_mode`: имя и @username пришли из Telegram. Город — только человеческое имя;
+    нет имени — город в текст не добавляется, код не подставляется. Чужой ключ → `None`."""
+    form = _FORMS.get(base_setting_key(key))
+    if form is None:
+        return None
+    genitive, prepositional = form
+    if username and user_id is not None:
+        id_part = f"(@{username}, id {user_id})"
+    elif user_id is not None:
+        id_part = f"(id {user_id})"
+    elif username:
+        id_part = f"(@{username})"
+    else:
+        id_part = ""
+    actor = f"{full_name} {id_part}".strip() if full_name else id_part
+    city = (city_name or "").strip()
+    city_bit = f" Город: {city}." if city else ""
+    who_bit = f" Выключил: {actor}." if actor else ""
+    return (
+        f"⚠️ Модерация {genitive} выключена.{city_bit}{who_bit}\n\n"
+        f"Новые заявки {prepositional} теперь одобряются автоматически — без очереди и без "
+        "письма «прошёл отбор»."
+    )
+
+
+async def _actor_from_chat(bot, by) -> tuple[int | None, str | None, str | None]:
+    """(id, имя, username). `get_chat` упал — id остаётся, имени нет, алерт всё равно уйдёт."""
+    try:
+        user_id = int(by)
+    except (TypeError, ValueError):
+        return None, None, None
+    try:
+        chat = await bot.get_chat(user_id)
+        full_name = getattr(chat, "full_name", None)
+        if not isinstance(full_name, str) or not full_name.strip():
+            first = getattr(chat, "first_name", None) or ""
+            last = getattr(chat, "last_name", None) or ""
+            full_name = f"{first} {last}".strip()
+        else:
+            full_name = full_name.strip()
+        username = getattr(chat, "username", None)
+        if isinstance(username, str):
+            username = username.strip().lstrip("@") or None
+        else:
+            username = None
+        return user_id, full_name or None, username
+    except Exception:
+        logger.info("approval auto alert: get_chat(%s) не ответил, в тексте только id", user_id)
+        return user_id, None, None
+
+
+async def _city_name_for_alert(key: str) -> str | None:
+    """Имя города для менеджера (`city_label`). Код и пустое имя в текст не попадают."""
+    from domain.cities import city_label, split_per_city_key
+
+    parsed = split_per_city_key(key)
+    if parsed is None:
+        return None
+    _base, code = parsed
+    try:
+        label = await city_label(code)
+    except Exception:
+        logger.warning("approval auto alert: имя города не прочиталось")
+        return None
+    label = (label or "").strip()
+    if not label or label == code:
+        return None
+    return label
+
+
+async def notify_approval_turned_auto(bot, keys, by) -> None:
+    """Алерт по списку из очереди `settings_changed`. Чужой ключ пропускается и не роняет разбор."""
+    if not isinstance(keys, (list, tuple)):
+        return
+    pending = [str(key) for key in keys if base_setting_key(str(key)) in APPROVAL_MODE_KEYS]
+    if not pending:
+        return
+    user_id, full_name, username = await _actor_from_chat(bot, by)
+    for key in pending:
+        text = approval_auto_alert_text(
+            key,
+            user_id=user_id,
+            full_name=full_name,
+            username=username,
+            city_name=await _city_name_for_alert(key),
+        )
+        if text is None:
+            continue
+        await notify_by_capability(bot, "moderate_reg", text)
 
 
 async def ask_auto_confirm(callback: types.CallbackQuery, key: str, title: str) -> None:
@@ -60,19 +166,15 @@ async def approval_auto_go(callback: types.CallbackQuery, bot: Bot):
     if form is None:
         await callback.answer(_STALE_BUTTON_TEXT, show_alert=True)
         return
-    genitive, prepositional = form
+    genitive, _prepositional = form
 
     await set_setting_by_admin(callback.from_user.id, key, "auto")
 
     who = callback.from_user
-    id_part = f"(@{who.username}, id {who.id})" if who.username else f"(id {who.id})"
-    alert_text = (
-        f"⚠️ Модерация {genitive} выключена. Выключил: {who.full_name} {id_part}.\n\n"
-        f"Новые заявки {prepositional} теперь одобряются автоматически — без очереди и без "
-        "письма «прошёл отбор»."
+    # Тот же текст, что у очереди приложения. БЕЗ parse_mode: имя и username — от человека.
+    alert_text = approval_auto_alert_text(
+        key, user_id=who.id, full_name=who.full_name, username=who.username,
     )
-    # T-16o-03: БЕЗ parse_mode — full_name/username пришли от пользователя Telegram и могут
-    # содержать «<»/«>»; без parse_mode это просто текст, а не сломанная HTML-разметка.
     await notify_by_capability(bot, "moderate_reg", alert_text)
 
     await callback.answer(f"Модерация {genitive}: ⚡ Авто", show_alert=True)

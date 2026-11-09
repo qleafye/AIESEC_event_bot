@@ -807,6 +807,31 @@ def reg_setting_city_track_base(key: str) -> str | None:
     return reg_question_track_base(base)
 
 
+# Модерация заявок. Опасное направление — в «авто»: новые заявки одобряются сами.
+APPROVAL_MODE_KEYS = frozenset({"full_approval", "short_approval", "party_approval"})
+
+
+def approval_keys_turned_auto(
+    changes: list[tuple[str, str | None]],
+    current: dict[str, str | None],
+) -> list[str]:
+    """Ключи пакета, где модерацию заявок включают в «авто».
+
+    База — один из `APPROVAL_MODE_KEYS`, в том числе городской `{base}__city__{code}`
+    (`base_setting_key`). Новое значение ровно `auto`, текущее сырое — не `auto`: повтор
+    уже стоящего авто и переход в ручную не попадают. Чужой ключ молчит. Ничего не пишет."""
+    found: list[str] = []
+    for key, value in changes:
+        if base_setting_key(key) not in APPROVAL_MODE_KEYS:
+            continue
+        if value != "auto":
+            continue
+        if current.get(key) == "auto":
+            continue
+        found.append(key)
+    return found
+
+
 def dangerous_confirm_key(key: str, next_value: str) -> str | None:
     """Ключ реестра с текстом последствий для опасного направления `key -> next_value`, или
     `None`, если текст считается по месту (ключи Sheets-вкладок — `tab_confirm_text_html` +
@@ -819,7 +844,7 @@ def dangerous_confirm_key(key: str, next_value: str) -> str | None:
         return "miniapp_confirm_staff_only_text"
     if key == "registration_mode":
         return "miniapp_settings_confirm_reg_mode_text"
-    if key in ("full_approval", "short_approval", "party_approval"):
+    if key in APPROVAL_MODE_KEYS:
         return "miniapp_settings_confirm_approval_mode_text"
     if key == "event_type" and next_value == "skillup":
         # Phase 28 (28-10, SU-11, 28-UI-SPEC.md §8/A7): пресет «СкиллАп» переписывает
