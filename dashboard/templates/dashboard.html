@@ -343,6 +343,26 @@
     </section>
     {% endif %}
 
+    {# Резерв рядом с правилами. Ноль остаётся: менеджер видит, что срез есть.
+       На странице форума блока правил нет — числа только здесь. #}
+    {% if reserve %}
+    <section class="block">
+      <h2 class="block-title">Резерв</h2>
+      <div class="card">
+        <div class="kpi-grid secondary">
+          <div class="kpi">
+            <div class="num">{{ reserve.invited | thousands }}</div>
+            <div class="lbl">Позвали сегодня</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ reserve.arrived | thousands }}</div>
+            <div class="lbl">Пришли как резерв</div>
+          </div>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+
     {# Города — бывший кусок «Разрезов» (D-14), переехал сюда: менеджер модерирует по
        городу, ему нужны эти числа рядом с остальной модерацией (решение владельца 23.09). #}
     {% if city_cut %}

@@ -734,6 +734,76 @@ def auto_reject_breakdown(conn, scope: Scope) -> list[tuple[str, int]]:
     return counter.most_common()
 
 
+def _reserve_screen_day(day: str | None) -> str:
+    """Выбранный день экрана, если он уже есть. Иначе то же «сегодня», что у KPI."""
+    chosen = (day or "").strip()
+    if chosen:
+        return chosen
+    return msk_now().strftime("%Y-%m-%d")
+
+
+def _reserve_invited(conn, scope: Scope, day: str) -> int:
+    """Строки `reserve_invites` за день. Город строки — пустой или город скоупа.
+
+    «Все города» город строки не режут. Человек остаётся в том же скоупе, что
+    разбивка правил: город шапки и сезон через `_scope_sql`. Одобрение строку
+    приглашения не стирает — «позвали» считает и того, кого потом одобрили.
+    """
+    if not _table_exists(conn, "reserve_invites"):
+        return 0
+    parts, params = _scope_sql(conn, scope)
+    where_parts = [*parts, "ri.day = ?"]
+    where_params = params + (day,)
+    if scope.city:
+        where_parts.append("(ri.city IS NULL OR TRIM(ri.city) = '' OR ri.city = ?)")
+        where_params = where_params + (scope.city,)
+    sql = (
+        "SELECT COUNT(DISTINCT ri.telegram_id) FROM reserve_invites ri "
+        "JOIN users ON users.telegram_id = ri.telegram_id"
+        f"{_where(where_parts)}"
+    )
+    return int(_scalar(conn, sql, where_params) or 0)
+
+
+def _reserve_arrived(conn, scope: Scope, day: str) -> int:
+    """Вход за день среди живого автоотказа. Приглашение без входа сюда не входит.
+
+    Набор людей — `_live_auto_reject_rows`: одобренный и возвращённый на модерацию
+    уже не резерв. Чанки — из-за лимита переменных SQLite (999 на старых сборках).
+    """
+    if not _table_exists(conn, "checkins") or not _table_exists(conn, "auto_reject_log"):
+        return 0
+    live = list(dict.fromkeys(row["telegram_id"] for row in _live_auto_reject_rows(conn, scope)))
+    if not live:
+        return 0
+    total = 0
+    step = 500
+    for start in range(0, len(live), step):
+        chunk = live[start:start + step]
+        marks = ", ".join("?" for _ in chunk)
+        total += int(_scalar(
+            conn,
+            "SELECT COUNT(DISTINCT telegram_id) FROM checkins "
+            f"WHERE point = 'entry' AND day = ? AND telegram_id IN ({marks})",
+            (day, *chunk),
+        ) or 0)
+    return total
+
+
+def reserve_counts(conn, scope: Scope, day: str | None = None) -> dict:
+    """«Позвали сегодня» и «пришли как резерв» в скоупе правил автоотказа.
+
+    Смысл живого ведра не меняется: приглашение в `reserve_invites` человека из
+    `_live_auto_reject_rows` не выкидывает. Ноль — честный срез, не «данных нет».
+    """
+    chosen = _reserve_screen_day(day)
+    return {
+        "day": chosen,
+        "invited": _reserve_invited(conn, scope, chosen),
+        "arrived": _reserve_arrived(conn, scope, chosen),
+    }
+
+
 # ── динамика по дням (D-14) ──────────────────────────────────────────────────────────────
 
 def daily_registrations(conn, scope: Scope) -> list[tuple[str, int]]:
