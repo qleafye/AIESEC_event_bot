@@ -39,6 +39,8 @@ from datetime import datetime, time, timedelta
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import (
+    checkin_qr_card_get,
+    checkin_qr_card_put,
     checkin_qr_confirm,
     checkin_qr_confirmed_ids,
     checkin_qr_mark_sent,
@@ -594,13 +596,55 @@ async def _broadcast_text(city: str | None, *, morning: bool) -> tuple[str, bool
     return await get_setting_typed_for_city(key, city), morning
 
 
-async def _send_one(telegram_id: int, png: bytes, caption: str, kb, on_permanent_failure=None) -> bool:
-    async def _factory(cid):
-        return await _sched._bot.send_photo(
-            cid, BufferedInputFile(png, filename="checkin_qr.png"),
-            caption=caption, reply_markup=kb,
-        )
-    return await _sched._safe_send(_factory, telegram_id, on_permanent_failure=on_permanent_failure)
+def _sent_file_id(message) -> str | None:
+    photo = getattr(message, "photo", None)
+    if not photo:
+        return None
+    return getattr(photo[-1], "file_id", None)
+
+
+async def _photo_for(user: dict) -> tuple[bytes | str, str | None]:
+    """Картинка рассылки: сохранённый file_id, если отпечаток тот же, иначе свежий png."""
+    from services.forum.checkin import card_fingerprint
+
+    fingerprint = await card_fingerprint(user)
+    if fingerprint:
+        hit = await checkin_qr_card_get(int(user["telegram_id"]))
+        if hit and hit[0] == fingerprint and hit[1]:
+            return hit[1], fingerprint
+    png, _caption = await build_checkin_qr(user)
+    return png, fingerprint
+
+
+async def _send_one(
+    telegram_id: int, png: bytes | str, caption: str, kb, on_permanent_failure=None,
+    *, user: dict | None = None, fingerprint: str | None = None,
+) -> bool:
+    from aiogram.exceptions import TelegramBadRequest
+
+    captured: dict[str, str] = {}
+
+    async def _factory(cid, _png=png):
+        photo = _png if isinstance(_png, str) else BufferedInputFile(_png, filename="checkin_qr.png")
+        try:
+            msg = await _sched._bot.send_photo(cid, photo, caption=caption, reply_markup=kb)
+        except TelegramBadRequest:
+            if not isinstance(_png, str) or user is None:
+                raise
+            fresh, _caption = await build_checkin_qr(user)
+            msg = await _sched._bot.send_photo(
+                cid, BufferedInputFile(fresh, filename="checkin_qr.png"),
+                caption=caption, reply_markup=kb,
+            )
+        file_id = _sent_file_id(msg)
+        if file_id:
+            captured["file_id"] = file_id
+        return msg
+
+    ok = await _sched._safe_send(_factory, telegram_id, on_permanent_failure=on_permanent_failure)
+    if ok and captured.get("file_id") and fingerprint and user and user.get("telegram_id"):
+        await checkin_qr_card_put(int(user["telegram_id"]), fingerprint, captured["file_id"])
+    return ok
 
 
 # Причины недоставки для отчёта менеджеру после «📤 Разослать QR сейчас».
@@ -661,7 +705,7 @@ async def send_broadcast(city: str | None) -> dict:
         for user in targets:
             tid = user["telegram_id"]
             try:
-                png, _default_caption = await build_checkin_qr(user)
+                png, fingerprint = await _photo_for(user)
                 caption, kb = await _render_for(tid, base_text, tr_maps, forum_day=forum_day)
             except Exception as e:
                 logger.error(f"checkin_broadcast.send_broadcast: build for {tid} failed: {e}")
@@ -673,7 +717,10 @@ async def send_broadcast(city: str | None) -> dict:
             async def _remember(cid, _bag=permanent):
                 _bag.append(cid)
 
-            ok = await _send_one(tid, png, caption, kb, on_permanent_failure=_remember)
+            ok = await _send_one(
+                tid, png, caption, kb, on_permanent_failure=_remember,
+                user=user, fingerprint=fingerprint,
+            )
             if ok:
                 await checkin_qr_mark_sent(
                     tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -733,13 +780,13 @@ async def _send_morning_repeat_locked(city: str | None) -> dict:
     for user in targets:
         tid = user["telegram_id"]
         try:
-            png, _default_caption = await build_checkin_qr(user)
+            png, fingerprint = await _photo_for(user)
             caption, kb = await _render_for(tid, base_text, tr_maps, forum_day=forum_day)
         except Exception as e:
             logger.error(f"checkin_broadcast.send_morning_repeat: build for {tid} failed: {e}")
             failed += 1
             continue
-        ok = await _send_one(tid, png, caption, kb)
+        ok = await _send_one(tid, png, caption, kb, user=user, fingerprint=fingerprint)
         if ok:
             await checkin_qr_mark_sent(
                 tid, user.get("event_city"), msk_now().strftime("%Y-%m-%d %H:%M:%S"),

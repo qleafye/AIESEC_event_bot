@@ -26,7 +26,9 @@ Phase 12 (FORUM-CHECKIN.md, D-09/D-10/D-13): вторая половина мо�
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
+import json
 import logging
 import re
 import secrets
@@ -39,6 +41,7 @@ from database.db import (
     SHEET_ARRIVAL_SET,
     enqueue_sheet_arrival,
     first_entry_scanned_at,
+    checkin_qr_card_put,
     get_checkin_token_replacement,
     get_or_create_checkin_token,
     get_program_session,
@@ -360,20 +363,108 @@ async def build_checkin_qr(user: dict) -> tuple[bytes, str]:
     `caption` возвращается НЕ переведённым (русский, из реестра `checkin_qr_caption_text`) —
     перевод на английский, как и у остальных ответов делегату, делает вызывающий
     (`reg_i18n.tr_text`) перед отправкой."""
+    png, caption, _styled = await _build_checkin_qr(user)
+    return png, caption
+
+
+async def _build_checkin_qr(user: dict) -> tuple[bytes, str, bool]:
+    """`(png, русская подпись, карточка собралась)`. Третий флаг ложен у голого QR: его
+    file_id не запоминаем, следующий запрос снова попробует карточку."""
     payload = await build_checkin_payload(user)
     if payload is None:
         raise ValueError(f"build_checkin_qr: нет пользователя {user.get('telegram_id')}")
 
     caption = await get_setting_typed("checkin_qr_caption_text") or _DEFAULT_CAPTION
     try:
-        return await _render_card(user, payload), caption
+        return await _render_card(user, payload), caption, True
     except Exception as e:  # пропуск важнее оформления: любой сбой рендера — голый QR
         logger.warning(f"build_checkin_qr: карточка не собралась, шлём голый QR: {e}")
 
     qr = segno.make(payload)
     buf = io.BytesIO()
     qr.save(buf, kind="png", scale=6, border=2)
-    return buf.getvalue(), caption
+    return buf.getvalue(), caption, False
+
+
+async def card_render_inputs(user: dict, payload: str) -> dict:
+    """Всё, от чего меняются пиксели карточки. Подпись сообщения и «ты отмечен» сюда не входят."""
+    from domain.cities import city_label_or_none
+    from services.forum.qr_card import pass_vk_line
+    from services.forum.qr_card_theme import resolve_values
+    from services.i18n.i18n_glossary import split_leading_symbols
+
+    title, footer, watermark = await card_texts()
+    city = (await city_label_or_none(user.get("event_city")) or "").strip()
+    prefix, rest = split_leading_symbols(city)
+    city = rest.strip() if prefix else city
+    return {
+        "payload": payload,
+        "name": (user.get("full_name") or "").strip() or "—",
+        "city": city,
+        "title": title,
+        "footer": footer,
+        "watermark": watermark,
+        "vk": pass_vk_line(user.get("vk_username")),
+        "theme": await resolve_values(),
+    }
+
+
+def _fingerprint(inputs: dict) -> str:
+    blob = json.dumps(inputs, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+async def card_fingerprint(user: dict) -> str | None:
+    """Отпечаток карточки этого делегата. None — пользователя нет, рисовать нечего."""
+    payload = await build_checkin_payload(user)
+    if payload is None:
+        return None
+    return _fingerprint(await card_render_inputs(user, payload))
+
+
+async def cached_checkin_photo(user: dict) -> tuple[bytes | str, str, str | None]:
+    """`(file_id или png, русская подпись, отпечаток)`.
+
+    Отпечаток совпал с сохранённым — png не рисуем. Голый QR (карточка не собралась)
+    не запоминаем: отпечаток в ответе None."""
+    from database.db import checkin_qr_card_get
+
+    fingerprint = await card_fingerprint(user)
+    if fingerprint:
+        hit = await checkin_qr_card_get(int(user["telegram_id"]))
+        if hit and hit[0] == fingerprint and hit[1]:
+            caption = await get_setting_typed("checkin_qr_caption_text") or _DEFAULT_CAPTION
+            return hit[1], caption, fingerprint
+    png, caption, styled = await _build_checkin_qr(user)
+    return png, caption, fingerprint if styled else None
+
+
+def _sent_file_id(message) -> str | None:
+    photo = getattr(message, "photo", None)
+    if not photo:
+        return None
+    return getattr(photo[-1], "file_id", None)
+
+
+async def deliver_checkin_card(message, user: dict, media: bytes | str, fingerprint: str | None, caption: str) -> None:
+    """Отправить карточку. Битый file_id — нарисовать заново и запомнить новый."""
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.types import BufferedInputFile
+
+    photo = media if isinstance(media, str) else BufferedInputFile(media, filename="checkin_qr.png")
+    try:
+        sent = await message.answer_photo(photo, caption=caption)
+    except TelegramBadRequest:
+        if not isinstance(media, str):
+            raise
+        png, _caption, styled = await _build_checkin_qr(user)
+        sent = await message.answer_photo(
+            BufferedInputFile(png, filename="checkin_qr.png"), caption=caption,
+        )
+        fingerprint = await card_fingerprint(user) if styled else None
+    file_id = _sent_file_id(sent)
+    if file_id and fingerprint and user.get("telegram_id"):
+        await checkin_qr_card_put(int(user["telegram_id"]), fingerprint, file_id)
 
 
 async def card_texts() -> tuple[str, str, str]:
@@ -389,24 +480,15 @@ async def _render_card(user: dict, payload: str) -> bytes:
     город человеческим названием, а не кодом. Адрес ВК — из `vk_username` анкеты, если он есть.
     Оформление — из админки (`services.forum.qr_card_theme`, без настроек — прежняя карточка)."""
     import asyncio
-    from functools import partial
 
-    from domain.cities import city_label_or_none
-    from services.forum.qr_card import pass_vk_line, render_qr_card
+    from services.forum.qr_card import render_qr_card
     from services.forum.qr_card_theme import load_card_theme  # ленивый: тема лениво импортирует checkin
 
-    title, footer, watermark = await card_texts()
-    from services.i18n.i18n_glossary import split_leading_symbols
-
-    # ведущий эмодзи подписи города шрифт карточки не рисует — был бы квадратик
-    city = (await city_label_or_none(user.get("event_city")) or "").strip()
-    prefix, rest = split_leading_symbols(city)
-    city = rest.strip() if prefix else city
-    name = (user.get("full_name") or "").strip() or "—"
+    face = await card_render_inputs(user, payload)
     theme = await load_card_theme()
     return await asyncio.to_thread(
-        render_qr_card, payload, name, city, title, footer, watermark,
-        pass_vk_line(user.get("vk_username")), theme=theme,
+        render_qr_card, payload, face["name"], face["city"], face["title"], face["footer"],
+        face["watermark"], face["vk"], theme=theme,
     )
 
 
