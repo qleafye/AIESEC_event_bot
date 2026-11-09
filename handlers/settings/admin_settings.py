@@ -30,6 +30,7 @@ import shared.favicon as dashboard_favicon  # Квик 260921: тексты/пр
 import domain.settings.ui_text_fields as _UI  # подписи, вынесенные из кода: хвосты экранов групп
 import domain.settings.delegate_text_fields as _DT  # фразы делегату, вынесенные из кода: хвосты экранов
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, option_label
+from domain.settings.callback_token import city_reset_callback, edit_callback_key, reset_payload_key
 from database.db import (
     export_users_csv,
     get_setting,
@@ -1997,7 +1998,7 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
         if is_list:
             rows = await admin_settings_lists.list_edit_rows(key)
         if own_value:
-            rows.append([InlineKeyboardButton(text=_fdate.reset_city_button_text(key), callback_data=f"settings_reset_city:{key}")])
+            rows.append([InlineKeyboardButton(text=_fdate.reset_city_button_text(key), callback_data=city_reset_callback("ask", key))])
         rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="settings_cancel")])
         return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -2064,7 +2065,8 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
 
 @router.callback_query(F.data.startswith("settings_edit:"))
 async def settings_edit_start(callback: types.CallbackQuery, state: FSMContext):
-    key = callback.data.split(":", 1)[1]
+    if (key := edit_callback_key(callback.data.split(":", 1)[1])) is None:
+        return await callback.answer("Неизвестная кнопка", show_alert=True)
     admin_id = callback.from_user.id
     if key == "reject_rules_enabled":  # общий рубильник автоотказа — только без привязки к городу
         from handlers.applications.admin_reject_rules import MASTER_DENIED_TEXT
@@ -2141,8 +2143,8 @@ async def settings_edit_city(callback: types.CallbackQuery, state: FSMContext):
     text += html_module.escape(prompt) + (ENUM_HINT if rows else _fdate.clear_hint(key))
 
     if current:
-        rows.append([InlineKeyboardButton(text=_fdate.reset_city_button_text(key), callback_data=f"settings_reset_city:{key}")])
-    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=f"settings_edit:{key}")])
+        rows.append([InlineKeyboardButton(text=_fdate.reset_city_button_text(key), callback_data=city_reset_callback("ask", key))])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data=city_reset_callback("back", key))])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
     await state.set_state(EditSetting.waiting_for_value)
     await state.set_data({"setting_key": composed, "per_city_base": key})  # поток владеет данными один
@@ -2154,7 +2156,8 @@ async def settings_reset_city(callback: types.CallbackQuery):
     """Confirm screen for «↩️ Как везде» on the header-scoped per-key editor — same two-step
     confirm gate idiom as `settings_regmode_reset` above (09.2-05 lineage: names the value
     the city is about to fall back to before deleting anything)."""
-    key = callback.data.split(":", 1)[1]
+    if (key := reset_payload_key(callback.data.split(":", 1)[1])) is None:
+        return await callback.answer("Неизвестная кнопка", show_alert=True)
     admin_id = callback.from_user.id
     if not await cities_module_on() or not is_per_city(key):
         await callback.answer("Города выключены", show_alert=True)
@@ -2184,8 +2187,8 @@ async def settings_reset_city(callback: types.CallbackQuery):
         "Свой текст города будет удалён."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=f"settings_reset_city_go:{key}:{header_code}")],
-        [InlineKeyboardButton(text="← Отмена", callback_data=f"settings_edit:{key}")],
+        [InlineKeyboardButton(text="✅ Да, как везде", callback_data=city_reset_callback("go", key, header_code))],
+        [InlineKeyboardButton(text="← Отмена", callback_data=city_reset_callback("back", key))],
     ])
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
@@ -2197,7 +2200,9 @@ async def settings_reset_city_go(callback: types.CallbackQuery):
     if ":" not in rest:
         await callback.answer("Неизвестная кнопка", show_alert=True)
         return
-    key, code = rest.rsplit(":", 1)
+    payload, code = rest.rsplit(":", 1)
+    if (key := reset_payload_key(payload)) is None:  # неизвестный токен ничего не удаляет
+        return await callback.answer("Неизвестная кнопка", show_alert=True)
     admin_id = callback.from_user.id
     if not await cities_module_on() or not is_per_city(key):
         await callback.answer("Города выключены", show_alert=True)

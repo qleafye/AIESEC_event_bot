@@ -32,6 +32,7 @@ from domain.cities import (
     set_admin_city,
 )
 from services.applications.reject_rules import forum_date_for
+from domain.settings.callback_token import city_reset_callback
 from domain.settings.ops import per_city_visible_codes
 
 # Ключи, которые светофор и выбор города правят «для города»: оба per_city в реестре.
@@ -165,8 +166,8 @@ async def clear_city_date_confirm(key: str, code: str, current: str) -> tuple[st
         "Общей даты «для всех» нет — город останется без форума, пока вы не зададите дату снова."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑 Да, стереть дату", callback_data=f"settings_reset_city_go:{key}:{code}")],
-        [InlineKeyboardButton(text="← Отмена", callback_data=f"settings_edit:{key}")],
+        [InlineKeyboardButton(text="🗑 Да, стереть дату", callback_data=city_reset_callback("go", key, code))],
+        [InlineKeyboardButton(text="← Отмена", callback_data=city_reset_callback("back", key))],
     ])
     return text, kb
 
@@ -192,7 +193,7 @@ async def dash_clear_screen(base: str | None, composed: str, code: str) -> tuple
     from database.db import get_setting
     current = await get_setting(composed)
     if not current:
-        back = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=f"settings_edit:{base}")]])
+        back = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="← Назад", callback_data=city_reset_callback("back", base))]])
         return "У города и так нет своей даты форума — стирать нечего.", back
     return await clear_city_date_confirm(base, code, current)
 

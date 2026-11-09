@@ -18,6 +18,7 @@ from database import db
 from handlers import admin as admin_mod
 from handlers.settings import admin_settings  # Phase 13 (13-06): settings moved out of admin.py
 from handlers.access.admin_caps import required_capability, role_caps_key, role_enabled_key
+from domain.settings.callback_token import city_reset_callback
 import domain.cities as cities
 from tests._dbtpl import fast_init_db
 
@@ -125,8 +126,8 @@ def _add_bound_manager(manager_id=MANAGER_ID, city="spb"):
 def test_new_prefixes_covered_by_admin_caps_old_prefixes_gone():
     for cb in (
         "settings_edit_city:start_text",
-        "settings_reset_city:start_text",
-        "settings_reset_city_go:start_text:msk",
+        city_reset_callback("ask", "start_text"),
+        city_reset_callback("go", "start_text", "msk"),
     ):
         assert required_capability(callback_data=cb) == "settings", cb
     # 09.2-05's four-entry picker family must be gone from ADMIN_CAPS entirely — a forgotten
@@ -242,7 +243,7 @@ def test_own_city_editor_shows_own_value_and_reset_button(tmp_path):
     assert not any(code in cb.message.text for code in codes)  # no raw codes, only labels
     data = _flat_callback_data(cb.message.markup)
     assert "settings_edit_city:start_text" in data
-    assert "settings_reset_city:start_text" in data
+    assert city_reset_callback("ask", "start_text") in data
 
 
 def test_own_city_editor_shows_as_everywhere_when_no_own_value(tmp_path):
@@ -259,7 +260,7 @@ def test_own_city_editor_shows_as_everywhere_when_no_own_value(tmp_path):
     assert "Общий текст" in cb.message.text
     data = _flat_callback_data(cb.message.markup)
     assert "settings_edit_city:start_text" in data
-    assert "settings_reset_city:start_text" not in data  # nothing to reset yet
+    assert city_reset_callback("ask", "start_text") not in data  # nothing to reset yet
 
 
 def test_own_city_editor_does_not_start_fsm(tmp_path):
@@ -439,7 +440,7 @@ def test_reset_confirm_refuses_when_no_own_value(tmp_path):
     _enable_cities()
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
 
-    cb = FakeCallback("settings_reset_city:start_text")
+    cb = FakeCallback(city_reset_callback("ask", "start_text"))
     asyncio.run(admin_settings.settings_reset_city(cb))
 
     assert cb.message.edit_calls == 0
@@ -452,14 +453,14 @@ def test_reset_confirm_then_go_returns_to_editor_view(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
 
-    confirm_cb = FakeCallback("settings_reset_city:start_text")
+    confirm_cb = FakeCallback(city_reset_callback("ask", "start_text"))
     asyncio.run(admin_settings.settings_reset_city(confirm_cb))
     # Confirm screen previews the GLOBAL text the city is about to fall back to (unset here
     # -> "по умолчанию"), not the override being removed — and names the consequence.
     assert "по умолчанию" in confirm_cb.message.text
     assert "будет удалён" in confirm_cb.message.text
 
-    go_cb = FakeCallback("settings_reset_city_go:start_text:spb")
+    go_cb = FakeCallback(city_reset_callback("go", "start_text", "spb"))
     asyncio.run(admin_settings.settings_reset_city_go(go_cb))
 
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "spb"))
@@ -467,7 +468,7 @@ def test_reset_confirm_then_go_returns_to_editor_view(tmp_path):
     assert "Как везде. Общий текст:" in go_cb.message.text  # back on the editor view
 
     # Idempotent second go.
-    go_cb2 = FakeCallback("settings_reset_city_go:start_text:spb")
+    go_cb2 = FakeCallback(city_reset_callback("go", "start_text", "spb"))
     asyncio.run(admin_settings.settings_reset_city_go(go_cb2))
     assert go_cb2.answers and go_cb2.answers[0][1] is True
 
@@ -475,7 +476,7 @@ def test_reset_confirm_then_go_returns_to_editor_view(tmp_path):
 def test_reset_go_unknown_city_code_refused(tmp_path):
     _admin_ready(tmp_path)
     _enable_cities()
-    cb = FakeCallback("settings_reset_city_go:start_text:atlantis")
+    cb = FakeCallback(city_reset_callback("go", "start_text", "atlantis"))
     asyncio.run(admin_settings.settings_reset_city_go(cb))
 
     assert cb.answers and cb.answers[0][1] is True
@@ -490,13 +491,13 @@ def test_reset_go_freshness_check_refuses_after_header_changed(tmp_path):
     asyncio.run(cities.set_admin_city(ADMIN_ID, "spb"))
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
 
-    confirm_cb = FakeCallback("settings_reset_city:start_text")
+    confirm_cb = FakeCallback(city_reset_callback("ask", "start_text"))
     asyncio.run(admin_settings.settings_reset_city(confirm_cb))
 
     # Header moves on before the manager taps "Да, как везде".
     asyncio.run(cities.set_admin_city(ADMIN_ID, "msk"))
 
-    go_cb = FakeCallback("settings_reset_city_go:start_text:spb")
+    go_cb = FakeCallback(city_reset_callback("go", "start_text", "spb"))
     asyncio.run(admin_settings.settings_reset_city_go(go_cb))
 
     assert go_cb.answers and go_cb.answers[0][0] == "Город админки изменился — подтвердите заново."
@@ -510,7 +511,7 @@ def test_bound_manager_refused_reset_go_on_forged_other_city(tmp_path):
     _add_bound_manager(MANAGER_ID, "spb")
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "tyumen"), "Тюменский текст"))
 
-    cb = FakeCallback("settings_reset_city_go:start_text:tyumen", user_id=MANAGER_ID)
+    cb = FakeCallback(city_reset_callback("go", "start_text", "tyumen"), user_id=MANAGER_ID)
     asyncio.run(admin_settings.settings_reset_city_go(cb))
 
     assert cb.answers and cb.answers[0][1] is True
@@ -697,7 +698,7 @@ def test_bound_manager_full_scenario_sees_only_own_city(tmp_path):
     # Forged reset for another city: refused, nothing written (settings_reset_city_go is the
     # only surviving callback that still carries an explicit city code).
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "msk"), "Московский текст"))
-    other_cb = FakeCallback("settings_reset_city_go:start_text:msk", user_id=MANAGER_ID)
+    other_cb = FakeCallback(city_reset_callback("go", "start_text", "msk"), user_id=MANAGER_ID)
     asyncio.run(admin_settings.settings_reset_city_go(other_cb))
     assert other_cb.answers and other_cb.answers[0][1] is True
     resolved = asyncio.run(cities.get_setting_for_city("start_text", "msk"))
