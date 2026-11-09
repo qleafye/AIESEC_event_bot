@@ -2762,6 +2762,10 @@ async def init_db():
             "WHERE key = 'delegation_form_id' AND trim(value) != ''"
         )
 
+        # FSM бота в этом же файле. CREATE TABLE IF NOT EXISTS — старые базы не ломает.
+        from database.fsm_storage import ensure_schema as ensure_fsm_schema
+        await ensure_fsm_schema(db)
+
         await db.commit()
 
 # Perf (стенд 17.09: `/app/api/admin/settings/all` — 4.65 с / 2239 отдельных SQLite-

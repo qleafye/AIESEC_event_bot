@@ -76,7 +76,7 @@ from database.db import (
 )
 from services.scheduler import (
     _parse_schedule_dt,
-    _fmt_dt,
+    _fmt_dt, when_from_fsm,
     _now_moscow_naive,
     schedule_broadcast_job,
     cancel_broadcast_job,
@@ -85,7 +85,7 @@ from services.scheduler import (
     # важности (встроена в содержимое) и клавиатуры получателя, не вторая копия.
     important_prefix,
     apply_important_prefix,
-    load_recipient_langs, recipient_markup,
+    load_recipient_langs, recipient_markup, markup_for_fsm, markup_from_fsm,
     # Только альбом — media_group не принимает reply_markup, см. докстринг там же.
     send_mute_offer_if_eligible,
 )
@@ -545,7 +545,7 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
     # она приклеивается в bc_go по факту тумблера «❗»). `bc_reply_markup` — собственная
     # клавиатура менеджера (например, пересланный пост с кнопками-ссылками), если Telegram её
     # прислал вместе с сообщением — `recipient_markup` добавит строку «🔕» ПОСЛЕДНЕЙ поверх неё,
-    # не заменяя (MemoryStorage хранит объект в памяти как есть, без сериализации).
+    # не заменяя. В FSM кладётся словарь кнопок: хранилище пишет JSON, не объект.
     bc_kind = "text" if message.text else "media"
     content_html = message.html_text if (bc_kind == "text" or message.caption) else None
     await state.update_data(
@@ -558,7 +558,7 @@ async def process_broadcast(message: types.Message, state: FSMContext, bot: Bot)
         # getattr, не message.reply_markup напрямую: тестовые FakeMessage-дублёры соседних
         # тестов (COMM-04/BC-01..06 и т.д.) этот атрибут не заводят вовсе — реальный
         # aiogram.types.Message его несёт всегда (None у обычного сообщения делегата).
-        bc_reply_markup=getattr(message, "reply_markup", None),
+        bc_reply_markup=markup_for_fsm(getattr(message, "reply_markup", None)),
     )
     await message.send_copy(message.chat.id)
     await _send_confirm_prompt(bot, message.chat.id, state, len(users_ids), users_ids)
@@ -590,7 +590,7 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     # process_broadcast.
     bc_kind = data.get("bc_kind", "media")
     bc_content_html = data.get("bc_content_html")
-    bc_base_markup = data.get("bc_reply_markup")
+    bc_base_markup = markup_from_fsm(data.get("bc_reply_markup"))
     from handlers.comms.admin_broadcast_interview import with_interview_button
     bc_base_markup = with_interview_button(bc_base_markup, bool(data.get("bc_interview_button")))
     picked_consent = (data.get("bc_consent_key") or "").strip() or None
@@ -946,7 +946,7 @@ async def broadcast_schedule_when(message: types.Message, state: FSMContext):
 
 async def _confirm_broadcast_schedule(target, state: FSMContext, when: datetime) -> None:
     """Хвост шага «когда» — общий для прямого ввода и обеих кнопок `bcast_quiet:*`."""
-    await state.update_data(schedule_dt=when)
+    await state.update_data(schedule_dt=_fmt_dt(when))
     await target.answer(
         f"✅ Запланировано на {when.strftime('%d.%m.%Y %H:%M')}.\n"
         "Теперь отправьте сообщение (текст или фото с подписью) для рассылки.",
@@ -1005,7 +1005,7 @@ async def _send_schedule_confirm_prompt(target, state: FSMContext) -> None:
     """Экран подтверждения отложенной рассылки — общий хвост для первого показа
     (`broadcast_schedule_message`) и перерисовки после тумблера (`sched_important_toggle`)."""
     data = await state.get_data()
-    when = data.get("schedule_dt")
+    when = when_from_fsm(data.get("schedule_dt"))
     important = bool(data.get("bc_important"))
     important_btn = InlineKeyboardButton(
         text="✅ Отмечено как важное" if important else "❗ Отметить как важное",
@@ -1051,7 +1051,7 @@ async def sched_no(callback: types.CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "sched_go", Broadcast.schedule_confirm)
 async def sched_go(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    when = data.get("schedule_dt")
+    when = when_from_fsm(data.get("schedule_dt"))
     text = data.get("sched_text")
     photo = data.get("sched_photo")
     important = bool(data.get("bc_important"))

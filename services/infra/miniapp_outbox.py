@@ -102,9 +102,9 @@ logger = logging.getLogger(__name__)
 DRAIN_LIMIT = 50
 MAX_ATTEMPTS = 5
 
-# Quick 260904-3vm (эстафета): set once at startup (main.py -> init_fsm_storage(dp.storage)),
-# same idiom as handlers/payment.py::init_payment_module. MemoryStorage бота никто извне не
-# сбрасывает — это единственный путь веб-процесса к FSM бота.
+# set once at startup (main.py -> init_fsm_storage(dp.storage)),
+# same idiom as handlers/payment.py::init_payment_module. Хранилище — SQLite в forum.db;
+# веб сбрасывает FSM только этой веткой (reg_fsm_reset).
 _storage = None
 
 

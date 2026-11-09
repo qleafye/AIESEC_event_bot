@@ -4,7 +4,7 @@ import os
 import sys
 from logging.handlers import RotatingFileHandler
 from aiogram import Bot, Dispatcher
-from aiogram.fsm.storage.memory import MemoryStorage
+from database.fsm_storage import SqliteStorage
 from config import config
 from shared.secret_redact import install_log_redaction, register_secret
 from database.db import init_db, get_setting, set_setting
@@ -483,7 +483,7 @@ async def main():
         )
 
     bot = Bot(token=config.BOT_TOKEN.get_secret_value(), default=default, session=session)
-    dp = Dispatcher(storage=MemoryStorage())
+    dp = Dispatcher(storage=SqliteStorage())
     # Docker HEALTHCHECK: session-middleware отмечает каждый успешный getUpdates, фоновая
     # задача ниже пишет heartbeat-файл только пока эти отметки свежие — т.е. файл отражает
     # живость поллинга, а не event loop. Семантика целиком — в services/heartbeat.py.
@@ -502,8 +502,8 @@ async def main():
 
     # Register routers
     payment.init_payment_module(dp.storage)  # out-of-handler FSMContext for free/single-option path
-    # Quick 260904-3vm (эстафета): MemoryStorage бота никто извне не сбрасывает — это
-    # единственный путь веб-процесса (miniapp_outbox::reg_fsm_reset) к FSM бота.
+    # Веб сбрасывает FSM строкой outbox (reg_fsm_reset). Хранилище в forum.db,
+    # поэтому сброс виден и после перезапуска бота.
     miniapp_outbox.init_fsm_storage(dp.storage)
     # Делегации вузов: бот и хранилище FSM для превращения делегата из джобы синка формы
     # (сообщение с меню, сброс незаконченной анкеты) — тот же приём, что строкой выше.

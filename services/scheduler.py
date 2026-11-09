@@ -100,6 +100,18 @@ def _fmt_dt(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def when_from_fsm(raw):
+    """Дата из FSM. В SQLite лежит строка _fmt_dt; старый объект datetime тоже принимаем."""
+    if isinstance(raw, datetime):
+        return raw
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return None
+
+
 def _now_moscow_naive() -> datetime:
     """TZFIX-260816: naive (tzinfo=None) Moscow wall-clock time.
 
@@ -773,6 +785,22 @@ async def load_recipient_langs() -> RecipientLangs:
 async def unmute_button(chat_id: int) -> InlineKeyboardButton:
     from domain.settings.ui_text_fields import ui_text
     return await _translated_button(await ui_text("broadcast_unmute_button_text"), UNMUTE_TODAY_CALLBACK, chat_id)
+
+
+def markup_for_fsm(markup):
+    """В FSM — словарь кнопок, не объект aiogram: хранилище сериализует data в JSON."""
+    if markup is None or isinstance(markup, dict):
+        return markup
+    dump = getattr(markup, "model_dump", None)
+    if dump is None:
+        return markup
+    return dump(mode="json")
+
+
+def markup_from_fsm(raw):
+    if not isinstance(raw, dict):
+        return raw
+    return InlineKeyboardMarkup.model_validate(raw)
 
 
 async def recipient_markup(
