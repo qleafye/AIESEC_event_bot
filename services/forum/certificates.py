@@ -651,9 +651,13 @@ async def announce_job() -> int:
     if bot is None:
         return 0
     text, kb, sent = await announce_text(), get_kb(), 0
+    already = await cdb.announced_ids()
     for telegram_id in await recipients():
+        if telegram_id in already:
+            continue
         if not await cdb.claim_announce(telegram_id):
             continue
+        already.add(telegram_id)
         try:
             try:
                 await bot.send_message(telegram_id, text, reply_markup=kb)
