@@ -4,9 +4,10 @@
 подстановку делает поверхность. Каждая часть считается отдельно и fail-soft — сбой одной
 (БД, волна, журнал) даёт `None` в этой части и запись в лог, остальные части остаются.
 
-Модуль «🤝 Отбор амбассадоров» (`amb_team_selection_enabled`) выключен — экран как до модуля
-(Юлид): ни строки статуса, ни баллов, ни места в волне; ссылка, прогресс ступеней и кнопки
-живут как раньше. «Пакет» показывается только при лимите мест (`slots_limit() > 0`).
+Строка статуса — только при включённом отборе. Баллы и место в волне — при ключе
+`amb_show_link_stats`. Если строка ключа ещё не сохранена, видимость как у отбора:
+на Юлиде отбор выключен, делегат не видит ни баллов, ни места. «Пакет» показывается
+только при лимите мест (`slots_limit() > 0`).
 
 Модуль aiogram-free. Чужих данных здесь нет: только показатели самого делегата.
 """
@@ -85,9 +86,20 @@ async def _wave_place(user: dict) -> dict | None:
         return None
 
 
+async def show_link_stats(city: str | None = None) -> bool:
+    """Показывать ли баллы и место в волне. Нет сохранённой строки — повторяем отбор,
+    чтобы Юлид (отбор выключен, ключа нет) не изменился молча."""
+    from domain.cities import get_setting_for_city
+
+    raw = await get_setting_for_city("amb_show_link_stats", city)
+    if raw is None or str(raw).strip() == "":
+        return await amb_status.selection_enabled(city)
+    return str(raw).strip() == "on"
+
+
 async def delegate_view(telegram_id: int, user: dict | None = None, need_state: bool = True) -> dict:
     """{"state", "status_key" | None, "referral_points" | None, "wave_place" | None,
-    "is_ambassador"}. Модуль отбора выключен — строки статуса, баллов и волны пусты.
+    "is_ambassador"}. Статус — от отбора. Баллы и место — от `show_link_stats`.
 
     `user` — уже прочитанная строка делегата (хаб Mini App её держит): экономит соединение.
     `need_state=False` — вызывающему не нужен `state`: при выключенном модуле статус в БД не
@@ -113,13 +125,17 @@ async def delegate_view(telegram_id: int, user: dict | None = None, need_state: 
     if enabled or need_state:
         view["state"] = await _state(tid)
     try:
-        if not enabled:
-            return view
-        view["status_key"] = _status_key(view["state"], await amb_status.slots_limit(city))
+        if enabled:
+            view["status_key"] = _status_key(view["state"], await amb_status.slots_limit(city))
     except Exception:
         logger.exception("amb_screen: строка статуса не собрана (tid=%s)", tid)
         return view
-    if is_amb:
+    try:
+        stats = await show_link_stats(city)
+    except Exception:
+        logger.exception("amb_screen: показ баллов и места не прочитан (tid=%s)", tid)
+        stats = False
+    if is_amb and stats:
         view["referral_points"] = await _points(tid, city)
         user.setdefault("telegram_id", tid)
         view["wave_place"] = await _wave_place(user)

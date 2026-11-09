@@ -1687,6 +1687,10 @@ admin|callback_query|amb_reset_menu|ambrst
 admin|callback_query|amb_reset_preview|ambrst_p:*
 admin|callback_query|amb_reset_go|ambrst_go:*
 admin|callback_query|amb_separator|amb_sep
+admin|callback_query|amb_addon_ask|amb_addon_ask:*
+admin|callback_query|amb_addon_go|amb_addon_go:*
+admin|callback_query|amb_off_note|amb_off_note
+admin|callback_query|amb_addon_look|amb_addon_look
 admin|callback_query|forumfn_qr_screen|forumfn_qr:*
 admin|callback_query|forumfn_qr_set|forumfn_qr_set:*
 admin|callback_query|forumfn_back|forumfn_back:*
@@ -2801,7 +2805,8 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после checkin_training_sheet и перед admin_sos (1473 -> 1477).
     # «Позвать резерв»: +1 admin.message rsv_file после findw_receive и +2 admin.callback_query
     # rsv_open/rsv_act сразу после apprej_cancel, перед prog_fbday_open (1477 -> 1480).
-    assert len(GOLDEN_SNAPSHOT) == 1480
+    # Пульт надстроек амбассадоров: +4 admin.callback_query сразу после amb_separator (1480 -> 1484).
+    assert len(GOLDEN_SNAPSHOT) == 1484
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

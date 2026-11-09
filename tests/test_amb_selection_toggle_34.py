@@ -361,16 +361,15 @@ def _admin_ready(tmp_path):
     _run(db.delete_setting(KEY))
 
 
-def test_admin_root_hides_amb_section_until_toggle_on(tmp_path):
+def test_admin_root_keeps_amb_section_when_selection_off(tmp_path):
     from handlers.settings import admin_core
     from handlers.settings.admin_sections import SECTIONS
     from tests.test_amb_candidates_34 import ADMIN_ID
     _admin_ready(tmp_path)
     # 28.10 (готовность к форуму): первый ряд ready_list — не раздел, сравниваем без него.
     flat = _datas(_run(admin_core.build_admin_keyboard(ADMIN_ID)))
-    assert "admin_sec:amb" not in flat
     assert flat[0] == "ready_list"
-    assert flat[1:] == [f"admin_sec:{t}" for t, _l, _r in SECTIONS if t != "amb"]
+    assert flat[1:] == [f"admin_sec:{t}" for t, _l, _r in SECTIONS]
     _run(db.set_setting(KEY, "on"))
     flat = _datas(_run(admin_core.build_admin_keyboard(ADMIN_ID)))
     assert flat[1:] == [f"admin_sec:{t}" for t, _l, _r in SECTIONS]
@@ -383,7 +382,8 @@ def test_stale_section_buttons_explain_how_to_turn_on(tmp_path):
     _admin_ready(tmp_path)
     cb = _cb("admin_sec:amb")
     _run(admin_sections.show_admin_section(cb))
-    assert cb.answers == [(s.SECTION_OFF_ALERT, True)]
+    assert cb.answers == [(None, False)]
+    assert cb.message.edits
     assert len(s.SECTION_OFF_ALERT) <= 200
     assert "🎮 Геймификация" in s.SECTION_OFF_ALERT and "🤝 Отбор амбассадоров" in s.SECTION_OFF_ALERT
 

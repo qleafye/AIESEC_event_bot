@@ -592,8 +592,8 @@ def test_toggle_rows_are_shared_with_the_settings_screen(tmp_path):
 # (5) Корень переключён на разделы (20-03, ADMIN-IA-01)
 # ══════════════════════════════════════════════════════════════════════════════════════════
 
-def _root_section_tokens(*, amb: bool) -> list[str]:
-    return [token for token, _label, _rows in sec.SECTIONS if amb or token != "amb"]
+def _root_section_tokens() -> list[str]:
+    return [token for token, _label, _rows in sec.SECTIONS]
 
 
 def _settings_webapp(kb):
@@ -611,8 +611,8 @@ def test_root_shows_at_most_ten_rows(tmp_path, monkeypatch):
 
     monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    # «🤝 Амбассадоры» — только при включённом модуле «🤝 Отбор амбассадоров» (по умолчанию выкл).
-    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False))
+    # Раздел «🤝 Амбассадоры» в корне и при выключенном отборе.
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens())
     assert _settings_webapp(kb) == []
     asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
@@ -625,7 +625,7 @@ def test_root_shows_at_most_ten_rows(tmp_path, monkeypatch):
     assert len(_settings_webapp(kb)) == 1
     asyncio.run(db.set_setting("amb_team_selection_enabled", "off"))
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False)) + 1
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens()) + 1
     assert len(_settings_webapp(kb)) == 1
 
     class _BadUrl(str):
@@ -634,7 +634,7 @@ def test_root_shows_at_most_ten_rows(tmp_path, monkeypatch):
 
     monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", _BadUrl("https://dash.example.test"))
     kb = asyncio.run(admin_keyboard_for(ADMIN_ID))
-    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens(amb=False))
+    assert len(kb.inline_keyboard) == 1 + len(_root_section_tokens())
     assert _settings_webapp(kb) == []
 
 
@@ -650,7 +650,7 @@ def test_root_rows_are_only_sections(tmp_path, monkeypatch):
     assert flat[0] == "admin_city_switch"
     assert flat[0] == "admin_city_switch"
     assert flat[1] == "ready_list"
-    assert flat[2:] == [f"admin_sec:{token}" for token in _root_section_tokens(amb=False)]
+    assert flat[2:] == [f"admin_sec:{token}" for token in _root_section_tokens()]
     for banned in ("work", "settings", "forum"):
         assert banned not in flat
         assert f"admin_sec:{banned}" not in flat
@@ -661,7 +661,7 @@ def test_root_rows_are_only_sections(tmp_path, monkeypatch):
     assert rows[0][0].callback_data == "admin_city_switch"
     assert rows[0][1].callback_data == "ready_list"
     assert [row[0].callback_data for row in rows[1:-1]] == [
-        f"admin_sec:{token}" for token in _root_section_tokens(amb=False)
+        f"admin_sec:{token}" for token in _root_section_tokens()
     ]
     last = rows[-1][0]
     assert last.text == "Настройки"

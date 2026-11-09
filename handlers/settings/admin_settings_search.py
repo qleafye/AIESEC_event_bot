@@ -103,20 +103,16 @@ async def screen_candidates(admin_id: int) -> list[Candidate]:
 
     caps = await sec.resolve_capabilities(admin_id)
     is_super = admin_id in config.ADMIN_IDS
-    amb_on = await sec._amb_section_on()
     out: list[Candidate] = []
     for token, section_label, _rows in sec.SECTIONS:
         for row in sec.visible_rows(token, caps, is_super):
             cb = sec.row_callback(row)
             if row[0] not in ("screen", "screen_admin") or cb == "settings_search":
                 continue
-            label = section_label
-            if token == "amb" and not amb_on:
-                # Модуль отбора выключен — раздела нет; волны и ступени живут в «🎮 Геймификации».
-                if cb not in sec._AMB_OFF_GAME_ROWS:
-                    continue
-                label = sec._SECTION_LABELS["game"]
-            out.append(Candidate(key=f"screen:{cb}", label=row[2], extra={"cb": cb, "section": label, "screen": True}))
+            out.append(Candidate(
+                key=f"screen:{cb}", label=row[2],
+                extra={"cb": cb, "section": section_label, "screen": True},
+            ))
     return out
 
 
