@@ -298,8 +298,9 @@ def test_non_per_city_keys_stay_global_under_city_header(tmp_path):
     client = _setup(tmp_path)
     _set("event_city_enabled", "on")
     body = _all(client).json()
-    assert _item(body, "payment_deadline")["key"] == "payment_deadline"
-    assert _item(body, "payment_deadline")["city_override_count"] == 0
+    # payment_deadline городской: у каждого города свой срок. Здесь — ключ без per_city.
+    assert _item(body, "event_name")["key"] == "event_name"
+    assert _item(body, "event_name")["city_override_count"] == 0
 
 
 def test_post_city_switches_header_with_bot_function(tmp_path):
