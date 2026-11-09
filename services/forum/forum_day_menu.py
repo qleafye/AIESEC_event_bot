@@ -4,10 +4,8 @@ get_main_menu_kb` поднимает «🎟 Мой QR»/«📅 Программ�
 если её СОБСТВЕННЫЙ гейт и так её показывает), остальное сдвигается вниз, не прячется.
 
 Окно: с вечера накануне `forum_date` (per_city, `domain/settings/schema.py`) до конца последнего дня
-форума. Отдельного ключа «дата окончания форума» в реестре нет — переиспользуем то же
-`sos_active_days` (per_city), которым уже считает длительность форума `services.sos.
-is_sos_active_for_city` (файл НЕ трогаем, только импортируем публичную константу и читаем тот
-же ключ реестра byte-в-byte той же логикой, чтобы окно меню не разошлось с окном SOS).
+форума. Дни форума — `services.forum.forum_days.forum_window` (тот же расчёт, что SOS): отдельного
+ключа «дата окончания» нет. Вечер накануне (`forum_day_menu_start_time`) к длине форума не относится.
 
 Мастер-тумблер `forum_day_menu_enabled` (per_city, дефолт "off") — фича не включается сама на
 существующих городах без явного решения менеджера. Время начала «вечером накануне» —
@@ -31,30 +29,10 @@ DEFAULT_START_TIME = "18:00"
 
 async def _forum_window_dates(city: str | None) -> tuple[date, date] | None:
     """`(дата начала, дата окончания)` форума этого города — `None`, если `forum_date` не
-    задана или не парсится. Дата окончания = `forum_date + sos_active_days - 1`, тот же расчёт
-    длительности, что `services.sos.is_sos_active_for_city` (импорт константы фолбэка оттуда,
-    сам ключ реестра — общий `sos_active_days`, отдельного ключа для меню не заводим)."""
-    from services.applications.reject_rules import forum_date_for  # ленивый импорт — тот же цикл-разрыв,
-    # что уже документирован в services/sos.py/services/checkin_broadcast.py.
+    задана или не парсится. Тот же расчёт, что `services.forum.forum_days.forum_window`."""
+    from services.forum.forum_days import forum_window
 
-    raw = await forum_date_for(city)
-    if not raw:
-        return None
-    try:
-        start = datetime.strptime(raw.strip(), "%d.%m.%Y").date()
-    except ValueError:
-        return None
-
-    from services.sos import DEFAULT_ACTIVE_DAYS  # публичная константа, sos.py не правим
-
-    raw_days = await get_setting_typed_for_city("sos_active_days", city)
-    try:
-        days = int(raw_days)
-    except (TypeError, ValueError):
-        days = DEFAULT_ACTIVE_DAYS
-    if days < 1:
-        days = 1
-    return start, start + timedelta(days=days - 1)
+    return await forum_window(city)
 
 
 def _parse_hhmm(raw: str | None) -> tuple[int, int]:
