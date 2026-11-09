@@ -6744,6 +6744,20 @@ async def upsert_chat_username(telegram_id: int, username: str | None,
         await db.commit()
 
 
+async def get_telegram_id_by_chat_username(username: str) -> int | None:
+    """Живой @ник из чата: в анкете может лежать старый. COLLATE NOCASE, как у users."""
+    needle = username_needle(username)
+    if needle is None:
+        return None
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM chat_usernames WHERE username = ? COLLATE NOCASE",
+            (needle,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return int(row[0]) if row else None
+
+
 async def replace_chat_admins(chat_id: int, telegram_ids) -> None:
     """Админы группы по итогу getChatAdministrators — список заменяется целиком."""
     now = msk_now().strftime("%Y-%m-%d %H:%M:%S")
