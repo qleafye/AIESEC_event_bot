@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import re
 import hmac
+import sqlite3
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -22,6 +23,7 @@ from starlette.testclient import TestClient
 
 from config import config as bot_config
 from database import db as bot_db
+from database.schema_ready import SCHEMA_READY_USER_VERSION
 from dashboard.config import DashboardConfig
 from dashboard.main import create_app as create_dashboard_app
 
@@ -30,6 +32,7 @@ from miniapp.main import create_app
 
 from tests.test_miniapp_auth import TOKEN, make_init_data
 from tests._dbtpl import fast_init_db
+from tests._paths import REPO_ROOT
 
 ADMIN_ID = 900001
 DELEGATE_ID = 900100  # одобренный делегат без прав
@@ -45,6 +48,15 @@ def _use_tmp_db(tmp_path, name: str = "miniapp_routes.db") -> str:
     bot_config.DB_PATH = path
     fast_init_db()
     return path
+
+
+def _sqlite_with_user_version(path: str, version: int) -> None:
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(f"PRAGMA user_version = {int(version)}")
+        conn.commit()
+    finally:
+        conn.close()
 
 
 async def _seed_async(*, staff=None, settings=None, users=None):
@@ -197,6 +209,62 @@ def test_health_open_even_when_disabled(tmp_path):
     client = _client(_cfg(db_path))
     assert client.get("/app/health").json() == {"status": "ok"}
     assert client.get("/app/health").status_code == 200
+
+
+def test_health_200_when_user_version_is_not_below_ready(tmp_path):
+    for version in (SCHEMA_READY_USER_VERSION, SCHEMA_READY_USER_VERSION + 1):
+        db_path = str(tmp_path / f"health_ok_{version}.db")
+        _sqlite_with_user_version(db_path, version)
+        resp = _client(_cfg(db_path)).get("/app/health")
+        assert resp.status_code == 200, version
+        assert resp.json() == {"status": "ok"}
+
+
+def test_health_503_when_user_version_is_zero(tmp_path):
+    db_path = str(tmp_path / "health_zero.db")
+    _sqlite_with_user_version(db_path, 0)
+    resp = _client(_cfg(db_path)).get("/app/health")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "migrating"}
+
+
+def test_health_503_when_user_version_is_behind(tmp_path):
+    """Частичная миграция (не ноль, но ниже готовой) — тот же 503, не «файл есть, значит ok»."""
+    assert SCHEMA_READY_USER_VERSION >= 1
+    db_path = str(tmp_path / "health_behind.db")
+    _sqlite_with_user_version(db_path, SCHEMA_READY_USER_VERSION - 1)
+    resp = _client(_cfg(db_path)).get("/app/health")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "migrating"}
+
+
+def test_health_503_when_db_file_missing(tmp_path):
+    db_path = tmp_path / "missing.db"
+    assert not db_path.exists()
+    resp = _client(_cfg(str(db_path))).get("/app/health")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "migrating"}
+    assert not db_path.exists()
+
+
+def test_health_503_when_db_read_fails(tmp_path):
+    db_path = tmp_path / "not-a-db.db"
+    db_path.write_bytes(b"this is not a sqlite database")
+    resp = _client(_cfg(str(db_path))).get("/app/health")
+    assert resp.status_code == 503
+    assert resp.json() == {"status": "migrating"}
+
+
+def test_schema_ready_user_version_is_max_of_database_constants():
+    """Сторож: число health — максимум `*_USER_VERSION = N` в database/, не второй литерал."""
+    assigned = re.compile(r"^(\w*USER_VERSION)\s*=\s*(\d+)\s*(?:#.*)?$", re.MULTILINE)
+    versions = []
+    for path in (REPO_ROOT / "database").glob("*.py"):
+        versions.extend(int(value) for _name, value in assigned.findall(path.read_text(encoding="utf-8")))
+    assert versions
+    assert SCHEMA_READY_USER_VERSION == max(versions)
+    page = (REPO_ROOT / "miniapp" / "routers" / "page.py").read_text(encoding="utf-8")
+    assert "SCHEMA_READY_USER_VERSION" in page
 
 
 def test_disabled_by_default_returns_503(tmp_path):

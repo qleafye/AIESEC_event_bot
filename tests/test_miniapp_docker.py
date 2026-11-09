@@ -104,6 +104,14 @@ def test_compose_miniapp_healthcheck_overridden_to_app_health():
     assert "8001" in text
 
 
+def test_compose_miniapp_depends_on_bot_started_not_healthy():
+    """Схема — 503 `/app/health`, не healthy бота: тот проверяет heartbeat поллинга."""
+    dep = _miniapp()["depends_on"]
+    assert isinstance(dep, dict), "нужна длинная форма depends_on с condition, не список"
+    assert set(dep) == {"bot"}
+    assert dep["bot"]["condition"] == "service_started"
+
+
 def test_compose_miniapp_uses_stack_env_file():
     assert _miniapp()["env_file"] == [".env"]
 

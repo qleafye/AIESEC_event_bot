@@ -15,8 +15,10 @@ data-атрибутах `<body>` (фронт-ядро читает их без �
 дефолт активного пресета (T-19-73/T-19.1-05: значение никогда не склеивается с разметкой;
 fail-soft: опечатка менеджера не роняет приложение).
 
-`/app/health` открыт и не трогает БД (HEALTHCHECK контейнера) — единственный маршрут,
-живущий и при `miniapp_enabled = off`.
+`/app/health` открыт и при `miniapp_enabled = off` (HEALTHCHECK контейнера). Читает
+`PRAGMA user_version`: пока версия ниже `SCHEMA_READY_USER_VERSION`, файла БД нет или
+чтение упало — 503 `{"status": "migrating"}`, не 500. Версия достаточна — 200
+`{"status": "ok"}`.
 
 `/app/api/me` — первый запрос фронта: кто я, какие разделы включены, оформление (пресет,
 тон, ассеты).
@@ -24,13 +26,16 @@ fail-soft: опечатка менеджера не роняет приложе�
 from __future__ import annotations
 
 import json
+import logging
+import sqlite3
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from dashboard.db import read_conn
+from database.schema_ready import SCHEMA_READY_USER_VERSION
 from domain.regform.labels import STATUS_LABELS
 from domain.settings.schema import SETTINGS_SCHEMA
 
@@ -44,6 +49,8 @@ from miniapp.deps import (
 from miniapp.file_tokens import mint_file_token
 from miniapp.routers.program import program_section_visible
 from miniapp.routers.shop import shop_section_visible
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -310,8 +317,21 @@ def theme_css(request: Request) -> Response:
 
 
 @router.get("/app/health")
-def health() -> dict:
-    return {"status": "ok"}
+def health(request: Request) -> JSONResponse:
+    """200, когда PRAGMA user_version догнал миграции бота. Иначе 503, не 500."""
+    db_path = request.app.state.cfg.db_path
+    try:
+        if not db_path or not Path(db_path).is_file():
+            return JSONResponse({"status": "migrating"}, status_code=503)
+        with read_conn(db_path) as conn:
+            row = conn.execute("PRAGMA user_version").fetchone()
+        version = int(row[0]) if row else 0
+    except (OSError, sqlite3.Error, TypeError, ValueError) as exc:
+        logger.warning("miniapp health: не удалось прочитать user_version (%s)", exc)
+        return JSONResponse({"status": "migrating"}, status_code=503)
+    if version < SCHEMA_READY_USER_VERSION:
+        return JSONResponse({"status": "migrating"}, status_code=503)
+    return JSONResponse({"status": "ok"})
 
 
 @router.get("/app/api/me")
