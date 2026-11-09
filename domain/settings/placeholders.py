@@ -135,7 +135,8 @@ def hint(key: str, prompt: str | None = None) -> str:
     """«Подстановки: {x} — подпись; … Скобки бот заменит сам.» или пустая строка. Если в
     подсказке ключа (`prompt`) подстановки уже перечислены, строка не дублируется."""
     expected = expected_placeholders(key)
-    if not expected or (prompt and "Подстановки:" in prompt):
+    visible = [(n, lbl) for n, lbl in expected.items() if n != "city"]
+    if not visible or (prompt and "Подстановки:" in prompt):
         return ""
-    parts = "; ".join(f"{{{n}}} — {lbl or n}" for n, lbl in expected.items())
+    parts = "; ".join(f"{{{n}}} — {lbl or n}" for n, lbl in visible)
     return f"Подстановки: {parts}. Скобки бот заменит сам."

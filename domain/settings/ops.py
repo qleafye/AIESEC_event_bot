@@ -40,8 +40,8 @@ from dataclasses import dataclass
 
 from config import config
 from domain.cities import (
-    PER_CITY_SEP, city_codes, city_label, city_tab_base, get_setting_typed_for_city,
-    normalize_city, split_per_city_key, tab_suffix,
+    ALL_CITIES, PER_CITY_SEP, city_codes, city_label, city_tab_base, get_city,
+    get_setting_typed_for_city, normalize_city, split_per_city_key, tab_suffix,
 )
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from domain.regform.presets import apply_reg_preset
@@ -268,6 +268,21 @@ SHEET_TAB_NAME_KEYS: tuple[str, ...] = (
     "polls_sheet_tab", "game_matrix_tab", "game_history_tab", "game_coins_log_tab", "preselect_tab",
     "history_sheet_tab", "questions_sheet_tab", "enroll_sessions_tab", "enroll_people_tab",
 )
+
+_DELEGATE_PREVIEW_TYPES = frozenset({"text", "textarea"})
+
+
+def needs_delegate_preview(key: str) -> bool:
+    """Текст, который читает делегат: до записи менеджер видит, как он прочитается.
+
+    Вкладка таблицы, приписка листа и служебный префикс — не письмо делегату.
+    Тумблер, число, дата, список, фото и файл сюда не входят.
+    """
+    base = base_setting_key(key)
+    if base in SHEET_TAB_NAME_KEYS or base == "sheet_tab_bot_prefix" or base.startswith("city_tab_suffix__"):
+        return False
+    entry = SETTINGS_SCHEMA.get(base) or {}
+    return entry.get("type") in _DELEGATE_PREVIEW_TYPES
 
 # Городские треки (kind), у которых есть отдельный лист = база города + приписка
 # (cities.tab_suffix). "main" — не трек, суффикса нет, база города И ЕСТЬ главная вкладка.
@@ -911,7 +926,7 @@ def _text_placeholder_chips(key: str, entry_type: str | None) -> list[dict[str, 
     return [
         {"token": token, "label": label}
         for token, label in settings_placeholders.expected_placeholders(key).items()
-        if label
+        if label and token != "city"
     ]
 
 
@@ -1288,6 +1303,8 @@ async def preview_samples(city_code: str | None = None) -> dict[str, str]:
     Дедлайн и реквизиты — город шапки, если он выбран. Без города остаются общими.
     Само значение, которое менеджер сейчас правит, в этот словарь не входит."""
     samples = dict(PREVIEW_SAMPLES)
+    if city_code and city_code != ALL_CITIES and get_city(city_code):
+        samples["city"] = await city_label(city_code)
     event_title = await get_setting("event_name")
     if event_title and event_title.strip():
         samples["event"] = event_title.strip()
