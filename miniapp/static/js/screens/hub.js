@@ -513,11 +513,16 @@ function dismissManagerViewForce() {
 
 let seasonRecapCelebrated = false;
 
+// Право плитки — в одном месте. Цикла счётчиков нет: чужая ручка рисовала «Нет доступа».
+function managerFetcherFor(me, fetcher) {
+  return Array.isArray(me && me.caps) && me.caps.includes(fetcher.cap);
+}
+
 async function renderManagerHub(root, ctx, opts = {}) {
   // opts оставлен: ветка анкеты и переключатель роли по-прежнему передают skipHero.
   void opts;
   const { h, api, navigate, me } = ctx;
-  const hasCap = (cap) => Array.isArray(me && me.caps) && me.caps.includes(cap);
+  const hasCap = (cap) => managerFetcherFor(me, { cap });
 
   // Квик 260915-4mu: плитка мастера первой настройки — первым блоком экрана, ПЕРЕД
   // подсказками ниже. Решение «показывать/нет» и текст прогресса считает сервер
@@ -549,6 +554,9 @@ async function renderManagerHub(root, ctx, opts = {}) {
   // Подсказка про незаданную «🗓 Дата отсчёта до форума» (quick 260903, D-06): текст и решение
   // «показывать/нет» считает сервер — hub.js только рисует. Отказ ручки даёт хаб без строки,
   // а не падение экрана. Строка про настройку, не про очередь.
+  // Пока ответ не пришёл — скелетон, не «…». И при ошибке, и после ответа скелетон снимается.
+  const hintsMeta = h("div", { class: "skeleton skeleton--meta", text: "" });
+  if (canSettings) root.append(hintsMeta);
   let countdown = null;
   let quietQueue = null;
   try {
@@ -557,7 +565,13 @@ async function renderManagerHub(root, ctx, opts = {}) {
     // Quick 260904-dq1: «в очереди: N» — тот же fail-soft приём, что countdown выше; текст
     // считает сервер, hub.js только рисует строку, когда она непустая.
     quietQueue = hints && hints.quiet_queue ? hints.quiet_queue : null;
+    hintsMeta.textContent = "";
+    hintsMeta.classList.remove("skeleton", "skeleton--meta");
+    hintsMeta.remove();
   } catch (_) {
+    hintsMeta.textContent = "";
+    hintsMeta.classList.remove("skeleton", "skeleton--meta");
+    hintsMeta.remove();
     countdown = null;
     quietQueue = null;
   }
@@ -637,7 +651,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
 
   // Входы папки «День форума»: расписание без отдельной капы (null), остальные — право ручки.
   const forumDayEntryCaps = ["checkin", null, "checkin", "moderate_reg", "checkin"];
-  const forumDayVisible = forumDayEntryCaps.some((cap) => cap == null || hasCap(cap));
+  const forumDayVisible = forumDayEntryCaps.some((cap) => cap == null || managerFetcherFor(me, { cap }));
   const workRows = [
     { cap: "moderate_reg", icon: "clipboard-list", title: "Отбор заявок", hash: "#/applications" },
     { cap: "checkin", icon: "camera", title: "Сканер QR", hash: "#/scanner" },
