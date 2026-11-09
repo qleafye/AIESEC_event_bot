@@ -75,11 +75,15 @@ OWN_SCREENS = {
     "session_remind_text": "handlers/forum/admin_session_remind.py",
     "session_morning_head": "handlers/forum/admin_session_remind.py",
     "session_morning_overview_head": "handlers/forum/admin_session_remind.py",
-    "checkin_qr_broadcast_enabled": "handlers/forum/admin_checkin.py",
     "checkin_qr_broadcast_time": "handlers/forum/admin_checkin.py",
     "checkin_qr_morning_repeat_time": "handlers/forum/admin_checkin.py",
     "checkin_qr_morning_catchup_until": "handlers/forum/admin_checkin.py",
     "miniapp_theme_pattern": "handlers/settings/admin_miniapp_theme.py",
+    # Пульт амбассадора пишет ключ через setting_key(), литерал — в карте кнопок.
+    "amb_show_link_stats": "handlers/amb/amb_panel.py",
+    # Экран «🗓 Интервью» пишет даты через _FIELDS, не литералом в set_setting.
+    "interview_window_start": "handlers/admin_interviews.py",
+    "interview_window_end": "handlers/admin_interviews.py",
 }
 
 # Читается в чате, но в экран бота не выводится — и почему.
