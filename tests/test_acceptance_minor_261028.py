@@ -40,7 +40,12 @@ def _code_lines(path):
 def test_hub_has_no_ellipsis_meta():
     src = HUB_JS.read_text(encoding="utf-8")
     assert 'meta: "…"' not in src
-    assert not any("…" in ln for ln in _code_lines(HUB_JS))
+    # Плитка больше не зависает на «…». Единственное многоточие в коде — пустая цифра
+    # карточки «Сезон прошёл»: её требует карточка сезона, это не подпись плитки.
+    offenders = [ln.strip() for ln in _code_lines(HUB_JS) if "…" in ln]
+    assert offenders == [
+        'const asFigure = (value) => (value == null ? "…" : String(value));',
+    ]
 
 
 def test_hub_single_fetcher_predicate():
