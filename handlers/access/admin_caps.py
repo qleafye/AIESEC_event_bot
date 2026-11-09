@@ -106,6 +106,12 @@ ROLES = {
         "label": "📣 Маркетинг (метки)",
         "default_caps": ["source_links"],
     },
+    # Второй владелец: полные права админки из бота, без записи в .env.
+    # Список прав — тот же ALL_CAPABILITIES, не вторая рукописная копия.
+    "owner": {
+        "label": "👑 Второй владелец",
+        "default_caps": list(ALL_CAPABILITIES),
+    },
 }
 
 

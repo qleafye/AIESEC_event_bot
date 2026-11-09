@@ -40,6 +40,47 @@ _QR_CARD_PALETTE_LABELS = {
     "white": "Белый",
 }
 
+class _AllCapabilitiesDefault(list):
+    """Дефолт `role_caps_owner`: тот же набор, что `ALL_CAPABILITIES`, без второй копии кодов.
+
+    Читается при первом обращении. Этот модуль грузится раньше бота (бот импортирует реестр),
+    поэтому на уровне модуля списка прав ещё нет.
+    """
+
+    def _fill(self):
+        if getattr(self, "_filled", False):
+            return
+        try:
+            from handlers.access.admin_caps import ALL_CAPABILITIES
+        except ImportError:
+            return
+        self.extend(ALL_CAPABILITIES)
+        self._filled = True
+
+    def __bool__(self):
+        return True
+
+    def __iter__(self):
+        self._fill()
+        return super().__iter__()
+
+    def __len__(self):
+        self._fill()
+        return super().__len__()
+
+    def __eq__(self, other):
+        self._fill()
+        return list.__eq__(self, other)
+
+    def __getitem__(self, item):
+        self._fill()
+        return super().__getitem__(item)
+
+    def __repr__(self):
+        self._fill()
+        return super().__repr__()
+
+
 # REG-01: event-group entries — labels/prompts copied byte-for-byte from the pre-migration
 # literal SETTINGS_FIELDS/PHOTO_FIELDS/FILE_FIELDS tables (handlers/admin.py) so the render
 # snapshot test proves zero drift. Order of the text/enum keys matches the pre-migration
@@ -4274,6 +4315,19 @@ SETTINGS_SCHEMA = {
     },
     "role_marketing_manager_enabled": {
         "type": "enum", "group": "roles", "label": "📣 Роль «Маркетинг (метки)»",
+        "options": ["on", "off"], "prompt": None, "default": "on",
+    },
+    # Второй владелец: все права админки. Дефолт — ссылка на ALL_CAPABILITIES, не второй список.
+    "role_caps_owner": {
+        "type": "list", "group": "roles", "label": "👑 Права роли: Второй владелец",
+        "prompt": (
+            "Отмечайте права галочками в боте: 🔧 Управление → «👥 Роли и доступы» → "
+            "«✏️ Права роли: 👑 Второй владелец»."
+        ),
+        "default": _AllCapabilitiesDefault(),
+    },
+    "role_owner_enabled": {
+        "type": "enum", "group": "roles", "label": "👑 Роль «Второй владелец»",
         "options": ["on", "off"], "prompt": None, "default": "on",
     },
 
