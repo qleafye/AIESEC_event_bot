@@ -287,8 +287,11 @@ def test_root_parity_with_cities_off(tmp_path):
     assert _rows(asyncio.run(admin_keyboard_for(ADMIN_ID))) == _rows(asyncio.run(build_admin_keyboard(ADMIN_ID)))
 
 
-def test_root_with_cities_puts_readiness_into_header_row(tmp_path):
+def test_root_with_cities_puts_readiness_into_header_row(tmp_path, monkeypatch):
     from handlers.settings.admin_core import admin_keyboard_for
+    # Кнопка «Настройки» рисуется только при адресе дашборда. Соседние тесты пишут его
+    # прямо в config и не всегда возвращают пустым — на общем прогоне ряд становится 11-м.
+    monkeypatch.setattr(config, "DASHBOARD_PUBLIC_URL", "")
     _ready(tmp_path)
     _cities_on()
     asyncio.run(db.set_setting("amb_team_selection_enabled", "on"))  # худший случай: 9 разделов
