@@ -136,9 +136,10 @@ def test_city_header_common_enum_has_buttons_and_label(tmp_path):
     assert "<b>Форум СкиллАп</b>" in text and "<b>skillup</b>" not in text
     assert "Общая настройка" in text and "Пришлите новое значение" not in text
     assert [r[0].callback_data for r in kb.inline_keyboard][:4] == [f"settings_enum_pick:{i}" for i in range(4)]
-    # on/off без option_labels — тоже словами.
-    _run(db.set_setting("payment_enabled", "on"))
-    text, kb = _run(admin_settings._settings_edit_screen("payment_enabled", "spb"))
+    # on/off без option_labels — тоже словами. payment_enabled свой у города,
+    # поэтому общий тумблер — тихие часы.
+    _run(db.set_setting("quiet_hours_enabled", "on"))
+    text, kb = _run(admin_settings._settings_edit_screen("quiet_hours_enabled", "spb"))
     assert "<b>Включено</b>" in text
     assert [r[0].text for r in kb.inline_keyboard][:2] == ["✅ Включено", "Выключено"]
 
@@ -224,11 +225,11 @@ def test_enum_screen_says_current_value_or_default_both_headers(tmp_path):
         text, _kb = _run(admin_settings._settings_edit_screen("reg_university_mode", header))
         dflt = admin_settings_enum.enum_label("reg_university_mode", SETTINGS_SCHEMA_DEFAULT("reg_university_mode"))
         assert f"Сейчас: <b>{dflt}</b> (по умолчанию)" in text, header
-        text, _kb = _run(admin_settings._settings_edit_screen("payment_enabled", header))
+        text, _kb = _run(admin_settings._settings_edit_screen("quiet_hours_enabled", header))
         assert "Сейчас: <b>" in text and "(по умолчанию)" in text, header
         text, _kb = _run(admin_settings._settings_edit_screen("event_type", header))
         assert "Сейчас: <b>Форум</b> (по умолчанию)" in text, header  # дефолт реестра — forum
-        text, _kb = _run(admin_settings._settings_edit_screen("pending_notify_mode", header))
+        text, _kb = _run(admin_settings._settings_edit_screen("apps_queue_sort_by_score", header))
         assert "Сейчас: <b>" in text
     _run(db.set_setting("event_type", "conference"))
     for header in (None, "spb"):
