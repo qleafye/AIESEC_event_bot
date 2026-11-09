@@ -303,7 +303,8 @@ _PARTY_FIELD_ORDER = [
     "party_fork_text", *_DT.PARTY_FIELD_ORDER,
 ]
 _CONSENT_FIELD_ORDER = [
-    "consent_button_text", "consent_list", "consent_version", "consent_recollect_text",
+    "consent_button_text", "consent_list", "consent_broadcast_list",
+    "consent_version", "consent_recollect_text",
 ]
 
 # Phase 09.1 (A): every editable text in the free-form submission flow, one group
