@@ -152,6 +152,12 @@ class FindPerson(StatesGroup):
     # /find без аргумента ждёт @username, числовой id или пересланное сообщение.
     waiting = State()
 
+
+class FindWrite(StatesGroup):
+    # «✉️ Написать» с карточки /find: ждём одно сообщение менеджера и копируем его делегату.
+    # telegram_id несёт state.get_data() (findw_tid), тот же приём, что ResumeReplace.
+    waiting = State()
+
 class GameTaskCreate(StatesGroup):
     # Phase 9 (GAME-01/02/03, wave 2, 09-02): one State per task-creation wizard step.
     # category/proof_type are driven by inline buttons (not free text), but the state is

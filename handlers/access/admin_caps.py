@@ -1362,6 +1362,10 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "resumerep_start:*": "moderate_reg",
     "resumerep_cancel:*": "moderate_reg",
     "state:ResumeReplace:*": "moderate_reg",
+    # «✉️ Написать» с карточки /find (handlers/applications/admin_find_write.py).
+    "findw_start:*": "moderate_reg",
+    "findw_cancel:*": "moderate_reg",
+    "state:FindWrite:*": "moderate_reg",
 
 
     # Идея №20 бэклога чек-ина (бюро находок): мастер «🧳 Нашли вещь»
