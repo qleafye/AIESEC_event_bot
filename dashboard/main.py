@@ -317,6 +317,13 @@ def build_page_context(
     auto_reject_people = (
         queries.auto_reject_people_count(conn, scope) if auto_reject_rows else None
     )
+    # У главной своего выбранного дня нет — «сегодня» считает reserve_counts тем же
+    # msk_now, что плитки KPI. Выбранный день экрана передаётся аргументом day.
+    reserve = (
+        queries.reserve_counts(conn, scope)
+        if flags.get("reject_rules_enabled") == "on"
+        else None
+    )
     daily_rows = (
         queries.daily_registrations(conn, scope)
         if flags.get("dashboard_block_dynamics") == "on"
@@ -460,6 +467,7 @@ def build_page_context(
             auto_reject_rows and auto_reject_people is not None
             and sum(count for _label, count in auto_reject_rows) > auto_reject_people
         ),
+        "reserve": reserve,
         "dynamics_enabled": daily_rows is not None,
         "daily_chart": daily_chart,
         "city_cut": (
