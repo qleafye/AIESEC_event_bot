@@ -811,6 +811,22 @@ def test_nudge_toggle_off_sends_and_marks_as_before(tmp_path, monkeypatch):
     monkeypatch.setattr(db_mod, "get_nudge_candidates", fake_get_candidates)
     monkeypatch.setattr(db_mod, "mark_nudged", fake_mark_nudged)
     monkeypatch.setattr(sched, "get_setting", fake_get_setting)
+
+    async def _seed():
+        # Тихие часы выключены: догонялка уходит, если у кандидата есть старт анкеты.
+        await db_mod.set_setting("nudge_enabled", "on")
+        await db_mod.set_setting("nudge_after_minutes", "120")
+        await db_mod.set_setting("nudge_text", "Продолжите")
+        await db_mod.set_setting("quiet_hours_enabled", "off")
+        async with db_mod._connect() as conn:
+            await conn.execute(
+                "INSERT OR REPLACE INTO reg_started (telegram_id, username, started_at) "
+                "VALUES (?, ?, ?)",
+                (DELEGATE, "@u", "2020-01-01 10:00:00"),
+            )
+            await conn.commit()
+
+    asyncio.run(_seed())
     sched._bot = _FakeMeBot()
 
     asyncio.run(sched.nudge_incomplete_registrations())
