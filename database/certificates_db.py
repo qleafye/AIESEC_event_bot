@@ -385,6 +385,14 @@ async def send_counts() -> dict[str, int]:
     return {r[0]: int(r[1]) for r in rows}
 
 
+async def announced_ids() -> set[int]:
+    """Кому уже ушло «сертификат готов» — один SELECT на проход джобы, не claim на каждого."""
+    async with _db._connect() as db:
+        async with db.execute("SELECT telegram_id FROM certificate_announces") as cur:
+            rows = await cur.fetchall()
+    return {int(row[0]) for row in rows}
+
+
 async def claim_announce(telegram_id: int) -> bool:
     """`True` — этому человеку «сертификат готов» ещё не писали, место занято за нами."""
     async with _db._connect() as db:

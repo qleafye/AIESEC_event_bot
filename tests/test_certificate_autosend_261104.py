@@ -91,6 +91,29 @@ def test_kind_variants_list_roles_are_all_days():
     assert certs.kind_variants(cdb.KIND_PARTICIPANT, variants) == variants
 
 
+def test_job_does_not_claim_people_already_told(tmp_path, monkeypatch):
+    bot = _DocBot()
+    _arm(tmp_path, monkeypatch, bot)
+    other = UID + 1
+    _run(db.add_user({
+        "telegram_id": other, "full_name": "Бобов Боб",
+        "registration_date": "2026-01-01", "event_city": "msk",
+    }))
+    _run(_set_user(other, "bobby", "Бобов Боб"))
+    _paste("volunteer", "@anna — Иванова Анна\n@bobby — Бобов Боб")
+    _run(cdb.claim_announce(UID))
+    calls = []
+    real = certs.cdb.claim_announce
+
+    async def _count(tid):
+        calls.append(tid)
+        return await real(tid)
+
+    monkeypatch.setattr(certs.cdb, "claim_announce", _count)
+    assert _run(certs.announce_job()) == 1
+    assert calls == [other]
+
+
 def test_job_sends_list_name_and_does_not_repeat(tmp_path, monkeypatch):
     bot = _DocBot()
     _arm(tmp_path, monkeypatch, bot, username=VOL)

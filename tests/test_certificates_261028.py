@@ -118,6 +118,13 @@ def test_claim_announce_once(tmp_path):
     assert not asyncio.run(cdb.claim_announce(UID))
 
 
+def test_announced_ids_reads_everyone_already_told(tmp_path):
+    _use_db(tmp_path)
+    asyncio.run(cdb.claim_announce(UID))
+    asyncio.run(cdb.claim_announce(UID + 1))
+    assert asyncio.run(cdb.announced_ids()) == {UID, UID + 1}
+
+
 # ── делегат ────────────────────────────────────────────────────────────────────────────
 
 def _callback(data: str):
