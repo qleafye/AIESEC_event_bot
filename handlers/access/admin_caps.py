@@ -28,30 +28,11 @@ from domain.settings.schema import get_setting_typed
 # Phase 09.2 (D): city filter for capability_holders/notify_by_capability. domain/cities.py imports
 # only config/database.db/settings_schema (see domain/cities.py's own module docstring) -- it never
 # imports handlers.*, so importing it here from handlers/access/admin_caps.py cannot form a cycle.
+from domain.access.capabilities import ALL_CAPABILITIES, ROLES, role_caps_key, role_enabled_key
 from domain.cities import cities_module_on, normalize_city
 from services.access import staff_reach  # 29.09: отметка «уведомления не доходят», fail-soft
 
 logger = logging.getLogger(__name__)
-
-# D-06: exactly seven capabilities, in this order. Moderation of applications and receipts
-# is intentionally ONE capability (payments are off on YouLead); gamification is separate;
-# admins hold all seven via the ADMIN_IDS bootstrap short-circuit below.
-ALL_CAPABILITIES = [
-    "moderate_reg",
-    "moderate_receipts",
-    "moderate_game",
-    "broadcast",
-    "settings",
-    "stats",
-    "checkin",
-    # D-41 (ревью 28.09): одобрять человека у стойки — отдельно от отметки входа. Волонтёру
-    # у двери зала (D-42) хватает `checkin`; решение о пропуске неодобренного — у DXP/DXR и
-    # волонтёров регистрации (роль reg_volunteer ниже) и у держателей moderate_reg.
-    "checkin_approve",
-    # Роль «📣 Маркетинг (метки)»: ссылки с метками и их статистика — и больше ничего. Право
-    # само по себе ни одного экрана с данными делегатов не открывает (см. ADMIN_CAPS ниже).
-    "source_links",
-]
 
 CAP_LABELS = {
     "moderate_reg": "📋 Модерация заявок",
@@ -64,64 +45,6 @@ CAP_LABELS = {
     "checkin_approve": "📝 Одобрение на месте",
     "source_links": "🔗 Ссылки с метками",
 }
-
-# D-07: roles fixed in code today (admin / reg_manager / game_manager), but the SHAPE is
-# data-driven — a fourth role costs exactly one entry here plus two SETTINGS_SCHEMA keys
-# (role_caps_<role>/role_<role>_enabled), no refactor. D-12: "admin" deliberately has NO
-# entry here and NO registry keys — admin access is config.ADMIN_IDS, un-revocable from the
-# bot; see resolve_capabilities()'s bootstrap short-circuit below.
-# Quick 260919 (ln7): stats_manager is exactly that promised next entry — one row here, two
-# SETTINGS_SCHEMA keys, nothing else.
-ROLES = {
-    "reg_manager": {
-        "label": "🛂 Менеджер регистраций",
-        "default_caps": ["moderate_reg", "moderate_receipts"],
-    },
-    "game_manager": {
-        "label": "🎮 Менеджер геймификации",
-        "default_caps": ["moderate_game"],
-    },
-    "stats_manager": {
-        "label": "📊 Менеджер статистики",
-        "default_caps": ["stats"],
-    },
-    # Идея №5 бэклога чек-ина (`.planning/IDEAS-CHECKIN-BACKLOG-260924.md`): волонтёр,
-    # приглашённый ссылкой (`handlers/forum/admin_volunteer_invite.py`) или добавленный вручную тем
-    # же общим экраном «👥 Роли и доступы» — держит РОВНО право `checkin`, ничего больше.
-    # Заведена как обычная запись ROLES (не спецказус) — ссылка-приглашение зовёт тот же
-    # `database.db.add_staff(role="volunteer")`, что и ручная выдача.
-    "volunteer": {
-        "label": "🎗 Волонтёр форума",
-        "default_caps": ["checkin"],
-    },
-    # D-41 (ревью 28.09): волонтёр стойки регистрации — отметка входа И одобрение на месте.
-    # Выдаётся ссылкой-приглашением с опцией «с одобрением на месте» или вручную.
-    "reg_volunteer": {
-        "label": "🎗 Волонтёр регистрации",
-        "default_caps": ["checkin", "checkin_approve"],
-    },
-    # Маркетолог (запрос РилТолка): ставит свои метки на ссылки и смотрит, сколько заявок
-    # пришло по каждой, — без заявок, контактов и настроек.
-    "marketing_manager": {
-        "label": "📣 Маркетинг (метки)",
-        "default_caps": ["source_links"],
-    },
-    # Второй владелец: полные права админки из бота, без записи в .env.
-    # Список прав — тот же ALL_CAPABILITIES, не вторая рукописная копия.
-    "owner": {
-        "label": "👑 Второй владелец",
-        "default_caps": list(ALL_CAPABILITIES),
-    },
-}
-
-
-def role_caps_key(role: str) -> str:
-    return f"role_caps_{role}"
-
-
-def role_enabled_key(role: str) -> str:
-    return f"role_{role}_enabled"
-
 
 async def resolve_capabilities(telegram_id: int) -> set[str]:
     """Fresh SQLite read every call (D-05 — no cache). ADMIN_IDS bootstrap short-circuits to

@@ -51,7 +51,7 @@ class _AllCapabilitiesDefault(list):
         if getattr(self, "_filled", False):
             return
         try:
-            from handlers.access.admin_caps import ALL_CAPABILITIES
+            from domain.access.capabilities import ALL_CAPABILITIES
         except ImportError:
             return
         self.extend(ALL_CAPABILITIES)
