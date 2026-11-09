@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from config import config
 from domain.settings.ops import (
@@ -83,3 +84,18 @@ def test_header_city_fills_sample_name_stays_ivan(tmp_path):
     assert blank["city"] == PREVIEW_SAMPLES["city"]
     assert every["city"] == PREVIEW_SAMPLES["city"]
     assert named["amount"] == PREVIEW_SAMPLES["amount"]
+
+
+def test_dialog_data_shows_payment_the_way_a_delegate_reads_it():
+    spec = item_spec(PAY, raw=None, value="", is_default=True)
+    assert spec["delegate_preview"] is True
+    shown = preview_text(PAY, SETTINGS_SCHEMA[PAY]["default"], samples=dict(PREVIEW_SAMPLES))
+    assert PREVIEW_SAMPLES["amount"] in shown and "{amount}" not in shown
+    assert PREVIEW_SAMPLES["deadline"] in shown and "{deadline}" not in shown
+    tokens = [chip["token"] for chip in spec["placeholders"]]
+    assert "amount" in tokens and "deadline" in tokens and "city" not in tokens
+    number = item_spec("nudge_after_minutes", raw="120", value="120", is_default=False)
+    assert number["delegate_preview"] is False
+    js = (Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "settings.js").read_text(encoding="utf-8")
+    assert "loadDelegatePreview" in js and "item.delegate_preview" in js
+    assert "/admin/settings/preview" in js and "function buildPreviewButton" in js
