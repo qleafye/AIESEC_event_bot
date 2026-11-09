@@ -8,7 +8,7 @@ INVARIANT (13-01 cap-test): каждый декоратор `@router.*` — в �
 """
 import html as html_module
 
-from aiogram import F, types
+from aiogram import Bot, F, types
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import POLL_STATUS_LABELS, count_poll_deliveries, get_poll
@@ -42,7 +42,18 @@ def _ints(data: str, n: int) -> list[int] | None:
         return None
 
 
-async def render_survey_card(poll: dict) -> tuple[str, InlineKeyboardMarkup]:
+async def _nudge_scope(admin_id: int | None):
+    if admin_id is None:
+        return None
+    from handlers.settings.admin_core import _admin_city_view
+
+    scope, _ = await _admin_city_view(admin_id)
+    return scope
+
+
+async def render_survey_card(
+    poll: dict, admin_id: int | None = None,
+) -> tuple[str, InlineKeyboardMarkup]:
     pid = poll["id"]
     status = POLL_STATUS_LABELS.get(poll["status"], poll["status"])
     started, finished = await count_survey_progress(pid)
@@ -67,7 +78,7 @@ async def render_survey_card(poll: dict) -> tuple[str, InlineKeyboardMarkup]:
     if poll["status"] == "open":
         from services.comms.survey_nudge import nudge_ids
 
-        n = len(await nudge_ids(pid))
+        n = len(await nudge_ids(pid, city_scope=await _nudge_scope(admin_id)))
         if n:
             rows.append([_btn(f"📣 Напомнить несдатчикам ({n})", f"psv_nudge:{pid}")])
     rows.append([_btn("📄 Копировать опрос", f"psv_copy:{pid}")])
@@ -169,6 +180,37 @@ async def survey_copy(callback: types.CallbackQuery):
     await _edit(callback, *screen)
 
 
+@router.callback_query(F.data.startswith("psv_nudge_go:"))
+async def survey_nudge_go(callback: types.CallbackQuery, bot: Bot):
+    # go раньше ask: psv_nudge_go: иначе попадает под startswith("psv_nudge:").
+    nums = _ints(callback.data, 1)
+    if nums is None:
+        await callback.answer("Откройте карточку анкеты заново.", show_alert=True)
+        return
+    poll = await _load_survey(callback, nums[0])
+    if poll is None:
+        return
+    if poll.get("status") != "open":
+        await callback.answer("Анкета уже закрыта.", show_alert=True)
+        return
+    from services.comms.survey_nudge import nudge_ids, send_nudge
+
+    scope = await _nudge_scope(callback.from_user.id)
+    ids = await nudge_ids(poll["id"], city_scope=scope)
+    if not ids:
+        await callback.answer("Несдатчиков среди пришедших сегодня нет.", show_alert=True)
+        text, kb = await render_survey_card(poll, admin_id=callback.from_user.id)
+        await _edit(callback, text, kb)
+        return
+    await callback.answer("Отправляю…")
+    sent, failed = await send_nudge(bot, poll, ids)
+    text, kb = await render_survey_card(poll, admin_id=callback.from_user.id)
+    note = f"Напомнил {sent}."
+    if failed:
+        note += f" Не дошло: {failed}."
+    await _edit(callback, note + "\n\n" + text, kb)
+
+
 @router.callback_query(F.data.startswith("psv_nudge:"))
 async def survey_nudge_ask(callback: types.CallbackQuery):
     nums = _ints(callback.data, 1)
@@ -180,7 +222,7 @@ async def survey_nudge_ask(callback: types.CallbackQuery):
         return
     from services.comms.survey_nudge import nudge_ids
 
-    n = len(await nudge_ids(poll["id"]))
+    n = len(await nudge_ids(poll["id"], city_scope=await _nudge_scope(callback.from_user.id)))
     if n == 0:
         await callback.answer("Несдатчиков среди пришедших сегодня нет.", show_alert=True)
         return
@@ -195,33 +237,4 @@ async def survey_nudge_ask(callback: types.CallbackQuery):
     ])
     await _edit(callback, text, kb)
     await callback.answer()
-
-
-@router.callback_query(F.data.startswith("psv_nudge_go:"))
-async def survey_nudge_go(callback: types.CallbackQuery):
-    nums = _ints(callback.data, 1)
-    if nums is None:
-        await callback.answer("Откройте карточку анкеты заново.", show_alert=True)
-        return
-    poll = await _load_survey(callback, nums[0])
-    if poll is None:
-        return
-    if poll.get("status") != "open":
-        await callback.answer("Анкета уже закрыта.", show_alert=True)
-        return
-    from services.comms.survey_nudge import nudge_ids, send_nudge
-
-    ids = await nudge_ids(poll["id"])
-    if not ids:
-        await callback.answer("Несдатчиков среди пришедших сегодня нет.", show_alert=True)
-        text, kb = await render_survey_card(poll)
-        await _edit(callback, text, kb)
-        return
-    await callback.answer("Отправляю…")
-    sent, failed = await send_nudge(callback.bot, poll, ids)
-    text, kb = await render_survey_card(poll)
-    note = f"Напомнил {sent}."
-    if failed:
-        note += f" Не дошло: {failed}."
-    await _edit(callback, note + "\n\n" + text, kb)
 

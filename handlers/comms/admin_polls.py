@@ -126,14 +126,16 @@ async def show_admin_polls_closed(callback: types.CallbackQuery):
     await callback.answer()
 
 
-async def render_poll_card(poll_id: int) -> tuple[str, InlineKeyboardMarkup] | None:
+async def render_poll_card(
+    poll_id: int, admin_id: int | None = None,
+) -> tuple[str, InlineKeyboardMarkup] | None:
     head = await get_poll(poll_id)
     if head is not None and head.get("kind") == "survey":
         from handlers.comms.admin_survey_builder import render_survey_draft
         from handlers.comms.admin_survey_results import render_survey_card
         if head["status"] == "draft":
             return await render_survey_draft(poll_id)
-        return await render_survey_card(head)
+        return await render_survey_card(head, admin_id=admin_id)
     results = await get_poll_results(poll_id)
     if results is None:
         return None
@@ -175,7 +177,7 @@ async def show_poll_card(callback: types.CallbackQuery):
     if await _poll_out_of_scope(callback.from_user.id, poll):
         await callback.answer(_OUT_OF_SCOPE, show_alert=True)
         return
-    text, kb = await render_poll_card(pid)
+    text, kb = await render_poll_card(pid, callback.from_user.id)
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
@@ -200,7 +202,7 @@ async def poll_close_action(callback: types.CallbackQuery, bot: Bot):
         note = "⏹ Анкета закрыта — новые ответы больше не принимаются."
     elif failed:
         note += f", не удалось у {failed} (чат недоступен — ответы от них уже не придут)"
-    text, kb = await render_poll_card(pid)
+    text, kb = await render_poll_card(pid, callback.from_user.id)
     await callback.message.edit_text(f"{note}\n\n{text}", parse_mode="HTML", reply_markup=kb)
 
 

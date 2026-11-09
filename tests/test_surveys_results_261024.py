@@ -91,7 +91,7 @@ def _open_survey(title="Анкета"):
 
 
 def test_callbacks_require_broadcast():
-    for key in ("psv_res:1:0", "psv_txt:1:0", "psv_copy:1"):
+    for key in ("psv_res:1:0", "psv_txt:1:0", "psv_copy:1", "psv_nudge:1", "psv_nudge_go:1"):
         assert required_capability(callback_data=key) == "broadcast", key
 
 

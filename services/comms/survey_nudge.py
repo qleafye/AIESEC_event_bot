@@ -1,5 +1,11 @@
-"""Догонялка анкеты: пришли сегодня и не закончили."""
+"""Догонялка несдатчиков анкеты с карточки опроса.
+
+Не «всем approved»: только те, кому приглашение уже ушло, кто сегодня отметился на входе
+и ещё не закончил. Город — из шапки менеджера, как у остальной аудитории опросов.
+"""
 from __future__ import annotations
+
+import logging
 
 from database.db import (
     CHECKIN_DAY_TODAY,
@@ -9,6 +15,8 @@ from database.db import (
 )
 from database.survey_db import finished_survey_user_ids
 from services.infra.timeutil import msk_now
+
+logger = logging.getLogger(__name__)
 
 
 async def arrived_today_ids(*, city_scope=None) -> set[int]:
@@ -40,6 +48,7 @@ async def send_nudge(bot, poll, user_ids: list[int]) -> tuple[int, int]:
         try:
             await _send_invite(bot, poll, tid, now)
             sent += 1
-        except Exception:
+        except Exception as e:
             failed += 1
+            logger.info("survey_nudge: не дошло id=%s poll=%s: %s", tid, poll.get("id"), e)
     return sent, failed
