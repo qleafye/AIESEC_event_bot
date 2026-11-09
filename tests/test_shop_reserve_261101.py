@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
 import re
 
 import aiosqlite
@@ -539,6 +541,17 @@ def test_counter_callbacks_need_game_right():
     for data in ("shp_resv", "shp_code", "shp_rc:1", "shp_rgo:1", "shp_rcan:1", "shp_rcango:1"):
         assert required_capability(callback_data=data) == "moderate_game", data
     assert required_capability(raw_state="ShopAdmin:code") == "moderate_game"
+
+
+def test_shop_csv_prefixes_formula_cells():
+    from handlers.game.admin_shop import _csv
+
+    raw = _csv(
+        ["Имя"],
+        [["=1+1"], ["+7999"], ["-1"], ["@nick"], ["\t=1"], ["Иван"], [10]],
+    )
+    rows = list(csv.reader(io.StringIO(raw.decode("utf-8-sig")), delimiter=";"))
+    assert rows[1:] == [["'=1+1"], ["'+7999"], ["'-1"], ["'@nick"], ["'\t=1"], ["Иван"], ["10"]]
 
 
 def test_sales_list_and_csv_mark_reservations(tmp_path):

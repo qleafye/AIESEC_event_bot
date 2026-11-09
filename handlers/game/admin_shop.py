@@ -30,7 +30,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import shop_db
-from database.db import get_balance, get_user
+from database.db import _csv_safe, get_balance, get_user
 from handlers.access.admin_caps import has_capability
 from handlers.admin import router
 from handlers.states import ShopAdmin
@@ -526,10 +526,11 @@ async def shop_top(callback: types.CallbackQuery):
 
 
 def _csv(header: list[str], rows: list[list]) -> bytes:
+    """`;`, utf-8-sig. Строка с `= + - @` в начале — текст, не формула Excel."""
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";")
-    writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerow([_csv_safe(cell) for cell in header])
+    writer.writerows([[_csv_safe(cell) for cell in row] for row in rows])
     return buf.getvalue().encode("utf-8-sig")
 
 
