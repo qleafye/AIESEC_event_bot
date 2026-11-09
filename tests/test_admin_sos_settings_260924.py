@@ -168,8 +168,10 @@ def test_text_edit_global_done_saves_through_generic_editor(tmp_path):
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:done"), state))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _FakeMessage(text="Ок, спасибо!", user_id=SUPERADMIN_ID)
     _run(admin_settings.settings_edit_value(msg, state))
+    _run(confirm_delegate_preview(msg, state))
     assert _run(db.get_setting("sos_done_text")) == "Ок, спасибо!"
 
 
@@ -178,8 +180,10 @@ def test_text_edit_global_expired_saves_through_generic_editor(tmp_path):
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:expired"), state))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _FakeMessage(text="Время вышло, напиши заново.", user_id=SUPERADMIN_ID)
     _run(admin_settings.settings_edit_value(msg, state))
+    _run(confirm_delegate_preview(msg, state))
     assert _run(db.get_setting("sos_collecting_expired_text")) == "Время вышло, напиши заново."
 
 
@@ -289,8 +293,10 @@ def test_text_edit_global_failed_saves_through_generic_editor(tmp_path):
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:failed"), state))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _FakeMessage(text="Подойди к волонтёру в жёлтой футболке.", user_id=SUPERADMIN_ID)
     _run(admin_settings.settings_edit_value(msg, state))
+    _run(confirm_delegate_preview(msg, state))
     assert _run(db.get_setting("sos_delivery_failed_text")) == "Подойди к волонтёру в жёлтой футболке."
 
 
@@ -301,8 +307,10 @@ def test_text_edit_percity_contact_module_on_writes_composite_key(tmp_path):
     _run(_enable_cities_module())
     state = _new_state(BOUND_MSK_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:contact"), state))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _FakeMessage(text="+7 999 000-00-00", user_id=BOUND_MSK_ID)
     _run(admin_settings.settings_edit_value(msg, state))
+    _run(confirm_delegate_preview(msg, state))
     assert _run(db.get_setting(cities.per_city_key("sos_fallback_contact_text", "msk"))) == "+7 999 000-00-00"
     assert _run(db.get_setting("sos_fallback_contact_text")) is None
 
@@ -316,8 +324,10 @@ def test_text_edit_percity_contact_clear_with_dash(tmp_path):
     _run(db.set_setting(key, "+7 999 000-00-00"))
     state = _new_state(BOUND_MSK_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:contact"), state))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _FakeMessage(text="-", user_id=BOUND_MSK_ID)
     _run(admin_settings.settings_edit_value(msg, state))
+    _run(confirm_delegate_preview(msg, state))
     assert _run(db.get_setting(key)) is None
 
 
@@ -391,8 +401,10 @@ def test_after_save_and_cancel_manager_is_offered_the_sos_screen_back(tmp_path):
     _ready(tmp_path)
     state = _new_state(SUPERADMIN_ID)
     _run(admin_sos.asos_settings_edit_start(_FakeCallback("asos_settings_edit:sent"), state))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _FakeMessage(text="Сигнал у оргкомитета!", user_id=SUPERADMIN_ID)
     _run(admin_settings.settings_edit_value(msg, state))
+    _run(confirm_delegate_preview(msg, state))
     assert _run(db.get_setting("sos_sent_text")) == "Сигнал у оргкомитета!"
     assert _cbs(msg.last_markup) == ["asos_settings"]
 

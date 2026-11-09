@@ -23,6 +23,7 @@ import asyncio
 
 from config import config
 from database import db
+from tests._delegate_preview import confirm_delegate_preview
 from handlers import admin as admin_mod
 from handlers.regform import admin_reg_percity  # module-size split: per-city questions/prompts screens
 from handlers.settings import admin_settings
@@ -272,12 +273,16 @@ def test_reg_prompt_edit_party_city_key_isolated_from_full_track(tmp_path):
     full_cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     full_state = FakeState()
     asyncio.run(admin_reg_percity.reg_prompt_edit(full_cb, full_state))
-    asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("Общий per-city текст"), full_state))
+    full_msg = FakeMsgIn("Общий per-city текст")
+    asyncio.run(admin_settings.settings_edit_value(full_msg, full_state))
+    asyncio.run(confirm_delegate_preview(full_msg, full_state))
 
     party_cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}:party")
     party_state = FakeState()
     asyncio.run(admin_reg_percity.reg_prompt_edit(party_cb, party_state))
-    asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("Party-текст города"), party_state))
+    party_msg = FakeMsgIn("Party-текст города")
+    asyncio.run(admin_settings.settings_edit_value(party_msg, party_state))
+    asyncio.run(confirm_delegate_preview(party_msg, party_state))
 
     assert asyncio.run(db.get_setting(cities.per_city_key(BASE_KEY, "spb"))) == "Общий per-city текст"
     assert asyncio.run(db.get_setting(cities.per_city_key(PARTY_BASE_KEY, "spb"))) == "Party-текст города"
@@ -297,7 +302,9 @@ def test_write_via_settings_edit_value_writes_city_key_not_global(tmp_path):
     state = FakeState()
     asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
 
-    asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("Питерский текст"), state))
+    msg = FakeMsgIn("Питерский текст")
+    asyncio.run(admin_settings.settings_edit_value(msg, state))
+    asyncio.run(confirm_delegate_preview(msg, state))
 
     assert asyncio.run(db.get_setting(BASE_KEY)) == "Глобальный текст"
     resolved = asyncio.run(cities.get_setting_for_city(BASE_KEY, "spb"))
@@ -315,7 +322,9 @@ def test_dash_clears_city_key_leaves_global_untouched(tmp_path):
     cb = FakeCallback(f"reg_prompt_edit:{STEP_KEY}")
     state = FakeState()
     asyncio.run(admin_reg_percity.reg_prompt_edit(cb, state))
-    asyncio.run(admin_settings.settings_edit_value(FakeMsgIn("-"), state))
+    msg = FakeMsgIn("-")
+    asyncio.run(admin_settings.settings_edit_value(msg, state))
+    asyncio.run(confirm_delegate_preview(msg, state))
 
     assert asyncio.run(db.get_setting(cities.per_city_key(BASE_KEY, "spb"))) is None
     assert asyncio.run(db.get_setting(BASE_KEY)) == "Глобальный текст"

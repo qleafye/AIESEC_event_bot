@@ -69,8 +69,10 @@ def _flow(entry, cb_data, value, header, *, switch_to=None):
     assert not any(alert for _t, alert in cb.answers), cb.answers  # вход не отказал
     if switch_to is not None:
         run(set_admin_city(ADMIN_ID, switch_to))
+    from tests._delegate_preview import confirm_delegate_preview
     msg = _Msg(value)
     run(admin_settings.settings_edit_value(msg, state))
+    run(confirm_delegate_preview(msg, state))
     return msg.sent
 
 

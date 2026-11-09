@@ -138,6 +138,8 @@ class EditSetting(StatesGroup):
     # Подтверждение «Пропала подстановка — сохранить всё равно?»: менеджер убрал из текста
     # скобки {…}, которые бот подставляет сам (callback'и phchk_*).
     waiting_for_placeholder_confirm = State()
+    # Текст, который читает делегат: «Было / Как прочитает» до записи (callback'и txtprev_*).
+    waiting_for_text_confirm = State()
 
 class SettingsSearch(StatesGroup):
     # «🔎 Найти настройку» (handlers/settings/admin_settings_search.py): менеджер пишет слово.

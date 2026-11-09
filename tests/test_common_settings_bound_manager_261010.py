@@ -16,6 +16,7 @@ from handlers.settings import admin_settings_enum as se
 from handlers.settings import admin_settings_global as gscope
 from handlers.settings import admin_settings_lists as sl
 from handlers.states import EditSetting
+from tests._delegate_preview import confirm_delegate_preview
 from tests.test_admin_sections_ia20 import FakeCallback, _enable_cities
 from tests.test_roles_phase8 import ADMIN_ID, MANAGER_ID, _flat_callback_data, _roles_ready
 
@@ -109,7 +110,9 @@ def test_bound_manager_still_edits_own_city_value(tmp_path):
     code = _bound_manager(tmp_path)
     state = _state(MANAGER_ID)
     asyncio.run(st.settings_edit_city(FakeCallback(f"settings_edit_city:{CITY_KEY}", user_id=MANAGER_ID), state))
-    asyncio.run(st.settings_edit_value(FakeMessage("Своя ссылка Питера", MANAGER_ID), state))
+    msg = FakeMessage("Своя ссылка Питера", MANAGER_ID)
+    asyncio.run(st.settings_edit_value(msg, state))
+    asyncio.run(confirm_delegate_preview(msg, state))
     assert asyncio.run(db.get_setting(cities.per_city_key(CITY_KEY, code))) == "Своя ссылка Питера"
     assert asyncio.run(db.get_setting(CITY_KEY)) is None
 
@@ -120,7 +123,9 @@ def test_unbound_manager_and_superadmin_write_common_as_before(tmp_path):
         asyncio.run(cities.set_admin_city(uid, cities.city_codes()[1]))
         state = _state(uid)
         asyncio.run(gscope.settings_edit_all(FakeCallback(f"settings_edit_all:{COMMON_KEY}", user_id=uid), state))
-        asyncio.run(st.settings_edit_value(FakeMessage(value, uid), state))
+        msg = FakeMessage(value, uid)
+        asyncio.run(st.settings_edit_value(msg, state))
+        asyncio.run(confirm_delegate_preview(msg, state))
         assert asyncio.run(db.get_setting(COMMON_KEY)) == value
 
 

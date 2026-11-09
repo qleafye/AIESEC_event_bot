@@ -2726,6 +2726,9 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
             return
         # probe == (False, 0): tab doesn't exist yet — fall through to the normal silent save.
 
+    if await ph.offer_text_preview(message, state, key, value):
+        return
+
     # Quick 260820-rms: вторая половина аудита правок — db.set_setting пишет ЧТО изменилось,
     # эта строка пишет КТО. Без неё разбор «кто положил /start в источники» упирается в пустой
     # лог (20.08 именно так и вышло).

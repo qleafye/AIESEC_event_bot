@@ -91,6 +91,8 @@ def _edit(tmp_path, key, text, preset=None):
         raised = False
         try:
             await admin_settings.settings_edit_value(message, state)
+            from tests._delegate_preview import confirm_delegate_preview
+            await confirm_delegate_preview(message, state)
         except SkipHandler:
             raised = True
         return raised, await db.get_setting(key)
