@@ -125,11 +125,17 @@ def test_game_settings_schema_has_nine_keys_in_game_group():
     # 28.10: +18 -- тексты брони в магазине баллов (shop_*: «Взять», «🎫 Мои брони», отмена,
     # подпись QR брони, уведомления делегату со стойки) — делегатские тексты группы game.
     # 28.10: +3 -- фото товаров альбомом на витрине (кнопка, подпись к фото, текст сбоя).
-    assert len(keys) == 90
+    # 09.11: +1 -- часы работы шопа на витрине делегата (shop_hours_text).
+    assert len(keys) == 91
     for moved in ("amb_tier1_threshold", "amb_progress_text", "wave_start_message_text"):
         assert s.SETTINGS_SCHEMA[moved]["group"] == "amb"
     for k in keys:
-        assert s.SETTINGS_SCHEMA[k]["default"] not in (None, "")
+        # Пустые часы работы — строку на витрине не показываем. Выдуманный дефолт
+        # назвал бы чужой шоп.
+        if k == "shop_hours_text":
+            assert s.SETTINGS_SCHEMA[k]["default"] == ""
+            continue
+        assert s.SETTINGS_SCHEMA[k]["default"] not in (None, ""), k
 
 
 def test_game_settings_group_registered_in_admin():
