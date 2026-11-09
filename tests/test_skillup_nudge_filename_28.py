@@ -6,7 +6,8 @@ pytest-asyncio недоступен в этом окружении — async ч�
 `tests/test_reg_finalize.py`).
 
 Задача 1 (`services/scheduler.py::nudge_incomplete_registrations`/`_nudge_remaining_for`):
-- без `{remaining}` в тексте — ни одного вызова `get_reg_draft` (байт-в-байт прежнее поведение);
+- без `{remaining}` текст уходит как есть; черновик джоба всё равно читает — сверить свежесть
+  правки с городским порогом (широкое SQL-окно в 1 минуту само этого не делает);
 - с `{remaining}` — свой остаток на каждого кандидата, `.replace`, не `.format`;
 - черновик не прочитался -> человеческое слово вместо числа, никогда не голые фигурные скобки;
 - `mark_nudged` (D-14, ровно один раз) и тихие часы (пропуск без пометки) не тронуты.
@@ -69,8 +70,24 @@ def _patch_common(monkeypatch, sched, db_mod, *, candidates, nudge_text, marked_
     monkeypatch.setattr(db_mod, "mark_nudged", fake_mark_nudged)
     monkeypatch.setattr(sched, "get_setting", fake_get_setting)
 
+    async def _seed():
+        # Джоба заново читает reg_started и городские nudge_* (не модульный get_setting).
+        await db_mod.set_setting("nudge_enabled", "on")
+        await db_mod.set_setting("nudge_after_minutes", "120")
+        await db_mod.set_setting("nudge_text", nudge_text)
+        async with db_mod._connect() as conn:
+            for tid in candidates:
+                await conn.execute(
+                    "INSERT OR REPLACE INTO reg_started (telegram_id, username, started_at) "
+                    "VALUES (?, ?, ?)",
+                    (tid, "@u", "2020-01-01 10:00:00"),
+                )
+            await conn.commit()
 
-# ── Задача 1: без {remaining} — поведение байт-в-байт, ни одного get_reg_draft ────────────
+    asyncio.run(_seed())
+
+
+# ── Задача 1: без {remaining} — текст как есть, черновик только для свежести правки ────────
 
 def test_nudge_without_placeholder_unchanged(tmp_path, monkeypatch):
     _ready(tmp_path, "nudge_plain.db")
@@ -83,10 +100,6 @@ def test_nudge_without_placeholder_unchanged(tmp_path, monkeypatch):
         candidates=[DELEGATE_PLAIN], nudge_text="Продолжите анкету, пожалуйста",
         marked_out=marked,
     )
-
-    async def _boom(_tid):
-        raise AssertionError("get_reg_draft must not be called without {remaining}")
-    monkeypatch.setattr(db_mod, "get_reg_draft", _boom)
 
     bot = _FakeMeBot()
     sched._bot = bot
@@ -217,10 +230,6 @@ def test_nudge_respects_quiet_hours(tmp_path, monkeypatch):
     async def fake_defer_until(_now, _uid):
         return datetime(2026, 9, 8, 9, 0, 0)  # «спит» -- конец окна тихих часов
     monkeypatch.setattr(quiet_hours, "defer_until", fake_defer_until)
-
-    async def _boom(_tid):
-        raise AssertionError("get_reg_draft must not be called for a quiet-hours candidate")
-    monkeypatch.setattr(db_mod, "get_reg_draft", _boom)
 
     bot = _FakeMeBot()
     sched._bot = bot
