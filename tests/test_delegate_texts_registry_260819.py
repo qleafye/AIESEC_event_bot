@@ -276,15 +276,21 @@ def _referral_link(uid=DELEGATE_ID):
     return f"https://t.me/{FakeBotUser.username}?start=amb_{uid}"
 
 
+def _threshold_tail():
+    """Строка порога дописывается к ссылке, не вместо неё."""
+    return _default("amb_invite_threshold_with_count_text").format(count=0, threshold=5, left=5)
+
+
 def test_referral_link_prompt_uses_registry_default(tmp_path):
     _db_ready(tmp_path)
     _seed_delegate()
 
     message = FakeMessage()
     asyncio.run(ua_mod.my_referral_link(message, FakeBot()))
-    assert message.answers_sent == [
-        _default("referral_link_prompt_text").format(link=_referral_link())
-    ]
+    link = _referral_link()
+    text = message.answers_sent[0]
+    assert link in text
+    assert text == _default("referral_link_prompt_text").format(link=link) + "\n\n" + _threshold_tail()
 
 
 def test_referral_link_prompt_setting_overrides_default(tmp_path):
@@ -294,7 +300,10 @@ def test_referral_link_prompt_setting_overrides_default(tmp_path):
 
     message = FakeMessage()
     asyncio.run(ua_mod.my_referral_link(message, FakeBot()))
-    assert message.answers_sent == [f"Зови друзей: {_referral_link()}"]
+    link = _referral_link()
+    text = message.answers_sent[0]
+    assert link in text
+    assert text == f"Зови друзей: {link}\n\n{_threshold_tail()}"
 
 
 def test_referral_list_empty_uses_registry_default_then_setting(tmp_path):
