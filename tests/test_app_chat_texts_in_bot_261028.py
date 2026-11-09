@@ -96,7 +96,8 @@ def test_bind_group_sits_in_manage_right_after_chat():
     rows = admin_sections._declared_rows("manage")
     i = rows.index(("group", "chat"))
     assert rows[i + 1] == ("group", "chat_bind_texts")
-    assert rows[i + 2] == ("group", "system")
+    # Группа system из раздела убрана: владелец экрана больше не выводится из SECTIONS.
+    assert ("group", "system") not in rows
 
 
 def test_group_keyboards_offer_editing_of_the_new_texts(tmp_path):
