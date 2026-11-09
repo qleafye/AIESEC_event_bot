@@ -62,7 +62,7 @@ class _FakeCallback:
 def test_append_go_exception_from_apply_shows_message_not_crash(tmp_path, monkeypatch):
     _db_ready(tmp_path)
 
-    async def raising_apply(*, city_scope=None):
+    async def raising_apply(*, city_scope=None, by_admin=None):
         raise RuntimeError("Sheets API упала (тест)")
 
     monkeypatch.setattr(admin_sheet_reconcile, "apply_append_missing", raising_apply)
@@ -85,7 +85,7 @@ def test_append_go_partial_crash_shows_done_of_total(tmp_path, monkeypatch):
     M», а не общее «ничего не записано» (это неправда -- часть УЖЕ записана)."""
     _db_ready(tmp_path)
 
-    async def crashed_apply(*, city_scope=None):
+    async def crashed_apply(*, city_scope=None, by_admin=None):
         return {
             "ok": False, "crashed": True, "error": "таблица не ответила",
             "done": 2, "failed": [], "total": 5,
@@ -107,7 +107,7 @@ def test_append_go_partial_crash_shows_done_of_total(tmp_path, monkeypatch):
 def test_status_go_exception_from_apply_shows_message_not_crash(tmp_path, monkeypatch):
     _db_ready(tmp_path)
 
-    async def raising_apply(*, city_scope=None):
+    async def raising_apply(*, city_scope=None, by_admin=None):
         raise RuntimeError("Sheets API упала (тест)")
 
     monkeypatch.setattr(admin_sheet_reconcile, "apply_fix_statuses", raising_apply)
@@ -126,7 +126,7 @@ def test_status_go_exception_from_apply_shows_message_not_crash(tmp_path, monkey
 def test_status_go_partial_crash_shows_done_of_total(tmp_path, monkeypatch):
     _db_ready(tmp_path)
 
-    async def crashed_apply(*, city_scope=None):
+    async def crashed_apply(*, city_scope=None, by_admin=None):
         return {
             "ok": False, "crashed": True, "error": "таблица не ответила",
             "done": 1, "failed": [], "total": 3,
