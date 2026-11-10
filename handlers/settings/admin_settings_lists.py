@@ -209,9 +209,13 @@ async def settings_list_add_item(message: types.Message, state: FSMContext):
     value = (message.text or "").strip()
 
     if not value or value == "-":
+        if key == "consent_broadcast_list":
+            example = "<code>Согласие на съёмку|photo</code>"
+        else:
+            example = "<code>Узнал(-а) от друга</code>"
         await message.answer(
             "Не понял пункт — пришлите его <b>текстом</b> одним сообщением "
-            "(например: <code>Узнал(-а) от друга</code>).\n\n"
+            f"(например: {example}).\n\n"
             "Выйти без изменений — «❌ Отмена».",
             parse_mode="HTML",
         )
