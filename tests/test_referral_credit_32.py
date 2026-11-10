@@ -586,7 +586,7 @@ def test_backfill_apply_creates_rows_without_wave_source_backfill(tmp_path):
     summary = _run(referrals.backfill_approved(dry_run=False))
 
     assert summary == {
-        "candidates": 1, "credited": 1, "coins": 25, "ambassadors": 1,
+        "candidates": 1, "credited": 1, "coins": 25, "skipped_zero": 0, "ambassadors": 1,
         "season": None, "breakdown": [
             {"referrer_id": 9202, "referrer_name": "Delegate 9202", "invitees": 1, "coins": 25},
         ],
@@ -611,7 +611,7 @@ def test_backfill_second_run_does_not_duplicate(tmp_path):
     summary2 = _run(referrals.backfill_approved(dry_run=False))
 
     assert summary2 == {
-        "candidates": 0, "credited": 0, "coins": 0, "ambassadors": 0,
+        "candidates": 0, "credited": 0, "coins": 0, "skipped_zero": 0, "ambassadors": 0,
         "season": None, "breakdown": [],
     }
     assert _referral_credit_count() == 1
