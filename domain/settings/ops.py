@@ -133,6 +133,9 @@ HTML_SETTINGS = {
     # tests/test_delegate_texts_registry_260819.py::test_html_promise_in_prompt_matches_html_settings.
     "pending_gate_text",
     "waitlist_delegate_text",  # уведомление о листе ожидания уходит с parse_mode=HTML
+    # Напоминание и отмена слота: send_message без parse_mode, у бота дефолт HTML.
+    # Сырой «<» из message.text роняет отправку; отмена слота ещё и глотает ошибку.
+    "interview_reminder_text", "interview_slot_cancelled_text",
     "poll_intro_text",  # опросы: вступление шлётся send_message с parse_mode=HTML (default бота)
     "start_returning_cta_text", "recall_generic_prompt_text",
     "payment_option_picker_header_text", "payment_details_template_text",

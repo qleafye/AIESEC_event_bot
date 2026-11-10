@@ -747,6 +747,16 @@ def test_render_snapshot_apps(tmp_path):
     assert "admin_sec:apps" in flat
 
 
+def test_interview_outbound_texts_are_html_in_the_editor():
+    """Напоминание и отмена слота уходят send_message без parse_mode: у бота дефолт HTML.
+    Редактор обязан брать html_text, иначе «<» роняет отправку, а отмена слота ошибку глотает."""
+    from domain.settings.schema import SETTINGS_SCHEMA
+
+    for key in ("interview_reminder_text", "interview_slot_cancelled_text"):
+        assert key in admin_settings.HTML_SETTINGS
+        assert "html" in SETTINGS_SCHEMA[key]["prompt"].lower()
+
+
 def test_render_snapshot_pay(tmp_path):
     _admin_ready(tmp_path)
     text = asyncio.run(admin_settings.render_settings_group_text("pay"))
