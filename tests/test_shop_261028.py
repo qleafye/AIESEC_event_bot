@@ -202,7 +202,7 @@ def test_one_page_has_no_nav(tmp_path):
     _run(shop_db.add_item("Шоппер", 10, None, None))
     _run(shop_db.set_open(True))
     text = _run(shop_delegate.showcase_text(UID))
-    assert "Страница" not in text and "на форуме" in text
+    assert "Страница" not in text and "на мероприятии" in text
     assert "shopv_p:" not in "".join(_datas(_run(shop_delegate.showcase_kb(UID))))
     home, kb = _run(adm.home_text_kb())
     assert "из" not in home
