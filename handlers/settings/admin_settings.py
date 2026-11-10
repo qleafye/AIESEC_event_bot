@@ -2023,6 +2023,12 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
             "\n\n<i>Добавьте или уберите один пункт кнопками ниже. Переписать всё сразу — "
             "«✏️ Заменить список целиком».</i>"
         )
+        if _base_setting_key(key) == "consent_broadcast_list":
+            text += (
+                "\n\nКаждый пункт: <code>Видимое название|ключ</code>, "
+                "например <code>Согласие на съёмку|photo</code>. "
+                "Без ключа кнопка в рассылке не появится."
+            )
     elif is_enum or current:  # enum: «Сейчас: …» и без своего значения — подпись дефолта
         now = enum_now_line(key, current) if is_enum else f"Сейчас задано:\n<b>{html_module.escape(current)}</b>"
         text = f"{now}\n\n{text}"

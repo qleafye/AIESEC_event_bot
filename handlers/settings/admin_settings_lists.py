@@ -182,10 +182,17 @@ async def settings_list_add_start(callback: types.CallbackQuery, state: FSMConte
         await callback.answer(error, show_alert=True)
         return
     items = await _current_items(target, base)
+    if key == "consent_broadcast_list":
+        example = (
+            "Один пункт за сообщение в виде <code>Видимое название|ключ</code>, "
+            "например <code>Согласие на съёмку|photo</code>."
+        )
+    else:
+        example = "Один пункт за сообщение (например: <code>Узнал(-а) от друга</code>)."
     text = (
         f"➕ <b>{_label(key)}</b> — новый пункт\n\n"
         "Пришлите текст пункта одним сообщением — он встанет в конец списка.\n"
-        "Один пункт за сообщение (например: <code>Узнал(-а) от друга</code>).\n\n"
+        f"{example}\n\n"
         f"Сейчас в списке: {len(items)}."
     )
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=_cancel_kb(key))
@@ -224,6 +231,11 @@ async def settings_list_add_item(message: types.Message, state: FSMContext):
             parse_mode="HTML",
         )
         return
+    if key == "consent_broadcast_list":
+        from domain.settings.validation import consent_broadcast_list_error
+        if item_error := consent_broadcast_list_error(value):
+            await message.answer(item_error, parse_mode="HTML")
+            return
 
     # 09.3 WR-01: право и контекст перепроверяются в момент записи — пока менеджер печатал,
     # шапка/привязка к городу могли измениться.

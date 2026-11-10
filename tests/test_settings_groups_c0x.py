@@ -828,6 +828,24 @@ def test_render_snapshot_party(tmp_path):
     assert "admin_sec:form" in flat
 
 
+def test_broadcast_consent_line_without_key_is_rejected():
+    """Рассылка берёт только «название|ключ». Обычная фраза с кнопки «добавить пункт»
+    не должна сохраняться: иначе список «задан», а кнопки в письме нет."""
+    from domain.settings.validation import validate_setting_value
+
+    saved, error = validate_setting_value(
+        "consent_broadcast_list", "Согласие на съёмку|photo",
+    )
+    assert error is None
+    assert saved == "Согласие на съёмку|photo"
+    saved, error = validate_setting_value(
+        "consent_broadcast_list", "Узнал(-а) от друга",
+    )
+    assert saved is None
+    assert error and "Согласие на съёмку|photo" in error
+    assert "consent_" not in error
+
+
 def test_render_snapshot_consent(tmp_path):
     _admin_ready(tmp_path)
     text = asyncio.run(admin_settings.render_settings_group_text("consent"))
