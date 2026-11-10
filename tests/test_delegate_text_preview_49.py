@@ -109,6 +109,8 @@ def test_dialog_data_shows_payment_the_way_a_delegate_reads_it():
     will_fn = js.split("function delegateWillQuery", 1)[1].split("function loadDelegatePreview", 1)[0]
     assert "after_reset=1" in will_fn and "encodeURIComponent(item.key)" in will_fn
     assert "api(delegateWillQuery(item, value))" in js
+    was_fn = js.split("function loadDelegatePreview", 1)[1].split("function fillDelegatePreviews", 1)[0]
+    assert "const oldSource = item.raw != null ? item.raw : item.value;" in was_fn
     row = js.split("function buildOrdinaryDiffRow", 1)[1].split("function buildNeedsConfirmRow", 1)[0]
     assert "preview.will" in row
     eye = js.split("function buildPreviewButton", 1)[1].split("function applyActions", 1)[0]
