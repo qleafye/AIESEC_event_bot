@@ -376,7 +376,8 @@ async def _build_checkin_qr(user: dict) -> tuple[bytes, str, bool]:
 
     caption = await get_setting_typed("checkin_qr_caption_text") or _DEFAULT_CAPTION
     try:
-        return await _render_card(user, payload), caption, True
+        png, complete = await _render_card(user, payload)
+        return png, caption, complete
     except Exception as e:  # пропуск важнее оформления: любой сбой рендера — голый QR
         logger.warning(f"build_checkin_qr: карточка не собралась, шлём голый QR: {e}")
 
@@ -475,21 +476,21 @@ async def card_texts() -> tuple[str, str, str]:
     return title, "Покажи этот QR на входе", (event or "АЙСЕК").upper()
 
 
-async def _render_card(user: dict, payload: str) -> bytes:
-    """Оформленная карточка (`services.forum.qr_card`) — заголовок и фон из `event_name`,
-    город человеческим названием, а не кодом. Адрес ВК — из `vk_username` анкеты, если он есть.
-    Оформление — из админки (`services.forum.qr_card_theme`, без настроек — прежняя карточка)."""
+async def _render_card(user: dict, payload: str) -> tuple[bytes, bool]:
+    """`(png, картинки темы на месте)`. Второй флаг ложен, если фон или логотип заданы,
+    но не скачались: такую карточку не запоминаем, следующий показ попробует снова."""
     import asyncio
 
     from services.forum.qr_card import render_qr_card
-    from services.forum.qr_card_theme import load_card_theme  # ленивый: тема лениво импортирует checkin
+    from services.forum.qr_card_theme import load_card_theme, theme_images_missing
 
     face = await card_render_inputs(user, payload)
     theme = await load_card_theme()
-    return await asyncio.to_thread(
+    png = await asyncio.to_thread(
         render_qr_card, payload, face["name"], face["city"], face["title"], face["footer"],
         face["watermark"], face["vk"], theme=theme,
     )
+    return png, not theme_images_missing(face["theme"], theme)
 
 
 # Форум-ночь B4 (идея №8): «🧪 Проверить приложение-сканер» — волонтёр без делегатского QR
