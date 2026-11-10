@@ -147,7 +147,7 @@ async def showcase_text(telegram_id: int, lang: str = "ru", tr_map: dict | None 
     if await _reserve_live():
         lines += ["", await _t("shop_reserve_hint_text", lang, tr_map or {}, escape=True)]
     else:
-        lines += ["", "Подходи к стойке магазина на форуме и покажи свой QR из «🎟 Мой QR» — баллы спишут на месте. Нет QR — назови свой @ник."]
+        lines += ["", "Подходи к стойке магазина на мероприятии и покажи свой QR из «🎟 Мой QR» — баллы спишут на месте. Нет QR — назови свой @ник."]
     return "\n".join(lines)
 
 
