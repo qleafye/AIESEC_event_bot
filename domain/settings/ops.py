@@ -1327,6 +1327,43 @@ async def preview_samples(city_code: str | None = None) -> dict[str, str]:
     return samples
 
 
+async def _factory_delegate_text(base: str, city: str | None) -> str:
+    """Заводской текст, когда своей строки нет. Выключенная оплата — бесплатный вариант."""
+    from domain.settings.schema import _payment_enabled_for_free_text
+
+    entry = SETTINGS_SCHEMA.get(base) or {}
+    free = entry.get("default_free")
+    if isinstance(free, str) and await _payment_enabled_for_free_text(city) != "on":
+        return free
+    default = entry.get("default")
+    return default if isinstance(default, str) else ""
+
+
+async def text_after_reset(key: str, header: str | None = None) -> str:
+    """Что прочитает делегат после удаления ключа, который сейчас на экране.
+
+    Городской ключ: остаётся общий текст, даже пустой. Его нет — заводской текст
+    этого города. Общий ключ удаляется, но свой текст города шапки остаётся.
+    """
+    split = split_per_city_key(key)
+    base = split[0] if split else base_setting_key(key)
+    if split:
+        shared = await get_setting(base)
+        if shared is not None:
+            return shared
+        return await _factory_delegate_text(base, split[1])
+    from domain.cities import cities_module_on, is_per_city, per_city_key
+
+    if header and header != ALL_CITIES and await cities_module_on():
+        if is_per_city(base):
+            override_key = per_city_key(base, header)
+            if override_key:
+                own = await get_setting(override_key)
+                if own:
+                    return own
+    return await _factory_delegate_text(base, None if not header or header == ALL_CITIES else header)
+
+
 def preview_text(key: str, value: str, *, samples: dict[str, str]) -> str:
     """Текст, как его увидит делегат: подстановка образцов теми же `.replace`-цепочками, что у
     консьюмеров; для ключей HTML_SETTINGS разметка снимается (`plain_text`) — в DOM экрана

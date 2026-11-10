@@ -586,7 +586,9 @@ async function renderSection(root, code, ctx, targetKey) {
         busy = true;
         try {
           const current = pending.has(item.key) ? pending.get(item.key) : item.value;
-          const q = `key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(toBatchValue(current) || "")}`;
+          const q = current == null
+            ? `key=${encodeURIComponent(item.key)}&after_reset=1`
+            : `key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(toBatchValue(current) || "")}`;
           const resp = await api(`/admin/settings/preview?${q}`);
           body.textContent = resp.text || "";
           panel.classList.remove("hidden");
@@ -796,13 +798,21 @@ async function renderSection(root, code, ctx, targetKey) {
     return String(toBatchValue(value) ?? "");
   }
 
+  function delegateWillQuery(item, value) {
+    // Сброс ещё не записан. Городской ключ оставляет общий текст, общий — заводской.
+    if (value == null) {
+      return `/admin/settings/preview?key=${encodeURIComponent(item.key)}&after_reset=1`;
+    }
+    return `/admin/settings/preview?key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(delegatePreviewText(item, value))}`;
+  }
+
   async function loadDelegatePreview(key, item, value, gen) {
     const oldText = item.raw != null ? String(item.raw) : (item.default == null ? "" : String(item.default));
-    const query = (text) => `/admin/settings/preview?key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(text)}`;
+    const wasQuery = `/admin/settings/preview?key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(oldText)}`;
     try {
       const [wasResp, willResp] = await Promise.all([
-        api(query(oldText)),
-        api(query(delegatePreviewText(item, value))),
+        api(wasQuery),
+        api(delegateWillQuery(item, value)),
       ]);
       if (gen !== delegatePreviewGen) return;
       delegatePreview.set(key, { was: wasResp.text || "", will: willResp.text || "" });

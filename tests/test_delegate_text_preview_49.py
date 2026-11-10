@@ -5,6 +5,8 @@ import asyncio
 from pathlib import Path
 
 from config import config
+from database.db import delete_setting, get_setting, set_setting
+from domain.cities import ADMIN_CITY_KEY_PREFIX, PER_CITY_SEP
 from domain.settings.ops import (
     PREVIEW_SAMPLES,
     item_spec,
@@ -12,6 +14,8 @@ from domain.settings.ops import (
     preview_samples,
     preview_text,
 )
+from miniapp.deps import Principal
+from miniapp.routers.settings import settings_preview
 from domain.settings.placeholders import expected_placeholders, hint
 from domain.settings.schema import SETTINGS_SCHEMA
 from tests._dbtpl import fast_init_db
@@ -102,3 +106,68 @@ def test_dialog_data_shows_payment_the_way_a_delegate_reads_it():
     js = (Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "settings.js").read_text(encoding="utf-8")
     assert "loadDelegatePreview" in js and "item.delegate_preview" in js
     assert "/admin/settings/preview" in js and "function buildPreviewButton" in js
+    will_fn = js.split("function delegateWillQuery", 1)[1].split("function loadDelegatePreview", 1)[0]
+    assert "after_reset=1" in will_fn and "encodeURIComponent(item.key)" in will_fn
+    assert "api(delegateWillQuery(item, value))" in js
+    row = js.split("function buildOrdinaryDiffRow", 1)[1].split("function buildNeedsConfirmRow", 1)[0]
+    assert "preview.will" in row
+    eye = js.split("function buildPreviewButton", 1)[1].split("function applyActions", 1)[0]
+    assert "after_reset=1" in eye and "encodeURIComponent(item.key)" in eye
+
+
+def test_city_reset_preview_shows_shared_text_of_that_city(tmp_path):
+    """«Станет» после сброса города — общий текст этого города, не дефолт и не шапка."""
+    _ready(tmp_path)
+    uid = 910049
+    city_key = f"{PAY}{PER_CITY_SEP}spb"
+    own = "Свой текст города"
+    shared = "Общий счёт {amount} до {deadline}, город {city}"
+    planted = "ОБРАЗЕЦ {amount}"
+    principal = Principal(telegram_id=uid, via="cookie", caps=frozenset({"settings"}), city=None)
+
+    async def go():
+        await set_setting("event_city_enabled", "on")
+        await set_setting(f"{ADMIN_CITY_KEY_PREFIX}{uid}", "msk")
+        await set_setting(f"payment_deadline{PER_CITY_SEP}spb", "03.10.2026 18:00")
+        await set_setting(f"payment_deadline{PER_CITY_SEP}msk", "15.01.2099 10:00")
+        await set_setting(city_key, own)
+        await set_setting(PAY, shared)
+        spb = await preview_samples("spb")
+        msk = await preview_samples("msk")
+        shown = await settings_preview(city_key, planted, True, principal, principal)
+        await delete_setting(PAY)
+        missing = await settings_preview(city_key, planted, True, principal, principal)
+        await set_setting(PAY, "")
+        blank = await settings_preview(city_key, planted, True, principal, principal)
+        return spb, msk, shown, missing, blank, await get_setting(city_key), await get_setting(PAY)
+
+    spb, msk, shown, missing, blank, kept_own, kept_shared = _run(go())
+    text = shown["text"]
+    assert "Общий счёт" in text and "3500" in text
+    assert spb["deadline"] in text and spb["city"] in text
+    assert msk["deadline"] not in text and msk["city"] not in text
+    assert "Оплата участия" not in text and "ОБРАЗЕЦ" not in text
+    assert "Оплата участия" in missing["text"] and "ОБРАЗЕЦ" not in missing["text"]
+    assert spb["deadline"] in missing["text"] and msk["deadline"] not in missing["text"]
+    assert blank["text"] == ""
+    assert kept_own == own and kept_shared == ""
+
+
+def test_global_reset_preview_uses_free_text_when_payment_is_off(tmp_path):
+    _ready(tmp_path)
+    body = "reg_status_approved_step1_body_text"
+    paid = SETTINGS_SCHEMA[body]["default"]
+    free = SETTINGS_SCHEMA[body]["default_free"]
+    saved = "Свой общий шаг"
+    principal = Principal(telegram_id=910050, via="cookie", caps=frozenset({"settings"}), city=None)
+
+    async def go():
+        await set_setting("payment_enabled", "off")
+        await set_setting(body, saved)
+        shown = await settings_preview(body, "ОБРАЗЕЦ", True, principal, principal)
+        return shown, await get_setting(body)
+
+    shown, kept = _run(go())
+    assert shown["text"] == free
+    assert paid not in shown["text"] and "ОБРАЗЕЦ" not in shown["text"]
+    assert kept == saved

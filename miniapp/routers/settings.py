@@ -48,6 +48,7 @@ from domain.cities import (
     get_setting_typed_for_city,
     per_city_key,
     set_admin_city,
+    split_per_city_key,
 )
 from database.db import get_setting, settings_snapshot
 from services.applications.reject_rules_affects import affects_reject_rules
@@ -907,15 +908,27 @@ async def settings_batch(
 async def settings_preview(
     key: str = Query(...),
     value: str = Query(""),
+    after_reset: bool = Query(False),
     p: Principal = Depends(require_cap("settings")),
     _: Principal = Depends(require_section("settings")),
 ) -> dict:
     """Значение берётся из запроса (ещё не сохранённое), плейсхолдеры подставляются теми же
-    `.replace`-цепочками, что у консьюмеров бота; результат — plain-текст для DOM."""
+    `.replace`-цепочками, что у консьюмеров бота; результат — plain-текст для DOM.
+
+    `after_reset` на ключе города считает текст после удаления этого ключа и присланное
+    value не использует. В настройку ничего не пишет.
+    """
     if _editable_target(key) is None:
         raise HTTPException(403, {"reason": "not_editable", "key": key})
     selected = await admin_selected_city(p.telegram_id)
-    samples = await settings_ops.preview_samples(None if selected in (None, ALL_CITIES) else selected)
+    header = None if selected in (None, ALL_CITIES) else selected
+    split = split_per_city_key(key)
+    if after_reset:
+        value = await settings_ops.text_after_reset(key, header)
+        sample_city = split[1] if split else header
+    else:
+        sample_city = header
+    samples = await settings_ops.preview_samples(sample_city)
     return {"text": settings_ops.preview_text(key, value, samples=samples)}
 
 
