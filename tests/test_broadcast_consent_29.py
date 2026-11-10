@@ -250,6 +250,20 @@ def test_empty_list_has_no_confirm_button(tmp_path):
     run(go())
 
 
+def test_removed_key_is_not_shown_as_chosen(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        await db.set_setting("consent_broadcast_list", "Другое согласие|other")
+        state = _State(current=Broadcast.confirm.state)
+        state.data["bc_consent_key"] = "photo"
+        labels = _buttons(SimpleNamespace(inline_keyboard=await seam.confirm_row(state)))
+        assert labels == ["📸 Кнопка согласия"]
+        assert await seam.attachable_consent_key("photo") is None
+
+    run(go())
+
+
 def test_empty_list_explains(tmp_path):
     ready(tmp_path)
     state = _State(current=Broadcast.confirm.state)

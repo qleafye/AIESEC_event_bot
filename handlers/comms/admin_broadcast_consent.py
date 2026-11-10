@@ -33,15 +33,15 @@ def _choice_data(key: str) -> str:
 
 async def confirm_row(state: FSMContext) -> list:
     """Один ряд на подтверждении. Пустой список согласий для рассылки — ряда нет
-    (экран подтверждения остаётся прежним). Список есть, ничего не выбрано — «Кнопка согласия».
-    Выбрано — название и снятие."""
+    (экран подтверждения остаётся прежним). Список есть, ничего не выбрано или ключа
+    в списке уже нет — «Кнопка согласия». Выбрано и ключ ещё в списке — название и снятие."""
     entries = await broadcast_consent_entries()
     if not entries:
         return []
     key = ((await state.get_data()).get("bc_consent_key") or "").strip()
-    if not key:
+    label = next((lbl for lbl, item in entries if item == key), None)
+    if not key or label is None:
         return [[InlineKeyboardButton(text=_OPEN, callback_data="bc_consent_open")]]
-    label = next((lbl for lbl, item in entries if item == key), key)
     return [[
         InlineKeyboardButton(text=f"✅ Кнопка: {label}", callback_data="bc_consent_open"),
         InlineKeyboardButton(text=_CLEAR, callback_data="bc_consent_clear"),
