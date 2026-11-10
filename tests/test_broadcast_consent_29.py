@@ -242,6 +242,7 @@ def test_empty_list_has_no_confirm_button(tmp_path):
         assert await seam.confirm_row(state) == []
         state.data["bc_consent_key"] = "photo"
         assert await seam.confirm_row(state) == []
+        assert await seam.attachable_consent_key("photo") is None
         await db.set_setting("consent_broadcast_list", "Согласие на съёмку|photo")
         chosen = await seam.confirm_row(state)
         assert _buttons(SimpleNamespace(inline_keyboard=chosen))[0] == "✅ Кнопка: Согласие на съёмку"
