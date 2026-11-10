@@ -34,6 +34,16 @@ async def _rows(sql, *params):
             return await cur.fetchall()
 
 
+async def _insert_nick(telegram_id, username, updated_at):
+    async with db._connect() as conn:
+        await conn.execute(
+            "INSERT INTO chat_usernames (telegram_id, username, first_name, updated_at) "
+            "VALUES (?, ?, ?, ?)",
+            (telegram_id, username, None, updated_at),
+        )
+        await conn.commit()
+
+
 def _log(mid, author, ts="2026-09-27 10:00:00", **kw):
     params = dict(kind="text", text_len=10, reply_to_message_id=None, reply_to_author_id=None,
                   is_channel_post=False)
@@ -78,6 +88,21 @@ def test_set_chat_reactions_mirrors_current_state(tmp_path):
     assert _run(_rows("SELECT reaction FROM chat_reactions")) == [("👍",)]
     _run(db.set_chat_reactions(CHAT, 1, B, [], ts))
     assert _run(_rows("SELECT COUNT(*) FROM chat_reactions"))[0][0] == 0
+
+
+def test_chat_username_lookup_prefers_newer_row(tmp_path):
+    """Старая ячейка с «@» и новая без неё сходятся в одну иглу. Берём свежую."""
+    _ready(tmp_path)
+    _run(_insert_nick(900927591, "@bob", "2026-09-01 10:00:00"))
+    _run(_insert_nick(900927592, "bob", "2026-11-10 10:00:00"))
+    assert _run(db.get_telegram_id_by_chat_username("@bob")) == 900927592
+    assert _run(db.get_telegram_id_by_chat_username("bob")) == 900927592
+
+
+def test_chat_username_lookup_finds_legacy_at_sign(tmp_path):
+    _ready(tmp_path)
+    _run(_insert_nick(900927593, "@carol", "2026-09-01 10:00:00"))
+    assert _run(db.get_telegram_id_by_chat_username("@carol")) == 900927593
 
 
 def test_upsert_chat_username(tmp_path):
