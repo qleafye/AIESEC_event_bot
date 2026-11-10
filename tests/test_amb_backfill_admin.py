@@ -102,6 +102,24 @@ def test_all_zero_city_coins_say_disabled(tmp_path):
     assert "уже начислены" not in cb.message.edits[0][0]
 
 
+def test_city_coins_do_not_call_other_ambassadors_already_paid(tmp_path):
+    from domain.cities import city_codes
+
+    code = city_codes()[0]
+    _ready(tmp_path, "amb_backfill_other_city.db")
+    _run(db.set_setting("ambassador_referral_coins", "0"))
+    _all_cities()
+    _city_coins(code, "40")
+    _make_ambassador(9201, event_city=None, full_name="Без города")
+    _seed_user(9301, referrer_id=9201, event_city=None, status="approved")
+    cb = FakeCallback("ambpt_fill")
+    _run(h.amb_backfill_preview(cb))
+    text = cb.message.edits[0][0]
+    assert "уже начислены" not in text
+    assert "сейчас 0" in text
+    assert _credits() == []
+
+
 def test_city_override_does_not_count_when_city_module_off(tmp_path):
     from domain.cities import city_codes
 

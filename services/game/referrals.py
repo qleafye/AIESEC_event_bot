@@ -119,6 +119,7 @@ async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict
     candidates = 0
     credited = 0
     coins_total = 0
+    skipped_zero = 0
     ambassadors: set[int] = set()
     breakdown: dict[int, dict] = {}
 
@@ -142,6 +143,7 @@ async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict
             await get_setting_typed_for_city("ambassador_referral_coins", referrer.get("event_city")) or 0
         )
         if person_coins <= 0:
+            skipped_zero += 1
             continue
 
         candidates += 1
@@ -171,6 +173,7 @@ async def backfill_approved(*, dry_run: bool, season: str | None = None) -> dict
 
     return {
         "candidates": candidates, "credited": credited, "coins": coins_total,
+        "skipped_zero": skipped_zero,
         "ambassadors": len(ambassadors), "season": resolved_season,
         "breakdown": sorted(breakdown.values(), key=lambda e: (-e["coins"], e["referrer_id"])),
     }

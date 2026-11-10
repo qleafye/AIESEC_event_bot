@@ -92,6 +92,15 @@ async def _show_preview(callback: types.CallbackQuery) -> None:
         return
     summary = await referrals.backfill_approved(dry_run=True)
     if not summary["candidates"]:
+        if summary["skipped_zero"]:
+            await _edit(
+                callback,
+                "<b>🔁 Начислить за прошлых приглашённых</b>\n\n"
+                "Баллы за приглашённого у этих амбассадоров сейчас 0, поэтому начислять нечего. "
+                "Задайте число для их города и вернитесь сюда.",
+                InlineKeyboardMarkup(inline_keyboard=[_back_row()]),
+            )
+            return
         await _edit(
             callback,
             "<b>🔁 Начислить за прошлых приглашённых</b>\n\n"
@@ -115,6 +124,11 @@ async def _show_preview(callback: types.CallbackQuery) -> None:
         )
     if len(summary["breakdown"]) > _LIST_LIMIT:
         lines.append(f"…и ещё {len(summary['breakdown']) - _LIST_LIMIT}")
+    if summary["skipped_zero"]:
+        lines.append(
+            f"Не попадут: {summary['skipped_zero']} приглашённых — "
+            "баллы за приглашённого у их амбассадора сейчас 0."
+        )
     lines += [
         "",
         "Баллы нельзя отозвать кнопкой, как и обычное начисление за одобрение (убрать можно только "
@@ -175,6 +189,10 @@ async def amb_backfill_go(callback: types.CallbackQuery):
         text = (
             f"Готово. Начислено баллов: {summary['coins']}. Амбассадоров: {summary['ambassadors']}, "
             f"приглашённых: {summary['credited']}."
+        )
+    elif summary["skipped_zero"]:
+        text = (
+            "Готово. Новых начислений нет: у этих амбассадоров баллы за приглашённого сейчас 0."
         )
     else:
         text = "Готово. Новых начислений нет: за всех приглашённых баллы уже начислены."
