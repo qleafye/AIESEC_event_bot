@@ -233,7 +233,7 @@ def test_send_broadcast_reports_blocked_user(tmp_path, monkeypatch):
         return [{"telegram_id": 5, "full_name": "Блок", "event_city": "spb"}]
 
     async def _qr(user):
-        return b"png", ""
+        return b"png", "", True
 
     async def _render(*a, **k):
         return "cap", None
@@ -245,8 +245,10 @@ def test_send_broadcast_reports_blocked_user(tmp_path, monkeypatch):
     async def _nosleep(*_a):
         return None
 
+    from services.forum import checkin as checkin_mod
+
     monkeypatch.setattr(cbc, "eligible_recipients", _users)
-    monkeypatch.setattr(cbc, "build_checkin_qr", _qr)
+    monkeypatch.setattr(checkin_mod, "_build_checkin_qr", _qr)
     monkeypatch.setattr(cbc, "_render_for", _render)
     monkeypatch.setattr(cbc._sched, "_bot", _Bot())
     monkeypatch.setattr(cbc.asyncio, "sleep", _nosleep)

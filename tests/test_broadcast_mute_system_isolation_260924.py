@@ -115,8 +115,9 @@ def test_checkin_qr_broadcast_reaches_muted_delegate(tmp_path, monkeypatch):
         monkeypatch.setattr(cqb, "checkin_denial", fake_denial)
 
         async def fake_qr(_user):
-            return (b"PNGDATA", "caption")
-        monkeypatch.setattr(cqb, "build_checkin_qr", fake_qr)
+            return (b"PNGDATA", "caption", True)
+        from services.forum import checkin as checkin_mod
+        monkeypatch.setattr(checkin_mod, "_build_checkin_qr", fake_qr)
 
         async def fake_render(_tid, text, _maps, **_kw):
             return text, cqb._confirm_kb()
