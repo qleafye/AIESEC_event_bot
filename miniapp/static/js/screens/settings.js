@@ -807,7 +807,10 @@ async function renderSection(root, code, ctx, targetKey) {
   }
 
   async function loadDelegatePreview(key, item, value, gen) {
-    const oldText = item.raw != null ? String(item.raw) : (item.default == null ? "" : String(item.default));
+    // Своей строки нет — делегат уже читает value (бесплатный текст при выключенной оплате),
+    // а не дефолт реестра из item.default.
+    const oldSource = item.raw != null ? item.raw : item.value;
+    const oldText = oldSource == null ? "" : String(oldSource);
     const wasQuery = `/admin/settings/preview?key=${encodeURIComponent(item.base_key)}&value=${encodeURIComponent(oldText)}`;
     try {
       const [wasResp, willResp] = await Promise.all([
