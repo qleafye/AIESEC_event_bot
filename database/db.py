@@ -6825,7 +6825,9 @@ async def get_telegram_id_by_chat_username(username: str) -> int | None:
         return None
     async with _connect() as db:
         async with db.execute(
-            "SELECT telegram_id FROM chat_usernames WHERE ltrim(username, '@') = ? COLLATE NOCASE",
+            "SELECT telegram_id FROM chat_usernames "
+            "WHERE ltrim(username, '@') = ? COLLATE NOCASE "
+            "ORDER BY COALESCE(updated_at, '') DESC LIMIT 1",
             (needle,),
         ) as cursor:
             row = await cursor.fetchone()
