@@ -8,7 +8,7 @@ from database import db
 from handlers.amb import admin_amb_backfill as h
 from handlers.amb.admin_amb_points import render_points_screen
 from handlers.access.admin_caps import ADMIN_CAPS, required_capability
-from tests.test_amb_tiers_admin_su5 import FakeCallback
+from tests.test_amb_tiers_admin_su5 import ADMIN_ID, FakeCallback
 from tests.test_referral_credit_32 import _make_ambassador, _ready, _run, _seed_user, db_rows
 
 
@@ -56,6 +56,58 @@ def test_go_credits_exactly_previewed_and_repeat_is_safe(tmp_path):
 
 def test_coins_zero_is_explained_not_applied(tmp_path):
     _setup(tmp_path, coins="0")
+    cb = FakeCallback("ambpt_fill")
+    _run(h.amb_backfill_preview(cb))
+    assert "выключены (0)" in cb.message.edits[0][0]
+    assert _credits() == []
+
+
+def _city_coins(code: str, value: str) -> None:
+    from domain.cities import per_city_key
+
+    _run(db.set_setting(per_city_key("ambassador_referral_coins", code), value))
+
+
+def _all_cities() -> None:
+    from domain.cities import ALL_CITIES, set_admin_city
+
+    _run(db.set_setting("event_city_enabled", "on"))
+    assert _run(set_admin_city(ADMIN_ID, ALL_CITIES))
+
+
+def test_city_coins_open_backfill_when_global_is_zero(tmp_path):
+    from domain.cities import city_codes
+
+    code = city_codes()[0]
+    _ready(tmp_path, "amb_backfill_city.db")
+    _run(db.set_setting("ambassador_referral_coins", "0"))
+    _all_cities()
+    _city_coins(code, "40")
+    _make_ambassador(9201, event_city=code, full_name="Амбассадор Города")
+    _seed_user(9301, referrer_id=9201, event_city=code, status="approved")
+    cb = FakeCallback("ambpt_fill")
+    _run(h.amb_backfill_preview(cb))
+    text = cb.message.edits[0][0]
+    assert "выключены (0)" not in text
+    assert "Начислится: 40 баллов. Амбассадоров: 1, приглашённых: 1." in text
+    assert _credits() == []
+
+
+def test_all_zero_city_coins_say_disabled(tmp_path):
+    _setup(tmp_path, coins="0")
+    _all_cities()
+    cb = FakeCallback("ambpt_fill")
+    _run(h.amb_backfill_preview(cb))
+    assert "выключены (0)" in cb.message.edits[0][0]
+    assert "уже начислены" not in cb.message.edits[0][0]
+
+
+def test_city_override_does_not_count_when_city_module_off(tmp_path):
+    from domain.cities import city_codes
+
+    code = city_codes()[0]
+    _setup(tmp_path, coins="0")
+    _city_coins(code, "40")
     cb = FakeCallback("ambpt_fill")
     _run(h.amb_backfill_preview(cb))
     assert "выключены (0)" in cb.message.edits[0][0]
