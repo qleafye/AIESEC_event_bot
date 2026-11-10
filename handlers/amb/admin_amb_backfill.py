@@ -59,26 +59,23 @@ async def _global_only(callback: types.CallbackQuery) -> bool:
 
 
 async def _referral_coins_off() -> bool:
-    """Баллы за приглашённого — 0. Ключ городской: смотрим общее и каждое своё значение,
-    иначе пустой догон врёт «уже начислены»."""
-    from database.db import get_setting
-    from domain.cities import city_codes, get_setting_typed_for_city, is_per_city, per_city_key
+    """Баллы за приглашённого — 0 у всех, кого догон реально читает.
+
+    Ключ городской: общий ноль не гасит догон, если у города своё положительное число.
+    Выключенный модуль городов и пустой список городов читают только общее значение —
+    то же правило, что у начисления.
+    """
+    from domain.cities import city_codes, cities_module_on, get_setting_typed_for_city, is_per_city
 
     key = "ambassador_referral_coins"
     base = int(await get_setting_typed_for_city(key, None) or 0)
-    if not is_per_city(key):
+    if not is_per_city(key) or not await cities_module_on():
         return base <= 0
-    for code in city_codes():
-        composed = per_city_key(key, code)
-        raw = await get_setting(composed) if composed else None
-        if raw is None or str(raw).strip() == "":
-            value = base
-        else:
-            try:
-                value = int(raw)
-            except (TypeError, ValueError):
-                value = base
-        if value > 0:
+    codes = city_codes()
+    if not codes:
+        return base <= 0
+    for code in codes:
+        if int(await get_setting_typed_for_city(key, code) or 0) > 0:
             return False
     return True
 
