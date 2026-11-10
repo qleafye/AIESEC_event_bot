@@ -232,6 +232,23 @@ def test_picker_lists_only_broadcast_consents(tmp_path):
     run(go())
 
 
+def test_empty_list_has_no_confirm_button(tmp_path):
+    ready(tmp_path)
+
+    async def go():
+        state = _State(current=Broadcast.confirm.state)
+        assert await seam.confirm_row(state) == []
+        await db.set_setting("consent_broadcast_list", "Узнал(-а) от друга")
+        assert await seam.confirm_row(state) == []
+        state.data["bc_consent_key"] = "photo"
+        assert await seam.confirm_row(state) == []
+        await db.set_setting("consent_broadcast_list", "Согласие на съёмку|photo")
+        chosen = await seam.confirm_row(state)
+        assert _buttons(SimpleNamespace(inline_keyboard=chosen))[0] == "✅ Кнопка: Согласие на съёмку"
+
+    run(go())
+
+
 def test_empty_list_explains(tmp_path):
     ready(tmp_path)
     state = _State(current=Broadcast.confirm.state)
