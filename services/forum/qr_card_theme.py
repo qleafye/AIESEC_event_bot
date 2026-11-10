@@ -138,6 +138,20 @@ async def load_card_theme(overrides: dict | None = None, bot=None) -> CardTheme:
     return CardTheme(**fields)
 
 
+def theme_images_missing(values: dict, theme: CardTheme) -> bool:
+    """В значениях темы картинка есть, а в собранной теме её байт нет.
+
+    Отпечаток карточки хранит file_id, не байты. Запомнить такую карточку — больше
+    не пробовать скачать картинку, пока file_id тот же. Выключенный логотип на
+    карточку не рисуется, его провал скачивания не считается."""
+    if values.get(CARD_THEME_KEYS["bg_image"]) and theme.bg_image is None:
+        return True
+    logo_shown = values.get(CARD_THEME_KEYS["show_logo"]) != "off"
+    if logo_shown and values.get(CARD_THEME_KEYS["logo"]) and theme.logo is None:
+        return True
+    return False
+
+
 SAMPLE_NAME = "Иванова Анна"
 SAMPLE_CITY = "Москва"
 

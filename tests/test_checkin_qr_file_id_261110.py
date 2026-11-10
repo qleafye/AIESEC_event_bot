@@ -18,6 +18,7 @@ from database import db
 from services import scheduler as sched
 import services.checkin_broadcast as cb
 from services.forum import checkin as checkin_mod
+from services.forum.qr_card_theme import CardTheme
 from handlers import user_actions as ua_mod
 from tests.test_checkin_qr_260923 import UID, _seed_user, _set_setting, _use_tmp_db
 from tests.test_forum_bcast_fixes_261003 import _ready, _seed
@@ -206,3 +207,75 @@ def test_stale_bare_redraw_keeps_stored_card(tmp_path, monkeypatch):
     assert result["sent"] == 1
     assert builds == [7, 7]
     assert _run(db.checkin_qr_card_get(7))[1] == "fid-1"
+
+
+def _patch_theme_render(monkeypatch, draws, values, theme):
+    async def inputs(user, payload):
+        return {
+            "payload": payload,
+            "name": user.get("full_name") or "—",
+            "city": "",
+            "title": "Пропуск",
+            "footer": "вход",
+            "watermark": "АЙСЕК",
+            "vk": "",
+            "theme": values,
+        }
+
+    async def load(overrides=None, bot=None):
+        return theme
+
+    def render(*args, **kwargs):
+        draws.append(1)
+        return b"png"
+
+    monkeypatch.setattr(checkin_mod, "card_render_inputs", inputs)
+    monkeypatch.setattr("services.forum.qr_card_theme.load_card_theme", load)
+    monkeypatch.setattr("services.forum.qr_card.render_qr_card", render)
+
+
+def test_card_without_downloaded_image_is_not_cached(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path, "qr_image_miss.db")
+    _seed_user(UID)
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    draws = []
+    _patch_theme_render(
+        monkeypatch, draws,
+        {"qr_card_logo": "logo-file", "qr_card_show_logo": "on"},
+        CardTheme(),
+    )
+    _run(ua_mod.show_my_checkin_qr(_PhotoMessage()))
+    _run(ua_mod.show_my_checkin_qr(_PhotoMessage(file_id="fid-2")))
+    assert draws == [1, 1]
+    assert _run(db.checkin_qr_card_get(UID)) is None
+
+
+def test_card_without_downloaded_background_is_not_cached(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path, "qr_bg_miss.db")
+    _seed_user(UID)
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    draws = []
+    _patch_theme_render(monkeypatch, draws, {"qr_card_bg_image": "bg-file"}, CardTheme())
+    _run(ua_mod.show_my_checkin_qr(_PhotoMessage()))
+    _run(ua_mod.show_my_checkin_qr(_PhotoMessage()))
+    assert draws == [1, 1]
+    assert _run(db.checkin_qr_card_get(UID)) is None
+
+
+def test_hidden_logo_miss_still_caches(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path, "qr_logo_off.db")
+    _seed_user(UID)
+    _run(_set_setting("checkin_qr_enabled", "on"))
+    draws = []
+    _patch_theme_render(
+        monkeypatch, draws,
+        {"qr_card_logo": "logo-file", "qr_card_show_logo": "off"},
+        CardTheme(),
+    )
+    _run(ua_mod.show_my_checkin_qr(_PhotoMessage()))
+    assert _run(db.checkin_qr_card_get(UID))[1] == "fid-1"
+    second = _PhotoMessage(file_id="fid-2")
+    _run(ua_mod.show_my_checkin_qr(second))
+    assert draws == [1]
+    assert second.photos[0][0] == "fid-1"
+    assert _run(db.checkin_qr_card_get(UID))[1] == "fid-2"
