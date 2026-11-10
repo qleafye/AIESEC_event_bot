@@ -326,6 +326,52 @@ def test_city_reset_shows_shared_text_and_that_city(tmp_path):
     assert "Москва" not in city_screen
 
 
+def test_reset_preview_follows_reader(tmp_path):
+    _ready(tmp_path)
+    body = "reg_status_approved_step1_body_text"
+    city_body = f"{body}{PER_CITY_SEP}spb"
+    paid = SETTINGS_SCHEMA[body]["default"]
+    free = SETTINGS_SCHEMA[body]["default_free"]
+
+    async def go():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(f"{ADMIN_CITY_KEY_PREFIX}{ADMIN}", "msk")
+        await db.set_setting(body, "Свой общий шаг")
+        state = _state()
+        await _start(state, body)
+        msg = _Msg("-")
+        await admin_settings.settings_edit_value(msg, state)
+        free_screen = msg.sent[-1]
+
+        await db.set_setting("payment_enabled", "on")
+        await db.delete_setting(body)
+        await db.set_setting(city_body, "Свой шаг города")
+        paid_state = _state()
+        await _start(paid_state, city_body)
+        await paid_state.update_data({HEADER_AT_EDIT_START: "msk"})
+        paid_msg = _Msg("-")
+        await admin_settings.settings_edit_value(paid_msg, paid_state)
+
+        await db.delete_setting("payment_enabled")
+        await db.set_setting(KEY, "Общий текст сессии")
+        await db.set_setting(f"{KEY}{PER_CITY_SEP}spb", "Только Петербург")
+        await db.set_setting(f"{ADMIN_CITY_KEY_PREFIX}{ADMIN}", "spb")
+        keep = _state()
+        await _start(keep, KEY)
+        keep_msg = _Msg("-")
+        await admin_settings.settings_edit_value(keep_msg, keep)
+        return free_screen, paid_msg.sent[-1], keep_msg.sent[-1]
+
+    free_screen, paid_screen, keep_screen = _run(go())
+    free_will = free_screen.split("Как прочитает делегат:", 1)[1]
+    paid_will = paid_screen.split("Как прочитает делегат:", 1)[1]
+    keep_will = keep_screen.split("Как прочитает делегат:", 1)[1]
+    assert free in free_will and paid not in free_will
+    assert paid in paid_will and free not in paid_will
+    assert "Только Петербург" in keep_will
+    assert "Общий текст сессии" not in keep_will
+
+
 def test_text_preview_callbacks_are_settings():
     assert required_capability(callback_data="txtprev_save") == "settings"
     assert required_capability(callback_data="txtprev_drop") == "settings"

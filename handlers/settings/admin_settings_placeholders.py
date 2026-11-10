@@ -119,20 +119,41 @@ def _clip(text: str) -> str:
     return text[: _PREVIEW_HALF - 1].rstrip() + "…"
 
 
-async def _text_after_reset(key: str) -> str:
+async def _factory_text(base: str, city: str | None) -> str:
+    """Строки ключа нет. Выключенная оплата отдаёт бесплатный текст, иначе дефолт реестра."""
+    from domain.settings.schema import _payment_enabled_for_free_text
+
+    entry = SETTINGS_SCHEMA.get(base) or {}
+    free = entry.get("default_free")
+    if isinstance(free, str) and await _payment_enabled_for_free_text(city) != "on":
+        return free
+    default = entry.get("default")
+    return default if isinstance(default, str) else ""
+
+
+async def _text_after_reset(key: str, header: str | None) -> str:
     """Что прочитает делегат после «-».
 
-    Свой ключ города удаляется. Если общий текст задан, город читает его, не дефолт реестра.
-    У общего ключа остаётся дефолт реестра.
+    Свой ключ города удаляется: дальше читается общий текст, а пустая строка общего
+    текста так и остаётся пустой. Нет строки — заводской текст. Общий ключ удаляется,
+    но свой текст города шапки остаётся.
     """
     split = split_per_city_key(key)
     base = split[0] if split else key
     if split:
         shared = await get_setting(base)
-        if shared:
+        if shared is not None:
             return shared
-    default = SETTINGS_SCHEMA.get(base, {}).get("default")
-    return default if isinstance(default, str) else ""
+        return await _factory_text(base, split[1])
+    from domain.cities import ALL_CITIES, cities_module_on, is_per_city, per_city_key
+
+    if header and header != ALL_CITIES and is_per_city(base) and await cities_module_on():
+        override_key = per_city_key(base, header)
+        if override_key:
+            own = await get_setting(override_key)
+            if own:
+                return own
+    return await _factory_text(base, header)
 
 
 async def offer_text_preview(message: types.Message, state: FSMContext, key: str, value: str) -> bool:
@@ -149,7 +170,7 @@ async def offer_text_preview(message: types.Message, state: FSMContext, key: str
     samples = await preview_samples(split[1] if split else header)
     previous = await _previous_text(key)
     was = preview_text(key, previous, samples=samples) if isinstance(previous, str) else ""
-    incoming = await _text_after_reset(key) if value == "-" else value
+    incoming = await _text_after_reset(key, header) if value == "-" else value
     will = preview_text(key, incoming, samples=samples)
     await state.update_data(text_preview_key=key, text_preview_value=value)
     await state.set_state(EditSetting.waiting_for_text_confirm)
