@@ -33,6 +33,18 @@ def test_deadline_reminder_chips_use_human_labels_and_tokens():
     assert all(chip["label"] and "{" not in chip["label"] for chip in chips)
 
 
+def test_when_and_threshold_chips_use_human_labels():
+    """Пустая подпись чип прячет. Дата и порог должны вставляться токеном, не образцом."""
+    when = {chip["token"]: chip["label"] for chip in _chips("interview_reminder_text")}
+    assert when["when"] == "дата и время"
+    assert "{when}" not in when["when"]
+    threshold = {
+        chip["token"]: chip["label"] for chip in _chips("amb_invite_threshold_left_text")
+    }
+    assert threshold["threshold"] == "порог приглашённых"
+    assert "5" not in threshold["threshold"]
+
+
 def test_city_composite_reuses_base_placeholder_chips():
     assert _chips(f"{REMINDER}__city__msk") == _chips(REMINDER)
 
