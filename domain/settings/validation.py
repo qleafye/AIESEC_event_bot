@@ -129,6 +129,31 @@ def _forum_text_error(base: str, value: str) -> str | None:
     return None
 
 
+def consent_broadcast_list_error(value: str) -> str | None:
+    """Строка согласия для рассылки — «видимое название|ключ». Без ключа парсер её выбрасывает,
+    а экран списка уже показывает «задано», и кнопки в письме нет."""
+    segments = [
+        segment.strip()
+        for line in value.splitlines()
+        for segment in line.split(";")
+        if segment.strip()
+    ]
+    for segment in segments:
+        if "|" not in segment:
+            bad = True
+        else:
+            label, consent_key = segment.split("|", 1)
+            bad = not label.strip() or not consent_key.strip()
+        if bad:
+            return (
+                "Пункт согласия — видимое название и ключ через вертикальную черту.\n\n"
+                "Пример: <code>Согласие на съёмку|photo</code>\n\n"
+                "Без ключа кнопка в рассылке не появится. Пришлите пункт ещё раз "
+                "или нажмите «❌ Отмена»."
+            )
+    return None
+
+
 def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None]:
     """Вернуть `(нормализованное_значение, None)` при успехе или `(None, текст_ошибки)`
     при отказе. Текст ошибки — готовое HTML-сообщение менеджеру: что не так и пример
@@ -143,6 +168,11 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
         return value, None
 
     entry_type = entry.get("type")
+
+    if base == "consent_broadcast_list":
+        list_error = consent_broadcast_list_error(value)
+        if list_error:
+            return None, list_error
 
     is_menu_label = base.endswith("_menu_label") or (base.startswith("menu_") and base.endswith("_label"))
     if is_menu_label and value.strip() != "-":
