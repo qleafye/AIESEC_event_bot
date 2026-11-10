@@ -67,6 +67,9 @@ def test_city_chip_hidden_defaults_kept():
     assert "amount" in pay_tokens and "deadline" in pay_tokens and "city" not in pay_tokens
     assert "{city}" not in hint(CLOSED)
     assert hint(CLOSED) == ""
+    wrong = "regional_noshow_wrong_city_text"
+    assert "{city}" in SETTINGS_SCHEMA[wrong]["default"]
+    assert "{city} — город" not in SETTINGS_SCHEMA[wrong]["prompt"]
 
 
 def test_header_city_fills_sample_name_stays_ivan(tmp_path):
