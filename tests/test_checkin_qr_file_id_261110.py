@@ -115,12 +115,12 @@ class _BroadcastBot:
         return SimpleNamespace(photo=[SimpleNamespace(file_id="fid-fresh")])
 
 
-def _evening_then_morning(monkeypatch, bot, builds):
+def _evening_then_morning(monkeypatch, bot, builds, *, styled=True):
     async def _qr(user):
         builds.append(user["telegram_id"])
-        return b"PNG", "cap"
+        return b"PNG", "cap", styled
 
-    monkeypatch.setattr(cb, "build_checkin_qr", _qr)
+    monkeypatch.setattr(checkin_mod, "_build_checkin_qr", _qr)
     monkeypatch.setattr(sched, "_bot", bot)
     monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
     assert _run(cb.send_broadcast(None))["sent"] == 1
@@ -162,3 +162,47 @@ def test_forbidden_file_id_is_not_redrawn(tmp_path, monkeypatch):
     assert result["failed"] == 1
     assert builds == [7]
     assert len(bot.photos) == 2
+
+
+def test_broadcast_bare_qr_is_not_cached(tmp_path, monkeypatch):
+    _ready(tmp_path, "qr_bcast_bare.db")
+    _seed(7, name="Иванов Иван")
+    builds = []
+    bot = _BroadcastBot()
+    result = _evening_then_morning(monkeypatch, bot, builds, styled=False)
+    assert result["sent"] == 1
+    assert builds == [7, 7]
+    assert _run(db.checkin_qr_card_get(7)) is None
+    assert isinstance(bot.photos[0], BufferedInputFile)
+    assert isinstance(bot.photos[1], BufferedInputFile)
+
+
+def test_stale_bare_redraw_keeps_stored_card(tmp_path, monkeypatch):
+    _ready(tmp_path, "qr_stale_bare.db")
+    _seed(7, name="Иванов Иван")
+    builds = []
+
+    async def _qr(user):
+        builds.append(user["telegram_id"])
+        return b"PNG", "cap", len(builds) == 1
+
+    class _Bot:
+        def __init__(self):
+            self.bytes_sent = 0
+
+        async def send_photo(self, chat_id, photo, caption=None, reply_markup=None):
+            if isinstance(photo, str):
+                raise TelegramBadRequest(method=None, message="wrong file identifier")
+            self.bytes_sent += 1
+            return SimpleNamespace(photo=[SimpleNamespace(file_id=f"fid-{self.bytes_sent}")])
+
+    monkeypatch.setattr(checkin_mod, "_build_checkin_qr", _qr)
+    monkeypatch.setattr(sched, "_bot", _Bot())
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 2, 18, 0))
+    assert _run(cb.send_broadcast(None))["sent"] == 1
+    assert _run(db.checkin_qr_card_get(7))[1] == "fid-1"
+    monkeypatch.setattr(cb, "msk_now", lambda: datetime(2026, 10, 3, 8, 0))
+    result = _run(cb.send_morning_repeat(None))
+    assert result["sent"] == 1
+    assert builds == [7, 7]
+    assert _run(db.checkin_qr_card_get(7))[1] == "fid-1"

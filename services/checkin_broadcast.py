@@ -48,7 +48,7 @@ from database.db import (
     list_approved_users,
 )
 from services import scheduler as _sched
-from services.forum.checkin import build_checkin_qr, checkin_denial
+from services.forum.checkin import checkin_denial
 from services.daily_digest import parse_time
 from services.applications.reject_rules import forum_date_for
 from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
@@ -604,16 +604,18 @@ def _sent_file_id(message) -> str | None:
 
 
 async def _photo_for(user: dict) -> tuple[bytes | str, str | None]:
-    """Картинка рассылки: сохранённый file_id, если отпечаток тот же, иначе свежий png."""
-    from services.forum.checkin import card_fingerprint
+    """Картинка рассылки: сохранённый file_id, если отпечаток тот же, иначе свежий png.
+
+    Голый QR (карточка не собралась) не запоминаем: отпечаток в ответе None."""
+    from services.forum.checkin import _build_checkin_qr, card_fingerprint
 
     fingerprint = await card_fingerprint(user)
     if fingerprint:
         hit = await checkin_qr_card_get(int(user["telegram_id"]))
         if hit and hit[0] == fingerprint and hit[1]:
             return hit[1], fingerprint
-    png, _caption = await build_checkin_qr(user)
-    return png, fingerprint
+    png, _caption, styled = await _build_checkin_qr(user)
+    return png, fingerprint if styled else None
 
 
 async def _send_one(
@@ -621,8 +623,10 @@ async def _send_one(
     *, user: dict | None = None, fingerprint: str | None = None,
 ) -> bool:
     from aiogram.exceptions import TelegramBadRequest
+    from services.forum.checkin import _build_checkin_qr
 
     captured: dict[str, str] = {}
+    remember = {"fingerprint": fingerprint}
 
     async def _factory(cid, _png=png):
         photo = _png if isinstance(_png, str) else BufferedInputFile(_png, filename="checkin_qr.png")
@@ -631,7 +635,9 @@ async def _send_one(
         except TelegramBadRequest:
             if not isinstance(_png, str) or user is None:
                 raise
-            fresh, _caption = await build_checkin_qr(user)
+            fresh, _caption, styled = await _build_checkin_qr(user)
+            if not styled:
+                remember["fingerprint"] = None
             msg = await _sched._bot.send_photo(
                 cid, BufferedInputFile(fresh, filename="checkin_qr.png"),
                 caption=caption, reply_markup=kb,
@@ -642,8 +648,9 @@ async def _send_one(
         return msg
 
     ok = await _sched._safe_send(_factory, telegram_id, on_permanent_failure=on_permanent_failure)
-    if ok and captured.get("file_id") and fingerprint and user and user.get("telegram_id"):
-        await checkin_qr_card_put(int(user["telegram_id"]), fingerprint, captured["file_id"])
+    stored = remember["fingerprint"]
+    if ok and captured.get("file_id") and stored and user and user.get("telegram_id"):
+        await checkin_qr_card_put(int(user["telegram_id"]), stored, captured["file_id"])
     return ok
 
 
