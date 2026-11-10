@@ -48,6 +48,16 @@ async def confirm_row(state: FSMContext) -> list:
     ]]
 
 
+async def attachable_consent_key(raw) -> str | None:
+    """Ключ, который ещё есть в списке. Иначе None: ни кнопка, ни строка журнала."""
+    key = (raw or "").strip()
+    if not key:
+        return None
+    if key not in {item for _label, item in await broadcast_consent_entries()}:
+        return None
+    return key
+
+
 async def consent_button(broadcast_id, consent_key) -> InlineKeyboardMarkup | None:
     """Один ряд с видимым названием. Ключа нет в текущем списке — None, рассылка без кнопки."""
     key = (consent_key or "").strip()

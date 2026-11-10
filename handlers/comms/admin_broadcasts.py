@@ -593,7 +593,8 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
     bc_base_markup = markup_from_fsm(data.get("bc_reply_markup"))
     from handlers.comms.admin_broadcast_interview import with_interview_button
     bc_base_markup = with_interview_button(bc_base_markup, bool(data.get("bc_interview_button")))
-    picked_consent = (data.get("bc_consent_key") or "").strip() or None
+    from handlers.comms.admin_broadcast_consent import attachable_consent_key
+    picked_consent = await attachable_consent_key(data.get("bc_consent_key"))
     album_note = ""
     stored_consent = picked_consent
     if bc_album and picked_consent:
@@ -1065,7 +1066,8 @@ async def sched_go(callback: types.CallbackQuery, state: FSMContext):
     from handlers.comms.admin_broadcast_interview import pack_filter_spec
     filter_spec = pack_filter_spec(filters, bool(data.get("bc_interview_button")))
 
-    consent_key = (data.get("bc_consent_key") or "").strip() or None
+    from handlers.comms.admin_broadcast_consent import attachable_consent_key
+    consent_key = await attachable_consent_key(data.get("bc_consent_key"))
     bid = await create_scheduled_broadcast(
         text, photo, filter_spec, _fmt_dt(when), callback.from_user.id,
         important=important, consent_key=consent_key,
