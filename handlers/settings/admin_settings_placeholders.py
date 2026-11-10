@@ -19,7 +19,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from database.db import get_setting
 from handlers.admin import router
 from handlers.states import EditSetting
-from domain.cities import admin_selected_city
+from domain.cities import admin_selected_city, split_per_city_key
 from domain.settings.ops import needs_delegate_preview, preview_samples, preview_text
 from domain.settings.placeholders import TOKEN_RE, check, hint, problem_text
 from domain.settings.schema import SETTINGS_SCHEMA
@@ -119,11 +119,18 @@ def _clip(text: str) -> str:
     return text[: _PREVIEW_HALF - 1].rstrip() + "…"
 
 
-def _reset_source(key: str) -> str:
-    """Текст, который вернётся после «-»: дефолт реестра базового ключа."""
-    from domain.cities import split_per_city_key
+async def _text_after_reset(key: str) -> str:
+    """Что прочитает делегат после «-».
+
+    Свой ключ города удаляется. Если общий текст задан, город читает его, не дефолт реестра.
+    У общего ключа остаётся дефолт реестра.
+    """
     split = split_per_city_key(key)
     base = split[0] if split else key
+    if split:
+        shared = await get_setting(base)
+        if shared:
+            return shared
     default = SETTINGS_SCHEMA.get(base, {}).get("default")
     return default if isinstance(default, str) else ""
 
@@ -137,10 +144,12 @@ async def offer_text_preview(message: types.Message, state: FSMContext, key: str
     if ack is not None and ack == value:
         await state.update_data(text_preview_ack=None)
         return False
-    samples = await preview_samples(await admin_selected_city(message.from_user.id))
+    header = await admin_selected_city(message.from_user.id)
+    split = split_per_city_key(key)
+    samples = await preview_samples(split[1] if split else header)
     previous = await _previous_text(key)
     was = preview_text(key, previous, samples=samples) if isinstance(previous, str) else ""
-    incoming = _reset_source(key) if value == "-" else value
+    incoming = await _text_after_reset(key) if value == "-" else value
     will = preview_text(key, incoming, samples=samples)
     await state.update_data(text_preview_key=key, text_preview_value=value)
     await state.set_state(EditSetting.waiting_for_text_confirm)

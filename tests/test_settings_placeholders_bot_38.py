@@ -14,7 +14,9 @@ from aiogram.fsm.storage.memory import MemoryStorage
 import domain.settings.ops as settings_ops
 from config import config
 from database import db
+from domain.cities import ADMIN_CITY_KEY_PREFIX, HEADER_AT_EDIT_START, PER_CITY_SEP
 from domain.settings.ops import PREVIEW_SAMPLES
+from domain.settings.schema import SETTINGS_SCHEMA
 from handlers.access.admin_caps import required_capability
 from handlers.settings import admin_settings, admin_settings_placeholders as ph
 from handlers.states import EditSetting
@@ -286,6 +288,42 @@ def test_dash_waits_and_int_saves_now(tmp_path):
     assert cleared is None
     assert minutes == "90"
     assert not any("Как прочитает делегат" in s for s in sent)
+
+
+def test_city_reset_shows_shared_text_and_that_city(tmp_path):
+    _ready(tmp_path)
+    city_key = f"{KEY}{PER_CITY_SEP}spb"
+    closed = f"city_reg_closed_text{PER_CITY_SEP}spb"
+    shared = "Общий текст до {deadline}"
+
+    async def go():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(f"{ADMIN_CITY_KEY_PREFIX}{ADMIN}", "msk")
+        await db.set_setting(KEY, shared)
+        await db.set_setting(city_key, "Свой текст города")
+        state = _state()
+        await _start(state, city_key)
+        await state.update_data({HEADER_AT_EDIT_START: "msk"})
+        msg = _Msg("-")
+        await admin_settings.settings_edit_value(msg, state)
+        reset_screen = msg.sent[-1]
+        await ph.txtprev_save(_Cb("txtprev_save", msg), state)
+
+        other = _state()
+        await _start(other, closed)
+        await other.update_data({HEADER_AT_EDIT_START: "msk"})
+        city_msg = _Msg(SETTINGS_SCHEMA["city_reg_closed_text"]["default"])
+        await admin_settings.settings_edit_value(city_msg, other)
+        return reset_screen, city_msg.sent[-1], await db.get_setting(city_key), await db.get_setting(KEY)
+
+    reset_screen, city_screen, city_kept, shared_kept = _run(go())
+    will = reset_screen.split("Как прочитает делегат:", 1)[1]
+    assert "Общий текст" in will
+    assert "Готово, расписание подтверждено" not in will
+    assert PREVIEW_SAMPLES["deadline"] in will
+    assert city_kept is None and shared_kept == shared
+    assert "3 октября" in city_screen
+    assert "Москва" not in city_screen
 
 
 def test_text_preview_callbacks_are_settings():
