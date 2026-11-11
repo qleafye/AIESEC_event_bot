@@ -6,6 +6,7 @@
 
 RESERVE_HREF = "/app/#/reserve"
 NUDGE_HREF = "/app/#/nudge"
+LETTER_HREF = "/app/#/letter"
 
 
 def reserve_page() -> str:
@@ -23,4 +24,13 @@ def nudge_page() -> str:
         "<title>Догонялка</title>"
         "<p>Список тот же, что в приложении. Отдельного отбора на сайте нет.</p>"
         f"<p><a href=\"{NUDGE_HREF}\">Догонялка</a></p>"
+    )
+
+
+def letter_page() -> str:
+    return (
+        "<!doctype html><meta charset=\"utf-8\">"
+        "<title>Написать</title>"
+        "<p>Письмо уходит из приложения. Отдельной отправки на сайте нет.</p>"
+        f"<p><a href=\"{LETTER_HREF}\">Написать</a></p>"
     )

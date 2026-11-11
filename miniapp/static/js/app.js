@@ -96,6 +96,7 @@ export const ROUTES = [
   ["#/forum-day", "screens/forum_day.js"],
   ["#/reserve", "screens/reserve.js"],
   ["#/nudge", "screens/nudge.js"],
+  ["#/letter", "screens/letter.js"],
   // Папка «Баллы» и стойки магазина — витрины здесь нет.
   ["#/coins-shop", "screens/coins_shop.js"],
   // Цифры регистраций — не статистика геймы #/stats.
