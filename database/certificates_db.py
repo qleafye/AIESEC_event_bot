@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import aiosqlite
+from datetime import datetime
 
 from database import db as _db
 from services.infra.timeutil import msk_now
@@ -26,7 +27,23 @@ KIND_VOLUNTEER = "volunteer"
 KIND_AMBASSADOR = "ambassador"
 KIND_COMPETENCY = "competency"  # шкалы по тесту компетенций, только вариант «все дни»
 KINDS = (KIND_PARTICIPANT, KIND_COMPETENCY, KIND_VOLUNTEER, KIND_AMBASSADOR)
+KIND_SHORT = {
+    KIND_PARTICIPANT: "Участник",
+    KIND_COMPETENCY: "Компетенции",
+    KIND_VOLUNTEER: "Волонтёр",
+    KIND_AMBASSADOR: "Амбассадор",
+}
 VARIANT_ALL = "all"
+
+
+def variant_label(variant: str) -> str:
+    """Подпись варианта на кнопке: «все дни» или день.месяц. Не код ключа."""
+    if variant == VARIANT_ALL:
+        return "все дни"
+    try:
+        return datetime.strptime(variant, "%Y-%m-%d").strftime("%d.%m")
+    except ValueError:
+        return variant
 
 
 async def ensure_schema(db: aiosqlite.Connection) -> None:

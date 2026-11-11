@@ -30,7 +30,10 @@ from xml.etree import ElementTree as ET
 from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import certificates_db as cdb
-from database.certificates_db import KIND_AMBASSADOR, KIND_COMPETENCY, KIND_PARTICIPANT, KIND_VOLUNTEER, VARIANT_ALL
+from database.certificates_db import (
+    KIND_AMBASSADOR, KIND_COMPETENCY, KIND_PARTICIPANT, KIND_SHORT, KIND_VOLUNTEER, VARIANT_ALL,
+    variant_label,
+)
 from services.forum.checkin import ENTRY_POINT
 from services.infra.timeutil import msk_now
 
@@ -42,9 +45,6 @@ KIND_TITLES = {
     KIND_VOLUNTEER: "Сертификат волонтёра",
     KIND_AMBASSADOR: "Сертификат амбассадора",
 }
-KIND_SHORT = {KIND_PARTICIPANT: "Участник", KIND_COMPETENCY: "Компетенции", KIND_VOLUNTEER: "Волонтёр",
-              KIND_AMBASSADOR: "Амбассадор"}
-
 # Шкалы шаблона компетенций сверху вниз — по началу названия компетенции из теста (в тесте
 # «Критическое и аналитическое мышление», на макете «Критическое мышление»). Нет такой
 # компетенции в тесте — шкала остаётся «0%».
@@ -112,15 +112,6 @@ def kind_variants(kind: str, variants: list[str]) -> list[str]:
     if kind in (KIND_COMPETENCY, KIND_VOLUNTEER, KIND_AMBASSADOR):
         return [VARIANT_ALL]
     return variants
-
-
-def variant_label(variant: str) -> str:
-    if variant == VARIANT_ALL:
-        return "все дни"
-    try:
-        return datetime.strptime(variant, "%Y-%m-%d").strftime("%d.%m")
-    except ValueError:
-        return variant
 
 
 # ── кому что положено ──────────────────────────────────────────────────────────────────
