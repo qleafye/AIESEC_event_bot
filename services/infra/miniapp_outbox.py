@@ -334,6 +334,11 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
             return
         await send_nudge(bot, poll, ids)
         return
+    if kind == "personal_letter":
+        from services.applications.personal_letter import deliver_text
+
+        await deliver_text(bot, payload)
+        return
     if kind == "settings_changed":
         # 09.10: правка в приложении запускает те же реакции, что запись из бота.
         from services.settings.audit import run_setting_hooks_batch  # ленивый, как выше

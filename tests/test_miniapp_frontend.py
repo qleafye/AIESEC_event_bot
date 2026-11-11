@@ -267,6 +267,7 @@ EXPECTED_ROUTES = {
     "#/forum-day": "screens/forum_day.js",
     "#/reserve": "screens/reserve.js",
     "#/nudge": "screens/nudge.js",
+    "#/letter": "screens/letter.js",
     # Папка баллов и стойки магазина.
     "#/coins-shop": "screens/coins_shop.js",
     # Цифры регистраций — не #/stats геймы.
@@ -310,7 +311,7 @@ def test_route_table_matches_phase_plan_exactly():
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
     # Правила автоотказа, маршруты режима, «Таблица и формы» и витрина магазина.
-    assert len(routes) == len(EXPECTED_ROUTES) == 35
+    assert len(routes) == len(EXPECTED_ROUTES) == 36
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 

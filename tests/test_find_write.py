@@ -317,3 +317,122 @@ def test_parse_tid_rejects_negative():
 
     assert _parse_tid("-1") is None
     assert _parse_tid(str(DELEGATE_ID)) == DELEGATE_ID
+
+
+def test_screen_hides_other_city_and_does_not_say_forbidden(tmp_path):
+    from services.applications import personal_letter
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(role_caps_key("reg_manager"), "moderate_reg")
+        await db.add_staff(BOUND_MSK_ID, "reg_manager", ADMIN_ID)
+        await db.set_staff_city(BOUND_MSK_ID, "msk")
+        await _seed(city="msk")
+        await db.add_user({
+            "telegram_id": STARTED_ID, "full_name": "Тест Пётр", "username": "petr",
+            "registration_date": "2026-01-01", "event_city": "spb",
+        })
+        async with db._connect() as conn:
+            await conn.execute(
+                "UPDATE users SET full_name = ? WHERE telegram_id = ?",
+                ("Тест Иван", DELEGATE_ID),
+            )
+            await conn.commit()
+        view = await personal_letter.screen(BOUND_MSK_ID, "тест")
+        return view
+
+    view = _run(scenario())
+    assert [person["name"] for person in view["people"]] == ["Тест Иван"]
+    assert "forbidden" not in view["text"].lower()
+    assert "forbidden" not in personal_letter.OTHER_CITY.lower()
+    assert "msk" not in view["text"]
+
+
+def test_preview_does_not_send_and_queue_sends_one_letter(tmp_path):
+    from services.applications import personal_letter
+    from services.infra.miniapp_outbox import _handle_row
+
+    _db_ready(tmp_path)
+
+    class _Bot:
+        def __init__(self):
+            self.messages = []
+
+        async def send_message(self, chat_id, text, parse_mode=None):
+            self.messages.append((chat_id, text, parse_mode))
+
+    async def scenario():
+        await _seed()
+        preview = await personal_letter.letter_decision(
+            ADMIN_ID, DELEGATE_ID, "Стойка 3, жду. 2 < 3", confirm=False,
+        )
+        before = await db.list_admin_actions(DELEGATE_ID)
+        ready = await personal_letter.letter_decision(
+            ADMIN_ID, DELEGATE_ID, "Стойка 3, жду. 2 < 3", confirm=True,
+        )
+        bot = _Bot()
+        await _handle_row(bot, "personal_letter", ready["enqueue"])
+        actions = await db.list_admin_actions(DELEGATE_ID)
+        user = await db.get_user(DELEGATE_ID)
+        return preview, before, ready, bot.messages, actions, user["status"]
+
+    preview, before, ready, messages, actions, status = _run(scenario())
+    assert preview["need_confirm"] is True
+    assert "enqueue" not in preview
+    assert "рассылк" in preview["text"]
+    assert before == []
+    assert ready["enqueue"]["telegram_id"] == DELEGATE_ID
+    assert ready["enqueue"]["text"] == "Стойка 3, жду. 2 < 3"
+    assert messages == [(DELEGATE_ID, "Стойка 3, жду. 2 &lt; 3", "HTML")]
+    assert actions[0]["action"] == "write_message"
+    assert actions[0]["actor_id"] == ADMIN_ID
+    assert status == "approved"
+
+
+def test_other_city_letter_is_not_queued(tmp_path):
+    from services.applications import personal_letter
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(role_caps_key("reg_manager"), "moderate_reg")
+        await db.add_staff(BOUND_MSK_ID, "reg_manager", ADMIN_ID)
+        await db.set_staff_city(BOUND_MSK_ID, "msk")
+        await _seed(city="spb")
+        return await personal_letter.letter_decision(
+            BOUND_MSK_ID, DELEGATE_ID, "привет", confirm=True,
+        )
+
+    decision = _run(scenario())
+    assert decision["ok"] is False
+    assert "enqueue" not in decision
+    assert "другого города" in decision["text"]
+    assert "forbidden" not in decision["text"].lower()
+
+
+def test_chat_write_stays_and_site_only_links():
+    from pathlib import Path
+
+    from handlers.applications.admin_find_write import findw_receive, findw_start
+    from dashboard.forum_day import LETTER_HREF, letter_page
+    from services.applications.personal_letter import NEED_CAP
+
+    assert findw_start is not None
+    assert findw_receive is not None
+    assert required_capability(callback_data=f"findw_start:{DELEGATE_ID}") == "moderate_reg"
+    assert "forbidden" not in NEED_CAP.lower()
+    assert "moderate_reg" not in NEED_CAP
+    page = letter_page()
+    assert LETTER_HREF == "/app/#/letter"
+    assert LETTER_HREF in page
+    source = Path("dashboard/forum_day.py").read_text(encoding="utf-8")
+    assert "SELECT" not in source
+    assert "letter_decision" not in source
+    letter_src = Path("services/applications/personal_letter.py").read_text(encoding="utf-8")
+    handler_src = Path("handlers/applications/admin_find_write.py").read_text(encoding="utf-8")
+    for needle in ("mute_broadcasts_until", "get_muted_today_ids", "notice_blocked_ids"):
+        assert needle not in letter_src
+        assert needle not in handler_src

@@ -24,6 +24,7 @@
     reject_rules_recheck       {keys}
     reserve_invite             {admin_id, mode, selected}
     survey_nudge               {admin_id, poll_id}
+    personal_letter            {admin_id, telegram_id, text}
 
 `reg_fsm_reset` (quick 260904-3vm, эстафета) — `reason` ∈ {takeover, submitted}: разбирающий
 код (`services/infra/miniapp_outbox.py`) сбрасывает FSM бота в `dp.storage` — MemoryStorage бота
@@ -107,6 +108,7 @@ OUTBOX_KINDS = frozenset({
     "reject_rules_recheck",
     "reserve_invite",
     "survey_nudge",
+    "personal_letter",
 })
 
 
