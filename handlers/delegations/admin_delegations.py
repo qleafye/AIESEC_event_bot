@@ -40,6 +40,9 @@ from services.delegations import delegations, delegations_off_alert
 from services.ext_forms.ext_forms_purpose import delegation_forms, purpose_of
 from services.infra.background import spawn
 from services.settings.audit import set_setting_by_admin
+from domain.cities import (
+    DELEGATION_INTAKE_CLOSED, default_city_code, is_delegation_intake_open,
+)
 from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
@@ -302,6 +305,8 @@ async def render_screen(target, *, edit: bool = True) -> None:
         f"\nВ форме: {c['total']} · ЦА: {c['ok']} · не ЦА: {c['no']} · проверить: {c['check']} · "
         f"зашли в бота: {c['in_bot']} · пришли: {c['arrived']}"
     )
+    if not await is_delegation_intake_open(default_city_code()):
+        lines.append(DELEGATION_INTAKE_CLOSED)
     rows = [
         [_btn(f"❔ Проверить курс ({c['check']})", "dlg_review:0")],
         [_btn(f"⏳ Не зашли ({c['absent']})", "dlg_absent:0")],

@@ -416,7 +416,7 @@ def test_render_snapshot_reg(tmp_path):
         "city_fork_text",
         # Квик 260923-p37 (CITY-REG-CLOSE, D-01): закрытие регистрации на город по дате — сразу
         # после city_fork_text (handlers/settings/admin_settings.py::_REG_FIELD_ORDER).
-        "city_reg_close_date", "city_reg_closed_text", "city_reg_all_closed_text",
+        "city_reg_close_date", "city_reg_closed_text", "city_reg_all_closed_text", "delegation_close_date",
         # Phase 28 (28-04, SU-04): развилка резюме — вайтлист доменов + подписи трёх кнопок R1
         # + маркеры/ошибка ссылки R2b + «Пропустить» мини-подшага, сразу после city_fork_text
         # (handlers/settings/admin_settings.py::_REG_FIELD_ORDER).

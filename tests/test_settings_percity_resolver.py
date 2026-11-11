@@ -163,6 +163,7 @@ EXPECTED_PER_CITY_KEYS = {
     "contact_tg",
     "contact_vk",
     "delegate_chat_link",
+    "delegation_close_date",
     "edit_granted_notify_text",
     "edu_studying_statuses",
     "education_status_options",

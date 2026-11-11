@@ -594,8 +594,16 @@ async def on_answer_available(form_id: int, answer_id: str, *, reason: str = "in
     changed = before is None or before.get("ta_status") != ta
     converted = False
     armed = await is_armed()
+    intake_closed = False
+    if row.get("linked_telegram_id") is None:
+        from domain.cities import default_city_code, is_delegation_intake_open
+        if not await is_delegation_intake_open(default_city_code()):
+            intake_closed = True
+            result["closed"] = "delegations"
 
-    if ta == "ok" and row.get("linked_telegram_id") is None and not armed:
+    if intake_closed:
+        pass
+    elif ta == "ok" and row.get("linked_telegram_id") is None and not armed:
         # Делегации не включены: ответ оценён, но человека не ищем, не одобряем, не пишем.
         result["waiting"] = "not_armed"
     elif ta == "ok" and row.get("linked_telegram_id") is None:
@@ -650,6 +658,9 @@ async def try_delegate_start(message, state, bot) -> bool:
     Один SELECT по нику; промах — False без побочных эффектов. Решение — через `decide_link`,
     как у синка: отклонённого в боте не превращаем молча и не отбрасываем без следа."""
     if not await is_armed():
+        return False
+    from domain.cities import default_city_code, is_delegation_intake_open
+    if not await is_delegation_intake_open(default_city_code()):
         return False
     from_user = getattr(message, "from_user", None)
     needle = username_needle(getattr(from_user, "username", None))

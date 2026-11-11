@@ -40,8 +40,9 @@ from dataclasses import dataclass
 
 from config import config
 from domain.cities import (
-    ALL_CITIES, PER_CITY_SEP, city_codes, city_label, city_tab_base, get_city,
-    get_setting_typed_for_city, normalize_city, split_per_city_key, tab_suffix,
+    ALL_CITIES, PER_CITY_SEP, city_codes, city_label, city_reg_close_date, city_tab_base,
+    delegation_close_rejects, get_city, get_setting_typed_for_city, normalize_city,
+    split_per_city_key, tab_suffix,
 )
 from database.db import delete_setting, get_setting, get_staff_city, set_setting
 from domain.regform.presets import apply_reg_preset
@@ -886,6 +887,23 @@ def next_value_from(key: str, current) -> str:
     return ""
 
 
+async def _delegation_close_date_error(key: str, value: str) -> str | None:
+    """День делегаций строго раньше личного приёма того же города. Формат уже проверил
+    валидатор; здесь только сравнение с `city_reg_close_date`."""
+    from datetime import datetime
+    try:
+        proposed = datetime.strptime(value.strip(), "%d.%m.%Y")
+    except ValueError:
+        return None
+    split = split_per_city_key(key)
+    if split:
+        personal = await city_reg_close_date(split[1])
+    else:
+        raw = await get_setting_typed("city_reg_close_date")
+        personal = raw if isinstance(raw, datetime) else None
+    return delegation_close_rejects(proposed, personal)
+
+
 async def cross_setting_error(key: str, value: str | None) -> str | None:
     """Проверки, которым нужны ДРУГИЕ настройки (валидатор значения их не видит): пороги
     ступеней амбассадоров обязаны расти 1 < 2 < … (для включённых ступеней). Сверка — с сохранёнными значениями двух
@@ -900,6 +918,8 @@ async def cross_setting_error(key: str, value: str | None) -> str | None:
     from services.bot.menu_labels import base_label_key, label_conflict_text  # ленивый: без aiogram
     if base_label_key(key):  # подпись кнопки меню, занятая другой кнопкой (любой город)
         return await label_conflict_text(key, value)
+    if base_setting_key(key) == "delegation_close_date":
+        return await _delegation_close_date_error(key, value)
     if key not in AMB_THRESHOLD_KEYS:
         return None
     current = {k: int(await get_setting_typed(k)) for k in AMB_THRESHOLD_KEYS}
