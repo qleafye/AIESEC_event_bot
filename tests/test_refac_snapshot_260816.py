@@ -2161,6 +2161,9 @@ user_actions|callback_query|interview_pick|iv_pick:*
 user_actions|callback_query|interview_move|iv_move
 user_actions|callback_query|interview_move_to|iv_moveto:*
 user_actions|callback_query|consent_tap|cns:*
+user_actions|callback_query|toggle_notice_broadcasts|bc_notice_bc
+user_actions|callback_query|toggle_notice_game|bc_notice_game
+user_actions|callback_query|toggle_notice_reminders|bc_notice_rem
 """.strip("\n").splitlines()
 
 
@@ -2814,7 +2817,8 @@ def test_snapshot_total_handler_count_is_292():
     # 10.11 (страницы витрины): +1 admin shp_hp:* после shp_home, +1 user_actions shopv_p:* после shopv (1484 -> 1486).
     # Превью текста делегата: +1 admin.message txtprev_wait после interview_admin_value,
     # +2 admin.callback_query txtprev_save/txtprev_drop после phchk_retry (1486 -> 1489).
-    assert len(GOLDEN_SNAPSHOT) == 1489
+    # Три выключателя уведомлений: +3 user_actions.callback_query после consent_tap (1489 -> 1492).
+    assert len(GOLDEN_SNAPSHOT) == 1492
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

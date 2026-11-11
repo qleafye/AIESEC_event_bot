@@ -559,6 +559,36 @@ def code_literals() -> list[tuple[str, str]]:
         "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».",
     ))
     items.append(("lit:user_actions.unmute_today_confirm", "Хорошо, снова присылаю все рассылки."))
+    items.append(("lit:notices.off_broadcasts", "Не присылать рассылки"))
+    items.append(("lit:notices.on_broadcasts", "Снова присылать рассылки"))
+    items.append(("lit:notices.off_game", "Не беспокоить игрой"))
+    items.append(("lit:notices.on_game", "Снова присылать игру и баллы"))
+    items.append(("lit:notices.off_reminders", "Без напоминаний"))
+    items.append(("lit:notices.on_reminders", "Снова присылать напоминания"))
+    items.append((
+        "lit:notices.broadcasts_off",
+        "Рассылки выключены. Включить — кнопка «Снова присылать рассылки».",
+    ))
+    items.append(("lit:notices.broadcasts_on", "Снова присылаю рассылки."))
+    items.append((
+        "lit:notices.game_off",
+        "Игра и баллы выключены. Включить — кнопка «Снова присылать игру и баллы».",
+    ))
+    items.append(("lit:notices.game_on", "Снова присылаю игру и баллы."))
+    items.append((
+        "lit:notices.reminders_off",
+        "Напоминания выключены. Включить — кнопка «Снова присылать напоминания».",
+    ))
+    items.append(("lit:notices.reminders_on", "Снова присылаю напоминания."))
+    items.append((
+        "lit:notices.screen",
+        "Три выключателя. Каждый действует, пока сами не включите обратно.",
+    ))
+    items.append(("lit:notices.save_failed", "Не получилось записать. Нажмите кнопку ещё раз."))
+    items.append((
+        "lit:notices.unknown_button",
+        "Не понял кнопку. Нажмите одну из трёх на этом сообщении.",
+    ))
 
     items.append(("lit:application_effects.default_reject_text", "К сожалению, твоя заявка отклонена."))
     items.append(("lit:reg_schema.default_approve_text", "Твоя заявка одобрена! Добро пожаловать 🎉"))

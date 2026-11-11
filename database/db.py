@@ -962,6 +962,13 @@ async def init_db():
         # (включительно) НЕважные рассылки этому делегату пропускаются при доставке. NULL —
         # делегат ничего не отключал (или уже нажал «🔔 Присылать всё»).
         await _ensure_column(db, "users", "mute_broadcasts_until", "TEXT")
+        # Три постоянных выключателя (не сбрасываются в полночь) и отдельный срок
+        # «не присылать сегодня» — завтрашняя полночь по Москве. Снятие флага срок
+        # не трогает, и наоборот.
+        await _ensure_column(db, "users", "mute_broadcasts", "INTEGER NOT NULL DEFAULT 0")
+        await _ensure_column(db, "users", "mute_game", "INTEGER NOT NULL DEFAULT 0")
+        await _ensure_column(db, "users", "mute_reminders", "INTEGER NOT NULL DEFAULT 0")
+        await _ensure_column(db, "users", "muted_until", "TEXT")
         # Форум-ночь п.7 ревью (находка 🟡): предложение «🔕» альбома — единственная форма
         # доставки, которая ВСЁ ЕЩЁ уходит отдельным сообщением (media_group не принимает
         # reply_markup, см. докстринг services/scheduler.py::send_mute_offer_if_eligible) — MSK-
@@ -5644,15 +5651,106 @@ async def get_muted_today_ids(date_str: str) -> set[int]:
             return {r[0] for r in await cursor.fetchall()}
 
 
-async def set_broadcast_mute(telegram_id: int, date_str: str | None) -> None:
+async def set_broadcast_mute(telegram_id: int, date_str: str | None) -> bool:
     """`date_str` — MSK-дата, ДО конца которой НЕважные рассылки пропускаются; `None` снимает
-    заглушку («🔔 Присылать всё»)."""
+    заглушку («🔔 Присылать всё»). False — строки делегата нет, записать некуда."""
     async with _connect() as db:
         await db.execute(
             "UPDATE users SET mute_broadcasts_until = ? WHERE telegram_id = ?",
             (date_str, telegram_id),
         )
+        exists = await _user_row_exists(db, telegram_id)
         await db.commit()
+        return exists
+
+
+# Постоянные выключатели. Срок «до завтра» — колонка muted_until, не четвёртый тип.
+NOTICE_KINDS = ("broadcasts", "game", "reminders")
+_NOTICE_FLAG_COLUMNS = {
+    "broadcasts": "mute_broadcasts",
+    "game": "mute_game",
+    "reminders": "mute_reminders",
+}
+
+
+def notice_flags(user: dict | None) -> dict[str, bool]:
+    """Три постоянных выключателя. Нет строки делегата — все выключены (письма не глушим)."""
+    if not user:
+        return {kind: False for kind in NOTICE_KINDS}
+    return {kind: bool(user.get(_NOTICE_FLAG_COLUMNS[kind])) for kind in NOTICE_KINDS}
+
+
+def tomorrow_moscow_midnight(now: datetime) -> str:
+    """Завтрашняя полночь по Москве ('YYYY-MM-DD HH:MM:SS'), строго после календарного дня `now`."""
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+    return day.strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def _user_row_exists(db, telegram_id: int) -> bool:
+    async with db.execute(
+        "SELECT 1 FROM users WHERE telegram_id = ?", (telegram_id,)
+    ) as cursor:
+        return await cursor.fetchone() is not None
+
+
+async def set_notice_flag(telegram_id: int, kind: str, on: bool) -> bool:
+    """Постоянный выключатель одного типа. Срок «до завтра» не трогает. False — делегата нет."""
+    column = _NOTICE_FLAG_COLUMNS.get(kind)
+    if column is None:
+        raise ValueError(kind)
+    _assert_identifier(column)
+    async with _connect() as db:
+        await db.execute(
+            f"UPDATE users SET {column} = ? WHERE telegram_id = ?",
+            (1 if on else 0, telegram_id),
+        )
+        exists = await _user_row_exists(db, telegram_id)
+        await db.commit()
+        return exists
+
+
+async def set_daily_quiet(telegram_id: int, date_str: str | None, until: str | None) -> bool:
+    """Дата для старых отправителей и срок «до завтра» — одной записью. Флаги не трогает."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET mute_broadcasts_until = ?, muted_until = ? WHERE telegram_id = ?",
+            (date_str, until, telegram_id),
+        )
+        exists = await _user_row_exists(db, telegram_id)
+        await db.commit()
+        return exists
+
+
+async def set_muted_until(telegram_id: int, until: str | None) -> bool:
+    """Срок суточного глушения трёх типов. Флаги не трогает. `None` снимает срок."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET muted_until = ? WHERE telegram_id = ?",
+            (until, telegram_id),
+        )
+        exists = await _user_row_exists(db, telegram_id)
+        await db.commit()
+        return exists
+
+
+async def notice_blocked_ids(kind: str, now: datetime) -> set[int]:
+    """Кому не слать этот тип: свой флаг, срок «до завтра» ещё не вышел, или старая
+    дата суточного глушения на сегодня. Дата — не четвёртый тип: она глушит все три.
+    Пока отправители зовут `get_muted_today_ids`, сессии и игра эту функцию не читают."""
+    column = _NOTICE_FLAG_COLUMNS.get(kind)
+    if column is None:
+        raise ValueError(kind)
+    _assert_identifier(column)
+    stamp = now.strftime("%Y-%m-%d %H:%M:%S")
+    today = now.strftime("%Y-%m-%d")
+    async with _connect() as db:
+        async with db.execute(
+            f"SELECT telegram_id FROM users WHERE {column} = 1 "
+            "OR (muted_until IS NOT NULL AND muted_until > ?) "
+            "OR mute_broadcasts_until = ?",
+            (stamp, today),
+        ) as cursor:
+            return {r[0] for r in await cursor.fetchall()}
 
 
 async def get_mute_offer_shown_ids(date_str: str) -> set[int]:

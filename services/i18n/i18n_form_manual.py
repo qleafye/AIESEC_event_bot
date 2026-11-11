@@ -492,6 +492,26 @@ _CODE_LITERALS_EN = {
     "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
         "Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
     "Хорошо, снова присылаю все рассылки.": "Okay, sending all messages again.",
+    "Не присылать рассылки": "Don't send broadcasts",
+    "Снова присылать рассылки": "Send broadcasts again",
+    "Не беспокоить игрой": "Don't send game updates",
+    "Снова присылать игру и баллы": "Send game and points again",
+    "Без напоминаний": "No reminders",
+    "Снова присылать напоминания": "Send reminders again",
+    "Рассылки выключены. Включить — кнопка «Снова присылать рассылки».":
+        "Broadcasts are off. To turn them on, tap «Send broadcasts again».",
+    "Снова присылаю рассылки.": "Sending broadcasts again.",
+    "Игра и баллы выключены. Включить — кнопка «Снова присылать игру и баллы».":
+        "Game and points are off. To turn them on, tap «Send game and points again».",
+    "Снова присылаю игру и баллы.": "Sending game and points again.",
+    "Напоминания выключены. Включить — кнопка «Снова присылать напоминания».":
+        "Reminders are off. To turn them on, tap «Send reminders again».",
+    "Снова присылаю напоминания.": "Sending reminders again.",
+    "Три выключателя. Каждый действует, пока сами не включите обратно.":
+        "Three switches. Each stays until you turn it back on.",
+    "Не получилось записать. Нажмите кнопку ещё раз.": "Couldn't save that. Tap the button again.",
+    "Не понял кнопку. Нажмите одну из трёх на этом сообщении.":
+        "Didn't catch that button. Tap one of the three on this message.",
     # D-34 (24.09, решение владельца): реестровые ключи `broadcast_mute_confirm_text`/
     # `broadcast_unmute_confirm_text` (domain/settings/schema.py) хранят ПОЛНЫЙ текст С эмодзи-
     # префиксом (в отличие от пары строк выше, которые ловит именно `reg_i18n.tr_text` после

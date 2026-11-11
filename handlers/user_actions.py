@@ -2279,78 +2279,21 @@ async def regional_noshow_move_decline(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ── Форум-ночь п.7 («🔕 Не присылать сегодня»): ответ делегата на предложение «🔕» ───────────
-# Литералы callback_data НАМЕРЕННО не импортированы из services/scheduler.py (тот же приём, что
-# у checkin_qr_confirm_receipt/CONFIRM_CALLBACK выше) — совпадение с services.scheduler.
-# MUTE_TODAY_CALLBACK/UNMUTE_TODAY_CALLBACK проверяет
-# tests/test_broadcast_mute_today_260924.py::test_mute_callback_literals_match_scheduler.
-#
-# Переделка (ревью 470ce5e..3703ba4, находка 🔴): кнопка «🔕» теперь чаще всего сидит ВНУТРИ
-# клавиатуры самой рассылки (services.scheduler.recipient_markup), не отдельным сообщением —
-# `callback.message.edit_text(...)` затёр бы содержимое рассылки, которое делегат только что
-# получил. Тап меняет ТОЛЬКО клавиатуру (свап кнопки «🔕» <-> «🔔» на месте, остальные ряды —
-# в т.ч. собственные кнопки-ссылки менеджера — не трогаются), подтверждение — всплывающим
-# алертом `callback.answer(..., show_alert=True)`, а не правкой текста.
-
-# D-34 (24.09): дефолты зеркалят registry-ключи `broadcast_mute_confirm_text`/
-# `broadcast_unmute_confirm_text` (domain/settings/schema.py) — менеджер правит текст в самом боте,
-# здесь только fail-soft на случай пустого реестра.
-_MUTE_TODAY_CONFIRM_TEXT = (
-    "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё»."
-)
-_UNMUTE_TODAY_CONFIRM_TEXT = "🔔 Хорошо, снова присылаю все рассылки."
-
-
-def _swap_mute_button(
-    markup: InlineKeyboardMarkup | None, old_callback: str, new_button: InlineKeyboardButton,
-) -> InlineKeyboardMarkup:
-    """Заменяет В МЕСТЕ кнопку `old_callback` на `new_button` — прочие ряды (в т.ч. кнопки-ссылки
-    менеджера) остаются нетронутыми. `markup=None` (стандалон-предложение альбома без клавиатуры
-    менеджера — на практике у него как раз ОДНА кнопка «🔕», см. services.scheduler.
-    send_mute_offer_if_eligible) — единственный ряд с новой кнопкой."""
-    if markup is None:
-        return InlineKeyboardMarkup(inline_keyboard=[[new_button]])
-    rows = []
-    for row in markup.inline_keyboard:
-        rows.append([new_button if btn.callback_data == old_callback else btn for btn in row])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
+# «Не присылать сегодня» и три выключателя. Литералы совпадают с services.scheduler
+# (tests/test_broadcast_mute_today_260924.py). Запись и экран — в шве: этот файл на потолке.
 
 @router.callback_query(F.data == "bc_mute_today")
 async def mute_broadcasts_today(callback: types.CallbackQuery):
-    from database.db import set_broadcast_mute
-    from services import scheduler as sched
-    today = msk_now().strftime("%Y-%m-%d")
-    await set_broadcast_mute(callback.from_user.id, today)
-    lang, tr_map = await reg_i18n.ctx_for(callback)
-    text = await get_setting_typed("broadcast_mute_confirm_text") or _MUTE_TODAY_CONFIRM_TEXT
-    await callback.answer(reg_i18n.tr_text(text, lang, tr_map), show_alert=True)
-    try:
-        new_button = await sched.unmute_button(callback.from_user.id)
-        new_markup = _swap_mute_button(
-            getattr(callback.message, "reply_markup", None), "bc_mute_today", new_button,
-        )
-        await callback.message.edit_reply_markup(reply_markup=new_markup)
-    except Exception:
-        pass  # сообщение могло устареть/удалиться -- заглушка уже записана в БД, это главное
+    from handlers.comms.delegate_notices import apply_mute_today
+    await apply_mute_today(callback, msk_now())
 
 
 @router.callback_query(F.data == "bc_unmute_today")
 async def unmute_broadcasts_today(callback: types.CallbackQuery):
-    from database.db import set_broadcast_mute
-    from services import scheduler as sched
-    await set_broadcast_mute(callback.from_user.id, None)
-    lang, tr_map = await reg_i18n.ctx_for(callback)
-    text = await get_setting_typed("broadcast_unmute_confirm_text") or _UNMUTE_TODAY_CONFIRM_TEXT
-    await callback.answer(reg_i18n.tr_text(text, lang, tr_map), show_alert=True)
-    try:
-        new_button = await sched.mute_button(callback.from_user.id)
-        new_markup = _swap_mute_button(
-            getattr(callback.message, "reply_markup", None), "bc_unmute_today", new_button,
-        )
-        await callback.message.edit_reply_markup(reply_markup=new_markup)
-    except Exception:
-        pass
+    from handlers.comms.delegate_notices import apply_unmute_today
+    await apply_unmute_today(callback)
+
 
 from handlers import interviews as interview_delegate  # noqa: E402,F401
 from handlers.comms import consent_tap as consent_delegate  # noqa: E402,F401
+from handlers.comms import delegate_notices as notice_delegate  # noqa: E402,F401
