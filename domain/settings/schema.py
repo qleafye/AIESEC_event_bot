@@ -9229,6 +9229,16 @@ SETTINGS_SCHEMA = {
         "default": "Ты отмечен на входе в {time} ✅ Добро пожаловать на {event}!",
         "per_city": True,
     },
+    "checkin_message_text": {
+        "type": "text", "group": "reg", "label": "🚪 Сообщение после входа",
+        "prompt": (
+            "Текст делегату один раз после первой отметки на входе. Пустое поле — "
+            "бот ничего не шлёт и не запоминает отправку: текст можно дописать позже.\n\n"
+            "Пример: Подойдите к стойке своего города."
+        ),
+        "default": None,
+        "per_city": True,
+    },
     "reserve_invite_text": {
         "type": "text", "group": "reg", "label": "📮 Письмо резерву",
         "prompt": (

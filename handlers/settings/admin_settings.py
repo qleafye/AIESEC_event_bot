@@ -240,7 +240,7 @@ _APPS_FIELD_ORDER = [
     # `forum_welcome_enabled` — свой экран `handlers/forum/admin_forum_functions.py::
     # forumwelcome_cfg_screen`, сам текст — редактор достаётся бесплатно попаданием в этот
     # список, тот же приём, что у checkin_qr_broadcast_text выше).
-    "forum_welcome_text",
+    "forum_welcome_text", "checkin_message_text",
     # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» (кнопка «🎟 Мой QR», хаб Mini
     # App) — тот же приём, что у checkin_qr_caption_text выше (редактор экрана достаётся
     # бесплатно попаданием в этот список).

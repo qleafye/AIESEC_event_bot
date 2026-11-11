@@ -584,7 +584,7 @@ def test_render_snapshot_apps(tmp_path):
         "checkin_volunteer_guide_text",
         # Идея №3 бэклога чек-ина: текст приветствия после первой отметки входа — новый хвост
         # группы (тумблер forum_welcome_enabled — тумблер раздела, в группу не входит).
-        "forum_welcome_text",
+        "forum_welcome_text", "checkin_message_text",
         # Идея №4 бэклога чек-ина: строка статуса «✅ Ты отмечен» — новый хвост группы.
         "checked_in_status_text",
         # Идея №23 бэклога чек-ина: опрос неявившихся «почему не пришёл» — вопрос, пять
@@ -1208,7 +1208,7 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
     assert admin_settings._settings_group_keys("apps")[-_dt:] == _DT.APPS_FIELD_ORDER
     _apps = admin_settings._settings_group_keys("apps")[:-_dt]
     assert _apps[-_bg:] == BACKGROUND_BUTTON_FIELD_ORDER
-    assert _apps[-35 - _bg:-_bg] == [
+    assert _apps[-36 - _bg:-_bg] == [
         "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
         "reg_edit_closed_text", "reg_resubmit_closed_text", "reg_submit_digest_minutes",
         "checkin_event_tag", "checkin_qr_caption_text", "checkin_qr_confirm_receipt_text",
@@ -1217,7 +1217,7 @@ def test_scheduler_and_reminder_keys_declared_with_code_defaults(tmp_path):
         "checkin_not_arrived_show_qr_hint_text", "checkin_not_arrived_coming_ack_text",
         "checkin_not_arrived_cant_ack_text",
         "checkin_volunteer_guide_text",
-        "forum_welcome_text", "checked_in_status_text",
+        "forum_welcome_text", "checkin_message_text", "checked_in_status_text",
         "forum_noshow_poll_question_text",
         "forum_noshow_poll_option_changed_mind_text", "forum_noshow_poll_option_study_work_text",
         "forum_noshow_poll_option_far_text", "forum_noshow_poll_option_forgot_text",
