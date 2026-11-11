@@ -137,6 +137,7 @@ EXPECTED_PER_CITY_KEYS = {
     "chat_rules_social_tasks",
     "chat_rules_valuable_min_chars",
     "chat_rules_valuable_points",
+    "checkin_message_text",
     "checkin_not_arrived_text",
     "checkin_qr_broadcast_enabled",
     "checkin_qr_broadcast_text",

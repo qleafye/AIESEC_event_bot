@@ -599,6 +599,31 @@ def clear_first_entry_listeners() -> None:
     _first_entry_listeners.clear()
 
 
+async def send_checkin_followup(bot, user_id: int, city: str | None, day: str, **kwargs) -> None:
+    """Текст менеджера один раз после отметки входа. Пустой текст ничего не шлёт и флаг
+    не ставит. Сбой отправки тоже не ставит флаг: следующий заход может повторить.
+    Повторный заход при флаге молчит. Текст шага в коде не задан."""
+    from database.db import checkin_message_was_sent, mark_checkin_message_sent
+    if await checkin_message_was_sent(user_id):
+        return
+    from domain.cities import get_setting_typed_for_city
+    text = await get_setting_typed_for_city("checkin_message_text", city)
+    text = (text or "").strip()
+    if not text:
+        return
+    try:
+        await bot.send_message(user_id, text)
+    except Exception:
+        logger.exception("checkin followup: не ушло %s", user_id)
+        return
+    await mark_checkin_message_sent(user_id)
+
+
+def register_checkin_followup() -> None:
+    """Слушатель письма после входа. Идемпотентно, как остальные слушатели отметки."""
+    register_first_entry_listener(send_checkin_followup)
+
+
 async def fire_first_entry(bot, user_id: int, city: str | None, day: str, **kwargs) -> None:
     """Позвать всех слушателей первой отметки входа по очереди, fail-soft (см.
     `register_first_entry_listener`). Сам никогда не бросает."""

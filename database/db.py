@@ -975,6 +975,9 @@ async def init_db():
         # дата последнего показа этого предложения ЭТОМУ делегату не даёт слать его повторно
         # после каждой неважной альбомной рассылки за один день (было — спам).
         await _ensure_column(db, "users", "mute_offer_shown_date", "TEXT")
+        # Один текст после первой отметки входа. 1 — письмо ушло. 0 — ещё нет
+        # (пустой текст и сбой отправки флаг не ставят).
+        await _ensure_column(db, "users", "checkin_message_sent", "INTEGER NOT NULL DEFAULT 0")
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -12431,6 +12434,27 @@ async def undo_venue_checkin(
             await db.rollback()
             raise
     return "ok", event
+
+
+async def checkin_message_was_sent(telegram_id: int) -> bool:
+    """Письмо после входа уже ушло. Нет строки пользователя — ещё не ушло."""
+    async with _connect() as db:
+        cur = await db.execute(
+            "SELECT checkin_message_sent FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        row = await cur.fetchone()
+    return bool(row and row[0])
+
+
+async def mark_checkin_message_sent(telegram_id: int) -> None:
+    """Ставит флаг только после удачной отправки. Чужой id не создаёт строку."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET checkin_message_sent = 1 WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        await db.commit()
 
 
 async def first_entry_scanned_at(telegram_id: int) -> str | None:

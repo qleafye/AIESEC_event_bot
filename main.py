@@ -355,7 +355,8 @@ async def main():
     register_forum_welcome()
     # Делегации вузов: после первого входа делегата из формы — отметка «🎟 пришёл» в колонке M
     # листа UR REGS (строка ответа уходит на перезапись зеркалом).
-    from services.forum.checkin import register_first_entry_listener
+    from services.forum.checkin import register_checkin_followup, register_first_entry_listener
+    register_checkin_followup()
     register_first_entry_listener(delegations.on_first_entry)
 
     # Phase 14 (CITY-07): one-time .env -> `cities` table seed, then load the in-memory cache
