@@ -8,6 +8,7 @@ RESERVE_HREF = "/app/#/reserve"
 NUDGE_HREF = "/app/#/nudge"
 LETTER_HREF = "/app/#/letter"
 TRAINING_MOVE_HREF = "/app/#/training-move"
+LIFT_REJECT_HREF = "/app/#/lift-reject"
 
 
 def reserve_page() -> str:
@@ -34,6 +35,15 @@ def letter_page() -> str:
         "<title>Написать</title>"
         "<p>Письмо уходит из приложения. Отдельной отправки на сайте нет.</p>"
         f"<p><a href=\"{LETTER_HREF}\">Написать</a></p>"
+    )
+
+
+def lift_reject_page() -> str:
+    return (
+        "<!doctype html><meta charset=\"utf-8\">"
+        "<title>Снять отказ</title>"
+        "<p>Одобрение одной заявки идёт в приложении. Отдельной записи на сайте нет.</p>"
+        f"<p><a href=\"{LIFT_REJECT_HREF}\">Снять отказ</a></p>"
     )
 
 

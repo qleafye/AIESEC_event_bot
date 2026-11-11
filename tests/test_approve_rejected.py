@@ -306,3 +306,127 @@ def test_parse_tid_rejects_negative():
 
     assert _parse_tid("-1") is None
     assert _parse_tid(str(DELEGATE_ID)) == DELEGATE_ID
+
+
+def test_app_preview_names_person_and_does_not_flip(tmp_path):
+    from services.applications.approve_rejected import NOT_REJECTED, approve_decision, rejected_screen
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _seed()
+        await db.set_setting("payment_enabled", "off")
+        await db.add_user({
+            "telegram_id": DELEGATE_ID + 1, "full_name": "Анна Ждёт", "username": "wait",
+            "registration_date": "2026-01-01", "event_city": "msk",
+        })
+        screen = await rejected_screen(ADMIN_ID, "Анна")
+        preview = await approve_decision(ADMIN_ID, DELEGATE_ID, confirm=False)
+        user = await db.get_user(DELEGATE_ID)
+        return screen, preview, user["status"]
+
+    screen, preview, status = _run(scenario())
+    assert [person["name"] for person in screen["people"]] == ["Анна Отклонена"]
+    assert "Анна Ждёт" not in screen["text"]
+    assert str(DELEGATE_ID) not in screen["text"]
+    assert "msk" not in screen["text"]
+    assert preview["need_confirm"] is True
+    assert "enqueue" not in preview
+    assert "Анна Отклонена" in preview["text"]
+    assert "Отказ будет снят" in preview["text"]
+    assert "оплата выключена" in preview["text"].lower()
+    assert status == "rejected"
+    assert NOT_REJECTED.endswith(".")
+
+
+def test_app_confirm_flips_one_and_queues_the_same_letter(tmp_path, monkeypatch):
+    from services.applications.approve_rejected import approve_decision
+    from services.infra.miniapp_outbox import _handle_row
+
+    _db_ready(tmp_path)
+    sent = []
+
+    async def _effects(bot, telegram_id, status, reason=None, **kwargs):
+        sent.append((telegram_id, status, reason))
+
+    monkeypatch.setattr(
+        "services.infra.miniapp_outbox.apply_decision_effects", _effects,
+    )
+
+    async def scenario():
+        await _seed()
+        await db.set_setting("payment_enabled", "off")
+        ready = await approve_decision(ADMIN_ID, DELEGATE_ID, confirm=True)
+        await _handle_row(object(), "application_decided", ready["enqueue"])
+        second = await approve_decision(ADMIN_ID, DELEGATE_ID, confirm=True)
+        user = await db.get_user(DELEGATE_ID)
+        return ready, second, user["status"]
+
+    ready, second, status = _run(scenario())
+    assert ready["enqueue"] == {"telegram_id": DELEGATE_ID, "status": "approved"}
+    assert "ids" not in ready["enqueue"]
+    assert sent == [(DELEGATE_ID, "approved", None)]
+    assert second["ok"] is False
+    assert second["text"] == "Одобрить можно только отклонённую заявку."
+    assert "enqueue" not in second
+    assert status == "approved"
+
+
+def test_app_other_city_and_pending_do_not_flip(tmp_path):
+    from services.applications.approve_rejected import OTHER_CITY, approve_decision, rejected_screen
+
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await db.set_setting("event_city_enabled", "on")
+        await db.set_setting(role_caps_key("reg_manager"), "moderate_reg")
+        await db.add_staff(BOUND_MSK_ID, "reg_manager", ADMIN_ID)
+        await db.set_staff_city(BOUND_MSK_ID, "msk")
+        await _seed(city="spb")
+        hidden = await rejected_screen(BOUND_MSK_ID, "Анна")
+        refused = await approve_decision(BOUND_MSK_ID, DELEGATE_ID, confirm=True)
+        still = await db.get_user(DELEGATE_ID)
+        await db.set_user_status(DELEGATE_ID, "pending")
+        await db.set_staff_city(BOUND_MSK_ID, "spb")
+        pending = await approve_decision(BOUND_MSK_ID, DELEGATE_ID, confirm=True)
+        after = await db.get_user(DELEGATE_ID)
+        return hidden, refused, still["status"], pending, after["status"]
+
+    hidden, refused, still, pending, after = _run(scenario())
+    assert hidden["people"] == []
+    assert refused["ok"] is False
+    assert refused["text"] == OTHER_CITY
+    assert "enqueue" not in refused
+    assert "forbidden" not in refused["text"].lower()
+    assert "spb" not in refused["text"]
+    assert still == "rejected"
+    assert pending["text"] == "Одобрить можно только отклонённую заявку."
+    assert after == "pending"
+
+
+def test_chat_approve_stays_and_site_only_links():
+    from pathlib import Path
+
+    from dashboard.forum_day import LIFT_REJECT_HREF, lift_reject_page
+    from handlers.applications.admin_approve_rejected import apprej_apply, apprej_start
+    from services.applications.approve_rejected import NEED_CAP
+
+    assert apprej_start is not None
+    assert apprej_apply is not None
+    assert "forbidden" not in NEED_CAP.lower()
+    assert "moderate_reg" not in NEED_CAP
+    page = lift_reject_page()
+    assert LIFT_REJECT_HREF == "/app/#/lift-reject"
+    assert LIFT_REJECT_HREF in page
+    source = Path("dashboard/forum_day.py").read_text(encoding="utf-8")
+    assert "SELECT" not in source
+    assert "approve_rejected" not in source
+    handler = Path("handlers/applications/admin_approve_rejected.py").read_text(encoding="utf-8")
+    assert 'F.data.startswith("apprej_start:")' in handler
+    assert 'F.data.startswith("apprej_apply:")' in handler
+    screen = Path("miniapp/static/js/screens/lift_reject.js").read_text(encoding="utf-8")
+    assert "innerHTML" not in screen
+    assert "text: person.name + city" in screen
+    router = Path("miniapp/routers/lift_reject.py").read_text(encoding="utf-8")
+    assert "application_mass_approved" not in router
+    assert "application_decided" in router

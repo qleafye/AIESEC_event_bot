@@ -14,6 +14,7 @@ export async function render(root, params, ctx) {
     ...(canReserve ? [{ icon: "mail", title: "Позвать резерв", hash: "#/reserve" }] : []),
     ...(canReserve ? [{ icon: "pen-line", title: "Написать", hash: "#/letter" }] : []),
     ...(canReserve ? [{ icon: "refresh-cw", title: "Перенос сканов", hash: "#/training-move" }] : []),
+    ...(canReserve ? [{ icon: "undo-2", title: "Снять отказ", hash: "#/lift-reject" }] : []),
     ...(canNudge ? [{ icon: "message-circle", title: "Догонялка", hash: "#/nudge" }] : []),
     { icon: "alert-triangle", title: "SOS", hash: "#/chat/sos", meta: "Пока в чате" },
     { icon: "briefcase", title: "Находки", hash: "#/chat/lost", meta: "Пока в чате" },
