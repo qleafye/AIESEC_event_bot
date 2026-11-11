@@ -372,6 +372,40 @@ async def is_city_registration_open(code: str) -> bool:
     return True
 
 
+# Приём делегаций закрывается своим днём, раньше личного (`city_reg_close_date`).
+# Сравнение дней — delegation_close_rejects; «закрыто с полуночи» — как у личного приёма.
+DELEGATION_INTAKE_CLOSED = "Приём делегаций закрыт."
+DELEGATION_CLOSE_TOO_LATE = (
+    "Дата закрытия делегаций должна быть раньше личного приёма. "
+    "Пришлите более ранний день, например 2026-10-20."
+)
+
+
+async def delegation_close_date(code: str) -> datetime | None:
+    """Дата закрытия делегаций (`delegation_close_date`). None — не задана.
+    Это не `city_reg_close_date`: личный приём живёт своей датой."""
+    value = await get_setting_typed_for_city("delegation_close_date", code)
+    return value if isinstance(value, datetime) else None
+
+
+def delegation_close_rejects(proposed: datetime, personal: datetime | None) -> str | None:
+    """Строго раньше `city_reg_close_date` того же города. Личный приём без даты
+    запись не блокирует. Тот же календарный день или позже — текст с примером."""
+    if personal is None:
+        return None
+    if proposed.date() >= personal.date():
+        return DELEGATION_CLOSE_TOO_LATE
+    return None
+
+
+async def is_delegation_intake_open(code: str) -> bool:
+    """False с 00:00 даты закрытия делегаций по Москве. Личный приём не смотрит."""
+    close_date = await delegation_close_date(code)
+    if close_date is not None and msk_now() >= close_date:
+        return False
+    return True
+
+
 async def open_cities() -> list[dict]:
     """`CITIES` в их порядке, отфильтрованные `is_city_registration_open` — развилка выбора
     города и deep-link на конкретный город читают ЭТУ функцию, не `enabled_cities()`."""
