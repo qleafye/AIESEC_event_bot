@@ -237,7 +237,7 @@ def test_menu_buttons_unaffected_by_city_overrides(tmp_path):
             "menu_miniapp", "menu_faq", "menu_lang", "menu_checkin_qr", "menu_program",
             "menu_important", "menu_sos", "menu_session_enroll", "menu_quiz",
         )
-    ]
+    ] + ["Дойду", "Не дойду"]
     assert after_texts == expected_texts, (
         "должны быть ВСЕ кнопки меню (дефолт on), кроме «📱 Приложение» и «❓ Частые вопросы» "
         "— Mini App выключен, FAQ пуст, кроме «🌐 Язык / Language» — default off, кроме "

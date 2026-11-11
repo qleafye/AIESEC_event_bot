@@ -104,6 +104,16 @@ MENU_BUTTONS = [
 # он видит ещё и подписи, которые менеджер настроил.
 MENU_TEXTS: dict[str, frozenset[str]] = dict(STATIC_MENU_TEXTS)
 
+# «Дойду» / «Не дойду» — не пункт «Кнопок меню», только у одобренного. Обе языка
+# лежат здесь, чтобы английская клавиатура узнавалась и тап не записался в настройку.
+COMING_YES_RU = "Дойду"
+COMING_NO_RU = "Не дойду"
+COMING_YES_EN = "I'll come"
+COMING_NO_EN = "I won't come"
+MENU_TEXTS["coming_reply"] = frozenset({
+    COMING_YES_RU, COMING_NO_RU, COMING_YES_EN, COMING_NO_EN,
+})
+
 # Идея №1 бэклога чек-ина (режим «день форума», services/forum/forum_day_menu.py): пока для города
 # делегата идёт форум, эти четыре кнопки (если каждая и так прошла СВОЙ обычный гейт — сама
 # константа НИЧЕГО не включает и не выключает) поднимаются наверх меню в этом порядке, всё
@@ -425,9 +435,15 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         except Exception:
             pass
     # «Дойду» / «Не дойду» — только одобренному. Неодобренному кнопок нет.
+    # add_user не пишет status: колонка по умолчанию approved, поэтому свежий
+    # делегат эти две кнопки видит.
     if user and user.get("status") == "approved":
-        kb.button(text="Дойду")
-        kb.button(text="Не дойду")
+        if lang == "en":
+            kb.button(text=COMING_YES_EN)
+            kb.button(text=COMING_NO_EN)
+        else:
+            kb.button(text=COMING_YES_RU)
+            kb.button(text=COMING_NO_RU)
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 

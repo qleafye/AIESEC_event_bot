@@ -155,6 +155,8 @@ def test_registry_event_order_unchanged_for_old_keys():
         "event_name_genitive",
         # 25.09: «🗓 Сколько дней идёт форум» (ключ sos_active_days) — под датой начала форума.
         "sos_active_days",
+        # Время и пояс файла календаря стоят следом за датой. Старый event_time не сдвигаем.
+        "forum_time", "forum_end_time", "forum_timezone",
         # 08.10: описание бота до /start и строка «О боте».
         "bot_description", "bot_short_description",
         # 09.10: «🤖 Имя бота» — рядом с типом события.
