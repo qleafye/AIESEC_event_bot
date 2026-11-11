@@ -314,6 +314,26 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
             return
         await deliver(bot, admin_id, ids, city_code=code, rule_id=None)
         return
+    if kind == "survey_nudge":
+        from database.db import get_poll
+        from services.comms.survey_nudge import nudge_ids, nudge_scope, other_city, send_nudge
+
+        try:
+            admin_id = int(payload.get("admin_id") or 0)
+            poll_id = int(payload.get("poll_id") or 0)
+        except (TypeError, ValueError):
+            return
+        poll = await get_poll(poll_id) if poll_id else None
+        if not poll or poll.get("kind") != "survey" or poll.get("status") != "open":
+            return
+        scope = await nudge_scope(admin_id)
+        if other_city(scope, poll):
+            return
+        ids = await nudge_ids(poll_id, city_scope=scope)
+        if not ids:
+            return
+        await send_nudge(bot, poll, ids)
+        return
     if kind == "settings_changed":
         # 09.10: правка в приложении запускает те же реакции, что запись из бота.
         from services.settings.audit import run_setting_hooks_batch  # ленивый, как выше

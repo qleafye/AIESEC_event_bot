@@ -4,12 +4,15 @@ import { flatRow } from "../ui.js";
 
 export async function render(root, params, ctx) {
   const { h, navigate, me } = ctx;
-  const canReserve = Array.isArray(me && me.caps) && me.caps.includes("moderate_reg");
+  const caps = Array.isArray(me && me.caps) ? me.caps : [];
+  const canReserve = caps.includes("moderate_reg");
+  const canNudge = caps.includes("broadcast");
   const rows = [
     { icon: "camera", title: "Сканер QR", hash: "#/scanner" },
     { icon: "calendar", title: "Расписание", hash: "#/program" },
     { icon: "check-circle-2", title: "Отметки", hash: "#/arrivals" },
     ...(canReserve ? [{ icon: "mail", title: "Позвать резерв", hash: "#/reserve" }] : []),
+    ...(canNudge ? [{ icon: "message-circle", title: "Догонялка", hash: "#/nudge" }] : []),
     { icon: "alert-triangle", title: "SOS", hash: "#/chat/sos", meta: "Пока в чате" },
     { icon: "briefcase", title: "Находки", hash: "#/chat/lost", meta: "Пока в чате" },
   ];

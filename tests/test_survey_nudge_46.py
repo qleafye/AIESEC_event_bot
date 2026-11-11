@@ -203,3 +203,150 @@ def test_ask_and_go_send_same_invite(tmp_path):
 def test_nudge_callbacks_require_broadcast():
     assert required_capability(callback_data="psv_nudge:1") == "broadcast"
     assert required_capability(callback_data="psv_nudge_go:1") == "broadcast"
+
+
+def test_second_send_is_silent(tmp_path):
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(U1)
+        pid, _ = await _survey(status="open")
+        await db.record_poll_message(pid, U1, None, 1, True)
+        await _arrive(U1)
+        bot = FakeBot()
+        poll = await db.get_poll(pid)
+        ids = await survey_nudge.nudge_ids(pid)
+        first = await survey_nudge.send_nudge(bot, poll, ids)
+        second = await survey_nudge.send_nudge(bot, poll, ids)
+        return first, second, bot.messages, await db.get_user(U1)
+
+    first, second, messages, user = _run(go())
+    assert first == (1, 0)
+    assert second == (0, 0)
+    assert len(messages) == 1
+    assert user["status"] == "approved"
+
+
+def test_failed_send_is_not_marked_so_retry_works(tmp_path):
+    _ready(tmp_path)
+
+    class Once:
+        def __init__(self):
+            self.calls = 0
+            self.messages = []
+
+        async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("сеть")
+            self.messages.append(chat_id)
+
+            class Msg:
+                message_id = 1
+
+            return Msg()
+
+    async def go():
+        await _add_user(U1)
+        pid, _ = await _survey(status="open")
+        await db.record_poll_message(pid, U1, None, 1, True)
+        await _arrive(U1)
+        bot = Once()
+        poll = await db.get_poll(pid)
+        ids = await survey_nudge.nudge_ids(pid)
+        first = await survey_nudge.send_nudge(bot, poll, ids)
+        second = await survey_nudge.send_nudge(bot, poll, ids)
+        return first, second, bot.messages
+
+    first, second, messages = _run(go())
+    assert first == (0, 1)
+    assert second == (1, 0)
+    assert messages == [U1]
+
+
+def test_screen_people_match_header_list(tmp_path):
+    _ready(tmp_path)
+    saved = cities.all_cities()
+    cities.set_cities_for_test([dict(c) for c in _CITIES])
+    try:
+        async def go():
+            await db.set_setting("event_city_enabled", "on")
+            assert await cities.set_admin_city(ADMIN_ID, "msk") is True
+            await _add_user(U1)
+            await _add_user(U2)
+            await _city(U1, "msk")
+            await _city(U2, "spb")
+            pid, _ = await _survey(status="open")
+            await db.record_poll_message(pid, U1, None, 1, True)
+            await db.record_poll_message(pid, U2, None, 2, True)
+            await _arrive(U1)
+            await _arrive(U2)
+            view = await survey_nudge.screen(ADMIN_ID)
+            scoped = await survey_nudge.nudge_ids(pid, city_scope=cities.city_scope("msk"))
+            return view, scoped
+
+        view, scoped = _run(go())
+    finally:
+        cities.set_cities_for_test(saved)
+    assert scoped == [U1]
+    assert len(view["surveys"]) == 1
+    assert [person["id"] for person in view["surveys"][0]["people"]] == scoped
+    assert view["surveys"][0]["count"] == 1
+    assert "одобрен" in view["text"].lower()
+    assert "forbidden" not in view["text"].lower()
+
+
+def test_preview_does_not_send_and_queue_sends_once(tmp_path):
+    from services.infra.miniapp_outbox import _handle_row
+
+    _ready(tmp_path)
+
+    async def go():
+        await _add_user(U1)
+        pid, _ = await _survey(status="open")
+        await db.record_poll_message(pid, U1, None, 1, True)
+        await _arrive(U1)
+        preview = await survey_nudge.invite_decision(ADMIN_ID, pid, confirm=False)
+        marked = await survey_db.survey_nudged_user_ids(pid)
+        ready = await survey_nudge.invite_decision(ADMIN_ID, pid, confirm=True)
+        bot = FakeBot()
+        await _handle_row(bot, "survey_nudge", ready["enqueue"])
+        after = len(bot.messages)
+        await _handle_row(bot, "survey_nudge", ready["enqueue"])
+        again = await survey_nudge.invite_decision(ADMIN_ID, pid, confirm=True)
+        status = (await db.get_user(U1))["status"]
+        return preview, marked, ready, after, len(bot.messages), again, status
+
+    preview, marked, ready, after, total, again, status = _run(go())
+    assert preview["need_confirm"] is True
+    assert "enqueue" not in preview
+    assert "второй раз" in preview["text"].lower()
+    assert marked == set()
+    assert ready["enqueue"] == {"admin_id": ADMIN_ID, "poll_id": ready["enqueue"]["poll_id"]}
+    assert after == 1
+    assert total == 1
+    assert again["ok"] is False
+    assert again["text"] == survey_nudge.ALREADY
+    assert status == "approved"
+
+
+def test_chat_button_stays_and_site_only_links():
+    from pathlib import Path
+
+    from handlers.comms.admin_survey_results import survey_nudge_ask, survey_nudge_go
+    from dashboard.forum_day import NUDGE_HREF, nudge_page
+
+    assert survey_nudge_ask is not None
+    assert survey_nudge_go is not None
+    assert required_capability(callback_data="psv_nudge:1") == "broadcast"
+    assert required_capability(callback_data="psv_nudge_go:1") == "broadcast"
+    assert "forbidden" not in survey_nudge.NEED_CAP.lower()
+    assert "broadcast" not in survey_nudge.NEED_CAP
+    page = nudge_page()
+    assert NUDGE_HREF == "/app/#/nudge"
+    assert NUDGE_HREF in page
+    assert "SELECT" not in page
+    assert "nudge_ids" not in page
+    source = Path("dashboard/forum_day.py").read_text(encoding="utf-8")
+    assert "nudge_ids" not in source
+    assert "SELECT" not in source

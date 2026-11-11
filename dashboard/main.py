@@ -48,7 +48,7 @@ from dashboard.access import has_stats, staff_city, viewer_scope
 from dashboard.auth import session_middleware_kwargs, verify_login_payload
 from dashboard.cf_access import require_superadmin_email
 from dashboard.compare import _describe_open_error, build_compare_context
-from dashboard.forum_day import reserve_page
+from dashboard.forum_day import nudge_page, reserve_page
 from dashboard.config import DashboardConfig, load_config
 from dashboard.db import read_conn
 from dashboard.files import FILE_ID_RE, fetch_theme_asset, is_theme_asset
@@ -943,6 +943,11 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     def forum_day_reserve() -> HTMLResponse:
         # Не список: отбор живёт в Mini App. Вторая выборка здесь разошлась бы с шапкой чата.
         return HTMLResponse(reserve_page())
+
+    @app.get("/forum-day/nudge", response_class=HTMLResponse)
+    def forum_day_nudge() -> HTMLResponse:
+        # Не список: отбор живёт в Mini App. Вторая выборка здесь разошлась бы с карточкой анкеты.
+        return HTMLResponse(nudge_page())
 
     @app.get("/theme.css")
     def theme_css() -> Response:
