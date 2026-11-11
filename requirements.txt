@@ -16,6 +16,8 @@ pillow>=11,<12
 # Сертификаты после форума (services/forum/certificate_render.py): имя в PDF-шаблон дизайнера.
 # Чистый Python, без системных библиотек.
 pypdf>=6,<7
+# Сообщество ВК: проверка ключа и позже long poll. Синхронный клиент зовётся через asyncio.to_thread.
+vk_api==11.9.9
 
 # Phase 27 (27-03, LANG-04/LANG-10): встроенный драйвер перевода делегатской анкеты
 # (services/i18n/i18n_engine.py::EmbeddedArgosDriver). Пин `-lt` (torch-free форк, MIT), а не
