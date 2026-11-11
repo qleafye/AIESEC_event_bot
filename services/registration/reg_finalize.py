@@ -1144,6 +1144,10 @@ async def post_finalize(
         await _record_delivery_fail_soft(
             telegram_id, "approved", "failed" if send_err else "delivered", send_err,
         )
+        # Краткая анкета уже одобрена. Письмо решения могло уйти внутри approve_user
+        # и захватить чек-лист; если ушло в оплату — чек-лист уходит здесь. Флаг не даёт дважды.
+        from services.registration.checklist_send import send_manager_checklist
+        await send_manager_checklist(bot, telegram_id)
 
 
 async def derive_edit_facts(telegram_id: int, full: dict) -> tuple[list, bool, bool]:
