@@ -536,7 +536,7 @@ def test_render_snapshot_apps(tmp_path):
 
     expected_keys = [
         # 10.10: ответ при автоприёме — рядом с обычным текстом одобрения.
-        "reg_complete_text", "approve_text", "approve_text__auto", "reject_text",
+        "reg_complete_text", "approve_text", "checklist_text", "approve_text__auto", "reject_text",
         "reserve_invite_text", "pending_gate_text",
         "pending_reminder_interval",
         # 10.10: порог «🔒 залип» у вопросов делегатов — сразу после интервала напоминаний.
@@ -622,7 +622,7 @@ def test_render_snapshot_apps(tmp_path):
         *_DT.APPS_FIELD_ORDER,
     ]
     expected_labels = [
-        "✅ После регистрации", "🎉 После одобрения", "🚫 При отклонении",
+        "✅ После регистрации", "🎉 После одобрения", "📋 Текст чек-листа", "🚫 При отклонении",
         "📮 Письмо резерву",
         "⏳ Заявка на рассмотрении", "🕒 Как часто присылать сводку о заявках",
         "🎯 Предотбор: нет @username", "🎯 Предотбор: не прошёл", "🎯 Предотбор: ссылка",

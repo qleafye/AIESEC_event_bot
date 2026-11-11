@@ -1316,6 +1316,14 @@ SETTINGS_SCHEMA = {
         ),
         "default": None,
     },
+    "checklist": {
+        "type": "file", "group": "event", "label": "📋 Чек-лист",
+        "prompt": (
+            "Пришлите PDF или документ. Делегат получит его после одобрения и после краткой "
+            "анкеты, если заявка уже одобрена. Пусто — файл не уйдёт."
+        ),
+        "default": None,
+    },
 
     # ── REG-01/REG-03 (06-02): "reg" group ("📝 Регистрация") ──────────────────────────
     # Labels/prompts copied byte-for-byte from the pre-migration literal SETTINGS_FIELDS
@@ -1357,6 +1365,15 @@ SETTINGS_SCHEMA = {
         ),
         "default": "Твоя заявка одобрена! Добро пожаловать 🎉",
         "per_city": True,
+    },
+    "checklist_text": {
+        "type": "text", "group": "reg", "label": "📋 Текст чек-листа",
+        "prompt": (
+            "Обычный текст. Делегат получит его после одобрения и после краткой анкеты, "
+            "если заявка уже одобрена. Пусто — этот текст не уйдёт. "
+            "Файл кладётся отдельно, кнопкой «📋 Чек-лист» в разделе события."
+        ),
+        "default": None,
     },
     "reject_text": {
         "type": "text", "group": "reg", "label": "🚫 При отклонении",

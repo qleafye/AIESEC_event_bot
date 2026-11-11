@@ -595,7 +595,8 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
                                      participant_type: str | None = None, *,
                                      auto_approved: bool = False,
                                      respect_quiet_hours: bool = False,
-                                     send_bonus: bool = True) -> Exception | None:
+                                     send_bonus: bool = True,
+                                     send_checklist: bool = True) -> Exception | None:
     """Deliver approve_text (post-approval script) + the configured registration bonus.
     Reused by the non-payment approval path, the free/single payment path (handlers.payment),
     and the admin receipt-confirm path (handlers.admin). Fail-soft: a blocked/unknown user
@@ -714,6 +715,9 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
                 # Координатор 25.09: бонус — best-effort, сбой здесь НЕ считается недоставкой
                 # решения (текст уже подтверждённо ушёл строкой выше).
                 logger.error(f"Failed to send bonus to {telegram_id}: {e}")
+        if send_checklist:
+            from services.registration.checklist_send import send_manager_checklist
+            await send_manager_checklist(bot, telegram_id, quiet_now=quiet_now)
         return None
     except Exception as e:
         logger.error(f"Failed to send completion/bonus to {telegram_id}: {e}")
@@ -788,4 +792,5 @@ async def resend_approve_text(bot: Bot, telegram_id: int) -> Exception | None:
         participant_type = "full"
     return await send_completion_and_bonus(
         bot, telegram_id, participant_type=participant_type, send_bonus=False,
+        send_checklist=False,
     )

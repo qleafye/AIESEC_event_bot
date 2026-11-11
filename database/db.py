@@ -980,6 +980,8 @@ async def init_db():
         await _ensure_column(db, "users", "checkin_message_sent", "INTEGER NOT NULL DEFAULT 0")
         # Ответ одобренного «дойду» / «не дойду». Не формат участия и не опрос «не пришёл».
         await _ensure_column(db, "users", "coming_reply", "TEXT")
+        # Чек-лист менеджера уже ушёл. 0 — ещё нет; пустые настройки флаг не ставят.
+        await _ensure_column(db, "users", "checklist_sent", "INTEGER NOT NULL DEFAULT 0")
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -12516,6 +12518,27 @@ async def approved_absent_from_chat(chat_id: int, city: str | None) -> list[tupl
         ) as cursor:
             rows = await cursor.fetchall()
     return [(name, reply) for name, reply in rows]
+
+
+async def checklist_was_sent(telegram_id: int) -> bool:
+    """Чек-лист этому человеку уже ушёл. Нет строки — ещё нет."""
+    async with _connect() as db:
+        cur = await db.execute(
+            "SELECT checklist_sent FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        row = await cur.fetchone()
+    return bool(row and row[0])
+
+
+async def mark_checklist_sent(telegram_id: int) -> None:
+    """Ставит флаг только после удачной отправки. Чужой id не создаёт строку."""
+    async with _connect() as db:
+        await db.execute(
+            "UPDATE users SET checklist_sent = 1 WHERE telegram_id = ?",
+            (telegram_id,),
+        )
+        await db.commit()
 
 
 async def first_entry_scanned_at(telegram_id: int) -> str | None:
