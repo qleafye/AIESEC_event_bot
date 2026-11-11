@@ -349,6 +349,7 @@ from __future__ import annotations
 from miniapp.routers import (
     admin_tasks,
     applications,
+    certificate_markup,
     checkin,
     checkin_enroll,
     coins,
@@ -379,6 +380,7 @@ from miniapp.routers import (
 
 ALL_ROUTERS = [
     page.router,
+    certificate_markup.router,
     tasks.router,
     training_move.router,
     profile.router,

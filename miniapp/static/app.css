@@ -2674,3 +2674,38 @@ button.rr-card { padding-right: var(--sp-8); cursor: pointer; }
 .checkin-net-banner-text { flex: 1; font-weight: 600; }
 .checkin-net-banner-help { margin-top: var(--sp-2); white-space: pre-line; }
 
+/* Разметка сертификата: лист и рамки. Цвета только из токенов. */
+.cert-stage {
+  position: relative;
+  width: 100%;
+  background: var(--surface-alt);
+  overflow: hidden;
+  touch-action: none;
+}
+.cert-sheet {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.cert-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  touch-action: none;
+  cursor: move;
+}
+.cert-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  cursor: nwse-resize;
+}
+

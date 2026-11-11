@@ -94,6 +94,46 @@ def markup_error(data) -> str | None:
     return None
 
 
+def pdf_error(raw: bytes) -> str | None:
+    """Пусто, если это обычный PDF. Слои `{name}` не требуются."""
+    if not raw or not raw.startswith(b"%PDF"):
+        return "Это не PDF. Пришлите файл в формате PDF."
+    try:
+        page_aspect(raw)
+    except Exception:
+        return "Не получилось открыть этот PDF. Пересохраните его и пришлите ещё раз."
+    return None
+
+
+def preview_pdf(raw: bytes) -> bytes:
+    """Первая страница как есть. Несколько страниц — только первая, иначе рамки
+    лягут на прокрутку, а не на лист."""
+    from pypdf import PdfReader, PdfWriter
+
+    reader = PdfReader(io.BytesIO(raw))
+    if len(reader.pages) <= 1:
+        return raw
+    writer = PdfWriter()
+    writer.add_page(reader.pages[0])
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+def page_aspect(template_pdf: bytes) -> float:
+    """Ширина видимой страницы к высоте, с учётом поворота. Для превью рамок."""
+    from pypdf import PdfReader
+
+    page = PdfReader(io.BytesIO(template_pdf)).pages[0]
+    box = page.cropbox
+    width, height = float(box.width), float(box.height)
+    if int(page.get("/Rotate", 0) or 0) % 180 == 90:
+        width, height = height, width
+    if height <= 0:
+        return 1.0
+    return width / height
+
+
 def dump_markup(data: dict) -> str:
     clean: dict = {}
     for key in ("name", "date", "city"):

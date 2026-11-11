@@ -140,25 +140,69 @@ async def entitlements(telegram_id: int, username: str | None) -> list[tuple[str
     return out
 
 
-async def competency_percents(telegram_id: int) -> list[int] | None:
-    """Проценты по шкалам шаблона (`COMPETENCY_ROWS`) из последней законченной попытки теста
-    основного города. `None` — тест не пройден (или теста нет)."""
+async def _competency_lines(telegram_id: int):
     from database import quiz_db
     from domain.cities import default_city_code
     from services.forum.quiz import result_lines
 
     try:
         quiz = await quiz_db.get_quiz_for_city(default_city_code())
-        lines = await result_lines(telegram_id, quiz) if quiz else None
+        return await result_lines(telegram_id, quiz) if quiz else None
     except Exception as e:
         logger.warning(f"certificates.competency_percents {telegram_id}: {e}")
         return None
+
+
+async def competency_percents(telegram_id: int) -> list[int] | None:
+    """Проценты по шкалам шаблона (`COMPETENCY_ROWS`) из последней законченной попытки теста
+    основного города. `None` — тест не пройден (или теста нет)."""
+    lines = await _competency_lines(telegram_id)
     if not lines:
         return None
     out = []
     for stem in COMPETENCY_ROWS:
         line = next((ln for ln in lines if (ln["competency"] or "").lower().startswith(stem)), None)
         out.append(int(line["percent"] or 0) if line else 0)
+    return out
+
+
+async def competency_name_percents(telegram_id: int) -> dict[str, int] | None:
+    """Имя компетенции из теста → процент. Для кнопки «шкала → компетенция»."""
+    lines = await _competency_lines(telegram_id)
+    if not lines:
+        return None
+    out = {}
+    for line in lines:
+        name = (line.get("competency") or "").strip()
+        if name:
+            out[name] = int(line.get("percent") or 0)
+    return out or None
+
+
+def percents_for_scales(percents: list[int] | None, markup: dict | None,
+                        by_name: dict[str, int] | None) -> list[int] | None:
+    """Порядок шкал как сегодня, пока менеджер не выбрал компетенцию кнопкой.
+    Выбрал — процент берётся по имени, не по месту в списке."""
+    scales = (markup or {}).get("scales") or []
+    if not percents or not scales or not any(box.get("competency") for box in scales):
+        return percents
+    if not by_name:
+        return percents
+    folded = {name.casefold(): pct for name, pct in by_name.items()}
+    out = []
+    for index, box in enumerate(scales):
+        comp = (box.get("competency") or "").strip()
+        if not comp:
+            out.append(percents[index] if index < len(percents) else 0)
+            continue
+        low = comp.casefold()
+        hit = folded.get(low)
+        if hit is None:
+            hit = next((pct for name, pct in folded.items() if low in name or name in low), None)
+        if hit is None:
+            out.append(percents[index] if index < len(percents) else 0)
+        else:
+            out.append(hit)
     return out
 
 
@@ -579,6 +623,9 @@ async def build_pdf(bot, file_id: str, name: str, kind: str = KIND_PARTICIPANT,
     date_text, city_text = await _overlay_texts(markup, telegram_id)
     name_box = COMPETENCY_NAME_BOX if kind == KIND_COMPETENCY else NAME_BOX
     bars = (percents or SAMPLE_PERCENTS) if kind == KIND_COMPETENCY else None
+    if bars is not None:
+        by_name = await competency_name_percents(telegram_id) if telegram_id else None
+        bars = percents_for_scales(bars, markup, by_name)
     return await asyncio.to_thread(
         render_certificate, template, name, name_box, bars, markup, date_text, city_text,
     )

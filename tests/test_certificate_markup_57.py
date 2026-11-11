@@ -5,18 +5,22 @@ import asyncio
 import inspect
 import io
 
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter
 
 from config import config
 from database import certificates_db as cdb
 from database import db
+from dashboard.certificate_markup import MARKUP_HREF, markup_page
 from services.forum.certificate_render import (
     NAME_BOX,
     dump_markup,
     markup_error,
     parse_markup,
+    pdf_error,
+    preview_pdf,
     render_certificate,
 )
+from services.forum.certificates import percents_for_scales
 from tests.test_certificates_261028 import _template
 from tests.test_forum_review_261028 import _name_cm
 
@@ -84,3 +88,52 @@ def test_markup_is_stored_next_to_the_file(tmp_path):
     assert _run(cdb.markup_for_file("FILE_A"))
     assert _run(cdb.set_template("participant", "all", "FILE_B", 1)) is True
     assert _run(cdb.markup_for_file("FILE_B")) is None
+
+
+def test_scale_follows_the_competency_button_not_the_row():
+    percents = [100, 75, 50, 25, 0]
+    by_name = {
+        "Критическое и аналитическое мышление": 100,
+        "Коммуникация и самопрезентация": 50,
+    }
+    markup = {"scales": [
+        {"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.05, "competency": "Коммуникация и самопрезентация"},
+        {"x": 0.1, "y": 0.2, "w": 0.3, "h": 0.05, "competency": "Критическое и аналитическое мышление"},
+    ]}
+    assert percents_for_scales(percents, markup, by_name) == [50, 100]
+    plain = {"scales": [{"x": 0.1, "y": 0.1, "w": 0.3, "h": 0.05}]}
+    assert percents_for_scales(percents, plain, by_name) == percents
+
+
+def test_ordinary_pdf_is_accepted_and_a_picture_is_not():
+    assert pdf_error(_template()) is None
+    assert pdf_error(b"not a pdf") == "Это не PDF. Пришлите файл в формате PDF."
+
+
+def test_preview_keeps_only_the_first_page():
+    writer = PdfWriter()
+    writer.add_blank_page(width=842, height=595)
+    writer.add_blank_page(width=200, height=400)
+    raw = io.BytesIO()
+    writer.write(raw)
+    shown = preview_pdf(raw.getvalue())
+    assert len(PdfReader(io.BytesIO(shown)).pages) == 1
+    assert preview_pdf(_template()) == _template()
+
+
+def test_pdf_upload_is_not_cut_at_one_megabyte():
+    text = open("miniapp/main.py", encoding="utf-8").read()
+    assert '"/app/api/certificates/markup/file": MAX_BODY_BYTES' in text
+
+
+def test_site_opens_the_markup_screen_and_chat_has_no_item():
+    page = markup_page()
+    assert MARKUP_HREF == "/app/#/certificate-markup"
+    assert MARKUP_HREF in page
+    screen = open("miniapp/static/js/screens/certificate_markup.js", encoding="utf-8").read()
+    chat = open("handlers/forum/admin_certificates.py", encoding="utf-8").read()
+    assert "box.competency = name" in screen
+    assert "dataTransfer" not in screen
+    assert "innerHTML" not in screen
+    assert "certadm_markup" not in chat
+    assert "certificate-markup" not in chat
