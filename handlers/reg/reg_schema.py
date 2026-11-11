@@ -718,6 +718,8 @@ async def send_completion_and_bonus(bot: Bot, telegram_id: int, with_menu: bool 
         if send_checklist:
             from services.registration.checklist_send import send_manager_checklist
             await send_manager_checklist(bot, telegram_id, quiet_now=quiet_now)
+        from services.forum.calendar_file import send_forum_calendar
+        await send_forum_calendar(bot, telegram_id, city_code)
         return None
     except Exception as e:
         logger.error(f"Failed to send completion/bonus to {telegram_id}: {e}")

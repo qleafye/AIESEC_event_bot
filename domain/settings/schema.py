@@ -120,6 +120,37 @@ SETTINGS_SCHEMA = {
         "default": None,
         "per_city": True,
     },
+    "forum_time": {
+        "type": "text", "group": "event", "label": "🕙 Начало в календаре",
+        "prompt": (
+            "Во сколько начинается форум в файле календаря, который делегат получает "
+            "после одобрения. Формат <code>ЧЧ:ММ</code>, например <code>10:00</code>.\n\n"
+            "Пусто — в файле будет 10:00."
+        ),
+        "default": None,
+        "per_city": True,
+        "format": "time",
+    },
+    "forum_end_time": {
+        "type": "text", "group": "event", "label": "🕙 Конец в календаре",
+        "prompt": (
+            "Во сколько форум заканчивается в тот же день, в файле календаря. "
+            "Формат <code>ЧЧ:ММ</code>, например <code>18:00</code>.\n\n"
+            "Пусто — файл возьмёт 23:59. Если конец не позже начала, тоже 23:59."
+        ),
+        "default": None,
+        "per_city": True,
+        "format": "time",
+    },
+    "forum_timezone": {
+        "type": "text", "group": "event", "label": "🌍 Пояс календаря",
+        "prompt": (
+            "Часовой пояс файла календаря. Например: <code>Europe/Moscow</code>.\n\n"
+            "Пусто — в файле будет Europe/Moscow. Это не сдвиг QR от Москвы."
+        ),
+        "default": None,
+        "per_city": True,
+    },
     # Форум-ночь п.8 (идея №19, SOS): сколько дней после `forum_date` кнопка «🆘 SOS» видна
     # делегату (services.sos.is_sos_active_for_city) — включая сам день начала. Дефолт 2:
     # большинство форумов идут 1-2 дня (память «Forum plan deck»: «Москва 30-31.10»).

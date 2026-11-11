@@ -64,17 +64,27 @@ async def _edit_cb(key: str, code: str | None) -> str:
     return f"settings_edit:{key}"
 
 
+async def _calendar_button_fixes(code: str | None) -> list[tuple[str, str]]:
+    """Время и пояс файла календаря — рядом с датой, без ввода имени настройки."""
+    return [
+        ("🕙 Начало", await _edit_cb("forum_time", code)),
+        ("🕙 Конец", await _edit_cb("forum_end_time", code)),
+        ("🌍 Пояс календаря", await _edit_cb("forum_timezone", code)),
+    ]
+
+
 async def _row_forum_date(code: str | None) -> dict:
     date_str = await forum_date_for(code)
     date_cb, days_cb = await _edit_cb("forum_date", code), await _edit_cb("sos_active_days", code)
+    calendar = await _calendar_button_fixes(code)
     if not date_str:
         return _row(RED, "Дата форума не задана — без неё не уйдут QR и шпаргалка",
-                    ("🗓 Задать дату форума", date_cb))
+                    [("🗓 Задать дату форума", date_cb), *calendar])
     from services.sos import sos_active_window
     window = await sos_active_window(code)
     if window is None:  # дата не парсится — тот же случай, что «не задана»
         return _row(RED, f"Дата форума не читается ({html.escape(date_str)}) — задайте заново",
-                    ("🗓 Задать дату форума", date_cb))
+                    [("🗓 Задать дату форума", date_cb), *calendar])
     start, end = window
     days = (end - start).days + 1
     span = start.strftime("%d.%m") if days == 1 else f"{start:%d.%m}–{end:%d.%m}"
@@ -83,8 +93,8 @@ async def _row_forum_date(code: str | None) -> dict:
         # Дата прошлого форума, которую забыли обновить, молча выключает рассылки QR и
         # шпаргалки — ловим её здесь, а не в день форума.
         return _row(YELLOW, f"Дата форума прошла ({span}) — это прошлый форум? Обновите дату",
-                    ("🗓 Обновить дату форума", date_cb))
-    edit = [("🗓 Изменить дату", date_cb), ("🗓 Сколько дней идёт", days_cb)]
+                    [("🗓 Обновить дату форума", date_cb), *calendar])
+    edit = [("🗓 Изменить дату", date_cb), ("🗓 Сколько дней идёт", days_cb), *calendar]
     tail = " — идёт сегодня" if start <= today else ""
     inherited = await _inherited_common(code)
     if inherited:

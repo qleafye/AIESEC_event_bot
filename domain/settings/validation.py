@@ -381,6 +381,19 @@ def validate_setting_value(key: str, value: str) -> tuple[str | None, str | None
             )
         return f"{number:g}", None
 
+    if base == "forum_timezone":
+        from zoneinfo import ZoneInfo
+        name = value.strip()
+        try:
+            ZoneInfo(name)
+        except Exception:
+            return None, (
+                "Такого часового пояса нет. Пришлите название, например "
+                "<code>Europe/Moscow</code>.\n\n"
+                "Пришлите ещё раз или «-», чтобы очистить поле."
+            )
+        return name, None
+
     return value, None
 
 
