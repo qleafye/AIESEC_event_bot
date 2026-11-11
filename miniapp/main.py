@@ -212,9 +212,15 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     # потолок тела с multipart-обвязкой (MAX_BODY_BYTES) -- контракт фронта не меняется.
     app.add_middleware(
         BodyLimitMiddleware,
-        limits={"/app/api/uploads": MAX_BODY_BYTES},
+        limits={
+            "/app/api/uploads": MAX_BODY_BYTES,
+            "/app/api/certificates/markup/file": MAX_BODY_BYTES,
+        },
         default=DEFAULT_MAX_BODY_BYTES,
-        report_limits={"/app/api/uploads": MAX_UPLOAD_BYTES},
+        report_limits={
+            "/app/api/uploads": MAX_UPLOAD_BYTES,
+            "/app/api/certificates/markup/file": MAX_UPLOAD_BYTES,
+        },
     )
 
     @app.exception_handler(StarletteHTTPException)

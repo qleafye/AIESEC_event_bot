@@ -280,6 +280,7 @@ EXPECTED_ROUTES = {
     "#/sheets-forms": "screens/sheets_forms.js",
     # Магазин баллов: делегатский экран «🛍 Магазин».
     "#/shop": "screens/shop.js",
+    "#/certificate-markup": "screens/certificate_markup.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -313,7 +314,7 @@ def test_route_table_matches_phase_plan_exactly():
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
     # Правила автоотказа, маршруты режима, «Таблица и формы» и витрина магазина.
-    assert len(routes) == len(EXPECTED_ROUTES) == 38
+    assert len(routes) == len(EXPECTED_ROUTES) == 39
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 

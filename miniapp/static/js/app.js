@@ -109,6 +109,8 @@ export const ROUTES = [
   ["#/sheets-forms", "screens/sheets_forms.js"],
   // Магазин баллов: делегатский экран «🛍 Магазин» (витрина, «Взять», мои брони).
   ["#/shop", "screens/shop.js"],
+  // Разметка сертификата. В чате этого экрана нет.
+  ["#/certificate-markup", "screens/certificate_markup.js"],
 ];
 
 // Разделы админки (Phase 20, ADMIN-IA-04, D-05): те же восемь разделов и ровно те же подписи,
