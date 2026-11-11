@@ -90,6 +90,56 @@ async def _relax_sos_reports_category(db: aiosqlite.Connection) -> None:
     logger.info("init_db: sos_reports пересоздана — category больше не NOT NULL")
 
 
+_USERS_TELEGRAM_PK = re.compile(
+    r"\btelegram_id\s+INTEGER\s+PRIMARY\s+KEY\b",
+    re.IGNORECASE,
+)
+
+
+async def _relax_users_telegram_pk(db: aiosqlite.Connection) -> None:
+    """INTEGER PRIMARY KEY не хранит NULL: SQLite подставляет номер строки.
+    Карточке только из ВК нужен пустой telegram_id, поэтому ключ телеграма
+    становится UNIQUE. Остальные таблицы по-прежнему ищут делегата по telegram_id.
+    Повторный вызов только проверяет уникальность vk_id."""
+    async with db.execute("PRAGMA table_info(users)") as cursor:
+        cols = await cursor.fetchall()
+    tid = next((c for c in cols if c[1] == "telegram_id"), None)
+    if tid is not None and tid[5]:
+        async with db.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'users' AND sql IS NOT NULL"
+        ) as cursor:
+            index_sql = [row[0] for row in await cursor.fetchall()]
+        async with db.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'"
+        ) as cursor:
+            ddl_row = await cursor.fetchone()
+        ddl = ddl_row[0] if ddl_row else ""
+        if not _USERS_TELEGRAM_PK.search(ddl):
+            logger.warning("init_db: users.telegram_id помечен ключом, но DDL не совпал — пропуск")
+        else:
+            new_ddl = _USERS_TELEGRAM_PK.sub("telegram_id INTEGER UNIQUE", ddl, count=1)
+            new_ddl = re.sub(r"\busers\b", "users_vkpk", new_ddl, count=1)
+            await db.commit()
+            await db.execute("BEGIN")
+            try:
+                await db.execute(new_ddl)
+                await db.execute("INSERT INTO users_vkpk SELECT * FROM users")
+                await db.execute("DROP TABLE users")
+                await db.execute("ALTER TABLE users_vkpk RENAME TO users")
+                for sql in index_sql:
+                    await db.execute(sql)
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
+            logger.info("init_db: users.telegram_id больше не PRIMARY KEY — NULL допустим")
+    if await _column_exists(db, "users", "vk_id"):
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_vk_id "
+            "ON users(vk_id) WHERE vk_id IS NOT NULL"
+        )
+
+
 # Вход каждый день (двухдневный форум в Москве): отметка уникальна по (делегат, точка, ДЕНЬ).
 # `day` — «YYYY-MM-DD» по Москве, всегда `scanned_at[:10]` (пишут record_checkin/
 # record_session_checkin/undo_venue_checkin). Сессии этим не меняются: сессия сама идёт в один
@@ -586,7 +636,7 @@ async def init_db():
         await _enable_wal(db)
         await db.execute('''
             CREATE TABLE IF NOT EXISTS users (
-                telegram_id INTEGER PRIMARY KEY,
+                telegram_id INTEGER UNIQUE,
                 username TEXT,
                 full_name TEXT,
                 email TEXT,
@@ -997,6 +1047,7 @@ async def init_db():
         await _ensure_column(db, "users", "goal", "TEXT")          # multi-select, CSV
         await _ensure_column(db, "users", "formats", "TEXT")       # multi-select, CSV
         await _ensure_column(db, "users", "vk_username", "TEXT")   # ник в ВК (@username) — YL'26
+        await _ensure_column(db, "users", "vk_id", "INTEGER")  # номер пользователя ВК, не ник
         await _ensure_column(db, "users", "transport", "TEXT")     # трансфер до площадки / самостоятельно
         await _ensure_column(db, "users", "payment_plan_date", "TEXT")  # планируемая дата оплаты взноса
         await _ensure_column(db, "users", "bed_sharing", "TEXT")   # конфа: готов делить двуспальную кровать
@@ -2801,6 +2852,9 @@ async def init_db():
         from database.fsm_storage import ensure_schema as ensure_fsm_schema
         await ensure_fsm_schema(db)
 
+        await _ensure_column(db, "users", "vk_id", "INTEGER")
+        await _relax_users_telegram_pk(db)
+
         await db.commit()
 
 # Perf (стенд 17.09: `/app/api/admin/settings/all` — 4.65 с / 2239 отдельных SQLite-
@@ -3182,6 +3236,37 @@ async def add_user(data: dict):
             data.get('case_optin'),
         ))
         await db.commit()
+
+async def link_vk_account(telegram_id: int, vk_id: int) -> None:
+    """Пишет номер ВК на карточку телеграма. Ник vk_username связкой не является.
+    Повторная склейка и чужой номер — отказ."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT vk_id FROM users WHERE telegram_id = ?", (telegram_id,)
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            raise ValueError("Карточка не найдена")
+        if row["vk_id"] is not None:
+            raise ValueError("Аккаунт уже связан")
+        async with db.execute(
+            "SELECT 1 FROM users WHERE vk_id = ?", (vk_id,)
+        ) as cursor:
+            taken = await cursor.fetchone()
+        if taken is not None:
+            raise ValueError("Аккаунт уже связан")
+        try:
+            cursor = await db.execute(
+                "UPDATE users SET vk_id = ? WHERE telegram_id = ? AND vk_id IS NULL",
+                (vk_id, telegram_id),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError("Аккаунт уже связан")
+            await db.commit()
+        except aiosqlite.IntegrityError as exc:
+            raise ValueError("Аккаунт уже связан") from exc
+
 
 async def get_user(telegram_id: int):
     async with _connect() as db:
