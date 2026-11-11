@@ -1090,7 +1090,7 @@ async def _chat_status_line() -> str:
     return "💬 Чат делегатов: " + "; ".join(parts)
 
 
-async def render_settings_group_text(token: str, admin_id: int | None = None) -> str:
+async def render_settings_group_text(token: str, admin_id: int | None = None, *, rare_only: bool = False) -> str:
     """Quick 260724-c0x: per-group sub-screen — status FLAGS only («задано»/«не задано»/
     «по умолчанию»), never the raw value inline (that stays behind the existing
     settings_edit tap-through, unchanged).
@@ -1104,79 +1104,12 @@ async def render_settings_group_text(token: str, admin_id: int | None = None) ->
     (`city_override_codes` внутри цикла добавляет ещё по одному на город) — снимок
     `bot_settings` на весь рендер вместо соединения на ключ (тот же приём, что у Mini App)."""
     async with settings_snapshot():
-        return await _render_settings_group_text_impl(token, admin_id)
+        return await _render_settings_group_text_impl(token, admin_id, rare_only)
 
 
-async def _render_settings_group_text_impl(token: str, admin_id: int | None) -> str:
-    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
-    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
-
-    group_label = _settings_group_label(token)
-    lines = []
-    if per_city_ctx:
-        lines.append(f"🏙 {html_module.escape(await city_label(header_code))}")
-    lines += [f"⚙️ <b>Настройки → {group_label}</b>", ""]
-
-    field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
-    # Phase 09.2 (C, CITY-05): compact «🏙 N» override-count marker, only when the cities
-    # module is on — module off = byte-identical to today's text (CONTEXT C). The full list
-    # of city names lives on the per-key editor screen (settings_edit callback family), not
-    # here — this screen deliberately never shows raw values inline (quick 260724-c0x contract).
-    city_module_on = await cities_module_on()
-    uni_hidden = await uni_controls_hidden_by_v2()
-    for key in _settings_group_keys(token):
-        if uni_hidden and key == UNI_LIST_KEY:
-            continue
-        label = field_labels.get(key, key)
-        if per_city_ctx and is_per_city(key):
-            # Phase 09.3 (05, CITY-09, CONTEXT B): flag relative to the header's city —
-            # «✏️ своё» if the city has its own value, else «как везде · {общее}» using the
-            # SAME ladder as the global branch below (no duplicated wording rules).
-            own_key = per_city_key(key, header_code)
-            if own_key and await get_setting(own_key):
-                flag = "✏️ своё"
-            else:
-                value = await get_setting(key)
-                if value:
-                    common = "задано"
-                elif key in _SETTINGS_DISPLAY_DEFAULTS:
-                    common = "по умолчанию"
-                else:
-                    common = "не задано"
-                flag = f"как везде · {common}"
-            lines.append(f"{label}: {flag}")
-            continue
-        value = await get_setting(key)
-        if value:
-            flag = "✏️ задано"
-        elif key in _SETTINGS_DISPLAY_DEFAULTS:
-            flag = "<i>по умолчанию</i>"
-        else:
-            flag = "<i>— не задано</i>"
-        city_suffix = ""
-        if city_module_on and is_per_city(key):
-            codes = await city_override_codes(key)
-            if codes:
-                city_suffix = f" · 🏙 {len(codes)}"
-        lines.append(f"{label}: {flag}{city_suffix}")
-
-    if token == "consent": lines += await consent_group_extra_lines()  # quick 260822 (шов admin_consent)
-    # Правка 15.09: одна строка «видно без экрана» на месте снесённого «💬 Чат» — id/название
-    # чата (D-11, выше по этой же функции) пишет сам бот и в общий цикл полей не попадают,
-    # но менеджер должен видеть состояние привязки, не открывая отдельный экран.
-    if token == "system": lines.append(await _chat_status_line())
-    if token == PHOTO_FILE_GROUP:
-        for prefix, label, _ in PHOTO_FIELDS:
-            # Город в шапке: «📅 Программа» — своё фото города (его и грузит кнопка), не общее.
-            own = prefix == "program" and per_city_ctx
-            photo = await (own_program_photo(header_code) if own else get_setting(f"{prefix}_photo_file_id"))
-            lines.append(f"{label}: {'✅ загружена' if photo else '<i>— не задано</i>'}")
-        for prefix, label, _ in FILE_FIELDS:
-            photo = await get_setting(f"{prefix}_photo_file_id")
-            doc = await get_setting(f"{prefix}_doc_file_id")
-            lines.append(f"{label}: {'✅ загружен' if (photo or doc) else '<i>— не задано</i>'}")
-
-    return "\n".join(lines)
+async def _render_settings_group_text_impl(token: str, admin_id: int | None, rare_only: bool = False) -> str:
+    from handlers.settings.admin_feature_screen import render_group_text
+    return await render_group_text(token, admin_id, rare_only=rare_only)
 
 
 UNI_LIST_KEY = "university_options"
@@ -1193,10 +1126,9 @@ async def uni_controls_hidden_by_v2() -> bool:
     return await get_setting_typed("reg_form_v2_enabled") == "on"
 
 
-async def build_settings_group_keyboard(token: str, admin_id: int | None = None):
-    """Reuses the existing settings_edit/settings_photo/settings_file callbacks unchanged —
-    only the button placement changes. Configured fields first, then a noop section-header
-    button (req #2: collapse unconfigured fields), then unconfigured fields.
+async def build_settings_group_keyboard(token: str, admin_id: int | None = None, *, rare_only: bool = False):
+    """Кнопки экрана фичи: три кучи, затем «Редкое», если есть что сворачивать.
+    Колбэки settings_edit / settings_photo / settings_file те же.
 
     Phase 09.3 (05, CITY-09): WR-05 — resolve the header ONCE, same contract as
     render_settings_group_text above (kept as a second read here, not shared across the two
@@ -1209,77 +1141,12 @@ async def build_settings_group_keyboard(token: str, admin_id: int | None = None)
     SELECT) — отдельные снимки для текста и клавиатуры дешевле, чем протаскивать общий снимок
     через все call site пары."""
     async with settings_snapshot():
-        return await _build_settings_group_keyboard_impl(token, admin_id)
+        return await _build_settings_group_keyboard_impl(token, admin_id, rare_only)
 
 
-async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None):
-    header_code = await admin_selected_city(admin_id) if admin_id is not None else None
-    per_city_ctx = bool(header_code and header_code != ALL_CITIES)
-
-    field_labels = {k: lbl for k, lbl, _ in SETTINGS_FIELDS}
-    configured: list[InlineKeyboardButton] = []
-    unconfigured: list[InlineKeyboardButton] = []
-    uni_hidden = await uni_controls_hidden_by_v2()
-    uni_note = False
-
-    for key in _settings_group_keys(token):
-        if uni_hidden and key == UNI_LIST_KEY:
-            uni_note = True
-            continue
-        label = field_labels.get(key, key)
-        btn = InlineKeyboardButton(text=f"✏️ {label}", callback_data=f"settings_edit:{key}")
-        if per_city_ctx and is_per_city(key):
-            # CONTEXT B: «настроено» = effective value at the header's city (своё, иначе
-            # общее) — a key with only a city override must land in «настроено», not the
-            # collapsed «не настроено» section.
-            own_key = per_city_key(key, header_code)
-            own_value = await get_setting(own_key) if own_key else None
-            value = own_value or await get_setting(key)
-        else:
-            value = await get_setting(key)
-        (configured if value else unconfigured).append(btn)
-
-    if token == PHOTO_FILE_GROUP:
-        for prefix, label, _ in PHOTO_FIELDS:
-            btn = InlineKeyboardButton(text=f"📷 {label}", callback_data=f"settings_photo:{prefix}")
-            photo = await get_setting(f"{prefix}_photo_file_id")
-            (configured if photo else unconfigured).append(btn)
-        for prefix, label, _ in FILE_FIELDS:
-            btn = InlineKeyboardButton(text=f"📎 {label}", callback_data=f"settings_file:{prefix}")
-            photo = await get_setting(f"{prefix}_photo_file_id")
-            doc = await get_setting(f"{prefix}_doc_file_id")
-            (configured if (photo or doc) else unconfigured).append(btn)
-
-    buttons = [[b] for b in configured]
-    if uni_note:
-        buttons.append([InlineKeyboardButton(text=UNI_V2_NOTE, callback_data="settings_group_noop")])
-    if unconfigured:
-        buttons.append([InlineKeyboardButton(text="── не настроено ──", callback_data="settings_group_noop")])
-        buttons.extend([[b] for b in unconfigured])
-    if token == "game":  # Quick 260822: режим уведомлений о сдачах — тумблер, не ввод кода
-        buttons.append([InlineKeyboardButton(text=await game_submit_notify_button_text(), callback_data="toggle_game_submit_notify")])
-        from handlers.amb.admin_amb_section import selection_toggle_button  # тумблер «🤝 Отбор амбассадоров»
-        buttons.append([await selection_toggle_button()])
-    if token == "amb":
-        # Phase 32 (32-02, D-29): «Показывать имена в рейтинге волны» — тумблер, тот же приём.
-        buttons.append([InlineKeyboardButton(text=await _wave_rating_show_names_button_text(), callback_data="toggle_wave_rating_show_names")])
-    # Phase 20 (20-01): «🔄 Новый сезон» и «📥 Импорт прошлого события» съехали с экрана
-    # группы «🎪 Событие/Медиа» в раздел «🔧 Управление» (handlers/settings/admin_sections.py) — это
-    # операции над всем событием, а не тексты и медиа. Условие суперадмина для «Нового
-    # сезона» переехало вместе с кнопкой (тип строки `screen_admin` в реестре разделов);
-    # настоящий гейт — прежняя перепроверка config.ADMIN_IDS внутри самих хендлеров визарда,
-    # потому что стейл-клавиатура в чате живёт вечно.
-    if token == "consent": buttons += consent_group_extra_buttons()  # quick 260822 (шов admin_consent)
-    if token == "sheets":
-        from handlers.sheets.admin_sheet_tabs import sheet_tabs_group_extra_buttons  # ленивый шов (квик 260919-mlu)
-        buttons += sheet_tabs_group_extra_buttons()
-    # Phase 20 (20-04): «Назад» с экрана группы ведёт в РАЗДЕЛ-владелец этой группы
-    # («🎪 Событие/Медиа» -> «🎪 Событие», «📋 Заявки» -> «📋 Заявки»), а не на исчезнувший
-    # плоский лендинг. Цель считает `section_of` из реестра SECTIONS — второй карты нет.
-    from handlers.settings.admin_sections import back_button  # ленивый шов (цикл на уровне модуля)
-    from handlers.settings.admin_sections import owner_back_button  # тот же шов: «Назад» из «🤝 Амбассадоры» при выключенном модуле — в «🎮 Геймификацию»
-    buttons.append([await owner_back_button(f"settings_group:{token}")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
+async def _build_settings_group_keyboard_impl(token: str, admin_id: int | None, rare_only: bool = False):
+    from handlers.settings.admin_feature_screen import build_group_keyboard
+    return await build_group_keyboard(token, admin_id, rare_only=rare_only)
 
 
 @router.callback_query(F.data == "admin_settings")
@@ -1296,15 +1163,18 @@ async def show_admin_settings(callback: types.CallbackQuery):
 
 @router.callback_query(F.data.startswith("settings_group:"))
 async def show_settings_group(callback: types.CallbackQuery):
-    token = callback.data.split(":", 1)[1]
-    text = await render_settings_group_text(token, callback.from_user.id)
-    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=await build_settings_group_keyboard(token, callback.from_user.id))
+    raw = callback.data.split(":", 1)[1]
+    rare_only = raw.endswith(":rare")
+    token = raw[:-5] if rare_only else raw
+    text = await render_settings_group_text(token, callback.from_user.id, rare_only=rare_only)
+    kb = await build_settings_group_keyboard(token, callback.from_user.id, rare_only=rare_only)
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(F.data == "settings_group_noop")
 async def settings_group_noop(callback: types.CallbackQuery):
-    # Section-header button in the collapsed «не настроено» view — not actionable.
+    # Заголовок кучи на экране фичи — не действие.
     await callback.answer()
 
 
