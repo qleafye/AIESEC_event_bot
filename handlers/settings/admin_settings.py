@@ -29,7 +29,7 @@ import shared.chat_score as chat_score  # Квик 260927: ключи весов
 import shared.favicon as dashboard_favicon  # Квик 260921: тексты/правила иконки вкладки дашборда (raw_file_key)
 import domain.settings.ui_text_fields as _UI  # подписи, вынесенные из кода: хвосты экранов групп
 import domain.settings.delegate_text_fields as _DT  # фразы делегату, вынесенные из кода: хвосты экранов
-from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, option_label
+from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, option_label, sensitive_display
 from domain.settings.callback_token import city_reset_callback, edit_callback_key, reset_payload_key
 from database.db import (
     export_users_csv,
@@ -415,7 +415,9 @@ _SHEETS_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"])
 _AMB_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _AMB_FIELD_ORDER]
 _GAME_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _GAME_FIELD_ORDER]
 _SYSTEM_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _SYSTEM_FIELD_ORDER]
+_VK_FIELD_ORDER = ["vk_enabled", "vk_community_token", "vk_community_id"]
 _CHAT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _CHAT_FIELD_ORDER]
+_VK_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for k in _VK_FIELD_ORDER]
 _CHAT_TEXT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt"]) for _l, _t, ks in CHAT_TEXT_GROUPS for k in ks]
 
 # NOTE: reg_university_mode и edu_conditional вынесены в кнопки-переключатели (build_settings_keyboard).
@@ -424,7 +426,7 @@ _CHAT_TEXT_FIELDS = [(k, SETTINGS_SCHEMA[k]["label"], SETTINGS_SCHEMA[k]["prompt
 # party_approval are toggle buttons in build_settings_keyboard, not here).
 SETTINGS_FIELDS = (
     _EVENT_FIELDS + _REG_FIELDS + _APPS_FIELDS + _PAY_FIELDS + _PARTY_FIELDS + _CONSENT_FIELDS
-    + _SHEETS_FIELDS + _GAME_FIELDS + _AMB_FIELDS + _CHAT_FIELDS + _SYSTEM_FIELDS + MENU_LABEL_FIELDS + _CHAT_TEXT_FIELDS
+    + _SHEETS_FIELDS + _GAME_FIELDS + _AMB_FIELDS + _CHAT_FIELDS + _VK_FIELDS + _SYSTEM_FIELDS + MENU_LABEL_FIELDS + _CHAT_TEXT_FIELDS
 )
 
 # Phase 5 (D-11a): default text shown in render_settings_text when a text setting is unset,
@@ -470,6 +472,7 @@ SETTINGS_GROUPS = [
     ("🎮 Геймификация", "game", _GAME_FIELD_ORDER),
     ("🤝 Амбассадоры", "amb", _AMB_FIELD_ORDER),
     ("💬 Чат делегатов", "chat", _CHAT_FIELD_ORDER),  # квик 260927: веса рейтинга чата
+    ("💬 ВКонтакте", "vk", _VK_FIELD_ORDER),
     ("🔧 Система", "system", _SYSTEM_FIELD_ORDER),
     *CHAT_TEXT_GROUPS,  # раздел каждой — строка ("group", …) в admin_sections.SECTIONS
 ]
@@ -1899,6 +1902,8 @@ async def _settings_edit_screen(key: str, header_code: str | None) -> tuple[str,
                 "например <code>Согласие на съёмку|photo</code>. "
                 "Без ключа кнопка в рассылке не появится."
             )
+    elif entry.get("sensitive"):
+        text = f"Сейчас: <b>{html_module.escape(sensitive_display(current))}</b>\n\n{text}"
     elif is_enum or current:  # enum: «Сейчас: …» и без своего значения — подпись дефолта
         now = enum_now_line(key, current) if is_enum else f"Сейчас задано:\n<b>{html_module.escape(current)}</b>"
         text = f"{now}\n\n{text}"
@@ -2560,6 +2565,16 @@ async def settings_edit_value(message: types.Message, state: FSMContext):
         if error:
             await message.answer(error, parse_mode="HTML")
             return
+        if _base_setting_key(key) == "vk_community_token":
+            from services.vk.vk_api_client import (
+                forget_community_token_without_messages_right,
+                validate_vk_token,
+            )
+            valid, error_msg = await validate_vk_token(value)
+            if not valid:
+                await forget_community_token_without_messages_right(error_msg, message.from_user.id)
+                await message.answer(error_msg or "Ключ не подошёл. Пришлите новый ключ сообщества.")
+                return
         if await ph.gate(message, state, key, value, ack=ack):  # пропавшая/опечатанная {подстановка}
             return
         if key == "event_type" and value == "skillup":  # пресет СкиллАп — только через подтверждение

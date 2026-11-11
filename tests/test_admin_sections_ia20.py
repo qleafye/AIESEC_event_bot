@@ -228,6 +228,7 @@ def test_coverage_apps_is_the_only_new_settings_group(tmp_path):
         # Сообщения менеджеру о сверке после привязки чата — в «🔧 Управление».
         "settings_group:chat_bind_texts",
         "settings_group:chat",
+        "settings_group:vk",
     }
     assert not (left_for_app & groups_after)
 

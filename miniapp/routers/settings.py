@@ -66,6 +66,8 @@ from domain.settings.schema import (
     is_wiring_key,
     multi_labels,
     option_label,
+    client_omits_secret,
+    sensitive_display,
     setting_pile,
     switch_phrase,
 )
@@ -410,6 +412,12 @@ async def _item_for(base: str, ctx: _CityCtx) -> dict:
         "stale_options": stale_options,
         "stale_option_text": stale_option_text,
     })
+    if meta.get("sensitive"):
+        shown = sensitive_display(raw)
+        spec["display"] = shown
+        spec["raw"] = None
+        spec["value"] = ""
+        spec["help"] = f"{shown}. Пришлите новый ключ, если нужно заменить."
     return spec
 
 
@@ -829,7 +837,8 @@ async def settings_batch(
             key = change.key
             if key in body.base and key not in confirmed:
                 current = await get_setting(key)
-                if current != body.base[key]:
+                presented = body.base[key]
+                if not client_omits_secret(key, presented) and current != presented:
                     stale.append({
                         "key": key,
                         "raw": current,

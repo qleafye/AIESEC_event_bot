@@ -274,6 +274,7 @@ SECTIONS: list[tuple[str, str, list[tuple]]] = [
         # Тексты личных сообщений о сверке после привязки чата (domain/settings/chat_fields.py).
         # Группа system в раздел не возвращается: владелец экрана больше не выводится из SECTIONS.
         ("group", "chat_bind_texts"),
+        ("group", "vk"),
     ]),
 ]
 
