@@ -255,16 +255,23 @@ async def certadm_tpl_file(message: types.Message, state: FSMContext, bot):
         return
     name = await certs.default_name(message.from_user.id, message.from_user.full_name) or _EXAMPLE_NAME
     try:
-        pdf = await certs.build_pdf(bot, doc.file_id, name, kind, await certs.competency_percents(message.from_user.id))
+        pdf = await certs.build_pdf(
+            bot, doc.file_id, name, kind,
+            await certs.competency_percents(message.from_user.id),
+            telegram_id=message.from_user.id,
+        )
     except Exception as e:
         logger.error(f"certadm_tpl_file: шаблон не читается: {e}")
         await message.answer("Не получилось открыть этот PDF. Пересохраните его из редактора и пришлите ещё раз.")
         return
-    await cdb.set_template(kind, variant, doc.file_id, message.from_user.id)
+    cleared = await cdb.set_template(kind, variant, doc.file_id, message.from_user.id)
     await state.clear()
+    caption = f"✅ Шаблон «{certs.KIND_TITLES[kind]} · {certs.variant_label(variant)}» сохранён. Вот пример."
+    if cleared:
+        caption += " Рамки с прошлого файла сняты. Поставьте их заново на сайте."
     await message.answer_document(
         BufferedInputFile(pdf, filename=certs.file_name(kind, name)),
-        caption=f"✅ Шаблон «{certs.KIND_TITLES[kind]} · {certs.variant_label(variant)}» сохранён. Вот пример.",
+        caption=caption,
     )
     await _back_home(message)
 
@@ -484,7 +491,11 @@ async def certadm_preview(callback: types.CallbackQuery, bot):
     name = await certs.default_name(callback.from_user.id, callback.from_user.full_name) or _EXAMPLE_NAME
     for (kind, variant), file_id in sorted(templates.items()):
         try:
-            pdf = await certs.build_pdf(bot, file_id, name, kind, await certs.competency_percents(callback.from_user.id))
+            pdf = await certs.build_pdf(
+                bot, file_id, name, kind,
+                await certs.competency_percents(callback.from_user.id),
+                telegram_id=callback.from_user.id,
+            )
         except Exception as e:
             logger.error(f"certadm_preview {kind}/{variant}: {e}")
             await callback.message.answer(f"❌ {certs.KIND_TITLES[kind]} · {certs.variant_label(variant)}: не собрался.")

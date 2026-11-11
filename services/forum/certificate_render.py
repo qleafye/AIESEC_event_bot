@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import io
+import json
 from pathlib import Path
 
 _FONTS = Path(__file__).resolve().parents[2] / "assets" / "fonts"
@@ -31,6 +32,86 @@ _SUPERSAMPLE = 4
 COMPETENCY_BARS = {"page": (842.0, 595.0), "x0": 510.0, "x1": 794.0,
                    "tops": (156.0, 211.0, 267.0, 326.0, 383.0), "h": 35.0, "pad": 19.0, "size": 15.0}
 _BAR_FONT = "Montserrat-Bold.ttf"
+
+
+def _box(item) -> dict | None:
+    """Доли левого верхнего угла и размера. Число вне листа — рамка не годится."""
+    if not isinstance(item, dict):
+        return None
+    try:
+        x, y, w, h = (float(item[key]) for key in ("x", "y", "w", "h"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(0 <= value <= 1 for value in (x, y, w, h)):
+        return None
+    if w <= 0 or h <= 0 or x + w > 1.001 or y + h > 1.001:
+        return None
+    box = {"x": x, "y": y, "w": w, "h": h}
+    comp = item.get("competency")
+    if isinstance(comp, str) and comp.strip():
+        box["competency"] = comp.strip()
+    return box
+
+
+def parse_markup(raw: str | None) -> dict | None:
+    """JSON долей рядом с файлом. Пусто и мусор — нет долей, рендер берёт константы."""
+    if not raw or not str(raw).strip():
+        return None
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    out: dict = {}
+    for key in ("name", "date", "city"):
+        box = _box(data.get(key))
+        if box:
+            out[key] = box
+    scales = []
+    for item in data.get("scales") or []:
+        box = _box(item)
+        if box:
+            scales.append(box)
+    if scales:
+        out["scales"] = scales
+    return out or None
+
+
+def markup_error(data) -> str | None:
+    """Пустая строка ошибки, если доли можно сохранить. Текст говорит, что поправить."""
+    if not isinstance(data, dict):
+        return "Не получилось прочитать рамки. Поставьте их на странице ещё раз и сохраните."
+    for key, title in (("name", "Имя"), ("date", "Дата"), ("city", "Город")):
+        if key in data and data[key] is not None and _box(data[key]) is None:
+            return f"Рамка «{title}» вышла за страницу. Поставьте её целиком на лист."
+    scales = data.get("scales") or []
+    if not isinstance(scales, list):
+        return "Шкалы не прочитались. Поставьте их ещё раз и сохраните."
+    for index, item in enumerate(scales, start=1):
+        if _box(item) is None:
+            return f"Рамка «Шкала {index}» вышла за страницу. Поставьте её целиком на лист."
+    return None
+
+
+def dump_markup(data: dict) -> str:
+    clean: dict = {}
+    for key in ("name", "date", "city"):
+        box = _box(data.get(key))
+        if box:
+            clean[key] = {k: box[k] for k in ("x", "y", "w", "h")}
+    scales = []
+    for item in data.get("scales") or []:
+        box = _box(item)
+        if not box:
+            continue
+        row = {k: box[k] for k in ("x", "y", "w", "h")}
+        if box.get("competency"):
+            row["competency"] = box["competency"]
+        scales.append(row)
+    if scales:
+        clean["scales"] = scales
+    return json.dumps(clean, ensure_ascii=False)
 
 
 def _name_image(name: str, box_w_pt: float, box_h_pt: float):
@@ -76,6 +157,34 @@ def _bars_image(percents, scale: float):
     return img, b["x0"], top, width, height
 
 
+def _one_bar(pct: int, box_w_pt: float, box_h_pt: float):
+    """Одна шкала в своей рамке. 0% — картинки нет, на листе остаётся ноль шаблона."""
+    from PIL import Image, ImageDraw, ImageFont
+
+    pct = min(int(pct), 100)
+    if pct <= 0:
+        return None
+    k = _SUPERSAMPLE
+    w_px, h_px = max(1, int(box_w_pt * k)), max(1, int(box_h_pt * k))
+    img = Image.new("RGBA", (w_px, h_px), NAME_COLOR + (0,))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype(str(_FONTS / _BAR_FONT), max(8, int(h_px * 0.45)))
+    label = f"{pct}%"
+    pad = h_px * 0.15
+    bar_w = max(w_px * pct / 100, draw.textlength(label, font=font) + 2 * pad)
+    draw.rounded_rectangle((0, 0, min(bar_w, w_px) - 1, h_px - 1), radius=h_px / 2,
+                           fill=NAME_COLOR + (255,))
+    draw.text((pad, h_px / 2), label, font=font, fill=(255, 255, 255, 255), anchor="lm")
+    return img
+
+
+def _frac_rect(left, top, page_w, page_h, box: dict):
+    w, h = page_w * box["w"], page_h * box["h"]
+    x = left + page_w * box["x"]
+    y = top - page_h * box["y"] - h
+    return x, y, w, h
+
+
 def _image_xobject(writer, img):
     from pypdf.generic import DecodedStreamObject, NameObject, NumberObject
 
@@ -101,10 +210,12 @@ def _image_xobject(writer, img):
 
 
 def render_certificate(template_pdf: bytes, name: str, name_box: tuple = NAME_BOX,
-                       percents: list[int] | None = None) -> bytes:
+                       percents: list[int] | None = None, markup: dict | None = None,
+                       date_text: str = "", city_text: str = "") -> bytes:
     """PDF первой страницы шаблона с вписанным именем (и шкалами компетенций, если переданы
-    `percents` — по порядку шкал шаблона). Синхронный (Pillow + pypdf) — вызывающий зовёт через
-    `asyncio.to_thread`."""
+    `percents` — по порядку шкал шаблона). `markup` — доли рамок этого файла. Нет долей —
+    прежние `NAME_BOX` и `COMPETENCY_BARS`. Синхронный (Pillow + pypdf) — вызывающий зовёт
+    через `asyncio.to_thread`. Именной слой `{name}` не ищется и не создаётся."""
     from pypdf import PdfReader, PdfWriter
     from pypdf.generic import ArrayObject, DecodedStreamObject, DictionaryObject, NameObject
 
@@ -119,13 +230,35 @@ def render_certificate(template_pdf: bytes, name: str, name_box: tuple = NAME_BO
     left, bottom, right, top = (float(v) for v in page.cropbox)
     page_w, page_h = right - left, top - bottom
 
-    cx, cy_top, wf, hf = name_box
-    box_w, box_h = page_w * wf, page_h * hf
-    x = left + page_w * cx - box_w / 2
-    y = top - page_h * cy_top - box_h / 2
     # (имя XObject, картинка, x, y низа, ширина, высота) в pt страницы
-    images = [("/CertName", _name_image(name.strip(), box_w, box_h), x, y, box_w, box_h)]
-    if percents:
+    images = []
+    name_frac = (markup or {}).get("name")
+    if name_frac:
+        x, y, box_w, box_h = _frac_rect(left, top, page_w, page_h, name_frac)
+    else:
+        cx, cy_top, wf, hf = name_box
+        box_w, box_h = page_w * wf, page_h * hf
+        x = left + page_w * cx - box_w / 2
+        y = top - page_h * cy_top - box_h / 2
+    images.append(("/CertName", _name_image(name.strip(), box_w, box_h), x, y, box_w, box_h))
+    for key, text, label in (
+        ("date", date_text, "/CertDate"),
+        ("city", city_text, "/CertCity"),
+    ):
+        box = (markup or {}).get(key)
+        if not box or not str(text or "").strip():
+            continue
+        rx, ry, rw, rh = _frac_rect(left, top, page_w, page_h, box)
+        images.append((label, _name_image(str(text).strip(), rw, rh), rx, ry, rw, rh))
+    scales = (markup or {}).get("scales")
+    if scales and percents:
+        for index, box in enumerate(scales):
+            pct = percents[index] if index < len(percents) else 0
+            rx, ry, rw, rh = _frac_rect(left, top, page_w, page_h, box)
+            img = _one_bar(pct, rw, rh)
+            if img is not None:
+                images.append((f"/CertBar{index}", img, rx, ry, rw, rh))
+    elif percents:
         sx = page_w / COMPETENCY_BARS["page"][0]
         sy = page_h / COMPETENCY_BARS["page"][1]
         img, bx, btop, bw, bh = _bars_image(percents, sx)

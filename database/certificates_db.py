@@ -33,7 +33,8 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
     await db.execute(
         "CREATE TABLE IF NOT EXISTS certificate_templates ("
         "kind TEXT NOT NULL, variant TEXT NOT NULL, file_id TEXT NOT NULL, "
-        "updated_at TEXT NOT NULL, updated_by INTEGER, PRIMARY KEY (kind, variant))"
+        "updated_at TEXT NOT NULL, updated_by INTEGER, markup TEXT, "
+        "PRIMARY KEY (kind, variant))"
     )
     await db.execute(
         "CREATE TABLE IF NOT EXISTS certificate_people ("
@@ -62,6 +63,7 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
     await _db._ensure_column(db, "certificate_people", "list_name", "TEXT")
     await _db._ensure_column(db, "certificate_people", "name_ok", "INTEGER NOT NULL DEFAULT 0")
     await _db._ensure_column(db, "certificate_people", "send_blocked", "INTEGER NOT NULL DEFAULT 0")
+    await _db._ensure_column(db, "certificate_templates", "markup", "TEXT")
 
 
 def _stamp() -> str:
@@ -90,15 +92,25 @@ async def set_open_at(value: str | None) -> None:
 
 # ── шаблоны ────────────────────────────────────────────────────────────────────────────
 
-async def set_template(kind: str, variant: str, file_id: str, admin_id: int) -> None:
+async def set_template(kind: str, variant: str, file_id: str, admin_id: int) -> bool:
+    """Сохранить file_id. True — файл сменился и рамки прошлого файла сняты."""
     async with _db._connect() as db:
+        async with db.execute(
+            "SELECT file_id, markup FROM certificate_templates WHERE kind = ? AND variant = ?",
+            (kind, variant),
+        ) as cur:
+            prev = await cur.fetchone()
+        cleared = bool(prev and prev[0] != file_id and prev[1])
         await db.execute(
-            "INSERT INTO certificate_templates (kind, variant, file_id, updated_at, updated_by) "
-            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(kind, variant) DO UPDATE SET "
-            "file_id = excluded.file_id, updated_at = excluded.updated_at, updated_by = excluded.updated_by",
+            "INSERT INTO certificate_templates (kind, variant, file_id, updated_at, updated_by, markup) "
+            "VALUES (?, ?, ?, ?, ?, NULL) ON CONFLICT(kind, variant) DO UPDATE SET "
+            "file_id = excluded.file_id, updated_at = excluded.updated_at, updated_by = excluded.updated_by, "
+            "markup = CASE WHEN certificate_templates.file_id = excluded.file_id "
+            "THEN certificate_templates.markup ELSE NULL END",
             (kind, variant, file_id, _stamp(), admin_id),
         )
         await db.commit()
+    return cleared
 
 
 async def delete_template(kind: str, variant: str) -> None:
@@ -113,6 +125,37 @@ async def list_templates() -> dict[tuple[str, str], str]:
         async with db.execute("SELECT kind, variant, file_id FROM certificate_templates") as cur:
             rows = await cur.fetchall()
     return {(r[0], r[1]): r[2] for r in rows}
+
+
+async def list_template_rows() -> list[dict]:
+    """Шаблоны с долями рамок. Доли — JSON рядом с file_id, не внутри PDF."""
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT kind, variant, file_id, markup FROM certificate_templates ORDER BY kind, variant",
+        ) as cur:
+            rows = await cur.fetchall()
+    return [{"kind": r[0], "variant": r[1], "file_id": r[2], "markup": r[3]} for r in rows]
+
+
+async def markup_for_file(file_id: str) -> str | None:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT markup FROM certificate_templates WHERE file_id = ? AND markup IS NOT NULL LIMIT 1",
+            (file_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    return row[0] if row and row[0] else None
+
+
+async def set_markup(kind: str, variant: str, markup: str | None) -> bool:
+    """Записать доли к уже загруженному файлу. False — такой строки шаблона нет."""
+    async with _db._connect() as db:
+        cur = await db.execute(
+            "UPDATE certificate_templates SET markup = ? WHERE kind = ? AND variant = ?",
+            (markup, kind, variant),
+        )
+        await db.commit()
+    return bool(cur.rowcount)
 
 
 # ── волонтёры и амбассадоры ────────────────────────────────────────────────────────────

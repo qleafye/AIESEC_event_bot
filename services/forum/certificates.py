@@ -537,16 +537,51 @@ async def _template_bytes(bot, file_id: str) -> bytes:
     return cached
 
 
+def _ru_date(raw) -> str:
+    if raw is None or raw == "":
+        return ""
+    if hasattr(raw, "strftime"):
+        return raw.strftime("%d.%m.%Y")
+    text = str(raw).strip()
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        year, month, day = text[:10].split("-")
+        return f"{day}.{month}.{year}"
+    return text
+
+
+async def _overlay_texts(markup: dict | None, telegram_id: int | None) -> tuple[str, str]:
+    """Дата форума и город человека — только если у файла есть такие рамки."""
+    if not markup or not (markup.get("date") or markup.get("city")):
+        return "", ""
+    from domain.cities import city_label_or_none
+    from domain.settings.schema import get_setting_typed
+
+    date_text = _ru_date(await get_setting_typed("forum_date")) if markup.get("date") else ""
+    city_text = ""
+    if markup.get("city") and telegram_id:
+        from database.db import get_user
+
+        user = await get_user(telegram_id)
+        city_text = await city_label_or_none((user or {}).get("event_city")) or ""
+    return date_text, city_text
+
+
 async def build_pdf(bot, file_id: str, name: str, kind: str = KIND_PARTICIPANT,
-                    percents: list[int] | None = None) -> bytes:
-    """`percents` — шкалы сертификата компетенций; без них у этого вида — `SAMPLE_PERCENTS`."""
-    from services.forum.certificate_render import COMPETENCY_NAME_BOX, NAME_BOX, render_certificate
+                    percents: list[int] | None = None, *, telegram_id: int | None = None) -> bytes:
+    """`percents` — шкалы сертификата компетенций; без них у этого вида — `SAMPLE_PERCENTS`.
+    Доли рамок читаются рядом с этим file_id. Нет долей — прежние константы."""
+    from services.forum.certificate_render import (
+        COMPETENCY_NAME_BOX, NAME_BOX, parse_markup, render_certificate,
+    )
 
     template = await _template_bytes(bot, file_id)
-    if kind == KIND_COMPETENCY:
-        return await asyncio.to_thread(render_certificate, template, name, COMPETENCY_NAME_BOX,
-                                       percents or SAMPLE_PERCENTS)
-    return await asyncio.to_thread(render_certificate, template, name, NAME_BOX)
+    markup = parse_markup(await cdb.markup_for_file(file_id))
+    date_text, city_text = await _overlay_texts(markup, telegram_id)
+    name_box = COMPETENCY_NAME_BOX if kind == KIND_COMPETENCY else NAME_BOX
+    bars = (percents or SAMPLE_PERCENTS) if kind == KIND_COMPETENCY else None
+    return await asyncio.to_thread(
+        render_certificate, template, name, name_box, bars, markup, date_text, city_text,
+    )
 
 
 def file_name(kind: str, name: str) -> str:
@@ -615,7 +650,7 @@ async def deliver_role_pdfs(bot) -> int:
             if not name:
                 continue
             try:
-                pdf = await build_pdf(bot, file_id, name, kind)
+                pdf = await build_pdf(bot, file_id, name, kind, telegram_id=telegram_id)
                 try:
                     await _send_role_pdf(bot, telegram_id, pdf, kind, name)
                 except TelegramRetryAfter as e:
