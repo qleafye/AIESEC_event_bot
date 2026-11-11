@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import html
-import json
 import logging
 
 from aiogram import Bot, F, types
@@ -22,72 +21,23 @@ from handlers.states import ReserveInvite
 from services.applications.applications import _resolve_rule_label
 from services.forum.checkin import build_checkin_qr
 from services.forum.reserve import is_live_reserve, today_msk
-from services.infra.timeutil import msk_now
+from services.forum.reserve_invite import (
+    PICK_CITY,
+    READY_LETTER,
+    _city_phrase,
+    _rule_ids,
+    confirm_line,
+    ids_for_action,
+    letter_body,
+    report_text,
+    rows_for_header,
+    today_label,
+    user_in_city_scope,
+)
 
 logger = logging.getLogger(__name__)
 
 PAGE = 6
-READY_LETTER = "{name}, вас зовут на площадку из резерва. Вход — только {date}. Город: {city}."
-PICK_CITY = (
-    "📮 <b>Позвать резерв</b>\n\n"
-    "Сначала выберите конкретный город в шапке. "
-    "Пока стоят «Все города», никого не зовём."
-)
-
-
-def confirm_line(n: int, when: str) -> str:
-    return f"Позовём {n}. Статус „одобрен“ не появится. Вход — только {when}."
-
-
-def today_label() -> str:
-    return msk_now().strftime("%d.%m.%Y")
-
-
-def letter_body(template: str | None, *, name: str, date: str, city: str) -> str:
-    raw = (template or "").strip() or READY_LETTER
-    who = html.escape(name.strip()) if (name or "").strip() else "друг"
-    return (
-        raw.replace("{name}", who)
-        .replace("{date}", html.escape(date))
-        .replace("{city}", html.escape(city))
-    )
-
-
-def report_text(*, new: int, already: int, failed: int, blocked: int, qr_miss: list[str]) -> str:
-    lines = [
-        f"Новым позвали {new}.",
-        f"Уже были приглашены сегодня {already}.",
-        f"Не доставлено {failed}.",
-    ]
-    if blocked:
-        lines.append("Делегат заблокировал бота — сообщение не дошло.")
-    if qr_miss:
-        names = ", ".join(html.escape(item) for item in qr_miss)
-        lines.append(f"QR не приложился: {names}.")
-    return "\n".join(lines)
-
-
-def user_in_city_scope(event_city: str | None, scope) -> bool:
-    if scope is None:
-        return True
-    code, exclude = scope
-    if not exclude:
-        return event_city == code
-    return event_city is None or event_city not in exclude
-
-
-def _rule_ids(raw) -> list[int]:
-    try:
-        data = json.loads(raw or "[]")
-    except (TypeError, ValueError):
-        return []
-    out = []
-    for item in data if isinstance(data, list) else []:
-        try:
-            out.append(int(item))
-        except (TypeError, ValueError):
-            continue
-    return out
 
 
 def _short(text: str, limit: int = 28) -> str:
@@ -95,32 +45,6 @@ def _short(text: str, limit: int = 28) -> str:
     if len(clean) <= limit:
         return clean
     return clean[: limit - 1] + "…"
-
-
-async def rows_for_header(admin_id: int, rule_id: int | None = None) -> list[dict] | None:
-    """None — шапка «Все города»: выборки нет и слать нечего."""
-    code = await admin_selected_city(admin_id)
-    if code == ALL_CITIES:
-        return None
-    return await db.list_live_reserve_rows(city_scope=city_scope(code), rule_id=rule_id)
-
-
-async def ids_for_action(admin_id: int, *, rule_id: int | None, mode: str,
-                          selected: list[int]) -> list[int] | None:
-    rows = await rows_for_header(admin_id, rule_id)
-    if rows is None:
-        return None
-    live = [int(row["telegram_id"]) for row in rows]
-    if mode == "all":
-        return live
-    live_set = set(live)
-    return [int(item) for item in selected if int(item) in live_set]
-
-
-async def _city_phrase(code: str | None) -> str:
-    if not code or code == ALL_CITIES:
-        return "площадка"
-    return await city_label(code)
 
 
 async def deliver(bot, admin_id: int, ids: list[int], *, city_code: str | None,

@@ -240,3 +240,98 @@ async def _qr_ok(user):
 
 async def _qr_fail(user):
     raise RuntimeError("qr")
+
+
+def test_app_list_matches_chat_header(tmp_path, _restore_cities_cache):
+    from services.forum import reserve_invite
+
+    _env(tmp_path)
+    _cities()
+    assert _run(set_admin_city(ADMIN, "msk")) is True
+    _person(461261, "Живой Мск", "msk", rules="[1]")
+    _person(461262, "Живой Спб", "spb", rules="[1]")
+    rows = _run(rsv.rows_for_header(ADMIN))
+    view = _run(reserve_invite.screen(ADMIN))
+    assert [row["telegram_id"] for row in rows] == [person["id"] for person in view["people"]]
+    assert view["pick_city"] is False
+    assert "Москва" in view["text"]
+    assert "forbidden" not in view["text"].lower()
+
+
+def test_app_all_cities_sends_nobody(tmp_path, _restore_cities_cache):
+    from services.forum import reserve_invite
+
+    _env(tmp_path)
+    _cities()
+    _person(461271, "Живой Мск", "msk", rules="[1]")
+    _run(set_admin_city(ADMIN, ALL_CITIES))
+    view = _run(reserve_invite.screen(ADMIN))
+    assert view["pick_city"] is True and view["people"] == []
+    decision = _run(reserve_invite.invite_decision(
+        ADMIN, mode="all", selected=[461271], confirm=True,
+    ))
+    assert decision.get("enqueue") is None
+    assert "город" in decision["text"].lower()
+    assert _run(_invite_rows()) == 0
+
+
+def test_confirm_does_not_send_until_the_second_step(tmp_path, _restore_cities_cache):
+    from services.forum import reserve_invite
+
+    _env(tmp_path)
+    _cities()
+    _run(set_admin_city(ADMIN, "msk"))
+    _person(461281, "Анна Резерв", "msk", rules="[1]")
+    preview = _run(reserve_invite.invite_decision(
+        ADMIN, mode="selected", selected=[461281], confirm=False,
+    ))
+    assert preview["need_confirm"] is True
+    assert "одобрен" in preview["text"]
+    assert "enqueue" not in preview
+    assert _run(_invite_rows()) == 0
+    ready = _run(reserve_invite.invite_decision(
+        ADMIN, mode="selected", selected=[461281], confirm=True,
+    ))
+    assert ready["enqueue"]["selected"] == [461281]
+    assert ready["enqueue"]["admin_id"] == ADMIN
+    assert _run(_invite_rows()) == 0
+
+
+def test_queued_invite_uses_chat_deliver(tmp_path, _restore_cities_cache, monkeypatch):
+    from services.infra.miniapp_outbox import _handle_row
+
+    _env(tmp_path)
+    _cities()
+    _run(set_admin_city(ADMIN, "msk"))
+    _person(461291, "Анна Резерв", "msk", rules="[1]")
+    monkeypatch.setattr(rsv, "build_checkin_qr", _qr_ok)
+    bot = _Bot()
+    _run(_handle_row(bot, "reserve_invite", {
+        "admin_id": ADMIN, "mode": "selected", "selected": [461291],
+    }))
+    assert len([item for item in bot.sent if item[0] == "msg"]) == 1
+    assert _run(db.get_user(461291))["status"] == "rejected"
+    assert _run(_invite_rows()) == 1
+    _run(_handle_row(bot, "reserve_invite", {
+        "admin_id": ADMIN, "mode": "selected", "selected": [461291],
+    }))
+    assert len([item for item in bot.sent if item[0] == "msg"]) == 1
+    assert _run(_invite_rows()) == 1
+
+
+def test_chat_button_stays_and_missing_right_is_plain():
+    from handlers.access.admin_caps import required_capability
+    from services.forum.reserve_invite import NEED_CAP
+    from dashboard.forum_day import RESERVE_HREF, reserve_page
+
+    assert rsv.rsv_open is not None
+    assert rsv.rsv_act is not None
+    assert rsv.rsv_file is not None
+    assert required_capability(callback_data="rsv") == "moderate_reg"
+    assert required_capability(callback_data="rsv:go") == "moderate_reg"
+    assert "forbidden" not in NEED_CAP.lower()
+    assert "заяв" in NEED_CAP.lower()
+    page = reserve_page()
+    assert RESERVE_HREF in page
+    assert "SELECT" not in page
+    assert "list_live_reserve" not in page

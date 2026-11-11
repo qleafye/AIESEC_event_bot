@@ -286,6 +286,34 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
 
         await reject_rules_notify.on_settings_written_batch(list(payload.get("keys") or []))
         return
+    if kind == "reserve_invite":
+        # «Позвать резерв» из Mini App: тот же deliver, что кнопка чата.
+        # Строка приглашения пишется внутри deliver до send_message.
+        from handlers.forum.admin_reserve import deliver
+        from domain.cities import ALL_CITIES, admin_selected_city
+        from services.forum.reserve_invite import ids_for_action
+
+        try:
+            admin_id = int(payload.get("admin_id") or 0)
+        except (TypeError, ValueError):
+            return
+        if admin_id <= 0:
+            return
+        code = await admin_selected_city(admin_id)
+        if code == ALL_CITIES:
+            return
+        mode = payload.get("mode") if payload.get("mode") in ("all", "selected") else "selected"
+        selected = []
+        for item in payload.get("selected") or []:
+            try:
+                selected.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        ids = await ids_for_action(admin_id, rule_id=None, mode=mode, selected=selected)
+        if not ids:
+            return
+        await deliver(bot, admin_id, ids, city_code=code, rule_id=None)
+        return
     if kind == "settings_changed":
         # 09.10: правка в приложении запускает те же реакции, что запись из бота.
         from services.settings.audit import run_setting_hooks_batch  # ленивый, как выше
