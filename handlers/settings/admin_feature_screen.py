@@ -19,6 +19,7 @@ from domain.cities import (
     per_city_key,
 )
 from domain.settings.schema import (
+    EMPTY_PILE_TEXT,
     FEATURE_SWITCH,
     PILE_LABELS,
     PILE_SERVICE,
@@ -187,7 +188,7 @@ async def render_group_text(token: str, admin_id: int | None, *, rare_only: bool
         lines.append(f"<b>{PILE_LABELS[pile]}</b>")
         pile_keys = [key for key in shown if setting_pile(key) == pile]
         if not pile_keys and not (pile == PILE_SERVICE and token == st.PHOTO_FILE_GROUP):
-            lines.append("Пока пусто.")
+            lines.append(EMPTY_PILE_TEXT)
         for key in pile_keys:
             lines.append(await _flag_line(
                 st, key, _label(st, key), header_code, per_city_ctx, city_module_on,

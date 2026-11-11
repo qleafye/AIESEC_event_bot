@@ -14,7 +14,7 @@ import domain.settings.ops as settings_ops
 import domain.settings.placeholders as settings_placeholders
 from domain.cities import ALL_CITIES, PER_CITY_SEP, city_codes
 from database import db as bot_db
-from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
+from domain.settings.schema import SETTINGS_SCHEMA, arrange_feature_keys, get_setting_typed
 from domain.settings.synonyms import SETTINGS_SYNONYMS
 
 from tests.test_miniapp_routes import (
@@ -116,6 +116,39 @@ def test_sections_follow_section_groups_order_and_hide_empty(tmp_path):
                 assert SETTINGS_SCHEMA[item["base_key"]]["group"] == group["token"]
         for item in section["toggles"]:
             assert settings_ops.TOGGLE_SECTION[item["key"]] == section["token"]
+
+
+def test_groups_carry_registry_piles_not_a_second_key_list(tmp_path):
+    """Mini App берёт кучи из того же arrange_feature_keys, что чат. Строки группы остаются."""
+    client = _setup(tmp_path)
+    body = _all(client).json()
+    seen = 0
+    reg = None
+    for section in body["sections"]:
+        for group in section["groups"]:
+            keys = [item["base_key"] for item in group["items"]]
+            arranged = arrange_feature_keys(keys)
+            assert [pile["keys"] for pile in group["piles"]] == [pile["keys"] for pile in arranged["piles"]]
+            assert [pile["label"] for pile in group["piles"]] == [
+                "Как работает", "Что видит делегат", "Служебное",
+            ]
+            assert group["rare"]["keys"] == arranged["rare_keys"]
+            assert group["rare"]["label"] == "Редкое"
+            assert group["status_lines"][0].startswith("Подключено:")
+            assert group["status_lines"][1].startswith("Включено:")
+            assert all("наполовину" not in line for line in group["status_lines"])
+            seen += 1
+            if group["token"] == "reg":
+                reg = group
+    assert seen
+    assert reg is not None
+    assert reg["status_lines"][0] == "Подключено: да"
+    assert reg["status_lines"][1] in ("Включено: ⚡ Краткая", "Включено: 📋 Полная")
+    joined = "\n".join(reg["status_lines"])
+    assert "registration_mode" not in joined
+    assert "short" not in reg["status_lines"][1]
+    assert "full" not in reg["status_lines"][1]
+    assert reg["items"]
 
 
 def test_sections_carry_tier_from_settings_main_sections(tmp_path):
