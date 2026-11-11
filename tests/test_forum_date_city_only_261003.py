@@ -166,12 +166,18 @@ def test_ready_screen_buttons_edit_the_traffic_light_city(tmp_path):
 
     _ready(tmp_path)
     row = _run(afr._row_forum_date("tyumen"))
-    assert row["fix"][1] == "settings_edit_city:forum_date@tyumen"
+    assert row["fix"][0][1] == "settings_edit_city:forum_date@tyumen"
     _run(db.set_setting("forum_date__city__tyumen", "03.10.2099"))
     _run(db.set_setting("sos_active_days__city__tyumen", "2"))
     row = _run(afr._row_forum_date("tyumen"))
     cbs = [c for _label, c in row["fix"]]
-    assert cbs == ["settings_edit_city:forum_date@tyumen", "settings_edit_city:sos_active_days@tyumen"]
+    assert cbs == [
+        "settings_edit_city:forum_date@tyumen",
+        "settings_edit_city:sos_active_days@tyumen",
+        "settings_edit_city:forum_time@tyumen",
+        "settings_edit_city:forum_end_time@tyumen",
+        "settings_edit_city:forum_timezone@tyumen",
+    ]
     assert row["light"] == afr.YELLOW and "дольше одного дня" in row["text"]
     _run(db.set_setting("sos_active_days__city__tyumen", "1"))
     assert _run(afr._row_forum_date("tyumen"))["light"] == afr.GREEN

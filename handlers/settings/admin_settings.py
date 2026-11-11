@@ -99,7 +99,7 @@ logger = logging.getLogger(__name__)
 _EVENT_FIELD_ORDER = [
     # Phase 31 (31-03, D-30): дата начала форума — сразу после «дата для делегата», менеджер
     # читает «дата для делегата → дата для расчётов» подряд; под ней — длина форума (25.09).
-    "event_date", "forum_date", "sos_active_days", "event_time", "event_place_name",
+    "event_date", "forum_date", "sos_active_days", "forum_time", "forum_end_time", "forum_timezone", "event_time", "event_place_name",
     "event_place_address", "contact_person", "contact_vk", "contact_tg", "start_text",
     "start_text_registered", "start_text_returning", "start_text_rejected",
     # Phase 17.1 (17.1-02): recall/возвращение — CTA под баннером прошлого сезона и два

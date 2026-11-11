@@ -113,6 +113,7 @@ def test_ready_city_is_green(tmp_path, monkeypatch):
     # Зелёная строка даты несёт только «Изменить» (дата/длина форума), проблемных кнопок нет.
     assert _cbs(kb) == [
         "settings_edit:forum_date", "settings_edit:sos_active_days",
+        "settings_edit:forum_time", "settings_edit:forum_end_time", "settings_edit:forum_timezone",
         "forum_ready_re:msk", "forumfn_back:msk",
     ]
 
@@ -254,10 +255,17 @@ def test_two_day_forum_is_yellow_with_edit_buttons(tmp_path, monkeypatch):
     text, kb = _date_row(tmp_path, monkeypatch, "30.10.2026", datetime(2026, 10, 20, 12, 0), days=2)
     assert "🟡 Форум: 30.10–31.10 (2 дня) — ⚠️ дольше одного дня" in text
     rows = [[b.callback_data for b in row] for row in kb.inline_keyboard]
-    assert ["settings_edit:forum_date", "settings_edit:sos_active_days"] in rows
-    edit_idx = rows.index(["settings_edit:forum_date", "settings_edit:sos_active_days"])
+    date_row = [
+        "settings_edit:forum_date", "settings_edit:sos_active_days",
+        "settings_edit:forum_time", "settings_edit:forum_end_time", "settings_edit:forum_timezone",
+    ]
+    assert date_row in rows
+    edit_idx = rows.index(date_row)
     labels = [b.text for b in kb.inline_keyboard[edit_idx]]
-    assert labels == ["🟡 🗓 Изменить дату", "🟡 🗓 Сколько дней идёт"]
+    assert labels == [
+        "🟡 🗓 Изменить дату", "🟡 🗓 Сколько дней идёт",
+        "🟡 🕙 Начало", "🟡 🕙 Конец", "🟡 🌍 Пояс календаря",
+    ]
 
 
 def test_days_word():
