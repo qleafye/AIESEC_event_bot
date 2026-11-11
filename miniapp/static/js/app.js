@@ -94,6 +94,7 @@ export const ROUTES = [
   ["#/chat/{topic}", "screens/chat_pointer.js"],
   // Папка входов дня форума — не конструктор сценариев.
   ["#/forum-day", "screens/forum_day.js"],
+  ["#/reserve", "screens/reserve.js"],
   // Папка «Баллы» и стойки магазина — витрины здесь нет.
   ["#/coins-shop", "screens/coins_shop.js"],
   // Цифры регистраций — не статистика геймы #/stats.
@@ -709,7 +710,9 @@ async function start() {
       showPastSeasonState();
       return;
     }
-    const detail = payload && payload.kind ? `(${payload.kind})` : null;
+    const detail = payload && typeof payload.text === "string" && payload.text
+      ? payload.text
+      : (payload && payload.kind ? `(${payload.kind})` : null);
     showState(state, state === "no-access" ? detail : null);
   });
   try {
