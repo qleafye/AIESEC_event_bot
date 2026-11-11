@@ -1566,6 +1566,7 @@ SETTINGS_SCHEMA = {
             "Нажми кнопку ниже или отправь /start — это займёт пару минут."
         ),
         "per_city": True,
+        "rare": True,
     },
     # Phase 28 (28-09, SU-09, T-28-09-04): человеческое слово вместо числа в {remaining},
     # когда черновик не прочитался или остаток посчитать не удалось — делегат не должен
@@ -2549,6 +2550,7 @@ SETTINGS_SCHEMA = {
             "Бот сам проверит, что может в неё писать."
         ),
         "default": None,
+        "pile": "service",
     },
     # main_sheet_tab имеет `default: None` НАМЕРЕННО: реестровый дефолт подменил бы 4-ступенчатую
     # цепочку резолва в services/sheets/sheets.py::_get_sheet (bot_settings -> .env -> legacy-пин ->
@@ -10458,3 +10460,114 @@ async def _payment_enabled_for_free_text(city_code: str | None):
     from domain.cities import get_setting_typed_for_city
 
     return await get_setting_typed_for_city("payment_enabled", city_code)
+
+
+# Куча ключа на экране одной фичи. Поле `pile` / `rare` в записи — как соседние
+# необязательные поля (`per_city`). Нет поля — куча выводится из типа и подписи.
+PILE_WORK = "work"
+PILE_DELEGATE = "delegate"
+PILE_SERVICE = "service"
+PILES = (PILE_WORK, PILE_DELEGATE, PILE_SERVICE)
+PILE_LABELS = {
+    PILE_WORK: "Как работает",
+    PILE_DELEGATE: "Что видит делегат",
+    PILE_SERVICE: "Служебное",
+}
+RARE_LABEL = "Редкое"
+
+# Выключатель фичи, если он один на весь экран. Нет ключа — отдельного рубильника нет.
+FEATURE_SWITCH = {
+    "reg": "registration_mode",
+    "pay": "payment_enabled",
+    "party": "party_enabled",
+    "consent": "consent_enabled",
+    "chat": "chat_tracking_enabled",
+}
+
+_WIRING_MARKERS = ("_token", "_secret", "spreadsheet_id", "sheet_id", "_chat_id")
+
+
+def setting_pile(key: str) -> str:
+    """Куда класть ключ: как работает, что видит делегат, служебное."""
+    base = key.split(_PER_CITY_SEP)[0]
+    meta = SETTINGS_SCHEMA.get(base) or {}
+    explicit = meta.get("pile")
+    if explicit in PILE_LABELS:
+        return explicit
+    typ = meta.get("type") or ""
+    if typ in ("photo", "file"):
+        return PILE_SERVICE
+    if any(marker in base for marker in _WIRING_MARKERS):
+        return PILE_SERVICE
+    if meta.get("group") == "sheets":
+        return PILE_SERVICE
+    if typ in ("toggle", "enum", "int", "date", "date_only", "list", "multi"):
+        return PILE_WORK
+    return PILE_DELEGATE
+
+
+def setting_rare(key: str) -> bool:
+    """Редкое свёрнуто: явный флаг или текст ошибки, который не нужен каждую ночь."""
+    base = key.split(_PER_CITY_SEP)[0]
+    meta = SETTINGS_SCHEMA.get(base) or {}
+    if "rare" in meta:
+        return bool(meta["rare"])
+    label = str(meta.get("label") or "").lower()
+    return "ошибк" in label
+
+
+def is_wiring_key(key: str) -> bool:
+    """Служебная связка (токен, id чата, таблица). Пустая связка — фича не подключена."""
+    base = key.split(_PER_CITY_SEP)[0]
+    if setting_pile(base) != PILE_SERVICE:
+        return False
+    return any(marker in base for marker in _WIRING_MARKERS)
+
+
+def arrange_feature_keys(keys: list[str]) -> dict:
+    """Три кучи и свёрнутое редкое. Порядок внутри кучи — порядок ключей на входе."""
+    piles = {pile: [] for pile in PILES}
+    rare: list[str] = []
+    for key in keys:
+        if setting_rare(key):
+            rare.append(key)
+            continue
+        piles[setting_pile(key)].append(key)
+    return {
+        "piles": [
+            {"token": pile, "label": PILE_LABELS[pile], "keys": piles[pile]}
+            for pile in PILES
+        ],
+        "rare_keys": rare,
+    }
+
+
+def feature_status_lines(connected: bool, enabled: str, missing: list[str]) -> list[str]:
+    """Строки шапки экрана. «Наполовину» здесь нет — только да/нет и пустые тексты."""
+    lines = [
+        f"Подключено: {'да' if connected else 'нет'}",
+        f"Включено: {enabled}",
+    ]
+    if missing:
+        shown = missing[:5]
+        tail = f" и ещё {len(missing) - len(shown)}" if len(missing) > len(shown) else ""
+        lines.append("Не настроено: " + ", ".join(shown) + tail)
+    return lines
+
+
+def switch_phrase(key: str | None, raw) -> str:
+    """Человеческое «включено». Код значения наружу не отдаём."""
+    if not key:
+        return "да"
+    meta = SETTINGS_SCHEMA.get(key) or {}
+    if meta.get("type") == "toggle":
+        if raw in (None, ""):
+            raw = meta.get("default")
+        return "да" if raw in (True, "on") else "нет"
+    if meta.get("type") == "enum":
+        code = str(raw) if raw not in (None, "") else str(meta.get("default") or "")
+        label = option_label(key, code)
+        if not label or label == code:
+            return "нет" if code in ("off", "false", "0") else "да"
+        return label
+    return "да"

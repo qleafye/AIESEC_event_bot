@@ -188,8 +188,49 @@ def test_settings_group_noop_just_answers(tmp_path):
 # does not exist yet, this file will fail to collect with ModuleNotFoundError). See
 # .planning/phases/06-settings-schema-registry/06-01-PLAN.md / 06-CONTEXT.md (D-15/D-16/D-17).
 
-from domain.settings.schema import SETTINGS_SCHEMA, _parse_setting, get_setting_typed  # noqa: E402
+from domain.settings.schema import (  # noqa: E402
+    PILES, SETTINGS_SCHEMA, _parse_setting, get_setting_typed, setting_pile, setting_rare,
+)
 from tests._dbtpl import fast_init_db
+
+
+def _key_for_label(label: str) -> str | None:
+    for key, meta in SETTINGS_SCHEMA.items():
+        if meta.get("label") == label:
+            return key
+    return None
+
+
+def _flag_host(label: str, main: str, rare: str) -> str:
+    key = _key_for_label(label)
+    if key and setting_rare(key):
+        return rare
+    return main
+
+
+def _assert_piled_edits(flat, token: str, expected_keys: list[str]) -> None:
+    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
+    visible = [key for key in expected_keys if not setting_rare(key)]
+    ordered = []
+    for pile in PILES:
+        ordered.extend(key for key in visible if setting_pile(key) == pile)
+    assert edit_cbs == [f"settings_edit:{key}" for key in ordered]
+    if any(setting_rare(key) for key in expected_keys):
+        assert f"settings_group:{token}:rare" in flat
+
+
+def _assert_piled_labels(text: str, labels: list[str]) -> None:
+    ordered = []
+    for pile in PILES:
+        for label in labels:
+            key = _key_for_label(label)
+            if key is None or setting_rare(key):
+                continue
+            if setting_pile(key) == pile:
+                ordered.append(label)
+    # «Не настроено» тоже содержит подписи, но без двоеточия флага. Ищем строку флага.
+    positions = [text.index(f"{label}:") for label in ordered]
+    assert positions == sorted(positions), "label order drifted"
 
 
 def test_parse_setting_text_passthrough():
@@ -388,6 +429,7 @@ def test_registry_coverage_all_text_groups():
 def test_render_snapshot_reg(tmp_path):
     _admin_ready(tmp_path)
     text = asyncio.run(admin_settings.render_settings_group_text("reg"))
+    rare_text = asyncio.run(admin_settings.render_settings_group_text("reg", rare_only=True))
     kb = asyncio.run(admin_settings.build_settings_group_keyboard("reg"))
     flat = _flat_callback_data(kb)
 
@@ -509,18 +551,17 @@ def test_render_snapshot_reg(tmp_path):
         "🔄 При возврате заявки на пересмотр",
     }
     for label in defaulted_labels:
-        assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
+        host = _flag_host(label, text, rare_text)
+        assert f"{label}: <i>по умолчанию</i>" in host, f"missing/wrong flag for {label}"
     for label in expected_labels:
         if label in defaulted_labels:
             continue
-        assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
+        host = _flag_host(label, text, rare_text)
+        assert f"{label}: <i>— не задано</i>" in host, f"missing/wrong flag for {label}"
     # Quick 260815-3hw: short_sheet_tab moved to the new "sheets" group screen -- no longer
     # rendered here at all (see tests/test_sheet_tabs_settings_260815.py::test_render_snapshot_sheets).
-    positions = [text.index(label) for label in expected_labels]
-    assert positions == sorted(positions), "label order drifted"
-
-    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
-    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    _assert_piled_labels(text, expected_labels)
+    _assert_piled_edits(flat, "reg", expected_keys)
     assert "settings_group_noop" in flat
     assert "admin_sec:form" in flat
 
@@ -531,6 +572,7 @@ def test_render_snapshot_apps(tmp_path):
     -> решение -> ожидание -> предотбор -> догонялка."""
     _admin_ready(tmp_path)
     text = asyncio.run(admin_settings.render_settings_group_text("apps"))
+    rare_text = asyncio.run(admin_settings.render_settings_group_text("apps", rare_only=True))
     kb = asyncio.run(admin_settings.build_settings_group_keyboard("apps"))
     flat = _flat_callback_data(kb)
 
@@ -733,17 +775,17 @@ def test_render_snapshot_apps(tmp_path):
     # (type "int", как nudge_after_minutes/pending_reminder_interval рядом) всегда «не задано»,
     # пока менеджер явно не впишет число, даже имея функциональный дефолт 3/2 в реестре.
     for label in defaulted_labels:
-        assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
+        host = _flag_host(label, text, rare_text)
+        assert f"{label}: <i>по умолчанию</i>" in host, f"missing/wrong flag for {label}"
     for label in expected_labels:
         if label in defaulted_labels:
             continue
-        assert f"{label}: <i>— не задано</i>" in text, f"missing/wrong flag for {label}"
-    positions = [text.index(label) for label in expected_labels]
-    assert positions == sorted(positions), "label order drifted"
+        host = _flag_host(label, text, rare_text)
+        assert f"{label}: <i>— не задано</i>" in host, f"missing/wrong flag for {label}"
+    _assert_piled_labels(text, expected_labels)
 
     assert "Заявки" in text
-    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
-    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    _assert_piled_edits(flat, "apps", expected_keys)
     assert "admin_sec:apps" in flat
 
 
@@ -760,6 +802,7 @@ def test_interview_outbound_texts_are_html_in_the_editor():
 def test_render_snapshot_pay(tmp_path):
     _admin_ready(tmp_path)
     text = asyncio.run(admin_settings.render_settings_group_text("pay"))
+    rare_text = asyncio.run(admin_settings.render_settings_group_text("pay", rare_only=True))
     kb = asyncio.run(admin_settings.build_settings_group_keyboard("pay"))
     flat = _flat_callback_data(kb)
 
@@ -793,14 +836,14 @@ def test_render_snapshot_pay(tmp_path):
     defaulted_early = {"⏰ Текст напоминания об оплате", "⌛ Текст «оплата просрочена»"}
     for label in expected_labels:
         flag = "по умолчанию" if label in defaulted_early else "— не задано"
-        assert f"{label}: <i>{flag}</i>" in text, f"missing/wrong flag for {label}"
+        host = _flag_host(label, text, rare_text)
+        assert f"{label}: <i>{flag}</i>" in host, f"missing/wrong flag for {label}"
     for label in defaulted_labels:
-        assert f"{label}: <i>по умолчанию</i>" in text, f"missing/wrong flag for {label}"
-    positions = [text.index(label) for label in expected_labels + defaulted_labels]
-    assert positions == sorted(positions), "label order drifted"
+        host = _flag_host(label, text, rare_text)
+        assert f"{label}: <i>по умолчанию</i>" in host, f"missing/wrong flag for {label}"
+    _assert_piled_labels(text, expected_labels + defaulted_labels)
 
-    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
-    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    _assert_piled_edits(flat, "pay", expected_keys)
     assert "settings_group_noop" in flat
     assert "admin_menu" in flat  # settings_group:pay больше не строка раздела
 
@@ -823,8 +866,7 @@ def test_render_snapshot_party(tmp_path):
 
     # 28.10: подписи трёх кнопок развилки формата — хвост группы.
     expected_keys = ["party_closed_text", "approve_text__party", "party_fork_text", *_DT.PARTY_FIELD_ORDER]
-    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
-    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    _assert_piled_edits(flat, "party", expected_keys)
     assert "admin_sec:form" in flat
 
 
@@ -860,8 +902,7 @@ def test_render_snapshot_consent(tmp_path):
         "consent_button_text", "consent_list", "consent_broadcast_list",
         "consent_version", "consent_recollect_text",
     ]
-    edit_cbs = [cd for cd in flat if cd and cd.startswith("settings_edit:")]
-    assert edit_cbs == [f"settings_edit:{k}" for k in expected_keys]
+    _assert_piled_edits(flat, "consent", expected_keys)
     assert "settings_group_noop" in flat
     assert "admin_menu" in flat  # settings_group:consent больше не строка раздела «📝 Анкета»
 

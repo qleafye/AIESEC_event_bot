@@ -569,10 +569,11 @@ def test_group_text_flags_unchanged_alongside_mark_in_all_cities_mode(tmp_path):
 
 def test_render_settings_group_text_uses_registry_helpers():
     import inspect
-    # Perf 17.09: `render_settings_group_text` — тонкая обёртка `settings_snapshot()` (один
-    # снимок bot_settings на рендер вместо соединения на ключ, N+1 fix); сама разметка теперь
-    # в `_render_settings_group_text_impl`, оборачивающая функция её вызывает без изменений.
-    src = inspect.getsource(admin_settings._render_settings_group_text_impl)
+
+    import handlers.settings.admin_feature_screen as feature_screen
+
+    # Счётчик «🏙 N» и шапка города живут в разметке экрана фичи, не в обёртке снимка.
+    src = inspect.getsource(feature_screen)
     assert "city_override_codes" in src and "cities_module_on" in src
 
 
@@ -646,13 +647,10 @@ def test_group_keyboard_marks_city_only_override_as_configured(tmp_path):
     asyncio.run(db.set_setting(cities.per_city_key("start_text", "spb"), "Питерский текст"))
 
     kb = asyncio.run(admin_settings.build_settings_group_keyboard("event", ADMIN_ID))
-    rows_before_noop = []
-    for row in kb.inline_keyboard:
-        if any(b.callback_data == "settings_group_noop" for b in row):
-            break
-        rows_before_noop.append(row)
-    configured_texts = [b.text for row in rows_before_noop for b in row]
-    assert any("Приветствие" in t for t in configured_texts)
+    # Заголовок кучи тоже settings_group_noop и стоит выше строк, поэтому «настроено»
+    # больше не значит «до первого noop». Своё приветствие остаётся кнопкой на экране.
+    texts = [b.text for row in kb.inline_keyboard for b in row]
+    assert any("Приветствие" in t for t in texts)
 
 
 def test_group_text_and_keyboard_module_off_byte_identical_to_admin_id_none(tmp_path):
