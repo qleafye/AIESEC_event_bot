@@ -660,6 +660,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
       meta: "Посмотреть сессии, не переставлять их.",
     },
     { folder: "forum-day", icon: "map-pin", title: "День форума", hash: "#/forum-day" },
+    { cap: "moderate_reg", icon: "file-text", title: "Разметить сертификат", hash: "#/certificate-markup" },
     { cap: "moderate_reg", icon: "help-circle", title: "Вопросы делегатов", hash: "#/questions" },
     { cap: "broadcast", icon: "mail", title: "Рассылка", hash: "#/chat/broadcast" },
     { cap: null, icon: "coins", title: "Баллы и магазин", hash: "#/coins-shop" },
