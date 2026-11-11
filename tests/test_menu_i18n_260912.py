@@ -96,9 +96,9 @@ def test_menu_texts_covers_all_thirteen_keys():
     # menu_program по D-29 24.09) + форум-ночь п.7 (+1 ключ menu_important) + форум-ночь п.8
     # (+1 ключ menu_sos) -- имя теста историческое (осталось от 13 ключей до этих правок),
     # assert ниже проверяет актуальное число.
-    expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment"}
+    expected_keys = {key for key, _ in MENU_BUTTONS} | {"menu_payment", "coming_reply"}
     assert set(MENU_TEXTS.keys()) == expected_keys
-    assert len(MENU_TEXTS) == 19  # +menu_session_enroll, +menu_quiz, +menu_edit_anketa (09.10)
+    assert len(MENU_TEXTS) == 20  # +coming_reply: «Дойду» / «Не дойду» у одобренного
 
 
 def test_menu_texts_each_set_has_ru_and_en_variant():
@@ -112,6 +112,9 @@ def test_menu_texts_each_set_has_ru_and_en_variant():
     ru_by_key["menu_payment"] = "💳 Оплата"
     for key, texts in MENU_TEXTS.items():
         texts = texts - LEGACY_MENU_TEXTS.get(key, frozenset())  # подписи снятых кнопок
+        if key == "coming_reply":
+            assert texts == {"Дойду", "Не дойду", "I'll come", "I won't come"}
+            continue
         ru = ru_by_key[key]
         assert ru in texts
         if key in CONFERENCE_MENU_LABELS:  # + подпись конференции, RU и EN
@@ -254,6 +257,10 @@ _GATED_KEYS = (
     "menu_edit_anketa",
 )
 _BASELINE_RU_LABELS = {text for key, text in MENU_BUTTONS if key not in _GATED_KEYS}
+# Колонка users.status по умолчанию approved, add_user её не пишет — одобренный
+# видит две кнопки ответа. Это не пункты MENU_BUTTONS.
+_COMING_RU = {"Дойду", "Не дойду"}
+_COMING_EN = {"I'll come", "I won't come"}
 
 
 def test_english_keyboard_labels_are_all_recognizable(tmp_path):
@@ -273,7 +280,7 @@ def test_english_keyboard_labels_are_all_recognizable(tmp_path):
             assert recognized, f"подпись {label!r} не лежит ни в одном MENU_TEXTS"
         # английские подписи реально отличаются от русских -- перевод действительно применился,
         # и это ровно ожидаемый переведённый набор (без гейтнутых кнопок).
-        expected_en = {MENU_EN[text] for text in _BASELINE_RU_LABELS}
+        expected_en = {MENU_EN[text] for text in _BASELINE_RU_LABELS} | _COMING_EN
         assert set(labels) == expected_en
         assert not (set(labels) & _BASELINE_RU_LABELS)
 
@@ -297,8 +304,8 @@ def test_russian_keyboard_matches_baseline_regardless_of_lang_module(tmp_path):
         kb_ask = await get_main_menu_kb(UID)
         labels_ask = {btn.text for row in kb_ask.keyboard for btn in row}
 
-        assert labels_ru == _BASELINE_RU_LABELS
-        assert labels_ask == _BASELINE_RU_LABELS
+        assert labels_ru == _BASELINE_RU_LABELS | _COMING_RU
+        assert labels_ask == _BASELINE_RU_LABELS | _COMING_RU
 
     asyncio.run(go())
 
@@ -313,7 +320,7 @@ def test_module_off_keyboard_matches_baseline_even_with_stored_en(tmp_path):
         kb = await get_main_menu_kb(UID)
         labels = {btn.text for row in kb.keyboard for btn in row}
         # Модуль выключен -- lang="en" в БД не имеет значения (resolve_lang это гарантирует).
-        assert labels == _BASELINE_RU_LABELS
+        assert labels == _BASELINE_RU_LABELS | _COMING_RU
 
     asyncio.run(go())
 

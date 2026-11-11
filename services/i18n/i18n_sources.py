@@ -160,6 +160,8 @@ _NON_LANGUAGE_EVENT_KEYS: frozenset[str] = frozenset({
     # 15.10: время утренней программы «ЧЧ:ММ» — число, не текст на языке (в реестре типа
     # «время» нет, есть только мета format=time у text), переводить нечего.
     "session_morning_time",
+    # Начало, конец и пояс файла календаря — часы и имя зоны, не фраза делегату.
+    "forum_time", "forum_end_time", "forum_timezone",
 })
 
 # 08.10: описание бота ставится в Telegram одно на всех (`services.bot.bot_profile`), без

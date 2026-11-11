@@ -9,11 +9,12 @@ import logging
 from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 
+from services.infra.timeutil import MOSCOW_TZ
+
 logger = logging.getLogger(__name__)
 
 _FALLBACK_START = "10:00"
 _FALLBACK_END = "23:59"
-_FALLBACK_TZ = "Europe/Moscow"
 _FILENAME = "forum.ics"
 
 
@@ -26,11 +27,13 @@ def _clock(raw, fallback: str) -> time:
 
 
 def _zone(name) -> ZoneInfo:
-    text = (str(name).strip() if name else "") or _FALLBACK_TZ
+    text = str(name).strip() if name else ""
+    if not text:
+        return MOSCOW_TZ
     try:
         return ZoneInfo(text)
     except Exception:
-        return ZoneInfo(_FALLBACK_TZ)
+        return MOSCOW_TZ
 
 
 def _ics_text(value: str) -> str:
@@ -110,7 +113,7 @@ async def calendar_for_city(city_code: str | None) -> tuple[bytes, str] | None:
     start = _clock(await get_setting_typed_for_city("forum_time", city_code), _FALLBACK_START)
     end_raw = await get_setting_typed_for_city("forum_end_time", city_code)
     end = _clock(end_raw, _FALLBACK_END) if end_raw else _clock(None, _FALLBACK_END)
-    tz_name = await get_setting_typed_for_city("forum_timezone", city_code) or _FALLBACK_TZ
+    tz_name = await get_setting_typed_for_city("forum_timezone", city_code) or ""
     summary = (await get_setting_typed("event_name") or "").strip() or "Форум"
     location = await _location(city_code)
     slug = city_code or "all"
