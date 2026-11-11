@@ -7,6 +7,7 @@
 RESERVE_HREF = "/app/#/reserve"
 NUDGE_HREF = "/app/#/nudge"
 LETTER_HREF = "/app/#/letter"
+TRAINING_MOVE_HREF = "/app/#/training-move"
 
 
 def reserve_page() -> str:
@@ -33,4 +34,13 @@ def letter_page() -> str:
         "<title>Написать</title>"
         "<p>Письмо уходит из приложения. Отдельной отправки на сайте нет.</p>"
         f"<p><a href=\"{LETTER_HREF}\">Написать</a></p>"
+    )
+
+
+def training_move_page() -> str:
+    return (
+        "<!doctype html><meta charset=\"utf-8\">"
+        "<title>Перенос сканов</title>"
+        "<p>Перенос идёт в приложении. Отдельной записи на сайте нет.</p>"
+        f"<p><a href=\"{TRAINING_MOVE_HREF}\">Перенос сканов</a></p>"
     )
