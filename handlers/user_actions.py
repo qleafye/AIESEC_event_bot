@@ -1863,6 +1863,7 @@ from handlers.reg import menu_tap_escape  # noqa: E402,F401  -- кнопка м�
 from handlers.comms import survey_delegate  # noqa: E402,F401  -- анкета: sv:* и ответ текстом, до фолбэка
 from handlers.forum import certificates as certificate_handlers  # noqa: E402,F401  -- cert_*, /certificate, до фолбэка
 from handlers.game import shop_delegate  # noqa: E402,F401  -- витрина магазина баллов (shopv), до фолбэка
+from handlers.chat import coming_reply as coming_reply_handlers  # noqa: E402,F401  -- «Дойду», до фолбэка
 
 
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —

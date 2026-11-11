@@ -424,6 +424,10 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
                     "menu_payment", label_city, lang, en_map=en_map))
         except Exception:
             pass
+    # «Дойду» / «Не дойду» — только одобренному. Неодобренному кнопок нет.
+    if user and user.get("status") == "approved":
+        kb.button(text="Дойду")
+        kb.button(text="Не дойду")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 

@@ -978,6 +978,8 @@ async def init_db():
         # Один текст после первой отметки входа. 1 — письмо ушло. 0 — ещё нет
         # (пустой текст и сбой отправки флаг не ставят).
         await _ensure_column(db, "users", "checkin_message_sent", "INTEGER NOT NULL DEFAULT 0")
+        # Ответ одобренного «дойду» / «не дойду». Не формат участия и не опрос «не пришёл».
+        await _ensure_column(db, "users", "coming_reply", "TEXT")
 
         # Phase 4 migrations (additive, idempotent — safe against ~590 live users)
         await _ensure_column(db, "users", "payment_status", "TEXT DEFAULT 'not_paid'")
@@ -12455,6 +12457,65 @@ async def mark_checkin_message_sent(telegram_id: int) -> None:
             (telegram_id,),
         )
         await db.commit()
+
+
+COMING_YES = "дойду"
+COMING_NO = "не дойду"
+
+
+async def set_coming_reply(telegram_id: int, reply: str) -> str:
+    """Пишет ответ только одобренному. Чужой id и неодобренный строку не создают и не меняют.
+
+    Возвращает saved, not_approved или unknown.
+    """
+    if reply not in (COMING_YES, COMING_NO):
+        return "unknown"
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT status FROM users WHERE telegram_id = ?",
+            (telegram_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        if row is None:
+            return "unknown"
+        if row[0] != "approved":
+            return "not_approved"
+        await db.execute(
+            "UPDATE users SET coming_reply = ? WHERE telegram_id = ? AND status = 'approved'",
+            (reply, telegram_id),
+        )
+        await db.commit()
+    return "saved"
+
+
+async def approved_absent_from_chat(chat_id: int, city: str | None) -> list[tuple[str, str | None]]:
+    """Одобренные текущего сезона этого города, кого нет среди присутствующих в чате.
+
+    Сезон не задан — сезон не фильтруется. Город None — без фильтра по городу.
+    Имена для экрана менеджера; чужой сезон и статус left в список не входят.
+    """
+    season = (await get_setting("event_season") or "").strip() or None
+    season_sql = "(u.season IS NULL OR u.season = ?)" if season else "1=1"
+    params: list = [season] if season else []
+    city_sql = ""
+    if city is not None:
+        city_sql = " AND u.event_city = ?"
+        params.append(city)
+    params.append(chat_id)
+    params.extend(CHAT_PRESENT_STATUSES)
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT COALESCE(NULLIF(u.full_name, ''), 'Без имени'), u.coming_reply "
+            "FROM users u WHERE u.status = 'approved' AND "
+            f"{season_sql}{city_sql} AND NOT EXISTS ("
+            "SELECT 1 FROM chat_members cm WHERE cm.chat_id = ? "
+            "AND cm.telegram_id = u.telegram_id "
+            f"AND cm.status IN ({_CHAT_PRESENT_PLACEHOLDERS})) "
+            "ORDER BY 1 COLLATE NOCASE",
+            tuple(params),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    return [(name, reply) for name, reply in rows]
 
 
 async def first_entry_scanned_at(telegram_id: int) -> str | None:

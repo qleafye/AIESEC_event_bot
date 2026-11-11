@@ -180,6 +180,40 @@ async def _phrase(bot, city) -> str:
         return _CHECK_FAILED
 
 
+_ABSENT_TITLE = "Одобрены и ещё не в чате. Рядом — ответ «дойду» или «не дойду»."
+_ABSENT_EMPTY = "Одобренных этого сезона, кто ещё не в чате, нет."
+_ABSENT_LATER = "ещё не ответил"
+_ABSENT_CAP = 40
+
+
+async def _absent_block(chat, city) -> str:
+    """Имена одобренных текущего сезона, кого нет среди участников этого чата.
+
+    Сбой выборки не прячет режим пуска: экран чата важнее списка.
+    """
+    from database.db import COMING_NO, COMING_YES, approved_absent_from_chat
+
+    chat_id = chat.get("chat_id")
+    if chat_id is None:
+        return ""
+    try:
+        rows = await approved_absent_from_chat(int(chat_id), city)
+    except Exception as exc:
+        _log(city, exc)
+        return ""
+    lines = [_ABSENT_TITLE]
+    if not rows:
+        lines.append(_ABSENT_EMPTY)
+        return "\n".join(lines)
+    for name, reply in rows[:_ABSENT_CAP]:
+        mark = reply if reply in (COMING_YES, COMING_NO) else _ABSENT_LATER
+        lines.append(f"• {html.escape(name)} — {mark}")
+    rest = len(rows) - _ABSENT_CAP
+    if rest > 0:
+        lines.append(f"И ещё {rest}.")
+    return "\n".join(lines)
+
+
 async def _one_city(admin_id: int, token: str, city, bot):
     chat = await chat_for_city(city)
     if not chat:
@@ -187,6 +221,9 @@ async def _one_city(admin_id: int, token: str, city, bot):
     phrase = await _phrase(bot, city)
     title = (chat.get("title") or "").strip()
     text = phrase if not title else f"{phrase}\n\n{html.escape(title)}"
+    block = await _absent_block(chat, city)
+    if block:
+        text = f"{text}\n\n{block}"
     return text, await _mode_kb(admin_id, token)
 
 
