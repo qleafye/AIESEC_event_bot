@@ -1385,7 +1385,7 @@ def test_manager_hub_renders_three_modes():
         assert mode_value not in role
     work = _slice_between(body, "const workRows", "const settingsRows")
     work_hashes = [
-        "#/applications", "#/scanner", "#/program", "#/forum-day", "#/questions",
+        "#/applications", "#/scanner", "#/program", "#/forum-day", "#/certificate-markup", "#/questions",
         "#/chat/broadcast", "#/coins-shop", "#/figures",
     ]
     assert [work.index(item) for item in work_hashes] == sorted(work.index(item) for item in work_hashes)
