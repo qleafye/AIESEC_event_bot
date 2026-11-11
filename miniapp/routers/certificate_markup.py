@@ -15,7 +15,6 @@ from domain.cities import default_city_code
 from miniapp.deps import Principal, principal
 from miniapp import telegram_api
 from miniapp.telegram_api import TelegramApiError
-from services.forum import certificates as certs
 from services.forum.certificate_render import (
     dump_markup,
     markup_error,
@@ -40,7 +39,7 @@ def _gate(p: Principal) -> None:
 
 
 def _known(kind: str, variant: str) -> bool:
-    if kind not in certs.KIND_TITLES:
+    if kind not in cdb.KINDS:
         return False
     if variant == cdb.VARIANT_ALL:
         return True
@@ -59,7 +58,7 @@ async def _slots() -> list[dict]:
         out.append({
             "kind": kind,
             "variant": variant,
-            "title": f"{certs.KIND_SHORT[kind]} · {certs.variant_label(variant)}",
+            "title": f"{cdb.KIND_SHORT[kind]} · {cdb.variant_label(variant)}",
             "has_file": bool(row),
             "markup": parse_markup(row["markup"]) if row else None,
         })

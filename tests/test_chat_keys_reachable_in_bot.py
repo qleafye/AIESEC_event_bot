@@ -141,6 +141,9 @@ APP_CHAT_SENDERS = {
     # Текст уведомления приходит аргументом. Сам вызов ушёл в send_game_text,
     # вложенный _sender по-прежнему пишет в чат.
     "miniapp/routers/review.py::_sender": (),
+    # PDF шаблона уходит менеджеру, чтобы Telegram выдал file_id. Подпись служебная,
+    # не текст из реестра.
+    "miniapp/routers/certificate_markup.py::markup_file": (),
 }
 SEND_PRIMITIVES = {
     "send_message", "send_document", "send_photo", "send_media_group",
