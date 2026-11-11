@@ -11,6 +11,7 @@ from database import db
 from domain.cities import ALL_CITIES, city_scope, set_admin_city
 from domain.settings.schema import SETTINGS_SCHEMA
 from handlers.forum import admin_reserve as rsv
+from services.forum import reserve_invite as invite
 from services.forum.reserve import today_msk
 from tests._dbtpl import fast_init_db
 
@@ -155,11 +156,11 @@ def test_same_day_repeat_is_silent_and_status_stays(tmp_path, _restore_cities_ca
     _env(tmp_path)
     _cities()
     _person(461231, "Анна Резерв", "msk", rules="[1]")
-    monkeypatch.setattr(rsv, "build_checkin_qr", _qr_ok)
+    monkeypatch.setattr("services.forum.checkin.build_checkin_qr", _qr_ok)
     bot = _Bot()
     scope = city_scope("msk")
-    assert rsv.user_in_city_scope("msk", scope) is True
-    assert rsv.user_in_city_scope("spb", scope) is False
+    assert invite.user_in_city_scope("msk", scope) is True
+    assert invite.user_in_city_scope("spb", scope) is False
     first = _run(rsv.deliver(bot, ADMIN, [461231], city_code="msk", rule_id=None))
     assert first["new"] == 1
     assert len([item for item in bot.sent if item[0] == "msg"]) == 1
@@ -181,7 +182,7 @@ def test_blocked_bot_and_missing_qr_are_named(tmp_path, _restore_cities_cache, m
     _cities()
     _person(461241, "Борис Блок", "msk", rules="[7]")
     _person(461242, "Вера Кьюар", "msk", rules="[7]")
-    monkeypatch.setattr(rsv, "build_checkin_qr", _qr_fail)
+    monkeypatch.setattr("services.forum.checkin.build_checkin_qr", _qr_fail)
     bot = _Bot(blocked={461241})
     result = _run(rsv.deliver(
         bot, ADMIN, [461241, 461242], city_code="msk", rule_id=7,
@@ -190,7 +191,7 @@ def test_blocked_bot_and_missing_qr_are_named(tmp_path, _restore_cities_cache, m
     assert result["failed"] == 1 and result["blocked"] == 1
     assert result["qr_miss"] == ["Вера Кьюар"]
     texts = [item[2] for item in bot.sent if item[0] == "msg"]
-    assert texts == [rsv.letter_body(
+    assert texts == [invite.letter_body(
         SETTINGS_SCHEMA["reserve_invite_text"]["default"],
         name="Вера Кьюар", date=rsv.today_label(), city="Москва",
     )]
@@ -212,7 +213,7 @@ def test_other_city_and_manual_reject_are_not_delivered(tmp_path, _restore_citie
     _cities()
     _person(461251, "Чужой город", "spb", rules="[1]")
     _person(461252, "Ручной отказ", "msk")
-    monkeypatch.setattr(rsv, "build_checkin_qr", _qr_ok)
+    monkeypatch.setattr("services.forum.checkin.build_checkin_qr", _qr_ok)
     bot = _Bot()
     result = _run(rsv.deliver(bot, ADMIN, [461251, 461252], city_code="msk", rule_id=None))
     assert result["new"] == 0
@@ -223,15 +224,15 @@ def test_other_city_and_manual_reject_are_not_delivered(tmp_path, _restore_citie
 def test_callback_data_stays_short():
     sample = f"rsv:t:{10 ** 15}"
     assert len(sample.encode()) <= 64
-    assert SETTINGS_SCHEMA["reserve_invite_text"]["default"] == rsv.READY_LETTER
+    assert SETTINGS_SCHEMA["reserve_invite_text"]["default"] == invite.READY_LETTER
     assert "{name}" in SETTINGS_SCHEMA["reserve_invite_text"]["prompt"]
     assert "{date}" in SETTINGS_SCHEMA["reserve_invite_text"]["prompt"]
     assert "{city}" in SETTINGS_SCHEMA["reserve_invite_text"]["prompt"]
 
 
 def letter_blank_is_ready() -> bool:
-    body = rsv.letter_body("  ", name="Анна", date="09.11.2026", city="Москва")
-    return body == rsv.letter_body(None, name="Анна", date="09.11.2026", city="Москва") and "09.11.2026" in body
+    body = invite.letter_body("  ", name="Анна", date="09.11.2026", city="Москва")
+    return body == invite.letter_body(None, name="Анна", date="09.11.2026", city="Москва") and "09.11.2026" in body
 
 
 async def _qr_ok(user):
@@ -304,7 +305,7 @@ def test_queued_invite_uses_chat_deliver(tmp_path, _restore_cities_cache, monkey
     _cities()
     _run(set_admin_city(ADMIN, "msk"))
     _person(461291, "Анна Резерв", "msk", rules="[1]")
-    monkeypatch.setattr(rsv, "build_checkin_qr", _qr_ok)
+    monkeypatch.setattr("services.forum.checkin.build_checkin_qr", _qr_ok)
     bot = _Bot()
     _run(_handle_row(bot, "reserve_invite", {
         "admin_id": ADMIN, "mode": "selected", "selected": [461291],
