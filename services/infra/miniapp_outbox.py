@@ -289,9 +289,8 @@ async def _handle_row(bot, kind: str, payload: dict) -> None:
     if kind == "reserve_invite":
         # «Позвать резерв» из Mini App: тот же deliver, что кнопка чата.
         # Строка приглашения пишется внутри deliver до send_message.
-        from handlers.forum.admin_reserve import deliver
         from domain.cities import ALL_CITIES, admin_selected_city
-        from services.forum.reserve_invite import ids_for_action
+        from services.forum.reserve_invite import deliver, ids_for_action
 
         try:
             admin_id = int(payload.get("admin_id") or 0)
