@@ -74,7 +74,7 @@ async function draw(root, params, ctx) {
     h("span", { text: status.badge || "" }),
   );
 
-  const plate = h("section", { class: `plate plate--status status-${tone}` },
+  const plate = h("section", { class: "plate plate--status" },
     h("div", { class: "plate-row" }, badge),
     h("h1", { class: "status-title", text: status.title || "" }),
     status.screen_body ? h("p", { class: "plate-sub", text: status.screen_body }) : null,

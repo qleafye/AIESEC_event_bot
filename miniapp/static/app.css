@@ -1971,13 +1971,8 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .plate--rank       { --plate-pattern-size:  972px; --plate-pattern-x:  -54px; --plate-pattern-y: -594px; }
 .plate--status     { --plate-pattern-size: 1512px; --plate-pattern-x: -378px; --plate-pattern-y: -108px; }
 
-/* Экран статуса заявки (30-UI-SPEC.md § «Экран статуса заявки», план 30-05 задача 3) — плита
-   в цвете состояния: `--accent` переопределяется локально, `--on-accent*`/`--secondary`
-   остаются переменными (оба уже адаптированы под тему — тот же уровень контраста, что у
-   обычной плиты, второй набор токенов не заводим). Бейдж — тот же `.chip`, что у профиля
-   (`.chip status ok`/`.chip pay ok`), просто в тоне состояния. */
-.status-success { --accent: var(--success); --secondary: var(--success-text); }
-.status-danger  { --accent: var(--danger);  --secondary: var(--danger-text); }
+/* Экран статуса заявки. Плита остаётся в цвете бренда (`--accent` с плиты не снимаем).
+   Состояние — маленький `.chip` на плите, не заливка всего блока. */
 .status-step { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-2) 0; }
 .status-step .num {
   flex: none; font-family: var(--font-heading); font-weight: 800; font-size: 17px;
