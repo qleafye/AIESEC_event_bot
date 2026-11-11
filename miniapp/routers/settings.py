@@ -46,6 +46,7 @@ from domain.cities import (
     city_label,
     city_override_codes,
     get_setting_typed_for_city,
+    is_per_city,
     per_city_key,
     set_admin_city,
     split_per_city_key,
@@ -53,7 +54,21 @@ from domain.cities import (
 from database.db import get_setting, settings_snapshot
 from services.applications.reject_rules_affects import affects_reject_rules
 from services.settings.audit import CommonSettingDenied, set_setting_by_admin, write_setting_logged
-from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed, multi_labels, option_label
+from domain.settings.schema import (
+    EMPTY_PILE_TEXT,
+    FEATURE_SWITCH,
+    PILE_DELEGATE,
+    RARE_LABEL,
+    SETTINGS_SCHEMA,
+    arrange_feature_keys,
+    feature_status_lines,
+    get_setting_typed,
+    is_wiring_key,
+    multi_labels,
+    option_label,
+    setting_pile,
+    switch_phrase,
+)
 from domain.settings.search import search_terms
 
 from miniapp.deps import Principal, require_cap, require_section
@@ -442,6 +457,61 @@ async def _reg_questions_matrix() -> dict:
     return {"rows": rows}
 
 
+async def _enabled_phrase(token: str, ctx: _CityCtx) -> str:
+    """Та же фраза «включено», что на экране фичи в чате. Код значения наружу не отдаём."""
+    switch = FEATURE_SWITCH.get(token)
+    if not switch:
+        return switch_phrase(None, None)
+    raw = None
+    city = ctx.selected
+    if ctx.on and city not in (None, ALL_CITIES) and is_per_city(switch):
+        composed = per_city_key(switch, city)
+        own = await get_setting(composed) if composed else None
+        raw = own or await get_setting(switch)
+    else:
+        raw = await get_setting(switch)
+    return switch_phrase(switch, raw)
+
+
+def _feature_block(keys: list[str], items: list[dict], enabled: str) -> dict:
+    """Кучи и строки шапки из реестра. Список строк группы не заменяется."""
+    arranged = arrange_feature_keys(keys)
+    by_base: dict[str, dict] = {}
+    for item in items:
+        by_base.setdefault(item["base_key"], item)
+    wiring = [key for key in keys if is_wiring_key(key)]
+    connected = True
+    if wiring:
+        connected = False
+        for key in wiring:
+            item = by_base.get(key)
+            meta = SETTINGS_SCHEMA.get(key) or {}
+            stored = bool(item and item.get("raw"))
+            factory = meta.get("type") == "text" and meta.get("default") not in (None, "")
+            if stored or factory:
+                connected = True
+                break
+    missing: list[str] = []
+    for key in keys:
+        if setting_pile(key) != PILE_DELEGATE:
+            continue
+        meta = SETTINGS_SCHEMA.get(key) or {}
+        if meta.get("type") != "text":
+            continue
+        item = by_base.get(key)
+        if item and item.get("raw"):
+            continue
+        if meta.get("default") not in (None, ""):
+            continue
+        missing.append((item or {}).get("label") or meta.get("label") or "Настройка")
+    return {
+        "piles": arranged["piles"],
+        "rare": {"label": RARE_LABEL, "keys": arranged["rare_keys"]},
+        "status_lines": feature_status_lines(connected, enabled, missing),
+        "empty_text": EMPTY_PILE_TEXT,
+    }
+
+
 async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
     """Разделы в порядке SECTION_GROUPS; внутри — тумблеры раздела (TOGGLE_SECTION, строки
     уровня раздела, как в боте) и группы в порядке карты; пустое не рисуется. Ключ, не
@@ -470,11 +540,13 @@ async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
             keys = by_group.get(group, [])
             if not keys:
                 continue
+            items = [await _item_for(k, ctx) for k in keys]
             row = {
                 "token": group,
                 "label": settings_ops.GROUP_LABELS.get(group, group),
-                "items": [await _item_for(k, ctx) for k in keys],
+                "items": items,
             }
+            row.update(_feature_block(keys, items, await _enabled_phrase(group, ctx)))
             if group == "reg_questions":
                 # D-17 Task 3: тот же список ключей, что и `items` выше (флат-список остаётся
                 # для поиска, T-19-45), плюс матричный вид трек × вопрос для экрана — тумблеры
@@ -496,11 +568,13 @@ async def _sections(ctx: _CityCtx) -> tuple[list[dict], int]:
         misc_label = settings_ops.GROUP_LABELS.get("misc", "📦 Прочие")
         items = [await _item_for(k, ctx) for k in leftovers]
         total += len(items)
+        misc_group = {"token": "misc", "label": misc_label, "items": items}
+        misc_group.update(_feature_block(leftovers, items, await _enabled_phrase("misc", ctx)))
         sections.append({
             "token": "misc",
             "label": misc_label,
             "toggles": [],
-            "groups": [{"token": "misc", "label": misc_label, "items": items}],
+            "groups": [misc_group],
             "tier": "rare",
         })
     return sections, total

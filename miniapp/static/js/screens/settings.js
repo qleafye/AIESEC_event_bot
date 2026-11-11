@@ -1366,6 +1366,51 @@ async function renderSection(root, code, ctx, targetKey) {
     );
   }
 
+  function appendFeatureStatus(rowsWrap, group) {
+    for (const line of group.status_lines || []) {
+      rowsWrap.append(h("p", { class: "label-role", text: line }));
+    }
+  }
+
+  function mountGroupItem(parent, item) {
+    const row = buildRow(item);
+    itemIndex.set(item.key, row);
+    setOriginal(item);
+    parent.append(row.el);
+  }
+
+  // Те же три кучи, что у чат-админки. Подписи и строки шапки приходят в группе,
+  // экран их не выдумывает. Поиск по-прежнему идёт по group.items.
+  function appendFeatureBody(rowsWrap, group) {
+    appendFeatureStatus(rowsWrap, group);
+    const byBase = new Map();
+    for (const item of group.items || []) {
+      if (item.base_key && !byBase.has(item.base_key)) byBase.set(item.base_key, item);
+    }
+    for (const pile of group.piles || []) {
+      rowsWrap.append(h("p", { class: "settings-group-title", text: pile.label }));
+      const keys = pile.keys || [];
+      if (!keys.length && group.empty_text) {
+        rowsWrap.append(h("p", { class: "label-role", text: group.empty_text }));
+      }
+      for (const key of keys) {
+        const item = byBase.get(key);
+        if (item) mountGroupItem(rowsWrap, item);
+      }
+    }
+    const rareKeys = (group.rare && group.rare.keys) || [];
+    if (!rareKeys.length) return;
+    const rareBody = h("div", { class: "hidden" });
+    for (const key of rareKeys) {
+      const item = byBase.get(key);
+      if (item) mountGroupItem(rareBody, item);
+    }
+    rowsWrap.append(h("button", {
+      class: "btn ghost", type: "button", text: group.rare.label || "",
+      onClick: () => rareBody.classList.toggle("hidden"),
+    }), rareBody);
+  }
+
   // ── карточка группы: заголовок-кнопка (счётчик + шеврон, вращение — CSS .collapsed) +
   // тело со строками (или матрицей — reg_questions, см. выше). ────────────────────────────
   function buildGroupCard(group, isFirst, sectionTotal) {
@@ -1375,13 +1420,13 @@ async function renderSection(root, code, ctx, targetKey) {
       scheduleThemePreviewRefresh(); // «один раз после первой отрисовки» (докстринг выше)
     }
     if (group.matrix) {
+      appendFeatureStatus(rowsWrap, group);
       rowsWrap.append(buildMatrix(group));
+    } else if (group.piles) {
+      appendFeatureBody(rowsWrap, group);
     } else {
       for (const item of group.items) {
-        const row = buildRow(item);
-        itemIndex.set(item.key, row);
-        setOriginal(item);
-        rowsWrap.append(row.el);
+        mountGroupItem(rowsWrap, item);
       }
     }
     // Квик 12.09 (UI-аудит, пункт 4): «N из M» — M считает не только эту карточку, а весь
