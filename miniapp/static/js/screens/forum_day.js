@@ -13,6 +13,7 @@ export async function render(root, params, ctx) {
     { icon: "check-circle-2", title: "Отметки", hash: "#/arrivals" },
     ...(canReserve ? [{ icon: "mail", title: "Позвать резерв", hash: "#/reserve" }] : []),
     ...(canReserve ? [{ icon: "pen-line", title: "Написать", hash: "#/letter" }] : []),
+    ...(canReserve ? [{ icon: "refresh-cw", title: "Перенос сканов", hash: "#/training-move" }] : []),
     ...(canNudge ? [{ icon: "message-circle", title: "Догонялка", hash: "#/nudge" }] : []),
     { icon: "alert-triangle", title: "SOS", hash: "#/chat/sos", meta: "Пока в чате" },
     { icon: "briefcase", title: "Находки", hash: "#/chat/lost", meta: "Пока в чате" },

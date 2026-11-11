@@ -373,11 +373,13 @@ from miniapp.routers import (
     stats,
     submissions,
     tasks,
+    training_move,
 )
 
 ALL_ROUTERS = [
     page.router,
     tasks.router,
+    training_move.router,
     profile.router,
     coins.router,
     hub.router,

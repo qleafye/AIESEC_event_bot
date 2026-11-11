@@ -255,3 +255,140 @@ def test_move_without_one_city_asks_to_pick_header(tmp_path, monkeypatch):
     _run(training_move_open(cb))
     assert "один город" in cb.message.sent[-1][0]
     assert not any(data.startswith("ctm_go:") for _t, data in _kb(cb.message.sent[-1][1]))
+
+
+def _seed_move(client):
+    _run(_insert_user(ANNA, full_name="Анна Анина", city="spb"))
+    _run(_insert_user(BORIS, full_name="Борис Борисов", city="spb"))
+    small = _run(bot_db.create_program_hall("spb", "Малый зал"))
+    target = _run(bot_db.create_program_session(
+        "spb", "2026-10-03", "10:00", "11:30", "Открытие", hall_id=small,
+    ))
+    other_day = _run(bot_db.create_program_session(
+        "spb", "2026-10-04", "10:00", "11:00", "Завтра", hall_id=small,
+    ))
+    for uid, name in ((ANNA, "Анна Анина"), (BORIS, "Борис Борисов")):
+        assert _scan(client, uid, name=name)["status"] == "new"
+    return target, other_day
+
+
+def test_app_preview_does_not_mark_and_confirm_marks_once(tmp_path, monkeypatch):
+    from services.forum.checkin_training_move import EMPTY
+
+    client = _ready(tmp_path, monkeypatch, DAY)
+    target, other_day = _seed_move(client)
+    headers = _hdr(BOUND_MANAGER_ID)
+    path = "/app/api/forum-day/training-move"
+
+    opened = client.get(path, headers=headers)
+    assert opened.status_code == 200
+    screen = opened.json()
+    assert screen["pick_city"] is False
+    assert {person["name"] for person in screen["people"]} == {"Анна Анина", "Борис Борисов"}
+    assert all("telegram_id" not in person for person in screen["people"])
+    assert _run(city_label("spb")) in screen["text"]
+    assert "spb" not in screen["text"]
+    assert "session:" not in screen["text"]
+    labels = [session["label"] for session in screen["sessions"]]
+    assert "Малый зал · 10:00–11:30 · Открытие" in labels
+    assert all("session:" not in label and "Завтра" not in label for label in labels)
+
+    preview = client.post(path, json={"session_id": target, "confirm": False}, headers=headers)
+    assert preview.status_code == 200
+    body = preview.json()
+    assert body["need_confirm"] is True
+    assert "Анна Анина" in body["text"]
+    assert "будут отмечены" in body["text"]
+    assert "Повторное нажатие их второй раз не отметит" in body["text"]
+    assert "Статус заявки не меняется" in body["text"]
+    assert _rows("SELECT point FROM checkins") == []
+    assert len(_log()) == 2
+
+    foreign = client.post(path, json={"session_id": other_day, "confirm": True}, headers=headers)
+    assert foreign.status_code == 200
+    assert foreign.json()["ok"] is False
+    assert "сегодняшнего дня" in foreign.json()["text"]
+    assert _rows("SELECT point FROM checkins") == []
+    assert len(_log()) == 2
+
+    done = client.post(path, json={"session_id": target, "confirm": True}, headers=headers)
+    assert done.status_code == 200
+    result = done.json()
+    assert result["ok"] is True
+    assert "Новые: 2" in result["text"]
+    assert "Уже были на этой сессии: 0" in result["text"]
+    assert _log() == []
+    marks = _rows("SELECT telegram_id, point, source FROM checkins ORDER BY telegram_id")
+    assert marks == [
+        {"telegram_id": ANNA, "point": f"session:{target}", "source": "training"},
+        {"telegram_id": BORIS, "point": f"session:{target}", "source": "training"},
+    ]
+    for uid in (ANNA, BORIS):
+        assert _rows("SELECT status FROM users WHERE telegram_id = ?", (uid,))[0]["status"] == "approved"
+
+    again = client.post(path, json={"session_id": target, "confirm": True}, headers=headers)
+    assert again.json()["ok"] is False
+    assert again.json()["text"] == EMPTY
+    assert len(_rows("SELECT point FROM checkins")) == 2
+
+
+def test_app_all_cities_does_not_transfer(tmp_path, monkeypatch):
+    from services.forum.checkin_training_move import app_screen, move_decision
+
+    client = _ready(tmp_path, monkeypatch, DAY)
+    target, _other = _seed_move(client)
+    _set("admin_city__1", "*")
+    bot_config.ADMIN_IDS = [1]
+
+    screen = _run(app_screen(1))
+    assert screen["pick_city"] is True
+    assert screen["people"] == []
+    assert screen["sessions"] == []
+    assert "один город" in screen["text"]
+
+    decision = _run(move_decision(1, target, confirm=True))
+    assert decision["ok"] is False
+    assert "один город" in decision["text"]
+    assert _rows("SELECT point FROM checkins") == []
+    assert len(_log()) == 2
+
+
+def test_training_move_without_cap_says_what_to_ask(tmp_path, monkeypatch):
+    from services.forum.checkin_training_move import NEED_CAP
+
+    client = _ready(tmp_path, monkeypatch, DAY)
+    resp = client.get("/app/api/forum-day/training-move", headers=_hdr(GAME_MANAGER_ID))
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body == {"reason": "no_cap", "text": NEED_CAP}
+    assert "forbidden" not in body["text"].lower()
+    assert "moderate_reg" not in body["text"]
+
+
+def test_chat_move_stays_and_site_only_links():
+    from pathlib import Path
+
+    from dashboard.forum_day import TRAINING_MOVE_HREF, training_move_page
+    from handlers.access.admin_caps import ADMIN_CAPS
+    from services.forum.checkin_training_move import NEED_CAP
+
+    assert training_move_open is not None
+    assert training_move_pick is not None
+    assert training_move_go is not None
+    assert ADMIN_CAPS["checkin_training_move"] == "moderate_reg"
+    assert ADMIN_CAPS["ctm_go:*"] == "moderate_reg"
+    assert "forbidden" not in NEED_CAP.lower()
+    assert "moderate_reg" not in NEED_CAP
+    page = training_move_page()
+    assert TRAINING_MOVE_HREF == "/app/#/training-move"
+    assert TRAINING_MOVE_HREF in page
+    source = Path("dashboard/forum_day.py").read_text(encoding="utf-8")
+    assert "SELECT" not in source
+    assert "transfer_training_scans" not in source
+    handler = Path("handlers/forum/admin_checkin_training_move.py").read_text(encoding="utf-8")
+    assert 'F.data == "checkin_training_move"' in handler
+    assert 'F.data.startswith("ctm_go:")' in handler
+    screen = Path("miniapp/static/js/screens/training_move.js").read_text(encoding="utf-8")
+    assert "innerHTML" not in screen
+    assert "text: session.label" in screen
+    assert "<input" not in screen and "textarea" not in screen

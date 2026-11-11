@@ -55,16 +55,8 @@ async def _manager(callback: types.CallbackQuery) -> bool:
 
 
 async def _move_city(admin_id: int) -> str | None:
-    """Город шапки. `None` — «Все города», город надо выбрать. Модуль выключен — город по умолчанию."""
-    from domain.cities import cities_module_on, default_city_code
-    from handlers.settings.admin_core import _admin_city_view
-
-    scope, label = await _admin_city_view(admin_id)
-    if scope is not None:
-        return scope[0]
-    if label is None and not await cities_module_on():
-        return default_city_code()
-    return None
+    """Город шапки. Тот же разбор, что у экрана приложения."""
+    return await move.header_city(admin_id)
 
 
 async def _allowed_city(callback: types.CallbackQuery) -> str | None:
