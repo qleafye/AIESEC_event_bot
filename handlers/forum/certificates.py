@@ -128,7 +128,7 @@ async def certificate_send(callback: types.CallbackQuery, bot, state: FSMContext
             continue
         try:
             percents = await certs.competency_percents(user.id) if kind == cdb.KIND_COMPETENCY else None
-            pdf = await certs.build_pdf(bot, file_id, name, kind, percents)
+            pdf = await certs.build_pdf(bot, file_id, name, kind, percents, telegram_id=user.id)
             await callback.message.answer_document(
                 BufferedInputFile(pdf, filename=certs.file_name(kind, name)),
                 caption=f"🎓 {certs.KIND_TITLES[kind]}",
