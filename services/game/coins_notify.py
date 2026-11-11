@@ -41,6 +41,10 @@ async def send_game_text(user_id: int, text: str, sender, *, parse_mode: str | N
         logger.info("игра: делегат %s выключил письма, не шлём", user_id)
         return True
     from services.comms import quiet_hours
+    # parse_mode="HTML" не передаём: так звали очередь раньше, и подмены в тестах
+    # принимают ровно эти аргументы. None и прочие значения — явно.
+    if parse_mode == "HTML":
+        return await quiet_hours.send_or_queue_text(now, user_id, text, sender=sender)
     return await quiet_hours.send_or_queue_text(
         now, user_id, text, sender=sender, parse_mode=parse_mode,
     )
