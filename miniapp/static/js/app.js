@@ -95,6 +95,7 @@ export const ROUTES = [
   // Папка входов дня форума — не конструктор сценариев.
   ["#/forum-day", "screens/forum_day.js"],
   ["#/reserve", "screens/reserve.js"],
+  ["#/nudge", "screens/nudge.js"],
   // Папка «Баллы» и стойки магазина — витрины здесь нет.
   ["#/coins-shop", "screens/coins_shop.js"],
   // Цифры регистраций — не статистика геймы #/stats.

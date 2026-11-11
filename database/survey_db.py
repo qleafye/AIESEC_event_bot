@@ -78,6 +78,11 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
         "sub TEXT NOT NULL DEFAULT '', value_json TEXT NOT NULL, answered_at TEXT, "
         "UNIQUE (poll_id, user_id, question_id, sub))"
     )
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS survey_nudges ("
+        "poll_id INTEGER NOT NULL, user_id INTEGER NOT NULL, nudged_at TEXT NOT NULL, "
+        "PRIMARY KEY (poll_id, user_id))"
+    )
 
 
 # ── Черновик анкеты (polls) ──────────────────────────────────────────────────────────────────
@@ -434,6 +439,23 @@ async def list_survey_progress(poll_id: int) -> list[dict]:
             (poll_id,),
         ) as cur:
             return [dict(r) for r in await cur.fetchall()]
+
+
+async def survey_nudged_user_ids(poll_id: int) -> set[int]:
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT user_id FROM survey_nudges WHERE poll_id = ?", (int(poll_id),),
+        ) as cursor:
+            return {int(row[0]) for row in await cursor.fetchall()}
+
+
+async def mark_survey_nudged(poll_id: int, user_id: int, nudged_at: str) -> None:
+    async with _db._connect() as db:
+        await db.execute(
+            "INSERT OR IGNORE INTO survey_nudges (poll_id, user_id, nudged_at) VALUES (?, ?, ?)",
+            (int(poll_id), int(user_id), nudged_at),
+        )
+        await db.commit()
 
 
 async def finished_survey_user_ids(poll_id: int) -> set[int]:

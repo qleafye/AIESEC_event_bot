@@ -43,12 +43,9 @@ def _ints(data: str, n: int) -> list[int] | None:
 
 
 async def _nudge_scope(admin_id: int | None):
-    if admin_id is None:
-        return None
-    from handlers.settings.admin_core import _admin_city_view
+    from services.comms.survey_nudge import nudge_scope
 
-    scope, _ = await _admin_city_view(admin_id)
-    return scope
+    return await nudge_scope(admin_id)
 
 
 async def render_survey_card(
