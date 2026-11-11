@@ -556,9 +556,13 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:checkin_not_arrived.here_button", "Я на месте"))
     items.append((
         "lit:user_actions.mute_today_confirm",
-        "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».",
+        "Сегодня без обычных рассылок, игры и напоминаний. Важное, решение по заявке, "
+        "личное письмо, оплата и QR придут. Вернуть — кнопка «🔔 Присылать всё».",
     ))
-    items.append(("lit:user_actions.unmute_today_confirm", "Хорошо, снова присылаю все рассылки."))
+    items.append((
+        "lit:user_actions.unmute_today_confirm",
+        "Срок до полуночи снят. Выключатели рассылок, игры и напоминаний остаются как есть.",
+    ))
     items.append(("lit:notices.off_broadcasts", "Не присылать рассылки"))
     items.append(("lit:notices.on_broadcasts", "Снова присылать рассылки"))
     items.append(("lit:notices.off_game", "Не беспокоить игрой"))
@@ -567,7 +571,7 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:notices.on_reminders", "Снова присылать напоминания"))
     items.append((
         "lit:notices.broadcasts_off",
-        "Рассылки выключены. Включить — кнопка «Снова присылать рассылки».",
+        "Обычные рассылки выключены. Важные придут. Включить — кнопка «Снова присылать рассылки».",
     ))
     items.append(("lit:notices.broadcasts_on", "Снова присылаю рассылки."))
     items.append((
@@ -582,7 +586,9 @@ def code_literals() -> list[tuple[str, str]]:
     items.append(("lit:notices.reminders_on", "Снова присылаю напоминания."))
     items.append((
         "lit:notices.screen",
-        "Три выключателя. Каждый действует, пока сами не включите обратно.",
+        "Обычные рассылки, игра и баллы, напоминания — каждый выключатель сам по себе. "
+        "«Не присылать сегодня» гасит эти три до полуночи. Важное, решение по заявке, "
+        "личное письмо, оплата и QR приходят всегда.",
     ))
     items.append(("lit:notices.save_failed", "Не получилось записать. Нажмите кнопку ещё раз."))
     items.append((

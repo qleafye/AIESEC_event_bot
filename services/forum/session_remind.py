@@ -14,7 +14,7 @@
 Идемпотентность — журнал `session_remind_sends` (`database/session_remind_db.py`): перезапуск,
 перепланирование и повторный тик не дублируют сообщения. Джоба перед отправкой перечитывает тумблер
 и сессию: сессию удалили или перенесли — сообщение не уйдёт. Отписка снимает человека с напоминания
-этой сессии. Mute рассылок сюда не входит.
+этой сессии. Выключатель напоминаний и срок до полуночи пропускают человека до записи в журнал.
 
 Дедлайны: напоминание не уходит позже начала сессии, утренняя программа — позже начала первой
 сессии дня (бот был выключен — догнали, но не задним числом).
@@ -275,6 +275,13 @@ async def _send(telegram_id: int, text: str, kind: str, ref: str, now: datetime)
     return ok
 
 
+async def _blocked_reminders(now: datetime) -> set[int]:
+    """Кого не писать, пока журнал ещё не тронут: свой выключатель или срок до полуночи."""
+    from database.db import notice_blocked_ids
+
+    return await notice_blocked_ids("reminders", now)
+
+
 async def _lang_for(telegram_id: int, tr_maps: dict) -> tuple[str, dict]:
     try:
         from services.i18n import i18n as i18n_service
@@ -310,8 +317,12 @@ async def deliver_session_reminders(session_id: int) -> dict:
 
         competencies = (await edb.competency_names_for_sessions([session_id])).get(session_id, [])
         tr_maps: dict = {}
+        blocked = await _blocked_reminders(now)
         for user in await remind_recipients(session):
             tid = int(user["telegram_id"])
+            if tid in blocked:
+                result["skipped"] += 1
+                continue
             if await rdb.was_sent(tid, rdb.KIND_REMIND, str(session_id)):
                 result["skipped"] += 1
                 continue
@@ -348,8 +359,12 @@ async def deliver_morning_program(city: str, day: str) -> dict:
         tr_maps: dict = {}
         users = await _approved_delegates(city)
         overview = [{"session": s} for s in sessions]
+        blocked = await _blocked_reminders(now)
         for user in users:
             tid = int(user["telegram_id"])
+            if tid in blocked:
+                result["skipped"] += 1
+                continue
             if await rdb.was_sent(tid, rdb.KIND_MORNING, ref):
                 result["skipped"] += 1
                 continue

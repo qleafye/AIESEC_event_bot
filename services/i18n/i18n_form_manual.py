@@ -489,17 +489,23 @@ _CODE_LITERALS_EN = {
         "Getting a lot of messages today? You can turn off the non-essential ones until tomorrow:",
     "Не присылать сегодня": "Don't send today",
     "Присылать всё": "Send everything",
-    "Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
-        "Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
-    "Хорошо, снова присылаю все рассылки.": "Okay, sending all messages again.",
+    "Сегодня без обычных рассылок, игры и напоминаний. Важное, решение по заявке, "
+    "личное письмо, оплата и QR придут. Вернуть — кнопка «🔔 Присылать всё».":
+        "No ordinary broadcasts, game, or reminders until midnight. Important broadcasts, "
+        "an application decision, a personal letter, payment, and the entry QR still arrive. "
+        "To undo — tap «🔔 Send everything».",
+    "Срок до полуночи снят. Выключатели рассылок, игры и напоминаний остаются как есть.":
+        "The quiet time until midnight is off. Switches for broadcasts, game, and "
+        "reminders stay as you set them.",
     "Не присылать рассылки": "Don't send broadcasts",
     "Снова присылать рассылки": "Send broadcasts again",
     "Не беспокоить игрой": "Don't send game updates",
     "Снова присылать игру и баллы": "Send game and points again",
     "Без напоминаний": "No reminders",
     "Снова присылать напоминания": "Send reminders again",
-    "Рассылки выключены. Включить — кнопка «Снова присылать рассылки».":
-        "Broadcasts are off. To turn them on, tap «Send broadcasts again».",
+    "Обычные рассылки выключены. Важные придут. Включить — кнопка «Снова присылать рассылки».":
+        "Ordinary broadcasts are off. Important ones still arrive. To turn them on, "
+        "tap «Send broadcasts again».",
     "Снова присылаю рассылки.": "Sending broadcasts again.",
     "Игра и баллы выключены. Включить — кнопка «Снова присылать игру и баллы».":
         "Game and points are off. To turn them on, tap «Send game and points again».",
@@ -507,8 +513,12 @@ _CODE_LITERALS_EN = {
     "Напоминания выключены. Включить — кнопка «Снова присылать напоминания».":
         "Reminders are off. To turn them on, tap «Send reminders again».",
     "Снова присылаю напоминания.": "Sending reminders again.",
-    "Три выключателя. Каждый действует, пока сами не включите обратно.":
-        "Three switches. Each stays until you turn it back on.",
+    "Обычные рассылки, игра и баллы, напоминания — каждый выключатель сам по себе. "
+    "«Не присылать сегодня» гасит эти три до полуночи. Важное, решение по заявке, "
+    "личное письмо, оплата и QR приходят всегда.":
+        "Ordinary broadcasts, game and points, and reminders each have their own switch. "
+        "«Don't send today» turns those three off until midnight. Important broadcasts, "
+        "an application decision, a personal letter, payment, and the entry QR always arrive.",
     "Не получилось записать. Нажмите кнопку ещё раз.": "Couldn't save that. Tap the button again.",
     "Не понял кнопку. Нажмите одну из трёх на этом сообщении.":
         "Didn't catch that button. Tap one of the three on this message.",
@@ -517,9 +527,14 @@ _CODE_LITERALS_EN = {
     # префиксом (в отличие от пары строк выше, которые ловит именно `reg_i18n.tr_text` после
     # снятия префикса) — сторож `tests/test_i18n_form_manual_coverage_260917.py` сверяет
     # корпус реестровых дефолтов байт-в-байт, без снятия префикса.
-    "🔕 Хорошо, сегодня присылаю только важное. Вернуть — кнопка «🔔 Присылать всё».":
-        "🔕 Okay, sending only important messages today. To undo — tap «🔔 Send everything».",
-    "🔔 Хорошо, снова присылаю все рассылки.": "🔔 Okay, sending all messages again.",
+    "🔕 Сегодня без обычных рассылок, игры и напоминаний. Важное, решение по заявке, "
+    "личное письмо, оплата и QR придут. Вернуть — кнопка «🔔 Присылать всё».":
+        "🔕 No ordinary broadcasts, game, or reminders until midnight. Important broadcasts, "
+        "an application decision, a personal letter, payment, and the entry QR still arrive. "
+        "To undo — tap «🔔 Send everything».",
+    "🔔 Срок до полуночи снят. Выключатели рассылок, игры и напоминаний остаются как есть.":
+        "🔔 The quiet time until midnight is off. Switches for broadcasts, game, and "
+        "reminders stay as you set them.",
     # D-31 (24.09, «SOS без категорий»): реестровые дефолты режима «дописываю SOS»
     # (group "event", `sos_sent_text`/`sos_done_text`/`sos_collecting_expired_text`) — вопрос
     # «что случилось?» и категорийные подсказки сняты вместе с визардом.

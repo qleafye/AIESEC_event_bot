@@ -138,8 +138,8 @@ APP_CHAT_SENDERS = {
     "miniapp/routers/checkin_shop.py::scan": (),
     # Ответ организатора: текст пишет человек, заголовок — org_reply_title из кода бота.
     "miniapp/routers/questions.py::questions_answer": (),
-    # Текст уведомления приходит аргументом от вызывающего кода.
-    "miniapp/routers/review.py::_notify_delegate": (),
+    # Текст уведомления приходит аргументом. Сам вызов ушёл в send_game_text,
+    # вложенный _sender по-прежнему пишет в чат.
     "miniapp/routers/review.py::_sender": (),
 }
 SEND_PRIMITIVES = {

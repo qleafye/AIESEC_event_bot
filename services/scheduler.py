@@ -964,8 +964,8 @@ async def send_scheduled_broadcast(broadcast_id: int):
         important = bool(row.get("important"))
         mute_skipped = 0
         if not important:
-            from database.db import get_muted_today_ids
-            muted = await get_muted_today_ids(_now_moscow_naive().strftime("%Y-%m-%d"))
+            from database.db import notice_blocked_ids
+            muted = await notice_blocked_ids("broadcasts", _now_moscow_naive())
             before = len(target_ids)
             target_ids = [tid for tid in target_ids if tid not in muted]
             mute_skipped = before - len(target_ids)
@@ -1625,6 +1625,7 @@ async def nudge_incomplete_registrations():
     try:
         from database.db import (
             get_nudge_candidates, mark_nudged, get_reg_started_by_id, get_reg_draft,
+            notice_blocked_ids,
         )
         # Quick 260912-mcj: `reg_started.started_at` пишется московским `msk_now()`.
         # Широкое окно в SQL (1 минута), чтобы короткий городской срок не потерялся.
@@ -1646,6 +1647,7 @@ async def nudge_incomplete_registrations():
         from services.comms import quiet_hours
         from services.i18n import i18n as i18n_service
         now = _now_moscow_naive()
+        blocked = await notice_blocked_ids("reminders", now)
         tr_maps: dict[str, dict] = {}
         for tid in candidates:
             started = await get_reg_started_by_id(tid)
@@ -1666,6 +1668,8 @@ async def nudge_incomplete_registrations():
                 continue
             text = await get_setting_typed_for_city("nudge_text", nudge_city) or DEFAULT_NUDGE_TEXT
             has_remaining_placeholder = "{remaining}" in text
+            if tid in blocked:
+                continue  # выключатель напоминаний — без mark_nudged, заберёт следующий тик
             if await quiet_hours.defer_until(now, tid) is not None:
                 continue  # тихие часы -- пропуск без mark_nudged, заберёт следующий тик
             # Делегат, выбравший английский до обрыва анкеты, получал напоминание и кнопки
@@ -2186,6 +2190,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
     try:
         from database.db import (
             get_task, get_active_submission, get_user, list_ambassadors, get_wave, task_title,
+            notice_blocked_ids,
         )
         from services.amb.ambassador_waves import wave_eligible, wave_open
         from services.comms import quiet_hours
@@ -2241,6 +2246,7 @@ async def send_task_deadline_reminder(task_id: int) -> None:
         # В карточке делегату — только день. В напоминании нужен час: иначе «12.10» не говорит,
         # что день ещё входит до 23:59. Подсказка настройки обещает в {deadline} дату и время.
         deadline_txt = game_labels.task_deadline_admin(task)
+        blocked = await notice_blocked_ids("reminders", now)
 
         for uid in recipients:
             # CR-05: сбой у ОДНОГО получателя (например, кривой src в i18n) не должен
@@ -2251,6 +2257,8 @@ async def send_task_deadline_reminder(task_id: int) -> None:
                     continue  # задания ему закрыты (отклонён, ждёт решения, прошлый сезон)
                 if await get_active_submission(task_id, uid):
                     continue  # уже сдал (сдача не отклонена) — D-26: только несдавшим
+                if uid in blocked:
+                    continue  # отметка задания уже стоит; этому человеку письмо не кладём
                 # Тихие часы откладывают текст на утро. Если утро уже после дедлайна,
                 # «скоро срок» приходит задним числом — не ставим в очередь.
                 due = await quiet_hours.defer_until(now, uid)

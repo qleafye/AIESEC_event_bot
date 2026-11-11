@@ -49,7 +49,7 @@ from database.db import (
     task_title,
 )
 from domain.game.labels import category_label, penalized_coins, proof_types_label
-from services.comms import quiet_hours
+from services.game.coins_notify import send_game_text
 from services.game.game_award import award_for
 from domain.settings.schema import get_setting_typed
 
@@ -203,17 +203,15 @@ class RejectIn(BaseModel):
 async def _notify_delegate(cfg, user_id: int, text: str) -> None:
     """Как бот: ошибка уведомления — в лог, решение уже принято и не откатывается.
 
-    Quick 260904-dq1: попал в тихие часы делегата — веб кладёт строку в ТУ ЖЕ очередь
-    (`delayed_notifications`), отправит её бот своей джобой (`quiet_hours_flush_job`) — второго
-    писателя в Bot API не появляется (D-01). `parse_mode=None`: веб и раньше слал текст
-    без разметки (`telegram_api.send_message` её не принимает)."""
+    Тихие часы и выключатель игры — в `send_game_text`: веб кладёт строку в ту же очередь,
+    отправит её бот. `parse_mode=None`: веб и раньше слал текст без разметки."""
     async def _sender():
         try:
             await telegram_api.send_message(cfg, user_id, text)
         except TelegramApiError as exc:
             logger.error("review: не удалось уведомить делегата %s (%s)", user_id, exc.reason)
 
-    await quiet_hours.send_or_queue_text(now_msk_naive(), user_id, text, sender=_sender, parse_mode=None)
+    await send_game_text(user_id, text, _sender, parse_mode=None, now=now_msk_naive())
 
 
 @router.post("/app/api/review/{sid}/approve")
