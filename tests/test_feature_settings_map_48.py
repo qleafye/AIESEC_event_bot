@@ -19,6 +19,7 @@ from handlers.settings.admin_settings import SETTINGS_GROUPS
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS_JS = (ROOT / "miniapp" / "static" / "js" / "screens" / "settings.js").read_text(encoding="utf-8")
 ADMIN_SETTINGS_PY = (ROOT / "handlers" / "settings" / "admin_settings.py").read_text(encoding="utf-8")
+FEATURE_SCREEN_PY = (ROOT / "handlers" / "settings" / "admin_feature_screen.py").read_text(encoding="utf-8")
 
 
 def _fail(pair: str, why: str) -> None:
@@ -93,8 +94,8 @@ def _section_has_group(section: str, group_token: str) -> bool:
 
 
 def _token_block(token: str) -> str:
-    """Тело `if token == "...":` в клавиатуре группы настроек бота."""
-    lines = ADMIN_SETTINGS_PY.splitlines()
+    """Тело `if token == "...":` в клавиатуре экрана фичи."""
+    lines = FEATURE_SCREEN_PY.splitlines()
     start = None
     needle = f'if token == "{token}":'
     for index, line in enumerate(lines):
