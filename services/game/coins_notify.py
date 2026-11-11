@@ -28,6 +28,24 @@ from domain.settings.schema import SETTINGS_SCHEMA
 logger = logging.getLogger(__name__)
 
 
+async def send_game_text(user_id: int, text: str, sender, *, parse_mode: str | None = "HTML", now=None) -> bool:
+    """Письмо об игре или баллах. True — ушло сейчас или делегат его выключил.
+    False — лежит до конца тихих часов. Выключение не ошибка: баллы уже записаны.
+    Сбой отправки пробрасывается вызывающему."""
+    from database.db import notice_blocked_ids
+
+    if now is None:
+        from services.scheduler import _now_moscow_naive
+        now = _now_moscow_naive()
+    if int(user_id) in await notice_blocked_ids("game", now):
+        logger.info("игра: делегат %s выключил письма, не шлём", user_id)
+        return True
+    from services.comms import quiet_hours
+    return await quiet_hours.send_or_queue_text(
+        now, user_id, text, sender=sender, parse_mode=parse_mode,
+    )
+
+
 # Phase 14 (GAME-09): shared by the button wizard (coinsman_confirm), /coins and the Mini App
 # outbox -- one place builds the delegate-facing notification text, so the paths can never
 # drift on wording. `.replace` per placeholder (not `.format`): a manager-edited template may
@@ -40,7 +58,8 @@ async def notify_manual_coins(bot, user_id: int, delta: int, reason: str, balanc
     (Quick 260904-dq1: for the caller this counts as success — the delegate WILL get the
     notification, just not right now), False on any failure (delegate blocked the bot,
     etc.) -- logged, never raised. The ledger write already happened before this is called
-    (T-14-20): a failed notification must never be the reason an operation looks undone."""
+    (T-14-20): a failed notification must never be the reason an operation looks undone.
+    Выключенная игра тоже True: письмо не ошибка доставки, журнал уже записан."""
     # Текст города получателя, {chat} — ссылка на его чат (services/game/city_texts.py).
     from services.game import city_texts
     template, city = await city_texts.city_template("coins_manual_notify_text", user_id)
@@ -55,11 +74,11 @@ async def notify_manual_coins(bot, user_id: int, delta: int, reason: str, balanc
         .replace("{balance}", str(balance))
     )
     try:
-        from services.comms import quiet_hours
         from services.scheduler import _now_moscow_naive
-        sent_now = await quiet_hours.send_or_queue_text(
-            _now_moscow_naive(), user_id, text,
-            sender=lambda: bot.send_message(user_id, text, parse_mode="HTML"),
+        sent_now = await send_game_text(
+            user_id, text,
+            lambda: bot.send_message(user_id, text, parse_mode="HTML"),
+            now=_now_moscow_naive(),
         )
         if not sent_now:
             logger.info(f"Manual coins notification for user {user_id} deferred to end of quiet hours")

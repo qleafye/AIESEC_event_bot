@@ -9,9 +9,9 @@
 принимает `reply_markup`) — и только раз в сутки на получателя (`users.mute_offer_shown_date`).
 D-30 (24.09): кнопка доступна ВЕСЬ СЕЗОН, не только в день форума — старый гейт
 `offer_mute_today_if_forum_day` убран целиком (единственное условие теперь — рассылка
-неважная). Заглушка — колонка `users.mute_broadcasts_until` (MSK-дата), проверяется при
-КАЖДОЙ доставке (`database.db.get_muted_today_ids`), а не единожды на постановке. Важные
-рассылки игнорируют заглушку полностью (важное приходит всегда).
+неважная). Заглушка проверяется при каждой доставке (`database.db.notice_blocked_ids`):
+дата на сегодня, срок до полуночи и выключатель рассылок. Важные рассылки
+игнорируют заглушку полностью (важное приходит всегда).
 
 pytest-asyncio недоступен — каждый async вызов через `asyncio.run()`, БД — `tmp_path`
 (конвенция `tests/_dbtpl.py::fast_init_db`).
@@ -138,7 +138,9 @@ def test_mute_broadcasts_today_sets_column_and_swaps_button_not_text(tmp_path, m
         assert msg.text == "Важная новость дня"  # содержимое НЕ тронуто
         assert msg.reply_markup.inline_keyboard[0][0].callback_data == "bc_unmute_today"
         text, show_alert = cb.answers[0]
-        assert "только важное" in text
+        assert "рассылок" in text and "игры" in text and "напоминаний" in text
+        assert "Важное" in text and "личное письмо" in text and "QR" in text
+        assert len(text) <= 200
         assert show_alert is True
 
     asyncio.run(go())
@@ -163,7 +165,8 @@ def test_unmute_broadcasts_today_clears_column_and_swaps_button_back(tmp_path, m
         assert msg.text == "Обычная новость"
         assert msg.reply_markup.inline_keyboard[0][0].callback_data == "bc_mute_today"
         text, show_alert = cb.answers[0]
-        assert "все рассылки" in text
+        assert "остаются" in text
+        assert "все рассылки" not in text
         assert show_alert is True
 
     asyncio.run(go())

@@ -1,7 +1,7 @@
 """Три выключателя уведомлений и срок «до завтра».
 
-Старая дата рассылок остаётся как была: отправители до подключения общего фильтра
-читают её и не начинают глушить сессии и игру. Флаги живут отдельно от срока.
+Флаги живут отдельно от срока. Старая дата на сегодня глушит все три типа
+через общий фильтр.
 """
 import asyncio
 from datetime import datetime
@@ -128,7 +128,7 @@ class _Callback:
         self.answers.append((text, show_alert))
 
 
-def test_mute_today_writes_deadline_and_keeps_old_promise(tmp_path, monkeypatch):
+def test_mute_today_writes_deadline_and_names_three_types(tmp_path, monkeypatch):
     async def go():
         _ready(tmp_path)
         await _add(DELEGATE_ID)
@@ -150,12 +150,15 @@ def test_mute_today_writes_deadline_and_keeps_old_promise(tmp_path, monkeypatch)
             "broadcasts": False, "game": False, "reminders": False,
         }
         text, show_alert = cb.answers[0]
-        assert "только важное" in text
-        assert "игр" not in text
-        assert "напоминан" not in text
+        assert "рассылок" in text and "игры" in text and "напоминаний" in text
+        assert "Важное" in text
+        assert "заявке" in text and "личное письмо" in text and "оплата" in text and "QR" in text
+        assert "mute_" not in text and "muted_until" not in text
+        assert len(text) <= 200
         assert show_alert is True
         assert msg.reply_markup.inline_keyboard[0][0].callback_data == "bc_unmute_today"
         assert msg.answers
+        assert "приходят всегда" in msg.answers[0][0]
         labels = [btn.text for row in msg.answers[0][1].inline_keyboard for btn in row]
         assert "mute_broadcasts" not in " ".join(labels)
         assert any("рассылки" in label for label in labels)
@@ -185,7 +188,9 @@ def test_unmute_clears_deadline_but_not_flags(tmp_path):
         assert user["muted_until"] is None
         assert db.notice_flags(user)["game"] is True
         text, show_alert = cb.answers[0]
-        assert "все рассылки" in text
+        assert "остаются" in text
+        assert "все рассылки" not in text
+        assert "mute_" not in text
         assert show_alert is True
 
     asyncio.run(go())
@@ -230,3 +235,125 @@ def test_unknown_and_missing_delegate_say_what_to_press(tmp_path):
         assert "Нажмите кнопку ещё раз" in cb.answers[1][0]
 
     asyncio.run(go())
+
+
+def test_game_letter_skips_when_switch_is_on(tmp_path, monkeypatch):
+    async def go():
+        _ready(tmp_path)
+        await _add(DELEGATE_ID)
+        await _add(OTHER_ID)
+        await db.set_notice_flag(DELEGATE_ID, "game", True)
+        sent = []
+
+        async def sender():
+            sent.append("x")
+
+        async def deliver(now, user_id, text, *, sender, parse_mode="HTML", reply_markup=None, question_ref=None):
+            await sender()
+            return True
+
+        monkeypatch.setattr("services.comms.quiet_hours.send_or_queue_text", deliver)
+        from services.game.coins_notify import send_game_text
+
+        now = datetime(2026, 9, 24, 15, 0)
+        assert await send_game_text(DELEGATE_ID, "баллы", sender, now=now) is True
+        assert sent == []
+        assert await send_game_text(OTHER_ID, "баллы", sender, now=now) is True
+        assert sent == ["x"]
+
+    asyncio.run(go())
+
+
+def test_survey_nudge_skips_reminder_switch(tmp_path, monkeypatch):
+    async def go():
+        _ready(tmp_path)
+        await _add(DELEGATE_ID)
+        await _add(OTHER_ID)
+        await db.set_notice_flag(DELEGATE_ID, "reminders", True)
+        from services.comms import survey_nudge
+
+        sent = []
+
+        async def invite(bot, poll, tid, now):
+            sent.append(tid)
+
+        async def finished(_pid):
+            return set()
+
+        monkeypatch.setattr(survey_nudge, "finished_survey_user_ids", finished)
+        monkeypatch.setattr("services.comms.polls._send_invite", invite)
+        n_sent, n_failed = await survey_nudge.send_nudge(None, {"id": 1}, [DELEGATE_ID, OTHER_ID])
+        assert sent == [OTHER_ID]
+        assert (n_sent, n_failed) == (1, 0)
+
+    asyncio.run(go())
+
+
+def test_session_remind_skips_blocked_before_journal(monkeypatch):
+    from services.forum import session_remind as sr
+
+    seen = {"was": [], "sent": [], "kind": None}
+
+    async def get_session(_sid):
+        return {"id": 7, "city": "msk", "title": "Сессия", "start_time": "12:00", "hall_name": ""}
+
+    async def enabled(_city):
+        return True
+
+    async def minutes(_city):
+        return 10
+
+    async def offset(_city):
+        return 0
+
+    def start_msk(_session, _offset):
+        return datetime(2026, 9, 25, 12, 0)
+
+    def run_at(_session, _minutes, _offset):
+        return datetime(2026, 9, 25, 11, 50)
+
+    async def names(_ids):
+        return {7: []}
+
+    async def recipients(_session):
+        return [{"telegram_id": 42}, {"telegram_id": 43}]
+
+    async def blocked(kind, now):
+        seen["kind"] = kind
+        return {42}
+
+    async def was_sent(tid, kind, ref):
+        seen["was"].append(tid)
+        return False
+
+    async def send(tid, text, kind, ref, now):
+        seen["sent"].append(tid)
+        return True
+
+    async def lang(_tid, _maps):
+        return "ru", {}
+
+    async def text(*_a, **_k):
+        return "скоро"
+
+    monkeypatch.setattr("database.db.get_program_session", get_session)
+    monkeypatch.setattr("services.scheduler._now_moscow_naive", lambda: datetime(2026, 9, 25, 11, 50))
+    monkeypatch.setattr("database.db.notice_blocked_ids", blocked)
+    monkeypatch.setattr("database.session_enroll_db.competency_names_for_sessions", names)
+    monkeypatch.setattr(sr, "remind_enabled", enabled)
+    monkeypatch.setattr(sr, "city_offset_hours", offset)
+    monkeypatch.setattr(sr, "session_start_msk", start_msk)
+    monkeypatch.setattr(sr, "remind_minutes", minutes)
+    monkeypatch.setattr(sr, "remind_run_at", run_at)
+    monkeypatch.setattr(sr, "remind_recipients", recipients)
+    monkeypatch.setattr(sr.rdb, "was_sent", was_sent)
+    monkeypatch.setattr(sr, "_send", send)
+    monkeypatch.setattr(sr, "_lang_for", lang)
+    monkeypatch.setattr(sr, "build_remind_text", text)
+
+    result = asyncio.run(sr.deliver_session_reminders(7))
+    assert seen["kind"] == "reminders"
+    assert seen["was"] == [43]
+    assert seen["sent"] == [43]
+    assert result["sent"] == 1
+    assert result["skipped"] >= 1

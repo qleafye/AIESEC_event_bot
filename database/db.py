@@ -5736,7 +5736,7 @@ async def set_muted_until(telegram_id: int, until: str | None) -> bool:
 async def notice_blocked_ids(kind: str, now: datetime) -> set[int]:
     """Кому не слать этот тип: свой флаг, срок «до завтра» ещё не вышел, или старая
     дата суточного глушения на сегодня. Дата — не четвёртый тип: она глушит все три.
-    Пока отправители зовут `get_muted_today_ids`, сессии и игра эту функцию не читают."""
+    Важная рассылка эту функцию не зовёт. Решение, личное письмо, оплата и QR тоже."""
     column = _NOTICE_FLAG_COLUMNS.get(kind)
     if column is None:
         raise ValueError(kind)

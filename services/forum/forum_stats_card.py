@@ -41,7 +41,7 @@ woff2 напрямую и корректно рендерит кириллицу
 что `services.checkin_broadcast.send_broadcast`). В ОТЛИЧИЕ от QR (D-35: служебное сообщение,
 тихие часы и «🔕» не действуют) — эта рассылка ОБЫЧНАЯ: уважает `services.comms.quiet_hours`
 (делегата в окне тишины пропускаем, НЕ отмечаем отправленным — следующий тап подхватит) и
-«🔕 Не присылать сегодня» (`database.db.get_muted_today_ids`) — этот модуль поэтому явно
+«🔕 Не присылать сегодня» (`database.db.notice_blocked_ids`) — этот модуль поэтому явно
 добавлен во владельцы механизма «🔕» в
 `tests/test_broadcast_mute_system_isolation_260924.py::_ALLOWED_OWNERS`.
 
@@ -688,7 +688,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
             return {"sent": 0, "failed": 0, "quiet": 0, "muted": 0, "total": 0}
 
         from aiogram.types import BufferedInputFile
-        from database.db import get_muted_today_ids
+        from database.db import notice_blocked_ids
         from handlers.i18n import reg_i18n
         from services.i18n import i18n as i18n_service
         from services.comms import quiet_hours
@@ -711,7 +711,7 @@ async def send_broadcast(city: str | None, *, only_arrived: bool) -> dict:
             return {"sent": 0, "failed": 0, "quiet": 0, "muted": 0, "total": 0, "empty_caption": True}
 
         now = msk_now()
-        muted = await get_muted_today_ids(now.strftime("%Y-%m-%d"))
+        muted = await notice_blocked_ids("broadcasts", now)
 
         # Город/даты футера кэшируются по (город делегата, язык рендера) — в рассылке «всем
         # городам» (city=None) у делегатов РАЗНЫЙ event_city, поэтому кэш не по city-параметру

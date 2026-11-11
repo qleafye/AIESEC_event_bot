@@ -65,6 +65,81 @@ def test_mute_mechanism_confined_to_broadcast_owners():
     )
 
 
+# Выключатели трёх типов. Старый список владельцев выше не расширяем на новые имена:
+# письмо, которое доходит всегда, не должно видеть ни старую дату, ни новый фильтр.
+_NOTICE_NEEDLES = (
+    "notice_blocked_ids",
+    "muted_until",
+    "mute_reminders",
+    "mute_game",
+    "set_notice_flag",
+    "set_daily_quiet",
+)
+_NOTICE_OWNERS = _ALLOWED_OWNERS | {
+    "handlers/comms/delegate_notices.py",
+    "services/forum/session_remind.py",
+    "services/comms/survey_nudge.py",
+    "services/game/coins_notify.py",
+}
+_ALWAYS_FILES = (
+    "services/applications/application_effects.py",
+    "services/checkin_broadcast.py",
+    "handlers/payment.py",
+    "handlers/applications/admin_find_write.py",
+)
+
+
+def _offenders(needles, allowed) -> list[str]:
+    found = []
+    for path in sorted(REPO_ROOT.rglob("*.py")):
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        if rel.startswith(("tests/", ".git/", ".claude/")) or "/.git/" in rel:
+            continue
+        if rel in allowed:
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if any(needle in text for needle in needles):
+            found.append(rel)
+    return found
+
+
+def test_notice_switches_do_not_reach_always_delivered():
+    offenders = _offenders(_NOTICE_NEEDLES, _NOTICE_OWNERS)
+    assert offenders == [], offenders
+    forbidden = _NEEDLES + _NOTICE_NEEDLES
+    leaked = []
+    for rel in _ALWAYS_FILES:
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        hit = [needle for needle in forbidden if needle in text]
+        if hit:
+            leaked.append((rel, hit))
+    assert leaked == []
+    import inspect
+    from services.scheduler import send_payment_reminder
+
+    src = inspect.getsource(send_payment_reminder)
+    assert "notice_blocked_ids" not in src
+    assert "get_muted_today_ids" not in src
+    assert "mute_broadcasts_until" not in src
+
+
+def test_three_kinds_read_one_filter():
+    pairs = {
+        "handlers/comms/admin_broadcasts.py": 'notice_blocked_ids("broadcasts"',
+        "services/scheduler.py": 'notice_blocked_ids("broadcasts"',
+        "services/regional_noshow_move.py": 'notice_blocked_ids("broadcasts"',
+        "services/forum/forum_stats_card.py": 'notice_blocked_ids("broadcasts"',
+        "services/forum/session_remind.py": 'notice_blocked_ids("reminders"',
+        "services/comms/survey_nudge.py": 'notice_blocked_ids("reminders"',
+        "services/game/coins_notify.py": 'notice_blocked_ids("game"',
+    }
+    for rel, needle in pairs.items():
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        assert needle in text, rel
+    sched = (REPO_ROOT / "services/scheduler.py").read_text(encoding="utf-8")
+    assert sched.count('notice_blocked_ids("reminders"') == 2
+
+
 # ── Слой 2: функциональная проверка — решение по заявке доходит муженному ───────────────
 
 def test_application_decision_reaches_muted_delegate(tmp_path, monkeypatch):

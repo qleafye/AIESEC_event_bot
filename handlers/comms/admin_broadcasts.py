@@ -606,8 +606,8 @@ async def bc_go(callback: types.CallbackQuery, state: FSMContext, bot: Bot):
 
     mute_skipped = 0
     if not important:
-        from database.db import get_muted_today_ids
-        muted = await get_muted_today_ids(_now_moscow_naive().strftime("%Y-%m-%d"))
+        from database.db import notice_blocked_ids
+        muted = await notice_blocked_ids("broadcasts", _now_moscow_naive())
         before_count = len(users_ids)
         users_ids = [tid for tid in users_ids if tid not in muted]
         mute_skipped = before_count - len(users_ids)

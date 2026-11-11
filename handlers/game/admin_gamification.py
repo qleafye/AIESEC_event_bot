@@ -1535,19 +1535,13 @@ async def grev_approve(callback: types.CallbackQuery, state: FSMContext):
         # row-collapse-to-one still holds: this fires once per real decision, not per tap).
         _request_game_resync()
         try:
-            # Quick 260904-dq1: тихие часы — попал в окно, строка в очередь, не сейчас.
-            # Начисление монет и _request_game_resync выше НЕ трогаем — деньги и статус
-            # проставляются сразу, откладывается только пуш.
-            from services.comms import quiet_hours
-            from services.scheduler import _now_moscow_naive
             text = f"✅ Задание «{html_module.escape(task_title(task))}» одобрено! +{coins}🪙"
             if late and coins != base_coins:
-                # D-25/D-35: делегат должен понимать, почему баллов меньше (T-32-07-04).
-                # Нулевой процент штрафа (coins == base_coins) текста не меняет ни на байт.
                 text += " — сдано после дедлайна, начислено меньше обычного"
-            await quiet_hours.send_or_queue_text(
-                _now_moscow_naive(), submission["user_id"], text,
-                sender=lambda: callback.bot.send_message(submission["user_id"], text, parse_mode="HTML"),
+            from services.game.coins_notify import send_game_text
+            await send_game_text(
+                submission["user_id"], text,
+                lambda: callback.bot.send_message(submission["user_id"], text, parse_mode="HTML"),
             )
         except Exception as e:
             logger.error(f"Failed to notify user {submission['user_id']} of task approval: {e}")
@@ -1658,15 +1652,13 @@ async def grev_approve_amount_step(message: types.Message, state: FSMContext):
         )
         _request_game_resync()  # Phase 09.1 (D, GAME-07): same trigger as grev_approve
         try:
-            # Quick 260904-dq1: та же обёртка, что grev_approve выше.
-            from services.comms import quiet_hours
-            from services.scheduler import _now_moscow_naive
             text = f"✅ Задание «{html_module.escape(task_title(task))}» одобрено! +{coins}🪙"
             if late and coins != base_amount:
                 text += " — сдано после дедлайна, начислено меньше обычного"
-            await quiet_hours.send_or_queue_text(
-                _now_moscow_naive(), submission["user_id"], text,
-                sender=lambda: message.bot.send_message(submission["user_id"], text, parse_mode="HTML"),
+            from services.game.coins_notify import send_game_text
+            await send_game_text(
+                submission["user_id"], text,
+                lambda: message.bot.send_message(submission["user_id"], text, parse_mode="HTML"),
             )
         except Exception as e:
             logger.error(f"Failed to notify user {submission['user_id']} of task approval: {e}")
@@ -1706,12 +1698,10 @@ async def grev_reject_reason(message: types.Message, state: FSMContext):
         if reason != "-":  # A-02: причина доходит до делегата, только если менеджер её написал
             user_msg += f"\n\nПричина: {html_module.escape(reason)}"
         try:
-            # Quick 260904-dq1: та же обёртка, что у одобрения выше.
-            from services.comms import quiet_hours
-            from services.scheduler import _now_moscow_naive
-            await quiet_hours.send_or_queue_text(
-                _now_moscow_naive(), submission["user_id"], user_msg,
-                sender=lambda: message.bot.send_message(submission["user_id"], user_msg, parse_mode="HTML"),
+            from services.game.coins_notify import send_game_text
+            await send_game_text(
+                submission["user_id"], user_msg,
+                lambda: message.bot.send_message(submission["user_id"], user_msg, parse_mode="HTML"),
             )
         except Exception as e:
             logger.error(f"Failed to notify user {submission['user_id']} of task rejection: {e}")

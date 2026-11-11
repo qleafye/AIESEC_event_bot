@@ -338,7 +338,7 @@ def _localized_offer_keyboard(lang: str, tr_map: dict, target_label: str,
 async def send_offers(city: str | None) -> dict:
     """Отправляет предложение всем кандидатам региона (`city=None` — все города, модуль
     выключен). Троттлинг/мут/тихие часы — тот же приём, что `forum_noshow_poll.send_poll`."""
-    from database.db import get_muted_today_ids, get_user, regional_noshow_move_mark_sent, regional_noshow_move_pending_ids
+    from database.db import notice_blocked_ids, get_user, regional_noshow_move_mark_sent, regional_noshow_move_pending_ids
     from domain.settings.schema import get_setting_typed
     from services.comms import quiet_hours
     import domain.cities as _cities
@@ -362,7 +362,7 @@ async def send_offers(city: str | None) -> dict:
     event_title = await event_name()
     button_labels = await offer_button_labels()
     now = msk_now()
-    muted = await get_muted_today_ids(now.strftime("%Y-%m-%d"))
+    muted = await notice_blocked_ids("broadcasts", now)
 
     sent = queued = skipped_muted = failed = 0
     for tid in targets:

@@ -12,6 +12,7 @@ from database.db import (
     CHECKIN_YES,
     count_and_list_filtered,
     list_poll_messages,
+    notice_blocked_ids,
 )
 from database.survey_db import finished_survey_user_ids
 from services.infra.timeutil import msk_now
@@ -42,8 +43,9 @@ async def send_nudge(bot, poll, user_ids: list[int]) -> tuple[int, int]:
     now = msk_now()
     sent = failed = 0
     finished = await finished_survey_user_ids(poll["id"])
+    blocked = await notice_blocked_ids("reminders", now)
     for tid in user_ids:
-        if tid in finished:
+        if tid in finished or tid in blocked:
             continue
         try:
             await _send_invite(bot, poll, tid, now)
