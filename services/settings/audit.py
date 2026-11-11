@@ -159,9 +159,21 @@ async def _deny_common_write(admin_id: int | None, key: str) -> None:
         raise CommonSettingDenied(admin_id, key)
 
 
+def _logged_setting_value(key: str, value: str | None) -> str:
+    """Секрет настройки в журнал не пишется."""
+    from domain.settings.schema import SETTINGS_SCHEMA
+
+    base = key.split("__city__")[0]
+    if (SETTINGS_SCHEMA.get(base) or {}).get("sensitive"):
+        return "установлен" if value else "(снят)"
+    if value is None:
+        return "None"
+    return repr(value)
+
+
 async def set_setting_by_admin(admin_id: int | None, key: str, value: str) -> None:
     await _deny_common_write(admin_id, key)
-    logger.info(f"admin={admin_id} setting {key} <- {value!r}")
+    logger.info(f"admin={admin_id} setting {key} <- {_logged_setting_value(key, value)}")
     previous = await db.get_setting(key) if key == "bot_name" else None
     await db.set_setting(key, value)
     await run_setting_hooks(key)
@@ -182,14 +194,17 @@ async def write_setting_logged(admin_id: int | None, key: str, value: str | None
         logger.info(f"admin={admin_id} setting {key} <- (сброшено)")
         await db.delete_setting(key)
         return
-    logger.info(f"admin={admin_id} setting {key} <- {value!r}")
+    logger.info(f"admin={admin_id} setting {key} <- {_logged_setting_value(key, value)}")
     await db.set_setting(key, value)
 
 
 async def revert_setting(admin_id: int | None, key: str, previous: str | None) -> None:
     """Откат значения после отказа внешней стороны (Telegram не принял имя бота). Без
     реакций на правку: возвращается то, что уже действовало."""
-    logger.info(f"admin={admin_id} setting {key} <- {previous!r} (откат: Telegram не принял)")
+    logger.info(
+        f"admin={admin_id} setting {key} <- {_logged_setting_value(key, previous)} "
+        "(откат: Telegram не принял)"
+    )
     if previous is None:
         await db.delete_setting(key)
     else:

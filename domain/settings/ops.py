@@ -286,6 +286,8 @@ def needs_delegate_preview(key: str) -> bool:
     if base in SHEET_TAB_NAME_KEYS or base == "sheet_tab_bot_prefix" or base.startswith("city_tab_suffix__"):
         return False
     entry = SETTINGS_SCHEMA.get(base) or {}
+    if entry.get("sensitive") or entry.get("pile") == "service":
+        return False
     return entry.get("type") in _DELEGATE_PREVIEW_TYPES
 
 # Городские треки (kind), у которых есть отдельный лист = база города + приписка
@@ -535,7 +537,7 @@ EXCLUDED_KEYS: frozenset[str] = (
 # литералов, меняющихся вместе с редкой перестановкой экранов бота, не риск дрейфа кода
 # ключей (в отличие от подписей/текста, которые полностью читаются из реестра).
 _GROUP_SCREEN_ORDER = (
-    "event", "reg", "apps", "sheets", "pay", "party", "consent", "game", "amb", "chat", "system",
+    "event", "reg", "apps", "sheets", "pay", "party", "consent", "game", "amb", "chat", "vk", "system",
 )
 
 
@@ -590,6 +592,7 @@ GROUP_LABELS: dict[str, str] = {
     "game": "🎮 Геймификация",
     "amb": "🤝 Амбассадоры",
     "chat": "💬 Чат делегатов",
+    "vk": "💬 ВКонтакте",
     "system": "🔧 Система",
     "reg_questions": "📋 Вопросы регистрации",
     "reg_prompts": "✏️ Тексты вопросов",
@@ -617,7 +620,7 @@ SECTION_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("game", "🎮 Геймификация", ("game",)),
     ("amb", "🤝 Амбассадоры", ("amb",)),
     ("data", "📊 Данные", ("sheets", "dashboard")),
-    ("manage", "🔧 Управление", ("miniapp", "chat", "system")),
+    ("manage", "🔧 Управление", ("miniapp", "chat", "vk", "system")),
 )
 
 # Phase 22 Plan 07 (D-16, владелец 03.09): какие разделы стартового экрана настроек попадают
@@ -1122,6 +1125,16 @@ async def validate_batch_item(
         error = error or await cross_setting_error(key, value)
         if error:
             return BatchCheck(None, error=plain_text(error))
+        if base_setting_key(key) == "vk_community_token" and value:
+            # Нет права на сообщения — сохранённый ключ стирается здесь, до записи пакета.
+            from services.vk.vk_api_client import (
+                forget_community_token_without_messages_right,
+                validate_vk_token,
+            )
+            valid, error_msg = await validate_vk_token(value)
+            if not valid:
+                await forget_community_token_without_messages_right(error_msg, None)
+                return BatchCheck(None, error=plain_text(error_msg or "Ключ не подошёл. Пришлите новый."))
 
     if confirmed:
         return BatchCheck(value)

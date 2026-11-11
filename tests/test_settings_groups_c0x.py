@@ -102,7 +102,7 @@ def test_landing_keyboard_emits_group_nav_not_per_field(tmp_path):
         "settings_group:sheets", "settings_group:pay", "settings_group:party",
         "settings_group:consent", "settings_group:game", "settings_group:amb",
         # Квик 260927: «💬 Чат делегатов» (веса рейтинга чата) — перед «🔧 Система».
-        "settings_group:chat", "settings_group:system",
+        "settings_group:chat", "settings_group:vk", "settings_group:system",
         # 10.10: тексты чата, правившиеся только в приложении (domain/settings/chat_fields.py).
         "settings_group:ref_offer", "settings_group:reg_chat", "settings_group:modcard_labels",
         "settings_group:forum_chat", "settings_group:broadcast_texts", "settings_group:miniapp_chat",
@@ -294,6 +294,8 @@ def test_registry_coverage_event():
         "amb",
         # "menu_labels" (09.10): подписи кнопок главного меню, экран «✏️ Подписи кнопок меню».
         "menu_labels",
+        # "vk": одно сообщество на процесс, экран «💬 ВКонтакте».
+        "vk",
     }
     # Phase 31 (31-03, D-30): "date_only" — дата без времени (форма отдельная от "date",
     # у которой время суток осмысленно — payment_deadline/планировщик напоминаний).

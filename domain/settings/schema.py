@@ -10230,6 +10230,45 @@ for _step_key, _setting_key in REG_PROMPT_STEPS:
     }
 del _step_key, _setting_key, _human
 
+# Одно сообщество на процесс. Выключатель — кнопки «Включено»/«Выключено», не ввод кода.
+# Ключ доступа на экран и в журнал не возвращается (sensitive).
+SETTINGS_SCHEMA.update({
+    "vk_enabled": {
+        "type": "enum", "group": "vk", "label": "Отвечать во ВКонтакте",
+        "options": ["on", "off"], "pile": "work", "default": "off",
+        "prompt": (
+            "Включено — бот сообщества отвечает делегатам без Telegram. "
+            "Выключено — во ВКонтакте молчит."
+        ),
+    },
+    "vk_community_token": {
+        "type": "text", "group": "vk", "label": "Ключ сообщества",
+        "default": "", "sensitive": True, "pile": "service",
+        "prompt": (
+            "Ключ доступа сообщества. В ВК: Управление → Работа с API → "
+            "Ключи доступа → Создать ключ и галочка «Сообщения сообщества». "
+            "Пришлите новый ключ сообщением. «-» стирает сохранённый."
+        ),
+    },
+    "vk_community_id": {
+        "type": "text", "group": "vk", "label": "Номер сообщества",
+        "default": "", "pile": "service",
+        "prompt": "Число из адреса страницы сообщества, например 123456789. «-» стирает номер.",
+    },
+})
+
+
+def sensitive_display(raw) -> str:
+    """Как показать секрет: целиком его нет ни на экране, ни в ответе сайта."""
+    return "Установлен: да" if raw else "Не задан"
+
+
+def client_omits_secret(key: str, _presented=None) -> bool:
+    """Сайт секрет не держит. Сверять «пока вы правили, значение сменилось» не с чем
+    и отдавать сохранённый ключ в ответ нельзя, что бы ни прислал клиент."""
+    base = key.split("__city__")[0]
+    return bool((SETTINGS_SCHEMA.get(base) or {}).get("sensitive"))
+
 
 # Quick 260822: человеческие подписи режимов game_submit_notify_mode (CLAUDE.md: коды
 # capability/enum менеджеру не показываем). Ключи = options выше.
@@ -10483,6 +10522,7 @@ FEATURE_SWITCH = {
     "party": "party_enabled",
     "consent": "consent_enabled",
     "chat": "chat_tracking_enabled",
+    "vk": "vk_enabled",
 }
 
 _WIRING_MARKERS = ("_token", "_secret", "spreadsheet_id", "sheet_id", "_chat_id")

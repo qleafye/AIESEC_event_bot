@@ -2931,7 +2931,10 @@ async def set_setting(key: str, value: str):
     # режем — это конфиг, а не персональные данные, но длинные тексты приветствия в логе не
     # нужны.
     preview = value if value is None or len(value) <= 60 else value[:60] + "…"
-    logger.info(f"setting {key} <- {preview!r}")
+    from domain.settings.schema import SETTINGS_SCHEMA
+    base = key.split("__city__")[0]
+    shown = "установлен" if (SETTINGS_SCHEMA.get(base) or {}).get("sensitive") and value else repr(preview)
+    logger.info(f"setting {key} <- {shown}")
     async with _connect() as db:
         await db.execute(
             "INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)",
