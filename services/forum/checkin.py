@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import html
 import io
 import json
 import logging
@@ -602,7 +603,9 @@ def clear_first_entry_listeners() -> None:
 async def send_checkin_followup(bot, user_id: int, city: str | None, day: str, **kwargs) -> None:
     """Текст менеджера один раз после отметки входа. Пустой текст ничего не шлёт и флаг
     не ставит. Сбой отправки тоже не ставит флаг: следующий заход может повторить.
-    Повторный заход при флаге молчит. Текст шага в коде не задан."""
+    Повторный заход при флаге молчит. Текст шага в коде не задан.
+    У бота parse_mode HTML. Сырой «<» и «&» из поля менеджера экранируются, иначе
+    Telegram отклоняет сообщение и флаг навсегда остаётся снятым."""
     from database.db import checkin_message_was_sent, mark_checkin_message_sent
     if await checkin_message_was_sent(user_id):
         return
@@ -611,6 +614,7 @@ async def send_checkin_followup(bot, user_id: int, city: str | None, day: str, *
     text = (text or "").strip()
     if not text:
         return
+    text = html.escape(text)
     try:
         await bot.send_message(user_id, text)
     except Exception:

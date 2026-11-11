@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 
 from config import config
 from database import db
@@ -19,14 +20,21 @@ from tests._dbtpl import fast_init_db
 UID = 550261
 
 
+_BARE_AMP = re.compile(r"&(?!amp;|lt;|gt;|quot;|#x27;)")
+
+
 class _Bot:
-    def __init__(self, fail=False):
+    def __init__(self, fail=False, html=False):
         self.sent = []
         self.fail = fail
+        self.html = html
 
     async def send_message(self, chat_id, text, **kwargs):
         if self.fail:
             raise RuntimeError("сеть")
+        # Дефолт бота — HTML. Сырой «<» или «&» Telegram не принимает.
+        if self.html and ("<" in text or _BARE_AMP.search(text)):
+            raise RuntimeError("html")
         self.sent.append((chat_id, text))
 
 
@@ -102,3 +110,12 @@ def test_failed_send_on_entry_retries_next_scan(tmp_path):
     assert _flag() == 1
     _run(send_checkin_followup(bot, UID, "msk", "2026-10-31", first_of_forum=False))
     assert len(bot.sent) == 1
+
+
+def test_angle_and_ampersand_are_delivered_and_flag_sticks(tmp_path):
+    raw = "Стойка < города & зал"
+    _setup(tmp_path, text=raw)
+    bot = _Bot(html=True)
+    _run(send_checkin_followup(bot, UID, "msk", "2026-10-30"))
+    assert bot.sent == [(UID, "Стойка &lt; города &amp; зал")]
+    assert _flag() == 1
