@@ -444,6 +444,10 @@ ADMIN_CAPS: dict[str, str | tuple[str, ...]] = {
     "broadcast_local": "broadcast",
     "broadcast_schedule": "broadcast",
     "broadcast_unsubscribed": "broadcast",
+    # Рассылка ВК — та же возможность, что остальные рассылки, но другая кнопка и другая аудитория.
+    "broadcast_vk": "broadcast",
+    "bcvk_go": "broadcast",
+    "bcvk_no": "broadcast",
     "cmd:broadcast": "broadcast",
     "cmd:broadcasts": "broadcast",
     "cmd:scheduled": "broadcast",

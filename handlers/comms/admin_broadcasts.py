@@ -132,6 +132,7 @@ def build_broadcast_menu_kb(user_id: int | None = None) -> InlineKeyboardMarkup:
         # UAT 15.09: раньше отложенные рассылки были видны только скрытой командой /scheduled —
         # кнопка открывает тот же список (_render_scheduled_list), без второго рендера.
         [InlineKeyboardButton(text="⏰ Запланированные", callback_data="admin_broadcast_scheduled")],
+        [InlineKeyboardButton(text="📨 Рассылка ВК", callback_data="broadcast_vk")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="broadcast_cancel")],
     ]
     if _file_broadcast_allowed(user_id) and os.path.exists(BROADCAST_TARGET_FILE):
@@ -1806,3 +1807,4 @@ from handlers.comms import admin_broadcast_enroll_filter  # noqa: E402,F401  # �
 from handlers.comms import admin_broadcast_status  # noqa: E402,F401  # разбивка по статусу заявки, «Только одобренные»
 from handlers.comms import admin_broadcast_interview  # noqa: E402,F401  # галочка «Выбрать время»
 from handlers.comms import admin_broadcast_consent  # noqa: E402,F401  # кнопка согласия
+from handlers.comms import admin_broadcast_vk  # noqa: E402,F401  # отдельная рассылка ВК
