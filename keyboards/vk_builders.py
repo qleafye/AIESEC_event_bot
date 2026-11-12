@@ -7,8 +7,8 @@ from domain.cities import get_setting_typed_for_city
 from keyboards.builders import MENU_BUTTONS
 from keyboards.menu_dynamic import caption_for
 
-# Ключ попадает сюда в том плане, который делает ответ на эту кнопку.
-# Пока слушатель только здоровается, список пуст. Mini App не добавлять:
+# Ключ попадает сюда, когда слушатель реально отвечает на этот пункт.
+# Пока список пуст, клавиатура пустая. Mini App не добавлять:
 # приложения во ВК нет, отдельная отписка «только в Telegram» не рисуется.
 VK_HANDLED_MENU_KEYS: frozenset[str] = frozenset()
 

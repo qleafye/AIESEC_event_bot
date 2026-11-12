@@ -12,16 +12,20 @@ from services.vk.vk_api_client import send_vk_message, vk_session
 
 logger = logging.getLogger(__name__)
 
-_GREETING = "Привет!"
 _RETRY_SECONDS = 30
 
 
 async def handle_vk_message(vk_id: int, text: str, payload: dict | None = None) -> None:
-    """Личное входящее. Ответ на пункт меню появится, когда пункт попадёт в клавиатуру."""
-    del text, payload
+    """Личное входящее: /start начинает анкету, остальное — ответ на текущий вопрос."""
+    del payload
     logger.info("VK message from %s", vk_id)
-    keyboard = await vk_main_menu_keyboard(vk_id)
-    await send_vk_message(vk_id, _GREETING, keyboard)
+    from handlers.vk.vk_registration import process_vk_registration_step, start_vk_registration
+
+    body = (text or "").strip()
+    if body == "/start" or body.startswith("/start "):
+        await start_vk_registration(vk_id)
+        return
+    await process_vk_registration_step(vk_id, body)
 
 
 def _incoming_user(event) -> tuple[int, str] | None:

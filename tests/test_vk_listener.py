@@ -127,21 +127,21 @@ def test_listener_starts_when_enabled(monkeypatch, caplog):
     assert "привет" not in caplog.text
 
 
-def test_handle_message(monkeypatch, caplog):
-    sent = []
+def test_handle_message(monkeypatch, caplog, tmp_path):
+    from config import config
+    from database import db
 
-    async def _keyboard(vk_id, event_city=None):
-        assert vk_id == 7
-        return '{"one_time": false, "buttons": []}'
+    config.DB_PATH = str(tmp_path / "vk_listener.db")
+    asyncio.run(db.init_db())
+    sent = []
 
     async def _send(vk_id, text, keyboard_json=None):
         sent.append((vk_id, text, keyboard_json))
 
-    monkeypatch.setattr(vk_bot, "vk_main_menu_keyboard", _keyboard)
-    monkeypatch.setattr(vk_bot, "send_vk_message", _send)
+    monkeypatch.setattr("handlers.vk.vk_registration.send_vk_message", _send)
     with caplog.at_level(logging.INFO):
         asyncio.run(handle_vk_message(7, "секретное-слово"))
-    assert sent == [(7, "Привет!", '{"one_time": false, "buttons": []}')]
+    assert sent == [(7, "Напишите /start, чтобы заполнить анкету.", None)]
     assert "секретное-слово" not in caplog.text
 
 
