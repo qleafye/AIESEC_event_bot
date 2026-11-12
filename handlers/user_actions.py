@@ -1866,6 +1866,21 @@ from handlers.game import shop_delegate  # noqa: E402,F401  -- витрина м
 from handlers.chat import coming_reply as coming_reply_handlers  # noqa: E402,F401  -- «Дойду», до фолбэка
 
 
+@router.message(Command("write_here"))
+async def transfer_feed_here(message: types.Message):
+    """Письма этой карточке — в Telegram. Чужую карточку команда не трогает.
+    Стоит до фолбэка простоя: иначе команда съедается как произвольный текст."""
+    from database.db import set_active_messenger
+
+    sender = message.from_user
+    if sender is None or not await set_active_messenger(sender.id, "telegram"):
+        await message.answer(
+            "Сначала сдайте анкету в этом чате. Команда переносит письма только на свою карточку."
+        )
+        return
+    await message.answer("Теперь письма будут приходить сюда.")
+
+
 # Quick 260904-3vm (эстафета): делегат БЕЗ активного FSM-состояния (Registration уже сброшена —
 # takeover уже прошёл, а не в узком гонка-окне, которое ловит RegHandoffGuard в
 # handlers/reg/reg_handoff.py) пишет произвольный текст, пока анкета открыта в приложении. Placed

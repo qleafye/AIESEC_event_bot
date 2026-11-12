@@ -2084,6 +2084,7 @@ user_actions|message|certificate_command|cmd:certificate
 user_actions|message|certificate_name_input|state:CertificateName:*
 user_actions|message|coming_yes|
 user_actions|message|coming_no|
+user_actions|message|transfer_feed_here|cmd:write_here
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
 user_actions|callback_query|gbal_top|gbal_top
@@ -2821,7 +2822,8 @@ def test_snapshot_total_handler_count_is_292():
     # +2 admin.callback_query txtprev_save/txtprev_drop после phchk_retry (1486 -> 1489).
     # Три выключателя уведомлений: +3 user_actions.callback_query после consent_tap (1489 -> 1492).
     # «Дойду» / «Не дойду»: +2 user_actions.message сразу перед reg_handoff_idle_fallback (1492 -> 1494).
-    assert len(GOLDEN_SNAPSHOT) == 1494
+    # /write_here: +1 user_actions.message сразу перед reg_handoff_idle_fallback (1494 -> 1495).
+    assert len(GOLDEN_SNAPSHOT) == 1495
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
