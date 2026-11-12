@@ -25,6 +25,12 @@ import { attachSwipe } from "../swipe.js";
 
 // Порядок трек-чипов после «Все» (D-08) — коды совпадают с services.applications.TRACK_FILTERS.
 const TRACK_CHIP_ORDER = [["full", "full"], ["party", "party"], ["short", "short"]];
+// Подписи приходят в filters.chips. «all» не шлём в запрос: очередь без параметра — все заявки.
+const MESSENGER_CHIP_ORDER = [
+  ["messenger_telegram", "telegram"],
+  ["messenger_vk", "vk"],
+  ["messenger_all", "all"],
+];
 // Правила автоотказа (D-20/D-23): rule_flag/auto_reject/auto_reject_cleared — тот же accent-чип,
 // что и edited/resubmit/prev_reject, второй ветки рендера не заводим.
 const EDITED_BADGE_KINDS = ["edited", "resubmit", "prev_reject", "rule_flag", "auto_reject", "auto_reject_cleared"];
@@ -58,6 +64,7 @@ export async function render(root, params, ctx) {
 
   let offset = 0;
   let track = null; // null | "full" | "party" | "short"
+  let messenger = "all"; // "all" | "telegram" | "vk"
   let changedOnly = false;
   let flaggedOnly = false;
   let busy = false;
@@ -159,6 +166,12 @@ export async function render(root, params, ctx) {
         "aria-pressed": active ? "true" : "false", text: label, onClick,
       });
     }
+    for (const [key, value] of MESSENGER_CHIP_ORDER) {
+      if (!chips[key]) continue;
+      filtersRow.append(chipBtn(chips[key], messenger === value, () => {
+        if (messenger !== value) { messenger = value; offset = 0; load(); }
+      }));
+    }
     if (chips.all) {
       filtersRow.append(chipBtn(chips.all, track === null, () => { if (track !== null) { track = null; offset = 0; load(); } }));
     }
@@ -258,16 +271,21 @@ export async function render(root, params, ctx) {
   async function decide(action, reason) {
     if (busy || !currentCard) return;
     busy = true;
-    const tid = currentCard.application.telegram_id;
+    const app = currentCard.application;
+    const vkOnly = app.telegram_id == null && app.vk_id != null;
+    const target = vkOnly ? app.vk_id : app.telegram_id;
+    const base = vkOnly
+      ? `/applications/vk/${encodeURIComponent(target)}`
+      : `/applications/${encodeURIComponent(target)}`;
     try {
       // Литеральные пути (не `${action}`) — тот же приём, что review.js::decide.
       let res;
       if (action === "approve") {
-        res = await api(`/applications/${encodeURIComponent(tid)}/approve`, { method: "POST", body: {} });
+        res = await api(`${base}/approve`, { method: "POST", body: {} });
       } else if (action === "waitlist") {
-        res = await api(`/applications/${encodeURIComponent(tid)}/waitlist`, { method: "POST", body: {} });
+        res = await api(`${base}/waitlist`, { method: "POST", body: {} });
       } else {
-        res = await api(`/applications/${encodeURIComponent(tid)}/reject`, { method: "POST", body: { reason: reason || "" } });
+        res = await api(`${base}/reject`, { method: "POST", body: { reason: reason || "" } });
       }
       if (res.ok) {
         haptic("success");
@@ -275,7 +293,12 @@ export async function render(root, params, ctx) {
         // (D-13: ни одного русского литерала в JS) — JS только склеивает, когда она непустая.
         let toastText = res.toast || (action === "approve" ? texts.approved_toast : texts.rejected_toast);
         if (res.quiet_notice) toastText = `${toastText} · ${res.quiet_notice}`;
-        showToast(toastText, res.undo_seconds, () => undoDecision(res.decision_id));
+        // Карточка только из ВК не даёт окно «Отменить»: кнопку отмены не рисуем.
+        if (res.undo_seconds) {
+          showToast(toastText, res.undo_seconds, () => undoDecision(res.decision_id));
+        } else {
+          say(toastText, "success");
+        }
         await load();
       } else {
         // {ok:false, reason:"already"} — кто-то опередил, спокойно едем дальше.
@@ -506,6 +529,7 @@ export async function render(root, params, ctx) {
     try {
       const query = new URLSearchParams({ offset: String(offset) });
       if (track) query.set("track", track);
+      if (messenger && messenger !== "all") query.set("messenger", messenger);
       if (changedOnly) query.set("changed", "1");
       if (flaggedOnly) query.set("flagged", "1");
       card = await api(`/applications/next?${query.toString()}`);

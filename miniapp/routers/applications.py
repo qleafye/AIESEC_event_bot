@@ -182,6 +182,8 @@ async def applications_next(
             "registered_at": row.get("registration_date"),
             "messenger": applications.messenger_kind(row),
             "messenger_label": applications.MESSENGER_LABELS[applications.messenger_kind(row)],
+            # Номер нужен только кнопке решения, на карточку его не печатаем.
+            "vk_id": row.get("vk_id") if row.get("telegram_id") is None else None,
         },
         "avatar": avatar,
         "badges": card["badges"],
@@ -297,6 +299,65 @@ async def applications_waitlist(
         "quiet_notice": quiet_notice,
         "toast": _WAITLIST_TOAST,
     }
+
+
+_VK_MISSING_TEXT = "Такой заявки во ВК нет. Обновите очередь."
+_VK_LINKED_TEXT = "Эта заявка привязана к Telegram. Решите её в общей очереди."
+
+
+async def _decide_vk(vk_id: int, decision: str, reason: str | None, p: Principal) -> dict:
+    """Карточка только из ВК. Окна «Отменить» нет — журналу нужен Telegram."""
+    kind, user = await applications.vk_decision_target(vk_id)
+    if kind == "missing":
+        raise HTTPException(404, {"reason": "not_found", "text": _VK_MISSING_TEXT})
+    if kind == "linked":
+        raise HTTPException(404, {"reason": "linked", "text": _VK_LINKED_TEXT})
+    if await applications.vk_row_out_of_scope(p.city, user):
+        raise HTTPException(403, {"reason": "out_of_scope", "text": OUT_OF_SCOPE_TEXT})
+    if decision == "waitlist" and await get_setting_typed("apps_waitlist_enabled") != "on":
+        raise HTTPException(403, {"reason": "waitlist_off", "text": _WAITLIST_OFF_TEXT})
+    ok = await applications.claim_vk_decision(vk_id, decision, reason)
+    if not ok:
+        return {"ok": False, "reason": "already"}
+    if decision == "waitlist":
+        toast = _WAITLIST_TOAST
+    elif decision == "approved":
+        toast = str(await get_setting_typed("miniapp_applications_approved_toast") or "")
+    else:
+        toast = str(await get_setting_typed("miniapp_applications_rejected_toast") or "")
+    return {"ok": True, "undo_seconds": 0, "toast": toast}
+
+
+@router.post("/app/api/applications/vk/{vk_id}/approve")
+async def applications_vk_approve(
+    vk_id: int,
+    p: Principal = Depends(require_cap("moderate_reg")),
+    _: Principal = Depends(require_section("applications")),
+) -> dict:
+    await _flush()
+    return await _decide_vk(vk_id, "approved", None, p)
+
+
+@router.post("/app/api/applications/vk/{vk_id}/reject")
+async def applications_vk_reject(
+    vk_id: int,
+    body: RejectIn | None = None,
+    p: Principal = Depends(require_cap("moderate_reg")),
+    _: Principal = Depends(require_section("applications")),
+) -> dict:
+    await _flush()
+    reason = (body.reason if body is not None else "").strip()[:REASON_MAX] or None
+    return await _decide_vk(vk_id, "rejected", reason, p)
+
+
+@router.post("/app/api/applications/vk/{vk_id}/waitlist")
+async def applications_vk_waitlist(
+    vk_id: int,
+    p: Principal = Depends(require_cap("moderate_reg")),
+    _: Principal = Depends(require_section("applications")),
+) -> dict:
+    await _flush()
+    return await _decide_vk(vk_id, "waitlist", None, p)
 
 
 # ── POST /app/api/applications/undo ──────────────────────────────────────────────────────
