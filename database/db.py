@@ -4888,6 +4888,21 @@ async def approve_rejected_atomic(telegram_id: int) -> bool:
         return cursor.rowcount == 1
 
 
+async def users_with_name_and_phone(full_name: str, phone: str) -> list[dict]:
+    """Строки с тем же именем и телефоном. Пустое имя или телефон никого не собирают."""
+    name = (full_name or "").strip()
+    number = (phone or "").strip()
+    if not name or not number:
+        return []
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE TRIM(full_name) = ? AND TRIM(phone) = ?",
+            (name, number),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
+
 async def decide_vk_only(vk_id: int, status: str) -> bool:
     """Решение по карточке без Telegram. True, если она ещё ждала решения.
     Склеенную карточку (telegram_id задан) этот запрос не меняет."""

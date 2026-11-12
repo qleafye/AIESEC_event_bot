@@ -123,6 +123,11 @@ export async function render(root, params, ctx) {
   const rejectBackdrop = h("div", { class: "sheet-backdrop hidden" }, rejectSheet);
   rejectBackdrop.addEventListener("click", (e) => { if (e.target === rejectBackdrop) closeRejectSheet(); });
 
+  const keepConfirm = confirmBox(h, {
+    cancelText: texts.reject_cancel || "",
+    onConfirm: () => { keepConfirm.close(); keepThis(); },
+  });
+
   root.append(
     // D-04: заголовок экрана без иконки рядом — labelText (ui.js) снимает ведущий эмодзи
     // подписи раздела из реестра (без этого <h1> дублирует иконку раздела глифом «🗂»).
@@ -130,6 +135,7 @@ export async function render(root, params, ctx) {
     notice,
     h("div", { class: "appl-head" }, filtersRow, approveAllBtn),
     approveAllConfirm,
+    keepConfirm,
     cardHolder,
     toast,
     rejectBackdrop,
@@ -318,6 +324,41 @@ export async function render(root, params, ctx) {
     }
   }
 
+  function openKeep(dup) {
+    const paragraph = keepConfirm.querySelector("p");
+    const danger = keepConfirm.querySelector(".btn.danger");
+    if (paragraph) paragraph.textContent = dup.confirm || "";
+    if (danger) danger.textContent = dup.confirm_button || "";
+    keepConfirm.open();
+  }
+
+  async function keepThis() {
+    if (busy || !currentCard) return;
+    busy = true;
+    const app = currentCard.application;
+    try {
+      const res = await api("/applications/keep", {
+        method: "POST",
+        body: { telegram_id: app.telegram_id, vk_id: app.vk_id },
+      });
+      if (res.undo_seconds) {
+        showToast(res.toast || "", res.undo_seconds, () => undoDecision(res.decision_id));
+      } else if (res.text) {
+        say(res.text, "success");
+      }
+      await load();
+    } catch (err) {
+      if (err && err.payload && err.payload.text) {
+        say(err.payload.text, "warn");
+      } else if (!(err && (err.status === 401 || err.status === 403 || err.status === 503))) {
+        const msg = errorText(err, "");
+        if (msg) say(msg, "warn");
+      }
+    } finally {
+      busy = false;
+    }
+  }
+
   async function undoDecision(decisionId) {
     if (busy) return;
     busy = true;
@@ -486,6 +527,14 @@ export async function render(root, params, ctx) {
       class: "btn ghost appl-decide reject", type: "button", "aria-label": texts.reject_button || "",
       onClick: () => openRejectSheet(),
     }, icon("x"));
+    const dup = card.duplicate;
+    const keepBtn = dup && dup.keep_button
+      ? h("button", {
+          class: "btn ghost", type: "button", text: dup.keep_button,
+          onClick: () => openKeep(dup),
+        })
+      : null;
+    const dupNote = dup && dup.note ? h("p", { class: "faint", text: dup.note }) : null;
     const waitlistBtn = card.waitlist_enabled && card.waitlist_button
       ? h("button", {
           class: "btn ghost appl-decide waitlist", type: "button",
@@ -506,6 +555,7 @@ export async function render(root, params, ctx) {
         h("div", { class: "appl-stack", "aria-hidden": "true" }),
         cardEl,
       ),
+      keepBtn || dupNote ? h("div", { class: "appl-duplicate" }, dupNote, keepBtn) : null,
       h("div", { class: "appl-decide-row" }, rejectBtn, waitlistBtn, approveBtn),
     );
 

@@ -55,6 +55,7 @@ from database.db import (
     get_user,
     get_vk_user,
     decide_vk_only,
+    users_with_name_and_phone,
     claim_waitlist_from_pending,
     record_application_decision,
     reject_user,
@@ -696,6 +697,84 @@ async def vk_row_out_of_scope(city: str | None, user: dict | None) -> bool:
     if not await cities_module_on() or city is None:
         return False
     return normalize_city((user or {}).get("event_city")) != normalize_city(city)
+
+
+def _person_key(user: dict) -> tuple:
+    tid = user.get("telegram_id")
+    if tid is not None:
+        return ("tg", int(tid))
+    vk = user.get("vk_id")
+    return ("vk", int(vk) if vk is not None else 0)
+
+
+async def duplicate_peers(user: dict, *, city: str | None = None,
+                          pending_only: bool = False) -> list[dict]:
+    """Другие анкеты с тем же именем и телефоном. Ник и номер ВК сами по себе не пара.
+    Городской менеджер не видит чужой город."""
+    rows = await users_with_name_and_phone(user.get("full_name") or "", user.get("phone") or "")
+    mine = _person_key(user)
+    scoped = city is not None and await cities_module_on()
+    out = []
+    for row in rows:
+        if _person_key(row) == mine:
+            continue
+        if pending_only and row.get("status") not in ("pending", "waitlist"):
+            continue
+        if scoped and normalize_city(row.get("event_city")) != normalize_city(city):
+            continue
+        out.append(row)
+    return out
+
+
+async def duplicate_hint(user: dict, *, city: str | None = None) -> dict | None:
+    peers = await duplicate_peers(user, city=city, pending_only=False)
+    if not peers:
+        return None
+    pending = [row for row in peers if row.get("status") in ("pending", "waitlist")]
+    hint = {"warning": "Возможный дубль"}
+    if pending:
+        hint["keep_button"] = "Оставить эту"
+        hint["confirm_button"] = "Отклонить другие"
+        hint["confirm"] = (
+            f"Других заявок с тем же именем и телефоном в очереди: {len(pending)}. "
+            "Они будут отклонены, людям уйдёт отказ. Эта заявка останется."
+        )
+    else:
+        hint["note"] = (
+            "Есть ещё анкета с тем же именем и телефоном. "
+            "Она уже решена, эта кнопка её не трогает."
+        )
+    return hint
+
+
+_KEEP_REASON = "Оставили другую анкету"
+
+
+async def load_kept_user(telegram_id: int | None, vk_id: int | None) -> dict | None:
+    if telegram_id is not None:
+        return await get_user(int(telegram_id))
+    if vk_id is not None:
+        return await get_vk_user(int(vk_id))
+    return None
+
+
+async def reject_other_applications(user: dict, *, city: str | None, by: int, now) -> dict:
+    """Отклоняет другие заявки в очереди. Эту не трогает. Уже решённые не трогает."""
+    peers = await duplicate_peers(user, city=city, pending_only=True)
+    decision_ids = []
+    vk_rejected = 0
+    for peer in peers:
+        tid = peer.get("telegram_id")
+        if tid is not None:
+            decision_id = await claim_web_decision(
+                int(tid), "rejected", _KEEP_REASON, by, now,
+            )
+            if decision_id:
+                decision_ids.append(decision_id)
+        elif peer.get("vk_id") is not None:
+            if await claim_vk_decision(int(peer["vk_id"]), "rejected", _KEEP_REASON):
+                vk_rejected += 1
+    return {"decision_ids": decision_ids, "vk_rejected": vk_rejected}
 
 
 async def claim_vk_decision(vk_id: int, decision: str, reason: str | None) -> bool:
