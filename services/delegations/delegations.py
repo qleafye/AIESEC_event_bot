@@ -333,7 +333,7 @@ async def _send_welcome(bot, tid: int, university: str | None, *, existing: bool
     kb = await get_main_menu_kb(tid)
 
     async def _send():
-        from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+        from services.chat.city_chat_api import client_from_bot, notify_if_bot_ready
         from services.city_chat_link import render_for_delegate
 
         body = await render_for_delegate(

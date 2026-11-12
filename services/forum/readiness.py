@@ -24,8 +24,8 @@
 
 Тексты экрана и напоминания — для менеджеров, не для делегатов, поэтому литералы здесь.
 
-Импорт `handlers.access.admin_caps` — ленивый, внутри функций (цикл через пакет `handlers`),
-тот же приём, что в `services/daily_digest.py`.
+Держатели права — `services.access.capability_holders`, лениво внутри функций.
+Импорт handlers отсюда не нужен: он грузит роутеры бота.
 """
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ async def _check_scanner(city: str | None) -> str:
     if await get_setting_typed("checkin_qr_enabled") != "on":
         return NA
     from config import config
-    from handlers.access.admin_caps import capability_holders
+    from services.access.capability_holders import capability_holders
     holders = await capability_holders("checkin", city=city)
     # суперадмины не считаются: пункт про волонтёров у двери
     return OK if any(uid not in config.ADMIN_IDS for uid in holders) else TODO
@@ -248,7 +248,7 @@ def build_reminder_text(days_left: int, city_title: str | None, items: list[Read
 async def send_city_reminder(bot, city: str | None) -> int:
     """Напоминание по одному городу; число доставленных сообщений."""
     from config import config
-    from handlers.access.admin_caps import capability_holders
+    from services.access.capability_holders import capability_holders
     from services.forum.program import own_forum_date
 
     forum_date = await own_forum_date(city)
