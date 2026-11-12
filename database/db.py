@@ -3271,6 +3271,74 @@ async def link_vk_account(telegram_id: int, vk_id: int) -> None:
             raise ValueError("Аккаунт уже связан") from exc
 
 
+def _vk_writable_columns() -> set[str]:
+    """Колонки, которые анкета ВК имеет право записать. telegram_id и vk_id сюда не входят."""
+    from domain.regform.engine import DRAFT_ONLY_COLUMNS, answer_columns
+
+    columns = set(answer_columns()) - set(DRAFT_ONLY_COLUMNS)
+    columns.update({"status", "event_city", "season", "participant_type", "registration_date"})
+    return columns
+
+
+def _vk_patch(data: dict) -> tuple[list[str], list]:
+    allowed = _vk_writable_columns()
+    columns: list[str] = []
+    values: list = []
+    for key, value in data.items():
+        if key not in allowed:
+            raise ValueError("Это поле в карточку ВК не пишется.")
+        columns.append(_assert_identifier(key))
+        values.append(value)
+    return columns, values
+
+
+async def create_vk_user(vk_id: int, data: dict | None = None) -> None:
+    """Карточка только из ВК: номер ВК есть, телеграма нет.
+    Статус не подставляется дефолтом «одобрена» — пока анкета не сдана, его нет."""
+    data = dict(data or {})
+    columns, values = _vk_patch(data)
+    columns = ["vk_id", "telegram_id", *columns]
+    values = [int(vk_id), None, *values]
+    if "status" not in data:
+        columns.append("status")
+        values.append(None)
+    placeholders = ", ".join(["?"] * len(columns))
+    try:
+        async with _connect() as db:
+            await db.execute(
+                f"INSERT INTO users ({', '.join(columns)}) VALUES ({placeholders})",
+                values,
+            )
+            await db.commit()
+    except aiosqlite.IntegrityError as exc:
+        raise ValueError("Карточка ВК уже есть") from exc
+
+
+async def get_vk_user(vk_id: int) -> dict | None:
+    """Карточка по номеру ВК. Чужой номер — None."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE vk_id = ?", (int(vk_id),)
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def update_vk_user(vk_id: int, data: dict) -> None:
+    """Поля карточки ВК. Незнакомое поле не пишется. Пустой набор ничего не делает."""
+    columns, values = _vk_patch(data)
+    if not columns:
+        return
+    assignments = ", ".join(f"{column} = ?" for column in columns)
+    async with _connect() as db:
+        await db.execute(
+            f"UPDATE users SET {assignments} WHERE vk_id = ?",
+            [*values, int(vk_id)],
+        )
+        await db.commit()
+
+
 async def get_user(telegram_id: int):
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
