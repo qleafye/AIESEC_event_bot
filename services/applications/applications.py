@@ -421,8 +421,24 @@ async def out_of_scope(city: str | None, telegram_id: int) -> bool:
 
 # ── Очередь (D-08) ────────────────────────────────────────────────────────────────────────
 
+MESSENGER_LABELS = {"telegram": "Telegram", "vk": "ВК", "both": "Оба"}
+
+
+def messenger_kind(user: dict) -> str:
+    """Откуда у заявки номера. Ник анкеты номером не считается.
+    Нет ни одного номера — считаем Telegram: так очередь жила до сообщества ВК."""
+    has_tg = user.get("telegram_id") is not None
+    has_vk = user.get("vk_id") is not None
+    if has_tg and has_vk:
+        return "both"
+    if has_vk:
+        return "vk"
+    return "telegram"
+
+
 async def queue_page(*, scope, offset: int = 0, track: str | None = None,
-                      changed_only: bool = False, flagged_only: bool = False) -> tuple[dict | None, int]:
+                      changed_only: bool = False, flagged_only: bool = False,
+                      messenger: str | None = None) -> tuple[dict | None, int]:
     """Одна карточка очереди + общий счётчик — СЧЁТЧИК И ВЫБОРКА идут по ОДНОМУ набору
     фильтров (T-23-04), иначе «Осталось: N» врёт. `None` в первом элементе — очередь пуста
     на этом offset (конец очереди или пустой скоуп).
@@ -436,13 +452,14 @@ async def queue_page(*, scope, offset: int = 0, track: str | None = None,
     `get_pending_count`). Дефолт `False` оставляет существующих вызывающих байт-в-байт."""
     total = await get_pending_count(
         city_scope=scope, track=track, changed_only=changed_only, flagged_only=flagged_only,
+        messenger=messenger,
     )
     if total == 0 or offset >= total:
         return None, total
     order_by_score = await get_setting_typed("apps_queue_sort_by_score") == "on"
     rows = await get_pending_users(
         limit=1, offset=offset, city_scope=scope, track=track, changed_only=changed_only,
-        order_by_score=order_by_score, flagged_only=flagged_only,
+        order_by_score=order_by_score, flagged_only=flagged_only, messenger=messenger,
     )
     return (rows[0] if rows else None), total
 
@@ -500,6 +517,8 @@ async def card_payload(user: dict) -> dict:
     extra_fields = moderation_card.card_answers(user, extra_steps, None)
 
     badges: list[dict] = []
+    kind = messenger_kind(user)
+    badges.append({"kind": "messenger", "text": MESSENGER_LABELS[kind]})
     track = user.get("participant_type") or "full"
     if track != "full":
         track_text = TRACK_LABELS.get(track, f"🎉 Трек: {track}")

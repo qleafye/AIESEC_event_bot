@@ -117,6 +117,7 @@ async def applications_next(
     track: str | None = None,
     changed: str | None = None,
     flagged: str | None = None,
+    messenger: str | None = None,
     p: Principal = Depends(require_cap("moderate_reg")),
     _: Principal = Depends(require_section("applications")),
 ) -> dict:
@@ -129,14 +130,16 @@ async def applications_next(
     # `changed` (T-31-09-02: закрытый список "1"/"true", всё остальное — выключенный фильтр,
     # чип, а не контракт).
     flagged_only = str(flagged).strip().lower() in ("1", "true")
+    # Чип, не контракт: «все» и неизвестное слово не сужают очередь.
+    messenger_filter = messenger if messenger in ("telegram", "vk") else None
 
     scope = await applications.manager_scope(p.city)
     row, total = await applications.queue_page(
         scope=scope, offset=off, track=track_filter, changed_only=changed_only,
-        flagged_only=flagged_only,
+        flagged_only=flagged_only, messenger=messenger_filter,
     )
     if row is None:
-        filter_active = bool(track_filter) or changed_only or flagged_only
+        filter_active = bool(track_filter) or changed_only or flagged_only or bool(messenger_filter)
         if total == 0:
             key = "miniapp_empty_applications_filtered" if filter_active else "miniapp_empty_applications"
             text = str(await get_setting_typed(key) or "")
@@ -177,6 +180,8 @@ async def applications_next(
             # при выключенном модуле городов: иначе в строке карточки «msk» (CLAUDE.md).
             "city_label": await city_label_or_none(row.get("event_city")),
             "registered_at": row.get("registration_date"),
+            "messenger": applications.messenger_kind(row),
+            "messenger_label": applications.MESSENGER_LABELS[applications.messenger_kind(row)],
         },
         "avatar": avatar,
         "badges": card["badges"],
@@ -200,6 +205,9 @@ async def applications_next(
                 "short": await get_setting_typed("miniapp_applications_filter_short"),
                 "changed": await get_setting_typed("miniapp_applications_filter_changed"),
                 "flagged": await get_setting_typed("miniapp_applications_filter_flagged"),
+                "messenger_telegram": "Telegram",
+                "messenger_vk": "ВК",
+                "messenger_all": "Все мессенджеры",
             },
         },
         "waitlist_enabled": waitlist_on,
