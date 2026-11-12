@@ -5185,7 +5185,7 @@ async def get_pending_count(*, city_scope=None, track: str | None = None,
             return int(row[0]) if row and row[0] is not None else 0
 
 
-async def approve_all_pending(*, city_scope=None) -> list[int]:
+async def approve_all_pending(*, city_scope=None, messenger: str | None = None) -> list[int]:
     """Flip every pending row to approved in one atomic statement; return the
     telegram_ids that flipped (each once). IN-07: requires sqlite >= 3.35 for
     RETURNING (bundled in CPython 3.10+, which the project already mandates) —
@@ -5205,6 +5205,11 @@ async def approve_all_pending(*, city_scope=None) -> list[int]:
     frag, city_params = _city_clause(city_scope)
     extra = f" AND {frag}" if frag else ""
     extra += f" AND {_NOT_WALKIN}"
+    # Чат решает только карточки с номером Telegram. Карточка только из ВК остаётся
+    # на экране заявок сайта: пустой номер в кнопке чата не нажимается.
+    messenger_frag = _messenger_clause(messenger)
+    if messenger_frag:
+        extra += f" AND {messenger_frag}"
     async with _connect() as db:
         async with db.execute(
             f"UPDATE users SET status = 'approved', approved_at = ? "

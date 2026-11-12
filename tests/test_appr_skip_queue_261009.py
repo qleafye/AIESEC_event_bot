@@ -74,6 +74,41 @@ def test_truly_empty_queue_unchanged(tmp_path):
     assert "admin_applications" not in _cbs(kb)
 
 
+def test_chat_queue_skips_vk_only_and_mass_approve_leaves_it(tmp_path):
+    """Карточка только из ВК в чат не попадает: пустой номер Telegram крутил бы одну
+    и ту же заявку. Решение такой карточки остаётся на экране сайта. «Принять всех»
+    из чата её не одобряет; вызов без фильтра мессенджера — одобряет."""
+    _ready(tmp_path)
+    asyncio.run(db.create_vk_user(55, {
+        "full_name": "Только ВК",
+        "status": "pending",
+        "registration_date": "2020-01-01 00:00:00",
+    }))
+    _seed(11)
+    state = _state()
+    target = _Msg()
+    asyncio.run(mod._show_current_card(target, state))
+    text, kb = target.answers[-1]
+    assert "Только ВК" not in text
+    assert "User 11" in text
+    cbs = _cbs(kb)
+    assert "appr_approve:11" in cbs
+    assert "appr_approve:None" not in cbs
+    assert "appr_skip:None" not in cbs
+
+    ids = asyncio.run(db.approve_all_pending(messenger="telegram"))
+    assert ids == [11]
+    assert asyncio.run(db.get_vk_user(55))["status"] == "pending"
+
+    target = _Msg()
+    asyncio.run(mod._show_current_card(target, state))
+    assert target.answers[-1][0] == "✅ Заявок нет."
+
+    rest = asyncio.run(db.approve_all_pending())
+    assert rest == [None]
+    assert asyncio.run(db.get_vk_user(55))["status"] == "approved"
+
+
 def test_receipts_queue_skipped_offers_to_show_again(tmp_path):
     _ready(tmp_path)
     _seed(12)

@@ -118,7 +118,7 @@ def test_wr01_welcome_drain_scheduled_despite_edit_failure(monkeypatch, tmp_path
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     welcomed = []
 
-    async def fake_claim_approve_all_with_credits(scope):
+    async def fake_claim_approve_all_with_credits(scope, messenger=None):
         return [1, 2, 3], {"credited": 0, "coins": 0, "ambassadors": 0}
 
     async def fake_mass_approve_effects(bot, ids):
@@ -189,7 +189,7 @@ def test_wr04_stale_reclick_no_drain_and_honest_message(monkeypatch):
     monkeypatch.setattr(config, "ADMIN_IDS", [uid])
     drained = []
 
-    async def fake_claim_approve_all_with_credits(scope):
+    async def fake_claim_approve_all_with_credits(scope, messenger=None):
         return [], {"credited": 0, "coins": 0, "ambassadors": 0}  # second click on a stale dialog: nothing left to approve
 
     async def fake_welcome(bot, ids):
