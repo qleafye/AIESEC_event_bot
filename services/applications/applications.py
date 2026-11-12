@@ -793,14 +793,14 @@ async def claim_waitlist(telegram_id: int) -> bool:
     return await claim_waitlist_from_pending(telegram_id)
 
 
-async def claim_approve_all_with_credits(scope) -> tuple[list[int], dict]:
+async def claim_approve_all_with_credits(scope, messenger: str | None = None) -> tuple[list[int], dict]:
     """Массовое одобрение + начисление рефералки ОДНИМ швом (32-05, D-20/D-22) — единственная
     точка, которую зовут И бот (`handlers/applications/admin_moderation.py::appr_all_yes`), И веб, так что
     бот-путь и веб-путь структурно не могут разъехаться по начислению (раньше бот звал
     `approve_all_pending` напрямую, минуя `claim_approve_all`). approved_at ставит
     `approve_all_pending` в той же атомарной записи, что и status (D-10). Здесь же — проверка
     ступеней амбассадоров (`services.amb.amb_tiers`)."""
-    ids = await approve_all_pending(city_scope=scope)
+    ids = await approve_all_pending(city_scope=scope, messenger=messenger)
     if not ids:
         return ids, {"credited": 0, "coins": 0, "ambassadors": 0}
     # Журнал зачётов + баллы + ступени + место в лимите — одной точкой (сама не бросает).

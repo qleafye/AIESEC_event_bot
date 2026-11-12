@@ -272,7 +272,7 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     # модуль автоотказа выключен целиком (событие без правил выглядит байт-в-байт как раньше).
     rules_on = bool(await get_setting_typed("reject_rules_enabled"))
     flagged_only = rules_on and bool(data.get("appr_flagged_only", False))
-    total = await get_pending_count(city_scope=scope, flagged_only=flagged_only)
+    total = await get_pending_count(city_scope=scope, flagged_only=flagged_only, messenger="telegram")
     # Phase 28 (28-08, SU-08): тумблер очереди читается ЗДЕСЬ (вызывающий), один раз на
     # рендер карточки — сама get_pending_users в реестр не ходит (T-23-04, SQL сортирует).
     order_by_score = await get_setting_typed("apps_queue_sort_by_score") == "on"
@@ -281,7 +281,7 @@ async def _show_current_card(target: types.Message, state: FSMContext):
     while not visible and offset < total:
         batch = await get_pending_users(
             limit=50, offset=offset, city_scope=scope, order_by_score=order_by_score,
-            flagged_only=flagged_only,
+            flagged_only=flagged_only, messenger="telegram",
         )
         if not batch:
             break
@@ -515,7 +515,7 @@ async def appr_all_confirm(callback: types.CallbackQuery, state: FSMContext):
     code = await admin_selected_city(callback.from_user.id)  # None = модуль выключен
     scope = city_scope(code)
     label = None if code is None else await city_label(code)
-    total = await get_pending_count(city_scope=scope)
+    total = await get_pending_count(city_scope=scope, messenger="telegram")
     if total == 0:
         await callback.answer("Заявок нет")
         await _show_current_card(callback.message, state)
@@ -590,7 +590,9 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
     # Phase 32 (32-05, D-20/D-22): бот больше не зовёт approve_all_pending напрямую — общий шов
     # с веб-обёрткой claim_approve_all, чтобы начисление рефералки не могло разъехаться между
     # путями (та же атомарная UPDATE ... RETURNING первым делом, credit_summary — вторым шагом).
-    ids, credit_summary = await claim_approve_all_with_credits(city_scope(confirmed))  # atomic flip first (D-11)
+    ids, credit_summary = await claim_approve_all_with_credits(
+        city_scope(confirmed), messenger="telegram",
+    )  # atomic flip first (D-11); карточка только из ВК этим путём не решается
     # WR-04: a stale confirm dialog re-clicked (buttons never expire) hits approve_all_pending
     # again — atomic, so it returns [] the second time. Don't run the drain or claim a count;
     # tell the admin it's already done and refresh the card.
