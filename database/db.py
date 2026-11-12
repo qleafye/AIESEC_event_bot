@@ -5014,8 +5014,18 @@ def _flagged_only_clause(flagged_only: bool, column: str = "flagged_rule_ids") -
     return f"{column} IS NOT NULL AND TRIM({column}) NOT IN ('', '[]')"
 
 
+def _messenger_clause(messenger: str | None) -> str:
+    """Фильтр очереди по наличию номера, не по ленте писем и не по нику анкеты.
+    Пустое значение и «все» — без условия: вызывающие бота остаются как были."""
+    if messenger == "telegram":
+        return "telegram_id IS NOT NULL"
+    if messenger == "vk":
+        return "vk_id IS NOT NULL"
+    return ""
+
+
 def _pending_where(city_scope, track, changed_only, *, city_column: str = "event_city",
-                    flagged_only: bool = False) -> tuple[str, list]:
+                    flagged_only: bool = False, messenger: str | None = None) -> tuple[str, list]:
     """Assemble the shared WHERE tail (city scope + track + changed-only + flagged-only) used
     by `get_pending_users`/`get_pending_count` — ONE place builds the fragment list so both
     functions stay byte-identical in filtering behaviour."""
@@ -5035,6 +5045,9 @@ def _pending_where(city_scope, track, changed_only, *, city_column: str = "event
     flagged_frag = _flagged_only_clause(flagged_only)
     if flagged_frag:
         parts.append(flagged_frag)
+    messenger_frag = _messenger_clause(messenger)
+    if messenger_frag:
+        parts.append(messenger_frag)
     # D-41: walk-in (короткая анкета у стойки) решает только стойка — в очередь менеджера нет.
     parts.append(_NOT_WALKIN)
     extra = "".join(f" AND {p}" for p in parts)
@@ -5047,7 +5060,8 @@ _NOT_WALKIN = "COALESCE(onsite_kind, '') != 'walkin'"
 
 async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
                              track: str | None = None, changed_only: bool = False,
-                             order_by_score: bool = False, flagged_only: bool = False) -> list[dict]:
+                             order_by_score: bool = False, flagged_only: bool = False,
+                             messenger: str | None = None) -> list[dict]:
     """Pending applications, oldest first by default (registration_date then telegram_id).
 
     `track`/`changed_only` splice into the SAME WHERE as `city_scope` — SQL does the
@@ -5063,7 +5077,9 @@ async def get_pending_users(limit: int = 1, offset: int = 0, *, city_scope=None,
     Phase 31 (31-02, D-20): `flagged_only=True` — фильтр «только помеченные правилами»,
     включая делегатов, сменивших ответ после автоотказа (D-23, попадают сюда же с ⚠️-бейджем
     на карточке). Default `False` — прежнее поведение."""
-    extra, params = _pending_where(city_scope, track, changed_only, flagged_only=flagged_only)
+    extra, params = _pending_where(
+        city_scope, track, changed_only, flagged_only=flagged_only, messenger=messenger,
+    )
     order = (
         "ORDER BY COALESCE(score, -1) DESC, registration_date ASC, telegram_id ASC"
         if order_by_score
@@ -5108,8 +5124,11 @@ async def get_resume_upload_backlog(before: str, limit: int = 20) -> list[dict]:
 
 
 async def get_pending_count(*, city_scope=None, track: str | None = None,
-                             changed_only: bool = False, flagged_only: bool = False) -> int:
-    extra, params = _pending_where(city_scope, track, changed_only, flagged_only=flagged_only)
+                             changed_only: bool = False, flagged_only: bool = False,
+                             messenger: str | None = None) -> int:
+    extra, params = _pending_where(
+        city_scope, track, changed_only, flagged_only=flagged_only, messenger=messenger,
+    )
     async with _connect() as db:
         async with db.execute(
             f"SELECT COUNT(*) FROM users WHERE status = 'pending'{extra}", tuple(params)
