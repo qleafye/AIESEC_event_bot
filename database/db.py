@@ -1055,6 +1055,7 @@ async def init_db():
         await _ensure_column(db, "users", "formats", "TEXT")       # multi-select, CSV
         await _ensure_column(db, "users", "vk_username", "TEXT")   # ник в ВК (@username) — YL'26
         await _ensure_column(db, "users", "vk_id", "INTEGER")  # номер пользователя ВК, не ник
+        await _ensure_column(db, "users", "active_messenger", "TEXT")  # куда писать: telegram или vk
         await _ensure_column(db, "users", "transport", "TEXT")     # трансфер до площадки / самостоятельно
         await _ensure_column(db, "users", "payment_plan_date", "TEXT")  # планируемая дата оплаты взноса
         await _ensure_column(db, "users", "bed_sharing", "TEXT")   # конфа: готов делить двуспальную кровать
@@ -2860,6 +2861,7 @@ async def init_db():
         await ensure_fsm_schema(db)
 
         await _ensure_column(db, "users", "vk_id", "INTEGER")
+        await _ensure_column(db, "users", "active_messenger", "TEXT")
         await _relax_users_telegram_pk(db)
 
         await db.commit()
@@ -3064,6 +3066,11 @@ async def delete_setting(key: str):
 
 
 async def add_user(data: dict):
+    # Первая карточка Telegram получает ленту здесь. Повторная подача колонку не переписывает:
+    # человек мог уже попросить писать во ВК, вторая анкета вторую ленту не включает.
+    messenger = data.get("active_messenger")
+    if messenger not in ("telegram", "vk"):
+        messenger = "telegram"
     async with _connect() as db:
         # ON CONFLICT DO UPDATE (not INSERT OR REPLACE): REPLACE is DELETE+INSERT and would
         # wipe columns absent from this list (e.g. status) on re-registration. status is
@@ -3087,8 +3094,9 @@ async def add_user(data: dict):
                 transport, payment_plan_date, bed_sharing, bed_partner, participant_type,
                 alumni_status, event_city, season, prev_season,
                 stack, experience, readiness, resume_link,
-                mini_projects, mini_portfolio, mini_direction, case_optin
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                mini_projects, mini_portfolio, mini_direction, case_optin,
+                active_messenger
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(telegram_id) DO UPDATE SET
                 username=excluded.username,
                 full_name=excluded.full_name,
@@ -3165,6 +3173,7 @@ async def add_user(data: dict):
                 mini_portfolio=excluded.mini_portfolio,
                 mini_direction=excluded.mini_direction,
                 case_optin=excluded.case_optin,
+                -- active_messenger в UPDATE нет: повторная подача ленту не переносит.
                 -- D-41 (ревью 28.09): полная анкета — обычная заявка. Признак регистрации на
                 -- месте (walk-in/door) снимается, иначе строка навсегда выпадала бы из очереди
                 -- модерации и «Принять всех» (_NOT_WALKIN) — тот же класс потерь, что 14.09.
@@ -3244,12 +3253,14 @@ async def add_user(data: dict):
             data.get('mini_portfolio'),
             data.get('mini_direction'),
             data.get('case_optin'),
+            messenger,
         ))
         await db.commit()
 
 async def link_vk_account(telegram_id: int, vk_id: int) -> None:
     """Пишет номер ВК на карточку телеграма. Ник vk_username связкой не является.
-    Повторная склейка и чужой номер — отказ."""
+    Повторная склейка и чужой номер — отказ. Куда писать (active_messenger), не меняется:
+    второй вход вторую ленту не включает."""
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -3276,6 +3287,21 @@ async def link_vk_account(telegram_id: int, vk_id: int) -> None:
             await db.commit()
         except aiosqlite.IntegrityError as exc:
             raise ValueError("Аккаунт уже связан") from exc
+
+
+async def set_active_messenger(telegram_id: int, messenger: str) -> bool:
+    """Куда писать этому делегату: telegram или vk. Чужое значение и чужая карточка
+    не пишутся. True — строка с этим telegram_id обновлена. Карточку только из ВК
+    (пустой telegram_id) эта функция не трогает."""
+    if messenger not in ("telegram", "vk") or telegram_id is None:
+        return False
+    async with _connect() as db:
+        cursor = await db.execute(
+            "UPDATE users SET active_messenger = ? WHERE telegram_id = ?",
+            (messenger, int(telegram_id)),
+        )
+        await db.commit()
+        return cursor.rowcount == 1
 
 
 _LINK_TTL = timedelta(minutes=15)
@@ -3343,8 +3369,8 @@ async def create_vk_user(vk_id: int, data: dict | None = None) -> None:
     Статус не подставляется дефолтом «одобрена» — пока анкета не сдана, его нет."""
     data = dict(data or {})
     columns, values = _vk_patch(data)
-    columns = ["vk_id", "telegram_id", *columns]
-    values = [int(vk_id), None, *values]
+    columns = ["vk_id", "telegram_id", "active_messenger", *columns]
+    values = [int(vk_id), None, "vk", *values]
     if "status" not in data:
         columns.append("status")
         values.append(None)
