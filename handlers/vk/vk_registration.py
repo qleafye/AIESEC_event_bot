@@ -199,7 +199,7 @@ async def _ask_city(vk_id: int) -> None:
 
 
 async def _ask_track(vk_id: int) -> None:
-    text = await get_setting_typed("party_fork_question_text") or "Какой формат участия?"
+    text = await get_setting_typed("party_fork_text") or "Выбери формат участия:"
     labels = [item["label"] for item in await party_track_options()]
     await send_vk_message(vk_id, "\n".join([text, *labels]))
 
