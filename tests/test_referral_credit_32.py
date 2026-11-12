@@ -389,9 +389,9 @@ _EXPECTED_APPROVAL_WRITERS = {
         "при реальном перевороте зовёт services.applications.applications.record_decision, а тот — services.amb.amb_journal.on_invitees_approved (зачёт амбассадору ровно один раз)"
     ),
     "services/ext_forms/ext_forms_registration.py": (
-        "боевой шов внешней формы «Регистрация»: set_user_status(..., 'pending') — очередь; "
-        "автоодобрение идёт через approve_user_atomic и record_decision, а тот зовёт "
-        "on_invitees_approved (зачёт амбассадору ровно один раз)"
+        "боевой шов внешней формы: set_user_status(..., 'pending') только ставит заявку в очередь; "
+        "одобрение — _auto_approve: approve_user_atomic и record_decision(..., effects_already_sent=True), "
+        "а тот зовёт on_invitees_approved (зачёт амбассадору ровно один раз)"
     ),
     "handlers/access/uat_seed.py": (
         "осознанное исключение (T-32-05-07): сидер состояний команды /uat на стенде — "

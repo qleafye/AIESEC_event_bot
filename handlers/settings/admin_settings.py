@@ -202,8 +202,10 @@ _APPS_FIELD_ORDER = [
     # тумблеры «📋 Заявки»).
     "score_it_fields", "score_senior_statuses", "score_readiness_counts",
     "score_experience_counts", "score_course_from", "score_stack_from",
-    # Тексты в чат без своего экрана: лист ожидания и интервью. Редактор — этот список.
+    # Лист ожидания, тексты интервью и окно записи — сосед решения по заявке.
+    # Тумблер interview_booking_enabled живёт на экране «🗓 Интервью», сюда не входит.
     "waitlist_delegate_text", "interview_reminder_text", "interview_slot_cancelled_text",
+    "interview_window_start", "interview_window_end",
     # Quick 260904-dq1: «🌙 Тихие часы» — редактор экрана и per-city пикер достаются
     # бесплатно попаданием в этот список; сам тумблер живёт в settings_toggle_rows.
     "quiet_hours_start", "quiet_hours_end", "quiet_hours_manager_notice_text",
@@ -303,7 +305,8 @@ _PARTY_FIELD_ORDER = [
     "party_fork_text", *_DT.PARTY_FIELD_ORDER,
 ]
 _CONSENT_FIELD_ORDER = [
-    "consent_button_text", "consent_list", "consent_broadcast_list",
+    "consent_button_text", "consent_list",
+    "consent_broadcast_list",  # согласия рассылки — анкета их не задаёт
     "consent_version", "consent_recollect_text",
 ]
 

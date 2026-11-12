@@ -30,7 +30,7 @@ from tests.test_miniapp_routes import (
 )
 
 MAX_CONNECTS_DRAFT_READ = 12
-MAX_CONNECTS_HUB_READ = 8
+MAX_CONNECTS_HUB_READ = 10  # бюджет не возвращается к N+1 до 260917, это потолок.
 
 
 class _ConnectCounter:

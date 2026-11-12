@@ -307,7 +307,7 @@ async def queued_count() -> int:
 
 async def _render_queued(user_id, text):
     """Ссылка чата — в момент утренней отправки. Без {chat} функция ничего не спрашивает у Telegram."""
-    from handlers.chat.city_chat_api import client_from_bot, notify_if_bot_ready
+    from services.chat.city_chat_api import client_from_bot, notify_if_bot_ready
     from services.city_chat_link import render_for_delegate
     from services import scheduler as _sched
 

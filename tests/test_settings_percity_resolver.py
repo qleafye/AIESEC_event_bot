@@ -623,7 +623,6 @@ EXPECTED_PER_CITY_KEYS = {
     "wave_start_message_text",
 }
 
-
 def test_per_city_key_set_matches_first_wave_literal():
     actual = {k for k, v in s.SETTINGS_SCHEMA.items() if v.get("per_city")}
     missing = sorted(actual - EXPECTED_PER_CITY_KEYS)

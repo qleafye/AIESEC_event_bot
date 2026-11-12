@@ -58,7 +58,7 @@ def test_coins_zero_is_explained_not_applied(tmp_path):
     _setup(tmp_path, coins="0")
     cb = FakeCallback("ambpt_fill")
     _run(h.amb_backfill_preview(cb))
-    assert "выключены (0)" in cb.message.edits[0][0]
+    assert "начислять нечего" in cb.message.edits[0][0].lower()
     assert _credits() == []
 
 

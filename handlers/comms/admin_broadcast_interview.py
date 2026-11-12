@@ -6,20 +6,22 @@
 """
 from __future__ import annotations
 
-import json
-
 from aiogram import F, types
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton
 
 from domain.settings.schema import get_setting_typed
 from handlers.admin import router
 from handlers.states import Broadcast
+from services.comms.broadcast_interview import (
+    pack_filter_spec,
+    peel_interview_flag,
+    with_interview_button,
+)
 
 _CHECK_OFF = "🗓 Кнопка «Выбрать время»"
 _CHECK_ON = "✅ 🗓 Кнопка «Выбрать время»"
-_BUTTON = "🗓 Выбрать время"
 
 
 async def confirm_rows(state: FSMContext) -> list:
@@ -30,33 +32,6 @@ async def confirm_rows(state: FSMContext) -> list:
     return [[InlineKeyboardButton(
         text=_CHECK_ON if on else _CHECK_OFF, callback_data="bciv_toggle",
     )]]
-
-
-def with_interview_button(base: InlineKeyboardMarkup | None, on: bool):
-    """Кнопка «🗓 Выбрать время» первой строкой. Выключено — клавиатура как была."""
-    if not on:
-        return base
-    rows = [[InlineKeyboardButton(text=_BUTTON, callback_data="iv_open")]]
-    if base is not None:
-        rows.extend(list(row) for row in base.inline_keyboard)
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def pack_filter_spec(filters, on: bool) -> str | None:
-    """Без галочки — прежний JSON списка. С галочкой — объект, старый список внутри."""
-    if not on:
-        return json.dumps(filters, ensure_ascii=False) if filters else None
-    return json.dumps(
-        {"filters": list(filters or []), "interview_button": True}, ensure_ascii=False,
-    )
-
-
-def peel_interview_flag(spec):
-    """(галочка, список фильтров или None). Старый список фильтров галочки не имеет."""
-    if isinstance(spec, dict):
-        filters = spec.get("filters") or None
-        return bool(spec.get("interview_button")), filters
-    return False, spec
 
 
 @router.callback_query(F.data == "bciv_toggle", StateFilter(Broadcast.confirm, Broadcast.schedule_confirm))

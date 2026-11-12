@@ -395,11 +395,12 @@ def test_date_step_with_preset_english_label_canonicalizes(monkeypatch):
     state = _new_state()
     asyncio.run(state.update_data(_current_date_step="arrival_date"))
 
-    async def _fake_option_pairs(step_key, lang, _tr_map):
+    async def _fake_option_pairs(step_key, lang, _tr_map, city_code=None):
         if step_key == "arrival_date":
             return [(canonical, english), (other, other_en)]
         return []
 
+    # process_date_input канонизирует через reg_i18n.canonicalize; пары пресета — его вход.
     monkeypatch.setattr(reg_i18n, "option_pairs", _fake_option_pairs)
 
     asyncio.run(reg_flow.process_date_input(msg, state, bot=None))
