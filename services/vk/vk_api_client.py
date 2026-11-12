@@ -74,18 +74,21 @@ def _send_vk_message_sync(
     api.messages.send(**params)
 
 
-async def send_vk_message(vk_id: int, text: str, keyboard_json: str | None = None) -> None:
+async def send_vk_message(vk_id: int, text: str, keyboard_json: str | None = None) -> bool:
     """Письмо делегату во ВК. Ключ читается сейчас: смена ключа не оставляет старую сессию.
-    Сбой VK не поднимается наверх. В журнал не попадают ни ключ, ни текст письма."""
+    True — сообщение ушло. Сбой VK не поднимается наверх. В журнал не попадают ни ключ, ни текст."""
     from domain.settings.schema import get_setting_typed
 
     token = str(await get_setting_typed("vk_community_token") or "").strip()
     if not token:
         logger.error("VK send skipped for %s: community key is not set", vk_id)
-        return
+        return False
     try:
         await asyncio.to_thread(_send_vk_message_sync, token, vk_id, text, keyboard_json)
     except vk_api.exceptions.ApiError as exc:
         logger.error("VK send failed to %s: [%s]", vk_id, exc.code)
+        return False
     except Exception as exc:
         logger.error("VK send unexpected error to %s: %s", vk_id, type(exc).__name__)
+        return False
+    return True
