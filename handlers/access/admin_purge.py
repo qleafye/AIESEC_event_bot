@@ -38,6 +38,7 @@ _ID_ARG_RE = re.compile(r"^-?\d+$")
 # же ключам, что вернул count_user_footprint/purge_user).
 _GROUP_LABELS: dict[str, str] = {
     "application": "заявка",
+    "vk_link": "одноразовые ссылки в ВК",
     "draft": "незавершённая анкета",
     "game": "сдачи заданий",
     "coins": "записи баллов",
