@@ -13,6 +13,7 @@ from handlers.comms import polls
 from handlers.access import uat_seed
 from handlers.chat import group_chat
 from handlers.reg import reg_silence_fallback, onsite_reg
+from handlers.vk import telegram_link
 from handlers.access import admin_no_access
 from services.comms.reminders import pending_reminder_loop
 from services.scheduler import init_scheduler
@@ -536,6 +537,8 @@ async def main():
     # D-41: короткая анкета на месте — раньше registration.router, чтобы состояния OnsiteReg
     # не перехватили catch-all хендлеры анкеты делегата.
     dp.include_router(onsite_reg.router)
+    # /link_vk раньше анкеты: посреди регистрации команда всё равно должна ответить ссылкой.
+    dp.include_router(telegram_link.router)
     dp.include_router(registration.router)
     dp.include_router(user_actions.router)
     # Опросы: poll_answer/poll — другие типы апдейтов, с message/callback не конкурируют.
