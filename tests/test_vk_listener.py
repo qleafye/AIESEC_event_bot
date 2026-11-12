@@ -82,7 +82,7 @@ def test_listener_starts_when_enabled(monkeypatch, caplog):
                 SimpleNamespace(
                     type=VkBotEventType.MESSAGE_NEW,
                     from_user=True,
-                    message={"from_id": 42, "text": "привет", "out": 0},
+                    message={"from_id": 42, "text": "привет", "out": 0, "ref": "link_abc"},
                 ),
                 SimpleNamespace(
                     type=VkBotEventType.MESSAGE_NEW,
@@ -105,8 +105,8 @@ def test_listener_starts_when_enabled(monkeypatch, caplog):
     monkeypatch.setattr(vk_bot, "VkBotLongPoll", _LongPoll)
     handled = []
 
-    async def _handle(vk_id, text, payload=None):
-        handled.append((vk_id, text))
+    async def _handle(vk_id, text, payload=None, ref=None):
+        handled.append((vk_id, text, ref))
 
     monkeypatch.setattr(vk_bot, "handle_vk_message", _handle)
 
@@ -121,7 +121,7 @@ def test_listener_starts_when_enabled(monkeypatch, caplog):
     with caplog.at_level(logging.INFO):
         scheduled = asyncio.run(_run())
     assert scheduled == 1
-    assert handled == [(42, "привет")]
+    assert handled == [(42, "привет", "link_abc")]
     assert seen == {"token": SECRET, "group_id": 555, "config": "MemoryConfig"}
     assert SECRET not in caplog.text
     assert "привет" not in caplog.text
