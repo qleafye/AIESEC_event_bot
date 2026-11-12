@@ -15,10 +15,76 @@ logger = logging.getLogger(__name__)
 _RETRY_SECONDS = 30
 
 
-async def handle_vk_message(vk_id: int, text: str, payload: dict | None = None) -> None:
-    """Личное входящее: /start начинает анкету, остальное — ответ на текущий вопрос."""
+_LINK_PREFIX = "link_"
+_LINK_DEAD = "Ссылка недействительна или истекла. Попросите новую командой /link_vk в Telegram."
+_LINK_NO_CARD = (
+    "Карточка в Telegram не найдена. Пройдите регистрацию там и запросите новую ссылку командой /link_vk."
+)
+_LINK_TAKEN = "Этот Telegram уже связан с ВК. Вторая анкета не начинается."
+_LINK_VK_EXISTS = "В этом ВК уже есть анкета. Вторая не начинается, и карточки сами не склеиваются."
+_LINK_FAILED = "Связать аккаунты не получилось. Запросите новую ссылку командой /link_vk в Telegram."
+_LINK_DONE = "Аккаунты связаны. Анкета уже есть, вторая не начинается."
+_LINK_OPEN = "Аккаунты связаны. Допишите анкету там, где начали. Вторая не начинается."
+
+
+def _link_secret(ref: str | None) -> str | None:
+    text = (ref or "").strip()
+    if not text.startswith(_LINK_PREFIX):
+        return None
+    secret = text[len(_LINK_PREFIX):].strip()
+    return secret or None
+
+
+async def _handle_link_secret(vk_id: int, secret: str) -> None:
+    """Секрет пишет номер ВК на карточку Telegram. Чужую карточку ВК не трогает."""
+    from database.db import consume_link_secret, get_user, get_vk_user, link_vk_account
+
+    telegram_id = await consume_link_secret(secret)
+    if not telegram_id:
+        await send_vk_message(vk_id, _LINK_DEAD)
+        return
+    tg_user = await get_user(telegram_id)
+    if tg_user is None:
+        await send_vk_message(vk_id, _LINK_NO_CARD)
+        return
+    if tg_user.get("vk_id"):
+        await send_vk_message(vk_id, _LINK_TAKEN)
+        return
+    vk_user = await get_vk_user(vk_id)
+    if vk_user is not None:
+        await send_vk_message(vk_id, _LINK_VK_EXISTS)
+        return
+    before = dict(tg_user)
+    try:
+        await link_vk_account(telegram_id, vk_id)
+    except ValueError:
+        await send_vk_message(vk_id, _LINK_FAILED)
+        return
+    linked = await get_user(telegram_id)
+    if linked is None or linked.get("vk_id") != int(vk_id):
+        await send_vk_message(vk_id, _LINK_FAILED)
+        return
+    # Склейка — только номер ВК. Остальные поля, включая будущую ленту, не двигаются.
+    rest = dict(linked)
+    rest["vk_id"] = before.get("vk_id")
+    if rest != before:
+        logger.error("VK link changed extra fields for telegram %s", telegram_id)
+    if before.get("status") in ("approved", "pending"):
+        await send_vk_message(vk_id, _LINK_DONE)
+        return
+    await send_vk_message(vk_id, _LINK_OPEN)
+
+
+async def handle_vk_message(
+    vk_id: int, text: str, payload: dict | None = None, ref: str | None = None,
+) -> None:
+    """Личное входящее. Ссылка склейки важнее анкеты, текст ссылки в лог не пишется."""
     del payload
     logger.info("VK message from %s", vk_id)
+    secret = _link_secret(ref)
+    if secret:
+        await _handle_link_secret(vk_id, secret)
+        return
     from handlers.vk.vk_registration import process_vk_registration_step, start_vk_registration
 
     body = (text or "").strip()
@@ -28,7 +94,7 @@ async def handle_vk_message(vk_id: int, text: str, payload: dict | None = None) 
     await process_vk_registration_step(vk_id, body)
 
 
-def _incoming_user(event) -> tuple[int, str] | None:
+def _incoming_user(event) -> tuple[int, str, str | None] | None:
     if getattr(event, "type", None) != VkBotEventType.MESSAGE_NEW:
         return None
     if not getattr(event, "from_user", False):
@@ -40,7 +106,14 @@ def _incoming_user(event) -> tuple[int, str] | None:
     if not isinstance(user_id, int) or user_id <= 0:
         return None
     text = message.get("text") or ""
-    return user_id, text if isinstance(text, str) else str(text)
+    if not isinstance(text, str):
+        text = str(text)
+    ref = message.get("ref")
+    if not isinstance(ref, str) or not ref.strip():
+        ref = None
+    else:
+        ref = ref.strip()
+    return user_id, text, ref
 
 
 def _community_number(raw) -> int | None:
@@ -67,9 +140,9 @@ def _open_longpoll(token: str, group_id: int) -> VkBotLongPoll:
     return VkBotLongPoll(vk_session(token), group_id)
 
 
-async def _safe_handle(vk_id: int, text: str) -> None:
+async def _safe_handle(vk_id: int, text: str, ref: str | None = None) -> None:
     try:
-        await handle_vk_message(vk_id, text)
+        await handle_vk_message(vk_id, text, ref=ref)
     except Exception as exc:
         logger.error("VK message handling failed for %s: %s", vk_id, type(exc).__name__)
 
@@ -133,7 +206,7 @@ async def run_vk_listener(max_checks: int | None = None) -> int:
             incoming = _incoming_user(event)
             if incoming is None:
                 continue
-            spawn(_safe_handle(incoming[0], incoming[1]))
+            spawn(_safe_handle(incoming[0], incoming[1], incoming[2]))
             scheduled += 1
     return scheduled
 
