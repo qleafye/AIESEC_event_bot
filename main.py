@@ -589,6 +589,14 @@ async def main():
     from services.bot.bot_commands import sync_bot_commands_safe
     _spawn(sync_bot_commands_safe(bot))
 
+    # ВК слушается до поллинга: start_polling не возвращается, пока бот жив.
+    try:
+        from handlers.vk.vk_bot import start_vk_listener
+        start_vk_listener()
+        logger.info("VK listener task started")
+    except Exception as exc:
+        logger.warning("VK listener was not started (%s)", type(exc).__name__)
+
     try:
         await dp.start_polling(bot)
         logger.info("Bot started polling")
