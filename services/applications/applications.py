@@ -53,6 +53,8 @@ from database.db import (
     get_reject_rule,
     get_setting,
     get_user,
+    get_vk_user,
+    decide_vk_only,
     claim_waitlist_from_pending,
     record_application_decision,
     reject_user,
@@ -643,6 +645,67 @@ async def claim_approve(telegram_id: int) -> bool:
 
 async def claim_reject(telegram_id: int) -> bool:
     return await reject_user(telegram_id)
+
+
+def _plain_notice(raw: str) -> str:
+    """Текст решения без тегов: во ВК уходит обычная строка, не HTML Telegram."""
+    import re
+    text = re.sub(r"<[^>]+>", "", raw or "")
+    return (
+        text.replace("&lt;", "<").replace("&gt;", ">")
+        .replace("&amp;", "&").replace("&quot;", '"').strip()
+    )
+
+
+async def notify_vk_decision(vk_id: int, status: str, reason: str | None) -> None:
+    """Письмо о решении на карточку только из ВК. Сбой отправки решение не откатывает."""
+    from services.vk.vk_api_client import send_vk_message
+
+    if status == "approved":
+        raw = await get_setting_typed("approve_text") or ""
+    elif status == "rejected":
+        raw = await get_setting_typed("reject_text") or ""
+        if reason:
+            raw = f"{raw}\n\n{reason}" if raw else reason
+    elif status == "waitlist":
+        raw = await get_setting_typed("waitlist_delegate_text") or ""
+    else:
+        return
+    text = _plain_notice(raw)
+    if not text:
+        return
+    try:
+        await send_vk_message(int(vk_id), text)
+    except Exception as exc:
+        logging.getLogger(__name__).warning(
+            "vk decision notify failed: %s", type(exc).__name__,
+        )
+
+
+async def vk_decision_target(vk_id: int) -> tuple[str, dict | None]:
+    """missing — карточки нет, linked — есть Telegram, ok — решать здесь."""
+    user = await get_vk_user(int(vk_id))
+    if user is None:
+        return "missing", None
+    if user.get("telegram_id") is not None:
+        return "linked", user
+    return "ok", user
+
+
+async def vk_row_out_of_scope(city: str | None, user: dict | None) -> bool:
+    if not await cities_module_on() or city is None:
+        return False
+    return normalize_city((user or {}).get("event_city")) != normalize_city(city)
+
+
+async def claim_vk_decision(vk_id: int, decision: str, reason: str | None) -> bool:
+    """Статус карточки без Telegram и текст во ВК. Журнала с окном «Отменить» нет:
+    ему нужен telegram_id. Шаг оплаты Telegram не открывается."""
+    flipped = await decide_vk_only(int(vk_id), decision)
+    if not flipped:
+        return False
+    await notify_vk_decision(int(vk_id), decision, reason)
+    return True
 
 
 async def claim_waitlist(telegram_id: int) -> bool:

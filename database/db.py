@@ -4888,6 +4888,39 @@ async def approve_rejected_atomic(telegram_id: int) -> bool:
         return cursor.rowcount == 1
 
 
+async def decide_vk_only(vk_id: int, status: str) -> bool:
+    """Решение по карточке без Telegram. True, если она ещё ждала решения.
+    Склеенную карточку (telegram_id задан) этот запрос не меняет."""
+    if status not in ("approved", "rejected", "waitlist"):
+        raise ValueError("unknown vk decision")
+    stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    if status == "waitlist":
+        sql = (
+            "UPDATE users SET status = 'waitlist' "
+            "WHERE vk_id = ? AND telegram_id IS NULL AND status = 'pending' "
+            "AND COALESCE(onsite_kind, '') != 'walkin'"
+        )
+        params = (int(vk_id),)
+    elif status == "approved":
+        sql = (
+            "UPDATE users SET status = 'approved', approved_at = ? "
+            "WHERE vk_id = ? AND telegram_id IS NULL "
+            "AND status IN ('pending', 'waitlist')"
+        )
+        params = (stamp, int(vk_id))
+    else:
+        sql = (
+            "UPDATE users SET status = 'rejected', rejected_at = ? "
+            "WHERE vk_id = ? AND telegram_id IS NULL "
+            "AND status IN ('pending', 'waitlist')"
+        )
+        params = (stamp, int(vk_id))
+    async with _connect() as db:
+        cursor = await db.execute(sql, params)
+        await db.commit()
+        return cursor.rowcount == 1
+
+
 async def reject_user(telegram_id: int) -> bool:
     """Atomically reject one pending or waitlisted user. True iff one row flipped.
     rejected_at (Phase 30, 30-05 задача 3) is stamped in the SAME UPDATE — the shared seam
