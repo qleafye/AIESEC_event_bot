@@ -124,6 +124,9 @@ class Broadcast(StatesGroup):
     # Phase 3: filtered broadcast builder (COMM-01/02/03)
     filter_field = State()
     filter_value = State()
+    # Рассылка ВК — отдельный мастер. Не шаг рассылки Telegram и не её подтверждение.
+    vk_text = State()
+    vk_confirm = State()
 
 class EditSetting(StatesGroup):
     waiting_for_value = State()

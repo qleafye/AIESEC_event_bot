@@ -738,6 +738,7 @@ admin|message|broadcast_schedule_when|state:Broadcast:*
 admin|message|broadcast_schedule_message|state:Broadcast:*
 admin|message|cmd_scheduled|cmd:scheduled
 admin|message|cmd_refresh_allowlist|cmd:refresh_allowlist
+admin|message|vk_broadcast_text|state:Broadcast:*
 admin|message|aq_answer_cancel|state:QuestionAnswer:*
 admin|message|aq_answer_step|state:QuestionAnswer:*
 admin|message|afaq_text_cancel|state:FaqItem:*
@@ -1237,6 +1238,9 @@ admin|callback_query|bc_consent_open|bc_consent_open
 admin|callback_query|bc_consent_long|bc_consent_long
 admin|callback_query|bc_consent_pick|bc_consent:*
 admin|callback_query|bc_consent_clear|bc_consent_clear
+admin|callback_query|vk_broadcast_start|broadcast_vk
+admin|callback_query|vk_broadcast_go|bcvk_go
+admin|callback_query|vk_broadcast_no|bcvk_no
 admin|callback_query|admin_event_preset|admin_event_preset
 admin|callback_query|preset_apply|preset_apply:*
 admin|callback_query|preset_confirm|preset_confirm:*
@@ -2823,7 +2827,9 @@ def test_snapshot_total_handler_count_is_292():
     # Три выключателя уведомлений: +3 user_actions.callback_query после consent_tap (1489 -> 1492).
     # «Дойду» / «Не дойду»: +2 user_actions.message сразу перед reg_handoff_idle_fallback (1492 -> 1494).
     # /write_here: +1 user_actions.message сразу перед reg_handoff_idle_fallback (1494 -> 1495).
-    assert len(GOLDEN_SNAPSHOT) == 1495
+    # Рассылка ВК: +1 admin.message после cmd_refresh_allowlist и +3 admin.callback_query
+    # сразу после bc_consent_clear (1495 -> 1499).
+    assert len(GOLDEN_SNAPSHOT) == 1499
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).
