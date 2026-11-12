@@ -25,6 +25,11 @@ _LINK_VK_EXISTS = "В этом ВК уже есть анкета. Вторая �
 _LINK_FAILED = "Связать аккаунты не получилось. Запросите новую ссылку командой /link_vk в Telegram."
 _LINK_DONE = "Аккаунты связаны. Анкета уже есть, вторая не начинается."
 _LINK_OPEN = "Аккаунты связаны. Допишите анкету там, где начали. Вторая не начинается."
+_WRITE_HERE = "пиши сюда"
+_WRITE_HERE_DONE = "Теперь письма будут приходить сюда."
+_WRITE_HERE_UNLINKED = (
+    "Аккаунты ещё не связаны. Откройте ссылку из Telegram командой /link_vk."
+)
 
 
 def _link_secret(ref: str | None) -> str | None:
@@ -75,6 +80,31 @@ async def _handle_link_secret(vk_id: int, secret: str) -> None:
     await send_vk_message(vk_id, _LINK_OPEN)
 
 
+async def _switch_feed_to_vk(vk_id: int) -> None:
+    """«Пиши сюда» переносит ленту на карточку Telegram, с которой связан этот ВК.
+    Без склейки колонка не меняется и вторая анкета не начинается."""
+    from database.db import get_vk_user, set_active_messenger
+
+    user = await get_vk_user(vk_id)
+    telegram_id = user.get("telegram_id") if user else None
+    if not telegram_id:
+        await send_vk_message(vk_id, _WRITE_HERE_UNLINKED)
+        return
+    before = dict(user)
+    if not await set_active_messenger(int(telegram_id), "vk"):
+        await send_vk_message(vk_id, _WRITE_HERE_UNLINKED)
+        return
+    after = await get_vk_user(vk_id)
+    if after is None:
+        await send_vk_message(vk_id, _WRITE_HERE_UNLINKED)
+        return
+    rest = dict(after)
+    rest["active_messenger"] = before.get("active_messenger")
+    if rest != before:
+        logger.error("VK feed switch changed extra fields for telegram %s", telegram_id)
+    await send_vk_message(vk_id, _WRITE_HERE_DONE)
+
+
 async def handle_vk_message(
     vk_id: int, text: str, payload: dict | None = None, ref: str | None = None,
 ) -> None:
@@ -88,6 +118,9 @@ async def handle_vk_message(
     from handlers.vk.vk_registration import process_vk_registration_step, start_vk_registration
 
     body = (text or "").strip()
+    if body.casefold() == _WRITE_HERE:
+        await _switch_feed_to_vk(vk_id)
+        return
     if body == "/start" or body.startswith("/start "):
         await start_vk_registration(vk_id)
         return
