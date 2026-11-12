@@ -39,8 +39,9 @@ def _patch(monkeypatch, messages, token=SECRET):
     session = _Session(token)
     session._api = _Api(messages)
 
-    def _vk(token):
+    def _vk(token, config=None, **_kwargs):
         session.token = token
+        session.config = config
         return session
 
     async def _setting(key):
@@ -57,6 +58,7 @@ def test_send_message_success(monkeypatch):
     session, _ = _patch(monkeypatch, messages)
     asyncio.run(send_vk_message(42, "Привет"))
     assert session.token == SECRET
+    assert session.config.__name__ == "MemoryConfig"
     assert messages.calls[0]["user_id"] == 42
     assert messages.calls[0]["message"] == "Привет"
     assert "keyboard" not in messages.calls[0]

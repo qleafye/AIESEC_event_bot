@@ -53,10 +53,17 @@ async def forget_community_token_without_messages_right(
     await delete_setting_by_admin(admin_id, "vk_community_token")
 
 
+def vk_session(token: str) -> vk_api.VkApi:
+    """Сессия в памяти. Ключ сообщества не пишется в vk_config на диск."""
+    from jconfig.memory import MemoryConfig
+
+    return vk_api.VkApi(token=token, config=MemoryConfig)
+
+
 def _send_vk_message_sync(
     token: str, vk_id: int, text: str, keyboard_json: str | None,
 ) -> None:
-    api = vk_api.VkApi(token=token).get_api()
+    api = vk_session(token).get_api()
     params: dict = {
         "user_id": int(vk_id),
         "message": text,
