@@ -149,6 +149,9 @@ async def applications_next(
         return {"empty": True, "remaining": total, "offset": off, "empty_text": text}
 
     card = await applications.card_payload(row)
+    duplicate = await applications.duplicate_hint(row, city=p.city)
+    if duplicate:
+        card["badges"].append({"kind": "duplicate", "text": duplicate["warning"]})
     cfg = request.app.state.cfg
     # Токен МЕНЕДЖЕРА (p.telegram_id), не заявителя: маршрут файла проверит can_read_file под
     # менеджером — городской скоуп сохраняется, право проверяется и здесь (очередь заявок уже
@@ -214,6 +217,7 @@ async def applications_next(
         },
         "waitlist_enabled": waitlist_on,
         "waitlist_button": "📋 В лист ожидания" if waitlist_on else None,
+        "duplicate": duplicate,
     }
 
 
@@ -358,6 +362,55 @@ async def applications_vk_waitlist(
 ) -> dict:
     await _flush()
     return await _decide_vk(vk_id, "waitlist", None, p)
+
+
+class KeepIn(BaseModel):
+    telegram_id: int | None = None
+    vk_id: int | None = None
+
+
+@router.post("/app/api/applications/keep")
+async def applications_keep(
+    body: KeepIn,
+    p: Principal = Depends(require_cap("moderate_reg")),
+    _: Principal = Depends(require_section("applications")),
+) -> dict:
+    """Оставить эту заявку: другие с тем же именем и телефоном в очереди отклоняются."""
+    await _flush()
+    user = await applications.load_kept_user(body.telegram_id, body.vk_id)
+    if user is None:
+        raise HTTPException(404, {"reason": "not_found", "text": "Заявка не найдена. Обновите очередь."})
+    if user.get("telegram_id") is not None:
+        if await applications.out_of_scope(p.city, int(user["telegram_id"])):
+            raise HTTPException(403, {"reason": "out_of_scope", "text": OUT_OF_SCOPE_TEXT})
+    elif await applications.vk_row_out_of_scope(p.city, user):
+        raise HTTPException(403, {"reason": "out_of_scope", "text": OUT_OF_SCOPE_TEXT})
+    result = await applications.reject_other_applications(
+        user, city=p.city, by=p.telegram_id, now=now_msk_naive(),
+    )
+    decision_ids = result["decision_ids"]
+    n = len(decision_ids) + result["vk_rejected"]
+    if decision_ids:
+        asyncio.create_task(_delayed_flush())
+    if n == 0:
+        return {
+            "ok": True,
+            "undo_seconds": 0,
+            "text": "В очереди нет другой заявки с тем же именем и телефоном. Ничего не отклонено.",
+        }
+    if len(decision_ids) == 1 and result["vk_rejected"] == 0:
+        toast = str(await get_setting_typed("miniapp_applications_rejected_toast") or "")
+        return {
+            "ok": True,
+            "decision_id": decision_ids[0],
+            "undo_seconds": applications.UNDO_WINDOW_SECONDS,
+            "toast": toast,
+        }
+    return {
+        "ok": True,
+        "undo_seconds": 0,
+        "text": f"Отклонено других заявок: {n}. Им уйдёт отказ. Эта заявка осталась.",
+    }
 
 
 # ── POST /app/api/applications/undo ──────────────────────────────────────────────────────
