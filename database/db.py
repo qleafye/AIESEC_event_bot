@@ -659,6 +659,13 @@ async def init_db():
                 is_ambassador_candidate BOOLEAN DEFAULT 0
             )
         ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS pending_links (
+                secret TEXT PRIMARY KEY,
+                telegram_id INTEGER NOT NULL,
+                expires_at TEXT NOT NULL
+            )
+        ''')
 
         await _ensure_column(db, "users", "phone", "TEXT")
         await _ensure_column(db, "users", "city", "TEXT")
@@ -3269,6 +3276,45 @@ async def link_vk_account(telegram_id: int, vk_id: int) -> None:
             await db.commit()
         except aiosqlite.IntegrityError as exc:
             raise ValueError("Аккаунт уже связан") from exc
+
+
+_LINK_TTL = timedelta(minutes=15)
+
+
+async def create_link_secret(telegram_id: int) -> str:
+    """Одноразовый секрет склейки. В ссылке 15 минут, в лог секрет не пишется."""
+    secret = secrets.token_urlsafe(32)
+    expires_at = (msk_now() + _LINK_TTL).isoformat(timespec="seconds")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO pending_links (secret, telegram_id, expires_at) VALUES (?, ?, ?)",
+            (secret, int(telegram_id), expires_at),
+        )
+        await db.commit()
+    return secret
+
+
+async def consume_link_secret(secret: str) -> int | None:
+    """Забрать секрет один раз. Протухший и чужой секрет ничего не возвращают."""
+    secret = (secret or "").strip()
+    if not secret:
+        return None
+    async with _connect() as db:
+        async with db.execute(
+            "DELETE FROM pending_links WHERE secret = ? RETURNING telegram_id, expires_at",
+            (secret,),
+        ) as cursor:
+            row = await cursor.fetchone()
+        await db.commit()
+    if row is None:
+        return None
+    try:
+        expires_at = datetime.fromisoformat(row[1])
+    except (TypeError, ValueError):
+        return None
+    if msk_now() > expires_at:
+        return None
+    return int(row[0])
 
 
 def _vk_writable_columns() -> set[str]:
@@ -11624,6 +11670,9 @@ async def get_stored_lang(telegram_id: int) -> str | None:
 # вообще не находит, в список их добавлять не нужно.
 USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     ("users", "telegram_id", "application"),
+    # Одноразовый секрет склейки ВК — след этого telegram_id. После удаления человека
+    # ссылка не должна открывать его карточку.
+    ("pending_links", "telegram_id", "vk_link"),
     ("reg_started", "telegram_id", "draft"),
     ("reg_drafts", "telegram_id", "draft"),
     # Недописанная анкета в FSM: то же, что черновик, только ключ user_id.
