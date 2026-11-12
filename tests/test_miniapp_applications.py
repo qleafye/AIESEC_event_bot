@@ -189,7 +189,7 @@ def test_next_returns_one_card_oldest_first_with_avatar_and_fields(client):
     assert body["avatar"] == {"url": None, "initials": "ИП"}
     assert {"label": moderation_card.CARD_STEPS["age"], "value": "20"} in body["main_fields"]
     assert body["resume"] == {"kind": "none", "warning": False}
-    assert body["badges"] == []
+    assert body["badges"] == [{"kind": "messenger", "text": "Telegram"}]
     assert body["history"] == []
     assert body["filters"]["reject_templates"][0] == "Анкета заполнена не полностью"
 

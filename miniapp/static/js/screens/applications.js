@@ -77,9 +77,14 @@ export async function render(root, params, ctx) {
   const cardHolder = h("div", { class: "appl-card-holder" });
   const toast = h("div", { class: "appl-toast hidden" });
 
+  let confirmKind = "approve-all";
   const approveAllConfirm = confirmBox(h, {
     cancelText: texts.undo_button || "",
-    onConfirm: () => { approveAllConfirm.close(); approveAll(); },
+    onConfirm: () => {
+      approveAllConfirm.close();
+      if (confirmKind === "keep") keepThis();
+      else approveAll();
+    },
   });
   // D-07 (план 23-06 закрыл Known Stub 23-05): «Принять всех N» называет и число, и город —
   // `city_label` уже собранный сервером текст (miniapp/routers/applications.py), отдельной
@@ -123,11 +128,6 @@ export async function render(root, params, ctx) {
   const rejectBackdrop = h("div", { class: "sheet-backdrop hidden" }, rejectSheet);
   rejectBackdrop.addEventListener("click", (e) => { if (e.target === rejectBackdrop) closeRejectSheet(); });
 
-  const keepConfirm = confirmBox(h, {
-    cancelText: texts.reject_cancel || "",
-    onConfirm: () => { keepConfirm.close(); keepThis(); },
-  });
-
   root.append(
     // D-04: заголовок экрана без иконки рядом — labelText (ui.js) снимает ведущий эмодзи
     // подписи раздела из реестра (без этого <h1> дублирует иконку раздела глифом «🗂»).
@@ -135,7 +135,6 @@ export async function render(root, params, ctx) {
     notice,
     h("div", { class: "appl-head" }, filtersRow, approveAllBtn),
     approveAllConfirm,
-    keepConfirm,
     cardHolder,
     toast,
     rejectBackdrop,
@@ -240,6 +239,7 @@ export async function render(root, params, ctx) {
   // ── «Принять всех N» (D-07) ──────────────────────────────────────────────────────────
   function openApproveAllConfirm() {
     if (busy || !currentCard || !currentCard.remaining) return;
+    confirmKind = "approve-all";
     const count = currentCard.remaining;
     approveAllConfirm.querySelector("p").textContent = (texts.approve_all_confirm || "").replace("{count}", String(count));
     const cityLabel = currentCard.city_label || "";
@@ -247,6 +247,8 @@ export async function render(root, params, ctx) {
     approveAllCityLine.classList.toggle("hidden", !cityLabel);
     const confirmBtn = approveAllConfirm.querySelector(".btn.danger");
     if (confirmBtn) confirmBtn.textContent = (texts.approve_all_button || "").replace("{count}", String(count));
+    const cancelBtn = approveAllConfirm.querySelector(".btn.ghost");
+    if (cancelBtn) cancelBtn.textContent = texts.undo_button || "";
     approveAllConfirm.open();
   }
 
@@ -325,11 +327,15 @@ export async function render(root, params, ctx) {
   }
 
   function openKeep(dup) {
-    const paragraph = keepConfirm.querySelector("p");
-    const danger = keepConfirm.querySelector(".btn.danger");
+    confirmKind = "keep";
+    const paragraph = approveAllConfirm.querySelector("p");
+    const danger = approveAllConfirm.querySelector(".btn.danger");
+    const cancelBtn = approveAllConfirm.querySelector(".btn.ghost");
     if (paragraph) paragraph.textContent = dup.confirm || "";
     if (danger) danger.textContent = dup.confirm_button || "";
-    keepConfirm.open();
+    if (cancelBtn) cancelBtn.textContent = texts.reject_cancel || "";
+    approveAllCityLine.classList.add("hidden");
+    approveAllConfirm.open();
   }
 
   async function keepThis() {
@@ -501,6 +507,18 @@ export async function render(root, params, ctx) {
 
     const overlayApprove = h("div", { class: "appl-overlay approve", "aria-hidden": "true" }, icon("check"));
     const overlayReject = h("div", { class: "appl-overlay reject", "aria-hidden": "true" }, icon("x"));
+    const dup = card.duplicate;
+    const dupBlock = dup && (dup.keep_button || dup.note)
+      ? h("div", { class: "appl-duplicate" },
+          dup.note ? h("p", { class: "faint", text: dup.note }) : null,
+          dup.keep_button
+            ? h("button", {
+                class: "btn ghost", type: "button", text: dup.keep_button,
+                onClick: () => openKeep(dup),
+              })
+            : null,
+        )
+      : null;
 
     const cardEl = h("article", { class: "card appl-card" },
       h("div", { class: "appl-head-row" },
@@ -516,6 +534,7 @@ export async function render(root, params, ctx) {
       showAllBtn, extraBlock,
       h("div", { class: "appl-resume" }, resumeNode(card.resume)),
       historyNode(card.history),
+      dupBlock,
       overlayApprove, overlayReject,
     );
 
@@ -527,14 +546,6 @@ export async function render(root, params, ctx) {
       class: "btn ghost appl-decide reject", type: "button", "aria-label": texts.reject_button || "",
       onClick: () => openRejectSheet(),
     }, icon("x"));
-    const dup = card.duplicate;
-    const keepBtn = dup && dup.keep_button
-      ? h("button", {
-          class: "btn ghost", type: "button", text: dup.keep_button,
-          onClick: () => openKeep(dup),
-        })
-      : null;
-    const dupNote = dup && dup.note ? h("p", { class: "faint", text: dup.note }) : null;
     const waitlistBtn = card.waitlist_enabled && card.waitlist_button
       ? h("button", {
           class: "btn ghost appl-decide waitlist", type: "button",
@@ -555,7 +566,6 @@ export async function render(root, params, ctx) {
         h("div", { class: "appl-stack", "aria-hidden": "true" }),
         cardEl,
       ),
-      keepBtn || dupNote ? h("div", { class: "appl-duplicate" }, dupNote, keepBtn) : null,
       h("div", { class: "appl-decide-row" }, rejectBtn, waitlistBtn, approveBtn),
     );
 
