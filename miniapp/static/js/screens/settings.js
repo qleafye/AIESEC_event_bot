@@ -1543,6 +1543,7 @@ async function renderSection(root, code, ctx, targetKey) {
     for (const row of FORM_MANAGER_ROWS) {
       const item = regFormItems.get(row.key);
       const title = h("div", { class: "st", text: formV2Text(`mgr_${row.text}_label`) });
+      const hint = h("div", { class: "ss", text: formV2Text(`mgr_${row.text}_hint`) });
       const pill = h("span", { class: `sw${item.value === "on" ? " on" : ""}` }, h("i", {}));
       const line = h("div", {
         class: "swrow", role: "switch",
@@ -1555,7 +1556,7 @@ async function renderSection(root, code, ctx, targetKey) {
           line.setAttribute("aria-checked", item.value === "on" ? "true" : "false");
           pill.classList.toggle("on", item.value === "on");
         },
-      }, h("div", {}, title), pill);
+      }, h("div", {}, title, hint), pill);
       rowsWrap.append(line);
     }
     card.append(rowsWrap);
