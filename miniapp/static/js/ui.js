@@ -308,8 +308,19 @@ export function applyServerTexts(me) {
     document.body.dataset.screenTexts = JSON.stringify(me.screen_texts);
   }
   if (me.form_v2_texts && typeof me.form_v2_texts === "object") {
-    _formV2TextsCache = me.form_v2_texts;
-    document.body.dataset.formV2Texts = JSON.stringify(me.form_v2_texts);
+    // `/me` отдаёт только делегатский срез (без `mgr_*`, page.py::_FORM_V2_DELEGATE_KEYS).
+    // Подписи экрана менеджера «Анкета» живут в data-атрибуте оболочки. Полная замена
+    // карты стирала их, и строки тумблеров рисовались пустыми. Переведённые ключи
+    // делегата ложатся поверх, ключи оболочки, которых в ответе нет, остаются.
+    let shell = {};
+    try {
+      shell = JSON.parse((document.body && document.body.dataset.formV2Texts) || "{}");
+    } catch (_) {
+      shell = {};
+    }
+    if (!shell || typeof shell !== "object" || Array.isArray(shell)) shell = {};
+    _formV2TextsCache = { ...shell, ...me.form_v2_texts };
+    document.body.dataset.formV2Texts = JSON.stringify(_formV2TextsCache);
   }
 }
 
