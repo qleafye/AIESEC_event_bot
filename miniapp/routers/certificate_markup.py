@@ -38,8 +38,12 @@ def _gate(p: Principal) -> None:
         raise HTTPException(403, {"reason": "no_cap", "text": NEED_CAP})
 
 
-def _known(kind: str, variant: str) -> bool:
-    if kind not in cdb.KINDS:
+async def _known(kind: str, variant: str) -> bool:
+    if kind in cdb.KINDS:
+        ok = True
+    else:
+        ok = await cdb.get_kind(kind) is not None
+    if not ok:
         return False
     if variant == cdb.VARIANT_ALL:
         return True
@@ -49,16 +53,23 @@ def _known(kind: str, variant: str) -> bool:
 async def _slots() -> list[dict]:
     rows = {(row["kind"], row["variant"]): row for row in await cdb.list_template_rows()}
     keys = [(kind, cdb.VARIANT_ALL) for kind in cdb.KINDS]
+    titles = {kind: cdb.KIND_SHORT[kind] for kind in cdb.KINDS}
+    for kind_row in await cdb.list_kinds():
+        titles[kind_row["code"]] = kind_row["title"]
+        key = (kind_row["code"], cdb.VARIANT_ALL)
+        if key not in keys:
+            keys.append(key)
     for key in rows:
         if key not in keys:
             keys.append(key)
     out = []
     for kind, variant in keys:
         row = rows.get((kind, variant))
+        label = titles.get(kind) or cdb.KIND_SHORT.get(kind) or "Сертификат"
         out.append({
             "kind": kind,
             "variant": variant,
-            "title": f"{cdb.KIND_SHORT[kind]} · {cdb.variant_label(variant)}",
+            "title": f"{label} · {cdb.variant_label(variant)}",
             "has_file": bool(row),
             "markup": parse_markup(row["markup"]) if row else None,
         })
@@ -86,7 +97,7 @@ async def markup_preview(
     p: Principal = Depends(principal),
 ) -> Response:
     _gate(p)
-    if not _known(kind, variant):
+    if not await _known(kind, variant):
         raise HTTPException(400, {"reason": "bad_template", "text": BAD_SLOT})
     row = next((item for item in await cdb.list_template_rows()
                 if item["kind"] == kind and item["variant"] == variant), None)
@@ -121,7 +132,7 @@ async def markup_preview(
 @router.post("/app/api/certificates/markup")
 async def markup_save(body: MarkupIn, p: Principal = Depends(principal)) -> dict:
     _gate(p)
-    if not _known(body.kind, body.variant):
+    if not await _known(body.kind, body.variant):
         raise HTTPException(400, {"reason": "bad_template", "text": BAD_SLOT})
     error = markup_error(body.markup)
     if error:
@@ -141,7 +152,7 @@ async def markup_file(
     p: Principal = Depends(principal),
 ) -> dict:
     _gate(p)
-    if not _known(kind, variant):
+    if not await _known(kind, variant):
         raise HTTPException(400, {"reason": "bad_template", "text": BAD_SLOT})
     raw = await file.read(_MAX_PDF + 1)
     if len(raw) > _MAX_PDF:

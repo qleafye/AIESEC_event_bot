@@ -924,6 +924,10 @@ admin|message|certadm_tpl_not_file|state:CertAdmin:*
 admin|message|certadm_ppl_input|state:CertAdmin:*
 admin|message|certadm_ppl_file|state:CertAdmin:*
 admin|message|certadm_ppl_other|state:CertAdmin:*
+admin|message|certadm_kind_title|state:CertAdmin:*
+admin|message|certadm_kind_title_other|state:CertAdmin:*
+admin|message|certadm_font_file|state:CertAdmin:*
+admin|message|certadm_font_other|state:CertAdmin:*
 admin|message|shop_command|cmd:shop
 admin|message|shop_find_input|state:ShopAdmin:*
 admin|message|shop_new_input|state:ShopAdmin:*
@@ -1904,6 +1908,15 @@ admin|callback_query|certadm_rm|certadm_rm:*
 admin|callback_query|certadm_clr|certadm_clr:*
 admin|callback_query|certadm_clrgo|certadm_clrgo:*
 admin|callback_query|certadm_preview|certadm_preview
+admin|callback_query|certadm_kind_new|certadm_kind_new
+admin|callback_query|certadm_kind_aud|certadm_kind_aud:*
+admin|callback_query|certadm_kind_role|certadm_kind_role:*
+admin|callback_query|certadm_kind_fld|certadm_kind_fld:*
+admin|callback_query|certadm_kind_day|certadm_kind_day:*
+admin|callback_query|certadm_kind_del|certadm_kind_del:*
+admin|callback_query|certadm_kind_open|certadm_kind:*
+admin|callback_query|certadm_font|certadm_font
+admin|callback_query|certadm_font_clear|certadm_font_clear
 admin|callback_query|shop_home|admin_shop
 admin|callback_query|shop_home_edit|shp_home
 admin|callback_query|shop_home_page|shp_hp:*
@@ -2088,6 +2101,7 @@ user_actions|message|certificate_command|cmd:certificate
 user_actions|message|certificate_name_input|state:CertificateName:*
 user_actions|message|coming_yes|
 user_actions|message|coming_no|
+user_actions|message|interview_menu|
 user_actions|message|transfer_feed_here|cmd:write_here
 user_actions|message|reg_handoff_idle_fallback|
 user_actions|callback_query|gbal_history|gbal_history:*
@@ -2149,6 +2163,10 @@ user_actions|callback_query|shop_my|shopv_my
 user_actions|callback_query|shop_my_qr|shopv_qr:*
 user_actions|callback_query|shop_cancel|shopv_cancel:*
 user_actions|callback_query|shop_cancel_go|shopv_cgo:*
+user_actions|callback_query|interview_open|iv_open
+user_actions|callback_query|interview_pick|iv_pick:*
+user_actions|callback_query|interview_move|iv_move
+user_actions|callback_query|interview_move_to|iv_moveto:*
 user_actions|callback_query|show_wave_rating|ambwave
 user_actions|callback_query|ambassador_path_pick|ambpath:*
 user_actions|callback_query|ambassador_leave_start|ambleave
@@ -2163,10 +2181,6 @@ user_actions|callback_query|regional_noshow_move_confirm|rnm_confirm
 user_actions|callback_query|regional_noshow_move_decline|rnm_decline
 user_actions|callback_query|mute_broadcasts_today|bc_mute_today
 user_actions|callback_query|unmute_broadcasts_today|bc_unmute_today
-user_actions|callback_query|interview_open|iv_open
-user_actions|callback_query|interview_pick|iv_pick:*
-user_actions|callback_query|interview_move|iv_move
-user_actions|callback_query|interview_move_to|iv_moveto:*
 user_actions|callback_query|consent_tap|cns:*
 user_actions|callback_query|toggle_notice_broadcasts|bc_notice_bc
 user_actions|callback_query|toggle_notice_game|bc_notice_game
@@ -2829,7 +2843,9 @@ def test_snapshot_total_handler_count_is_292():
     # /write_here: +1 user_actions.message сразу перед reg_handoff_idle_fallback (1494 -> 1495).
     # Рассылка ВК: +1 admin.message после cmd_refresh_allowlist и +3 admin.callback_query
     # сразу после bc_consent_clear (1495 -> 1499).
-    assert len(GOLDEN_SNAPSHOT) == 1499
+    # Виды сертификата: +4 сообщения и +9 кнопок сразу после экрана сертификатов.
+    # Тот же прогон записал уже стоявшее меню интервью и сдвиг его четырёх кнопок (1499 -> 1513).
+    assert len(GOLDEN_SNAPSHOT) == 1513
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

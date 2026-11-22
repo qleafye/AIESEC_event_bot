@@ -631,16 +631,63 @@ async def _overlay_texts(markup: dict | None, telegram_id: int | None) -> tuple[
     return date_text, city_text
 
 
+def _render_pdf(template, name, name_box, bars, markup, date_text, city_text, font_bytes):
+    from services.forum.certificate_render import render_certificate
+
+    return render_certificate(
+        template, name, name_box, bars, markup, date_text, city_text, font_bytes=font_bytes,
+    )
+
+
+async def _saved_font_bytes(bot) -> bytes | None:
+    """Байты загруженного шрифта. Не открылись или не скачались — сборка возьмёт свой файл."""
+    file_id = await cdb.get_font_file_id()
+    if not file_id or bot is None:
+        return None
+    try:
+        return await _template_bytes(bot, file_id)
+    except Exception as e:
+        logger.warning(f"certificates.font: {e}")
+        return None
+
+
+def _fields_markup(fields: list[str], markup: dict | None) -> dict | None:
+    """Рамки своего вида: только включённые поля, и только если рамка на файле есть."""
+    if not markup:
+        return None
+    keep = {}
+    for key in ("name", "date", "city", "scales"):
+        if key in fields and markup.get(key):
+            keep[key] = markup[key]
+    return keep or None
+
+
 async def build_pdf(bot, file_id: str, name: str, kind: str = KIND_PARTICIPANT,
                     percents: list[int] | None = None, *, telegram_id: int | None = None) -> bytes:
     """`percents` — шкалы сертификата компетенций; без них у этого вида — `SAMPLE_PERCENTS`.
-    Доли рамок читаются рядом с этим file_id. Нет долей — прежние константы."""
-    from services.forum.certificate_render import (
-        COMPETENCY_NAME_BOX, NAME_BOX, parse_markup, render_certificate,
-    )
+    Доли рамок читаются рядом с этим file_id. Нет долей — прежние константы.
+    Свой вид смотрит список полей строки и не подставляет примерные проценты."""
+    from services.forum.certificate_render import COMPETENCY_NAME_BOX, NAME_BOX, parse_markup
 
     template = await _template_bytes(bot, file_id)
     markup = parse_markup(await cdb.markup_for_file(file_id))
+    font_bytes = await _saved_font_bytes(bot)
+    custom = await cdb.get_kind(kind) if cdb.kind_id_from_code(kind) else None
+    if custom is not None:
+        fields = custom["fields"]
+        draw = _fields_markup(fields, markup)
+        date_text, city_text = await _overlay_texts(draw, telegram_id)
+        bars = None
+        if "scales" in fields and (draw or {}).get("scales"):
+            got = percents
+            if got is None and telegram_id:
+                got = await competency_percents(telegram_id)
+            if got is not None:
+                by_name = await competency_name_percents(telegram_id) if telegram_id else None
+                bars = percents_for_scales(got, draw, by_name)
+        return await asyncio.to_thread(
+            _render_pdf, template, name, NAME_BOX, bars, draw, date_text, city_text, font_bytes,
+        )
     date_text, city_text = await _overlay_texts(markup, telegram_id)
     name_box = COMPETENCY_NAME_BOX if kind == KIND_COMPETENCY else NAME_BOX
     bars = (percents or SAMPLE_PERCENTS) if kind == KIND_COMPETENCY else None
@@ -648,7 +695,7 @@ async def build_pdf(bot, file_id: str, name: str, kind: str = KIND_PARTICIPANT,
         by_name = await competency_name_percents(telegram_id) if telegram_id else None
         bars = percents_for_scales(bars, markup, by_name)
     return await asyncio.to_thread(
-        render_certificate, template, name, name_box, bars, markup, date_text, city_text,
+        _render_pdf, template, name, name_box, bars, markup, date_text, city_text, font_bytes,
     )
 
 

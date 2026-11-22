@@ -741,6 +741,8 @@ class CertAdmin(StatesGroup):
     open_at = State()
     template = State()
     people = State()
+    kind_title = State()
+    font = State()
 
 
 class ShopAdmin(StatesGroup):

@@ -34,6 +34,18 @@ COMPETENCY_BARS = {"page": (842.0, 595.0), "x0": 510.0, "x1": 794.0,
 _BAR_FONT = "Montserrat-Bold.ttf"
 
 
+def _load_font(size: int, fallback: str, font_bytes: bytes | None):
+    """Свой файл, если Pillow его открывает. Иначе шрифт сборки — PDF не падает."""
+    from PIL import ImageFont
+
+    if font_bytes:
+        try:
+            return ImageFont.truetype(io.BytesIO(font_bytes), size)
+        except Exception:
+            pass
+    return ImageFont.truetype(str(_FONTS / fallback), size)
+
+
 def _box(item) -> dict | None:
     """Доли левого верхнего угла и размера. Число вне листа — рамка не годится."""
     if not isinstance(item, dict):
@@ -154,15 +166,15 @@ def dump_markup(data: dict) -> str:
     return json.dumps(clean, ensure_ascii=False)
 
 
-def _name_image(name: str, box_w_pt: float, box_h_pt: float):
+def _name_image(name: str, box_w_pt: float, box_h_pt: float, font_bytes: bytes | None = None):
     """RGBA-картинка имени, вписанная в полосу: кегль уменьшается, пока строка не влезет."""
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     w_px, h_px = int(box_w_pt * _SUPERSAMPLE), int(box_h_pt * _SUPERSAMPLE)
     size = int(h_px * 0.62)
     probe = ImageDraw.Draw(Image.new("L", (1, 1)))
     while True:
-        font = ImageFont.truetype(str(_FONTS / _FONT), size)
+        font = _load_font(size, _FONT, font_bytes)
         if probe.textlength(name, font=font) <= w_px or size <= 8 * _SUPERSAMPLE:
             break
         size -= _SUPERSAMPLE
@@ -171,11 +183,11 @@ def _name_image(name: str, box_w_pt: float, box_h_pt: float):
     return img
 
 
-def _bars_image(percents, scale: float):
+def _bars_image(percents, scale: float, font_bytes: bytes | None = None):
     """RGBA-картинка колонки шкал: на каждую шкалу с процентом > 0 — синяя пилюля на долю
     ширины (не уже подписи) и белое «NN%». Возвращает (картинка, x, верх, ширина, высота) в pt
     макета."""
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     b = COMPETENCY_BARS
     top, bottom = b["tops"][0], b["tops"][-1] + b["h"]
@@ -183,7 +195,7 @@ def _bars_image(percents, scale: float):
     k = scale * _SUPERSAMPLE
     img = Image.new("RGBA", (round(width * k), round(height * k)), NAME_COLOR + (0,))
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype(str(_FONTS / _BAR_FONT), round(b["size"] * k))
+    font = _load_font(round(b["size"] * k), _BAR_FONT, font_bytes)
     for bar_top, pct in zip(b["tops"], percents):
         if not pct or pct <= 0:
             continue
@@ -197,9 +209,9 @@ def _bars_image(percents, scale: float):
     return img, b["x0"], top, width, height
 
 
-def _one_bar(pct: int, box_w_pt: float, box_h_pt: float):
+def _one_bar(pct: int, box_w_pt: float, box_h_pt: float, font_bytes: bytes | None = None):
     """Одна шкала в своей рамке. 0% — картинки нет, на листе остаётся ноль шаблона."""
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
     pct = min(int(pct), 100)
     if pct <= 0:
@@ -208,7 +220,7 @@ def _one_bar(pct: int, box_w_pt: float, box_h_pt: float):
     w_px, h_px = max(1, int(box_w_pt * k)), max(1, int(box_h_pt * k))
     img = Image.new("RGBA", (w_px, h_px), NAME_COLOR + (0,))
     draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype(str(_FONTS / _BAR_FONT), max(8, int(h_px * 0.45)))
+    font = _load_font(max(8, int(h_px * 0.45)), _BAR_FONT, font_bytes)
     label = f"{pct}%"
     pad = h_px * 0.15
     bar_w = max(w_px * pct / 100, draw.textlength(label, font=font) + 2 * pad)
@@ -251,7 +263,8 @@ def _image_xobject(writer, img):
 
 def render_certificate(template_pdf: bytes, name: str, name_box: tuple = NAME_BOX,
                        percents: list[int] | None = None, markup: dict | None = None,
-                       date_text: str = "", city_text: str = "") -> bytes:
+                       date_text: str = "", city_text: str = "", *,
+                       font_bytes: bytes | None = None) -> bytes:
     """PDF первой страницы шаблона с вписанным именем (и шкалами компетенций, если переданы
     `percents` — по порядку шкал шаблона). `markup` — доли рамок этого файла. Нет долей —
     прежние `NAME_BOX` и `COMPETENCY_BARS`. Синхронный (Pillow + pypdf) — вызывающий зовёт
@@ -280,7 +293,7 @@ def render_certificate(template_pdf: bytes, name: str, name_box: tuple = NAME_BO
         box_w, box_h = page_w * wf, page_h * hf
         x = left + page_w * cx - box_w / 2
         y = top - page_h * cy_top - box_h / 2
-    images.append(("/CertName", _name_image(name.strip(), box_w, box_h), x, y, box_w, box_h))
+    images.append(("/CertName", _name_image(name.strip(), box_w, box_h, font_bytes), x, y, box_w, box_h))
     for key, text, label in (
         ("date", date_text, "/CertDate"),
         ("city", city_text, "/CertCity"),
@@ -289,19 +302,19 @@ def render_certificate(template_pdf: bytes, name: str, name_box: tuple = NAME_BO
         if not box or not str(text or "").strip():
             continue
         rx, ry, rw, rh = _frac_rect(left, top, page_w, page_h, box)
-        images.append((label, _name_image(str(text).strip(), rw, rh), rx, ry, rw, rh))
+        images.append((label, _name_image(str(text).strip(), rw, rh, font_bytes), rx, ry, rw, rh))
     scales = (markup or {}).get("scales")
     if scales and percents:
         for index, box in enumerate(scales):
             pct = percents[index] if index < len(percents) else 0
             rx, ry, rw, rh = _frac_rect(left, top, page_w, page_h, box)
-            img = _one_bar(pct, rw, rh)
+            img = _one_bar(pct, rw, rh, font_bytes)
             if img is not None:
                 images.append((f"/CertBar{index}", img, rx, ry, rw, rh))
     elif percents:
         sx = page_w / COMPETENCY_BARS["page"][0]
         sy = page_h / COMPETENCY_BARS["page"][1]
-        img, bx, btop, bw, bh = _bars_image(percents, sx)
+        img, bx, btop, bw, bh = _bars_image(percents, sx, font_bytes)
         images.append(("/CertBars", img, left + bx * sx, top - (btop + bh) * sy, bw * sx, bh * sy))
 
     resources = page.get("/Resources")

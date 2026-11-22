@@ -84,6 +84,7 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
     await _db._ensure_column(db, "certificate_people", "name_ok", "INTEGER NOT NULL DEFAULT 0")
     await _db._ensure_column(db, "certificate_people", "send_blocked", "INTEGER NOT NULL DEFAULT 0")
     await _db._ensure_column(db, "certificate_templates", "markup", "TEXT")
+    await _db._ensure_column(db, "certificate_config", "font_file_id", "TEXT")
     await db.execute(
         "CREATE TABLE IF NOT EXISTS certificate_kinds ("
         "id INTEGER PRIMARY KEY, title TEXT NOT NULL, audience TEXT NOT NULL, "
@@ -207,6 +208,60 @@ async def insert_kind(
     return await get_kind(kind_code(new_id))
 
 
+async def set_kind_audience(code: str, audience: str, role_key: str | None = None) -> dict | None:
+    """Сменить «кому». Чужой ключ роли строку не меняет."""
+    if audience not in AUDIENCES or await get_kind(code) is None:
+        return None
+    stored_role = None
+    if audience == "role":
+        from services.access.role_registry import ROLES
+        if role_key not in ROLES:
+            return None
+        stored_role = role_key
+    kind_id = kind_id_from_code(code)
+    async with _db._connect() as db:
+        await db.execute(
+            "UPDATE certificate_kinds SET audience = ?, role_key = ? WHERE id = ?",
+            (audience, stored_role, kind_id),
+        )
+        await db.commit()
+    return await get_kind(code)
+
+
+async def toggle_kind_field(code: str, field: str) -> dict | None:
+    """Повторное нажатие снимает поле. Имя остаётся: без него печатать нечего."""
+    row = await get_kind(code)
+    if row is None or field not in KIND_FIELDS:
+        return None
+    fields = list(row["fields"])
+    if field in fields:
+        if field == "name":
+            return row
+        fields.remove(field)
+    else:
+        fields.append(field)
+    async with _db._connect() as db:
+        await db.execute(
+            "UPDATE certificate_kinds SET fields = ? WHERE id = ?",
+            (json.dumps(_fields_list(fields), ensure_ascii=False), row["id"]),
+        )
+        await db.commit()
+    return await get_kind(code)
+
+
+async def toggle_kind_day(code: str) -> dict | None:
+    row = await get_kind(code)
+    if row is None:
+        return None
+    async with _db._connect() as db:
+        await db.execute(
+            "UPDATE certificate_kinds SET by_day = ? WHERE id = ?",
+            (0 if row["by_day"] else 1, row["id"]),
+        )
+        await db.commit()
+    return await get_kind(code)
+
+
 async def delete_kind(code: str) -> bool:
     """Удалить свой вид, его шаблоны и список ников. Четыре старых кода не принимает."""
     if code in KINDS or kind_id_from_code(code) is None:
@@ -265,6 +320,29 @@ async def set_open_at(value: str | None) -> None:
             "INSERT INTO certificate_config (id, open_at) VALUES (1, ?) "
             "ON CONFLICT(id) DO UPDATE SET open_at = excluded.open_at",
             (value,),
+        )
+        await db.commit()
+
+
+async def get_font_file_id() -> str | None:
+    """file_id своего шрифта имени или `None` — рисуем шрифтами сборки."""
+    try:
+        async with _db._connect() as db:
+            async with db.execute(
+                "SELECT font_file_id FROM certificate_config WHERE id = 1",
+            ) as cur:
+                row = await cur.fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return row[0] if row and row[0] else None
+
+
+async def set_font_file_id(file_id: str | None) -> None:
+    async with _db._connect() as db:
+        await db.execute(
+            "INSERT INTO certificate_config (id, font_file_id) VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET font_file_id = excluded.font_file_id",
+            (file_id,),
         )
         await db.commit()
 
