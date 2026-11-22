@@ -677,6 +677,7 @@ async function renderManagerHub(root, ctx, opts = {}) {
     { cap: "settings", icon: "message-circle", title: "Чат города", hash: "#/settings/row-chat" },
     { cap: "settings", icon: "user", title: "Амбассадоры", hash: "#/settings/row-amb" },
     { cap: "settings", icon: "settings", title: "Редкое", hash: "#/settings/row-rare" },
+    { cap: "settings", icon: "image", title: "Рамки на макете QR", hash: "#/qr-card-layout" },
   ];
   const forumTiles = [
     { cap: "checkin", icon: "camera", title: "Сканер QR", hash: "#/scanner", meta: "Отметка на входе" },

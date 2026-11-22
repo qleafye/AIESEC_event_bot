@@ -380,6 +380,41 @@ def qr_frame(markup) -> dict | None:
     return _frame_box(markup.get("qr"))
 
 
+def center_qr_markup(width: int, height: int) -> dict:
+    """Квадрат кода по центру картинки, в долях. Имя, город и ВК выключены."""
+    side = min(int(width), int(height))
+    return {
+        "qr": {
+            "x": (width - side) / 2 / width,
+            "y": (height - side) / 2 / height,
+            "w": side / width,
+            "h": side / height,
+        },
+    }
+
+
+_LAYOUT_KEYS = ("qr", "name", "city", "vk")
+
+
+def layout_markup(raw) -> dict | None:
+    """Доли с экрана рамок. Чужие ключи выкидываются. Нет рамки кода на листе — None."""
+    if not isinstance(raw, dict):
+        return None
+    out = {}
+    for key in _LAYOUT_KEYS:
+        if key not in raw or raw[key] is None:
+            continue
+        box = _frame_box(raw[key])
+        if box is None:
+            if key == "qr":
+                return None
+            continue
+        out[key] = box
+    if qr_frame(out) is None:
+        return None
+    return out
+
+
 def layout_qr_origin(width: int, height: int, frame: dict, payload: str) -> tuple[int, int, int, int]:
     """`(left, top, scale, modules)` квадрата кода на холсте. Шаг модуля один и тот же по осям."""
     qr = segno.make(payload, error="m")

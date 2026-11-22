@@ -156,17 +156,32 @@ SAMPLE_NAME = "Иванова Анна"
 SAMPLE_CITY = "Москва"
 
 
-async def sample_preview(theme: CardTheme) -> bytes:
+async def sample_preview(theme: CardTheme, bot=None) -> bytes:
     """Превью карточки для админки: вымышленный делегат и ненастоящий TEST-токен (как у
-    `build_test_qr`) — реальных данных делегатов в превью нет."""
+    `build_test_qr`) — реальных данных делегатов в превью нет. Годный макет рисуется
+    вместо генератора; цвета темы на этот вызов не передаются."""
     import asyncio
     from functools import partial
 
+    from database.db import qr_card_layout_get
     from services.forum.checkin import _TEST_TOKEN_PREFIX, _event_tag, build_payload, card_texts
-    from services.forum.qr_card import render_qr_card
+    from services.forum.qr_card import qr_frame, render_qr_card, render_qr_on_layout
 
     title, footer, watermark = await card_texts()
     payload = build_payload(await _event_tag(), SAMPLE_NAME, SAMPLE_CITY, _TEST_TOKEN_PREFIX + "PREVIEW")
+    layout = await qr_card_layout_get()
+    if layout and qr_frame(layout.get("markup")):
+        try:
+            if bot is None:
+                from services.scheduler import get_bot
+
+                bot = get_bot()
+            raw = await _image_bytes(bot, layout["file_id"])
+            return await asyncio.to_thread(
+                render_qr_on_layout, raw, layout["markup"], payload, SAMPLE_NAME, SAMPLE_CITY, "",
+            )
+        except Exception as e:
+            logger.warning(f"sample_preview: макет не собрался, показываем генератор: {e}")
     return await asyncio.to_thread(
         partial(render_qr_card, payload, SAMPLE_NAME, SAMPLE_CITY, title, footer, watermark, theme=theme),
     )

@@ -309,6 +309,7 @@ class QrCardTheme(StatesGroup):
     # черновик оформления живёт в данных FSM ("qrct_draft") и переживает смену состояния.
     bg_image = State()         # картинка фона карточки
     logo = State()             # своё лого карточки
+    layout = State()           # свой макет карточки, PNG или JPEG
 
 
 class RejectRuleEdit(StatesGroup):
