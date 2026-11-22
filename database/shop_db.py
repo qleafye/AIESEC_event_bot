@@ -26,6 +26,7 @@ UPDATE `status = 'issued'`, второй тап ничего не выдаёт. 
 картинку, только пока товар на витрине (`is_item_photo`)."""
 from __future__ import annotations
 
+import logging
 import re
 import secrets
 
@@ -33,6 +34,8 @@ import aiosqlite
 
 from database import db as _db
 from services.infra.timeutil import msk_now
+
+logger = logging.getLogger(__name__)
 
 SOURCE_SHOP = "shop"
 CODE_PREFIX = "Ю"
@@ -255,6 +258,15 @@ async def _charge(db: aiosqlite.Connection, item_id: int, telegram_id: int, by: 
     return item, balance, coin_id
 
 
+def _note_shop_sheet() -> None:
+    """Поставить пересборку вкладки после уже сохранённой выдачи. Сбой планировщика выдачу не откатывает."""
+    try:
+        from services.sheets.shop_sheet import request_shop_sheet_sync
+        request_shop_sheet_sync()
+    except Exception:
+        logger.exception("shop sheet: не поставили пересборку")
+
+
 async def sell(item_id: int, telegram_id: int, sold_by: int) -> dict:
     """Списать баллы и выдать товар одной транзакцией. Возвращает строку выдачи с полем
     `balance` — сколько осталось. Бросает `SaleError` с понятной причиной."""
@@ -274,10 +286,12 @@ async def sell(item_id: int, telegram_id: int, sold_by: int) -> dict:
         except BaseException:
             await db.rollback()
             raise
-    return {
+    sale = {
         "id": sale_id, "item_id": item_id, "title": item["title"], "price": item["price"],
         "telegram_id": telegram_id, "balance": balance - item["price"],
     }
+    _note_shop_sheet()
+    return sale
 
 
 # ── бронь делегатом ────────────────────────────────────────────────────────────────────
@@ -335,10 +349,12 @@ async def reserve(item_id: int, telegram_id: int) -> dict:
         except BaseException:
             await db.rollback()
             raise
-    return {
+    sale = {
         "id": sale_id, "item_id": item_id, "title": item["title"], "price": item["price"],
         "telegram_id": telegram_id, "balance": balance - item["price"], "code": code, "token": token,
     }
+    _note_shop_sheet()
+    return sale
 
 
 _SALE_WITH_USER = (
@@ -383,6 +399,7 @@ async def cancel_reservation(sale_id: int, by: int, owner_id: int | None = None)
         except BaseException:
             await db.rollback()
             raise
+    _note_shop_sheet()
     return {**sale, "undone_at": stamp, "undone_by": by, "balance": balance}
 
 
@@ -404,6 +421,7 @@ async def issue_reservation(sale_id: int, by: int) -> dict | None:
         except BaseException:
             await db.rollback()
             raise
+    _note_shop_sheet()
     return sale
 
 
@@ -484,6 +502,7 @@ async def undo_sale(sale_id: int, by: int) -> dict | None:
         except BaseException:
             await db.rollback()
             raise
+    _note_shop_sheet()
     return dict(sale)
 
 

@@ -204,6 +204,7 @@ SHEET_TAB_WRITE_MODE = {
     "game_matrix_tab": "rewrite",
     "game_history_tab": "rewrite",
     "game_coins_log_tab": "rewrite",
+    "shop_sheet_tab": "rewrite",
     "enroll_sessions_tab": "rewrite",
     "enroll_people_tab": "rewrite",
     "short_sheet_tab": "append",
@@ -261,15 +262,16 @@ def tab_check_failed_warning(key: str) -> str:
 
 # ── Quick 260919-mlu (Task 2): план переименований вкладок ───────────────────────────────
 #
-# SHEET_TAB_NAME_KEYS — все 13 ключей-ИМЁН вкладок из реестра. Это НЕ SHEET_TAB_WRITE_MODE
-# выше (там 9 ключей и только РЕЖИМ записи rewrite/append — определяет текст гейта задачи
+# SHEET_TAB_NAME_KEYS — все 14 ключей-ИМЁН вкладок из реестра. Это НЕ SHEET_TAB_WRITE_MODE
+# выше (там 10 ключей и только РЕЖИМ записи rewrite/append — определяет текст гейта задачи
 # 260815-3hw). Здесь — полный список ключей, чьё ЗНАЧЕНИЕ является именем реального листа
 # Google-таблицы (включая polls_sheet_tab/preselect_tab/history_sheet_tab/questions_sheet_tab,
 # которых нет в SHEET_TAB_WRITE_MODE, потому что туда бот либо не пишет вовсе, либо пишет не
 # через rebuild/append-путь, который гейт 260815-3hw вообще проверяет).
 SHEET_TAB_NAME_KEYS: tuple[str, ...] = (
     "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
-    "polls_sheet_tab", "game_matrix_tab", "game_history_tab", "game_coins_log_tab", "preselect_tab",
+    "polls_sheet_tab", "game_matrix_tab", "game_history_tab", "game_coins_log_tab",
+    "shop_sheet_tab", "preselect_tab",
     "history_sheet_tab", "questions_sheet_tab", "enroll_sessions_tab", "enroll_people_tab",
 )
 
