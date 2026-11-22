@@ -1864,6 +1864,7 @@ from handlers.comms import survey_delegate  # noqa: E402,F401  -- анкета: 
 from handlers.forum import certificates as certificate_handlers  # noqa: E402,F401  -- cert_*, /certificate, до фолбэка
 from handlers.game import shop_delegate  # noqa: E402,F401  -- витрина магазина баллов (shopv), до фолбэка
 from handlers.chat import coming_reply as coming_reply_handlers  # noqa: E402,F401  -- «Дойду», до фолбэка
+from handlers import interviews as interview_delegate  # noqa: E402,F401  -- «Выбрать время», до фолбэка
 
 
 @router.message(Command("write_here"))
@@ -2310,6 +2311,5 @@ async def unmute_broadcasts_today(callback: types.CallbackQuery):
     await apply_unmute_today(callback)
 
 
-from handlers import interviews as interview_delegate  # noqa: E402,F401
 from handlers.comms import consent_tap as consent_delegate  # noqa: E402,F401
 from handlers.comms import delegate_notices as notice_delegate  # noqa: E402,F401

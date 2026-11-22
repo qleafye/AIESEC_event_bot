@@ -9,7 +9,8 @@ import json
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-_BUTTON = "🗓 Выбрать время"
+PICK_LABEL = "🗓 Выбрать время"
+_BUTTON = PICK_LABEL
 
 
 def with_interview_button(base: InlineKeyboardMarkup | None, on: bool):
