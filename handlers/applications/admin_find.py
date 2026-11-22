@@ -258,6 +258,9 @@ async def _answer_users_card(message: types.Message, user: dict) -> None:
     rows.append([InlineKeyboardButton(
         text="📎 Заменить резюме", callback_data=f"resumerep_start:{user['telegram_id']}",
     )])
+    from services.applications.card_journal import journal_html
+
+    text += await journal_html(user["telegram_id"])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
