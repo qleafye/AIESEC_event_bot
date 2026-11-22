@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Итог дня — {{ event_name or "Дашборд статистики" }}{% endblock %}
+{% block body %}
+
+  <header class="site-header">
+    <div class="brand-row">
+      <a class="brand" href="/{% if event_code %}?event={{ event_code | urlencode }}{% endif %}" aria-label="АЙСЕК — на главную">
+        <img class="brand-light" src="/static/brand/aisek-logo-ru.png" alt="АЙСЕК">
+        <img class="brand-dark" src="/static/brand/aiesec-logo-white.svg" alt="" aria-hidden="true">
+      </a>
+      <div class="title-block">
+        <h1>Итог дня</h1>
+        {% if event_season %}<div class="subtitle">Сезон {{ event_season }} · {{ day_label }}</div>{% endif %}
+      </div>
+      <div class="event-logo-slot">
+        {% if event_logo_url %}
+        <img class="event-logo" src="{{ event_logo_url }}" alt="{{ event_name or 'Логотип мероприятия' }}">
+        {% endif %}
+      </div>
+    </div>
+
+    <nav class="switchers" aria-label="Навигация">
+      <a class="switch-link" href="/{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">← К статистике</a>
+      <a class="switch-link" href="/forum{% if event_code %}?event={{ event_code | urlencode }}{% endif %}">🎪 Форум</a>
+      <a class="switch-link" href="/feedback{% if event_code or scope.city %}?{% endif %}{% if event_code %}event={{ event_code | urlencode }}{% if scope.city %}&{% endif %}{% endif %}{% if scope.city %}city={{ scope.city | urlencode }}{% endif %}">ФОРУМ: ИТОГИ</a>
+      {% if event_code %}
+      <a class="switch-link" href="/compare">К сравнению событий</a>
+      {% endif %}
+    </nav>
+
+    {% if show_city_switcher %}
+    <nav class="switchers" aria-label="Город">
+      <span class="switchers-label">Город:</span>
+      <a class="switch-link{% if not scope.city %} active{% endif %}"
+         {% if not scope.city %}aria-current="page"{% endif %}
+         href="?{% if event_code %}event={{ event_code | urlencode }}{% if scope.season or day %}&{% endif %}{% endif %}{% if scope.season %}season={{ scope.season }}{% endif %}{% if scope.season and day %}&{% endif %}{% if day %}day={{ day }}{% endif %}">Все города</a>
+      {% for city in city_options %}
+      <a class="switch-link{% if scope.city == city.code %} active{% endif %}"
+         {% if scope.city == city.code %}aria-current="page"{% endif %}
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}city={{ city.code }}{% if scope.season %}&season={{ scope.season }}{% endif %}{% if day %}&day={{ day }}{% endif %}">{{ city.label }}</a>
+      {% endfor %}
+    </nav>
+    {% elif viewer.bound_city %}
+    <div class="bound-city-note">Ваш город: {{ bound_city_label }}</div>
+    {% endif %}
+
+    {% if season_options|length > 1 %}
+    <nav class="switchers" aria-label="Сезон">
+      <span class="switchers-label">Сезон:</span>
+      {% for season in season_options %}
+      {% set is_active = (scope.season and scope.season == season.value) or (not scope.season and season.current) %}
+      <a class="switch-link{% if is_active %} active{% endif %}"
+         {% if is_active %}aria-current="page"{% endif %}
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}{% if scope.city %}city={{ scope.city }}&{% endif %}season={{ season.value }}{% if day %}&day={{ day }}{% endif %}">{{ season.label }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+
+    {% if day_options %}
+    <nav class="switchers" aria-label="День форума">
+      <span class="switchers-label">День:</span>
+      {% for d in day_options %}
+      <a class="switch-link{% if d.day == day %} active{% endif %}"
+         {% if d.day == day %}aria-current="page"{% endif %}
+         href="?{% if event_code %}event={{ event_code | urlencode }}&{% endif %}{% if scope.city %}city={{ scope.city }}&{% endif %}{% if scope.season %}season={{ scope.season }}&{% endif %}day={{ d.day }}">{{ d.label }}</a>
+      {% endfor %}
+    </nav>
+    {% endif %}
+  </header>
+
+  <section class="page-section" id="arrival" aria-labelledby="arrival-title">
+    <h2 class="section-title" id="arrival-title">Приход</h2>
+    <section class="block">
+      <div class="card">
+        {% if arrival %}
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="num">{{ arrival.approved | thousands }}</div>
+            <div class="lbl">Одобрено</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ arrival.present | thousands }}</div>
+            <div class="lbl">Пришли</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{% if arrival.pct is not none %}{{ arrival.pct }}%{% else %}—{% endif %}</div>
+            <div class="lbl">Процент</div>
+          </div>
+        </div>
+        {% else %}
+        <p class="empty-note">Отметок на входе ещё нет.</p>
+        {% endif %}
+      </div>
+    </section>
+  </section>
+
+  <section class="page-section" id="forms" aria-labelledby="forms-title">
+    <h2 class="section-title" id="forms-title">Опросы</h2>
+    {% if not forms %}
+    <section class="block"><div class="card"><p class="empty-note">Открытых опросов за этот день нет.</p></div></section>
+    {% else %}
+    <section class="block">
+      <div class="card">
+        <div class="kpi-grid">
+          <div class="kpi primary">
+            <div class="num">{{ totals.pct }}%</div>
+            <div class="lbl">Заполнение опросов</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ totals.done | thousands }}</div>
+            <div class="lbl">Завершили</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              <th>Форма</th>
+              <th>Тип</th>
+              <th class="num">Должны</th>
+              <th class="num">Начали</th>
+              <th class="num">Завершили</th>
+              <th class="num">Не начинали</th>
+              <th class="num">Бросили</th>
+              <th class="num">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in forms %}
+            <tr>
+              <td data-label="Форма">{{ f.name }}</td>
+              <td data-label="Тип">{{ f.type }}</td>
+              <td class="num" data-label="Должны">{{ f.should | thousands }}</td>
+              <td class="num" data-label="Начали">{% if f.started is not none %}{{ f.started | thousands }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Завершили">{{ f.done | thousands }}</td>
+              <td class="num" data-label="Не начинали">{% if f.not_started is not none %}{{ f.not_started | thousands }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Бросили">{% if f.abandoned is not none %}{{ f.abandoned | thousands }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="%">{{ f.pct }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </section>
+    {% endif %}
+  </section>
+
+  <section class="page-section" id="sessions" aria-labelledby="sessions-title">
+    <h2 class="section-title" id="sessions-title">Оценки сессий</h2>
+    <section class="block">
+      <div class="card">
+        {% if sessions %}
+        <div class="kpi-grid secondary">
+          <div class="kpi">
+            <div class="num">{% if sessions_totals.avg is not none %}{{ sessions_totals.avg }}{% else %}—{% endif %}</div>
+            <div class="lbl">Средняя</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ sessions_totals.rated | thousands }}</div>
+            <div class="lbl">Оценок</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ sessions_totals.comments | thousands }}</div>
+            <div class="lbl">Комментариев</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+        <table class="responsive">
+          <thead>
+            <tr>
+              <th>Сессия</th>
+              <th class="num">Средняя</th>
+              <th class="num">Оценок</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in sessions %}
+            <tr>
+              <td data-label="Сессия">{{ s.name }}</td>
+              <td class="num" data-label="Средняя">{% if s.avg is not none %}{{ s.avg }}{% else %}—{% endif %}</td>
+              <td class="num" data-label="Оценок">{{ s.done | thousands }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="empty-note">Оценок сессий за этот день нет.</p>
+        {% endif %}
+      </div>
+    </section>
+  </section>
+
+  <section class="page-section" id="reserve" aria-labelledby="reserve-title">
+    <h2 class="section-title" id="reserve-title">Резерв · {{ day_label }}</h2>
+    <section class="block">
+      <div class="card">
+        {% if reserve_off %}
+        <p class="empty-note">Резерв виден, когда включены правила автоотказа.</p>
+        {% else %}
+        <div class="kpi-grid secondary">
+          <div class="kpi">
+            <div class="num">{{ reserve.invited | thousands }}</div>
+            <div class="lbl">Позвали</div>
+          </div>
+          <div class="kpi">
+            <div class="num">{{ reserve.arrived | thousands }}</div>
+            <div class="lbl">Пришли как резерв</div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </section>
+  </section>
+
+{% endblock %}
