@@ -309,10 +309,24 @@ function dropFromOldSection(item, groupToken) {
 function takeGroup(group, items) {
   if (!items.length) return null;
   const copy = { token: group.token, label: group.label, items };
-  if (items.length === (group.items || []).length) {
+  const full = items.length === (group.items || []).length;
+  if (full) {
     if (group.matrix) copy.matrix = group.matrix;
     if (group.theme_preview) copy.theme_preview = true;
   }
+  // Строка хаба забирает не всю группу: «Оплата» пропускает напоминание.
+  // Без куч buildGroupCard не вызывает appendFeatureBody и рисует плоский список.
+  if (!group.piles) return copy;
+  const bases = new Set(items.map((item) => itemBase(item)).filter(Boolean));
+  const keep = (keys) => (keys || []).filter((key) => bases.has(key));
+  copy.piles = group.piles.map((pile) => ({
+    token: pile.token,
+    label: pile.label,
+    keys: keep(pile.keys),
+  }));
+  if (group.rare) copy.rare = { label: group.rare.label, keys: keep(group.rare.keys) };
+  if (group.status_lines) copy.status_lines = group.status_lines;
+  if (group.empty_text) copy.empty_text = group.empty_text;
   return copy;
 }
 

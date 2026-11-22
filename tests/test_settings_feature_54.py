@@ -116,6 +116,70 @@ def test_empty_delegate_text_is_named_on_the_event_screen(tmp_path):
     assert "наполовину" not in line
 
 
+def test_row_pay_keeps_server_piles_for_feature_body():
+    """Хаб «Оплата» собирает группу заново. Кучи с сервера должны доехать до экрана."""
+    import json
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    js_path = Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "settings.js"
+    text = js_path.read_text(encoding="utf-8")
+    start = text.index("const ROW_CODES")
+    end = text.index("function renderStart")
+    node = shutil.which("node")
+    assert node, "node нужен, чтобы прогнать сборку строки оплаты"
+    script = (
+        "function sectionLabelsFromDom() { return {}; }\n"
+        "function labelText(value) { return value || \"\"; }\n"
+        + text[start:end]
+        + """
+const payload = { sections: [{ token: "pay", label: "pay", toggles: [], groups: [{
+  token: "pay",
+  label: "pay",
+  items: [
+    { key: "payment_enabled", base_key: "payment_enabled", type: "toggle" },
+    { key: "payment_text", base_key: "payment_text", type: "text" },
+    { key: "payment_reminders_enabled", base_key: "payment_reminders_enabled", type: "toggle" },
+  ],
+  piles: [
+    { token: "work", label: "work", keys: ["payment_enabled", "payment_reminders_enabled"] },
+    { token: "delegate", label: "delegate", keys: ["payment_text"] },
+    { token: "service", label: "service", keys: [] },
+  ],
+  rare: { label: "rare", keys: ["payment_reminders_enabled"] },
+  status_lines: ["Подключено: да", "Включено: да"],
+  empty_text: "Пока пусто.",
+}]}] };
+const section = sectionForRow(payload, "row-pay");
+const group = section.groups.find((item) => item.token === "pay");
+console.log(JSON.stringify({
+  bases: group.items.map((item) => item.base_key),
+  piles: group.piles,
+  rare: group.rare,
+  status_lines: group.status_lines,
+  empty_text: group.empty_text,
+}));
+"""
+    )
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    got = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert got["bases"] == ["payment_enabled", "payment_text"]
+    by_pile = {pile["token"]: pile["keys"] for pile in got["piles"]}
+    assert [pile["label"] for pile in got["piles"]] == ["work", "delegate", "service"]
+    assert by_pile["work"] == ["payment_enabled"]
+    assert by_pile["delegate"] == ["payment_text"]
+    assert by_pile["service"] == []
+    assert got["rare"]["keys"] == []
+    assert got["status_lines"] == ["Подключено: да", "Включено: да"]
+    assert got["empty_text"] == "Пока пусто."
+    assert "наполовину" not in "\n".join(got["status_lines"])
+
+
 def test_half_on_stays_off_this_screen():
     import inspect
 
