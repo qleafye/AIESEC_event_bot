@@ -1837,6 +1837,28 @@ def arrival_floor(conn, scope: Scope, days: list[dict], day: str | None) -> dict
     }
 
 
+def arrival_for_day(conn, scope: Scope, day: str) -> dict | None:
+    """Одобрено, пришли и процент ровно за день, в который уже были входы.
+
+    `arrival_floor` сюда не годится: дня нет в списке — она подставляет другой.
+    Пустой срез — `None`, не нули. У `_floor_rows` «одобрено» считается за сезон,
+    и на дне без отметок это выглядит как чужой приход. Таблицы `checkins` нет,
+    блок прихода пуст или дня нет среди дней с входами — `_floor_rows` не звать.
+    """
+    block = arrival_block(conn, scope)
+    if not block:
+        return None
+    known = {row["day"] for row in block.get("days") or [] if row.get("day")}
+    if day not in known:
+        return None
+    floor = _floor_rows(conn, scope, scope.city, day, msk_now())
+    return {
+        "approved": floor["approved"],
+        "present": floor["present"],
+        "pct": floor["pct"],
+    }
+
+
 def questions_block(conn, scope: Scope) -> dict | None:
     """`None`, если в скоупе страницы (город + сезон) нет ни одного вопроса делегата.
 
