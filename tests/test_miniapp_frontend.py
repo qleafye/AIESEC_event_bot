@@ -281,6 +281,7 @@ EXPECTED_ROUTES = {
     # Магазин баллов: делегатский экран «🛍 Магазин».
     "#/shop": "screens/shop.js",
     "#/certificate-markup": "screens/certificate_markup.js",
+    "#/qr-card-layout": "screens/qr_card_layout.js",
 }
 _ROUTE_ROW = re.compile(r'\[\s*"(#/[^"]+)"\s*,\s*"(screens/[^"]+\.js)"\s*\]')
 
@@ -314,7 +315,7 @@ def test_route_table_matches_phase_plan_exactly():
     # Phase 12 (FORUM-CHECKIN.md, D-08): +1 маршрут "#/scanner" (22 -> 23).
     # D-29: +1 маршрут "#/program" (23 -> 24).
     # Правила автоотказа, маршруты режима, «Таблица и формы» и витрина магазина.
-    assert len(routes) == len(EXPECTED_ROUTES) == 39
+    assert len(routes) == len(EXPECTED_ROUTES) == 40
     assert set(routes.values()) == set(EXPECTED_ROUTES.values())
     assert "#/task-edit/new" not in routes
 
@@ -1397,6 +1398,7 @@ def test_manager_hub_renders_three_modes():
         "#/admin-reject-rules",
         "#/sheets-forms", "#/settings/row-reminders", "#/settings/row-pay",
         "#/settings/row-chat", "#/settings/row-amb", "#/settings/row-rare",
+        "#/qr-card-layout",
     ]
     assert [settings.index(item) for item in settings_hashes] == sorted(
         settings.index(item) for item in settings_hashes

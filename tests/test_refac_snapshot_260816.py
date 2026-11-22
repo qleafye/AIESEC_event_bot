@@ -694,6 +694,9 @@ admin|message|miniapp_theme_photo_step_invalid|state:MiniAppTheme:*
 admin|message|qrct_photo_step|state:QrCardTheme:*
 admin|message|qrct_document_step|state:QrCardTheme:*
 admin|message|qrct_image_step_invalid|state:QrCardTheme:*
+admin|message|qrct_layout_photo|state:QrCardTheme:*
+admin|message|qrct_layout_file|state:QrCardTheme:*
+admin|message|qrct_layout_other|state:QrCardTheme:*
 admin|message|admin_lookup_search_cancel|state:LookupAdmin:*
 admin|message|admin_lookup_search_step|state:LookupAdmin:*
 admin|message|arr_text_cancel|state:RejectRuleEdit:*,state:RejectRuleEdit:*
@@ -1041,6 +1044,9 @@ admin|callback_query|qrct_save_go|qrct_save_go
 admin|callback_query|qrct_discard|qrct_discard
 admin|callback_query|qrct_reset|qrct_reset
 admin|callback_query|qrct_reset_go|qrct_reset_go
+admin|callback_query|qrct_layout|qrct_layout
+admin|callback_query|qrct_layout_rm|qrct_layout_rm
+admin|callback_query|qrct_layout_rm_go|qrct_layout_rm_go
 admin|callback_query|show_admin_section|admin_sec:*
 admin|callback_query|sheet_logs_open|sheet_logs_open
 admin|callback_query|sheet_logs_autosync_toggle|sheet_logs_autosync_toggle
@@ -2845,7 +2851,8 @@ def test_snapshot_total_handler_count_is_292():
     # сразу после bc_consent_clear (1495 -> 1499).
     # Виды сертификата: +4 сообщения и +9 кнопок сразу после экрана сертификатов.
     # Тот же прогон записал уже стоявшее меню интервью и сдвиг его четырёх кнопок (1499 -> 1513).
-    assert len(GOLDEN_SNAPSHOT) == 1513
+    # Макет карточки QR: +3 сообщения и +3 кнопки сразу после приёма картинки темы и сброса цветов (1513 -> 1519).
+    assert len(GOLDEN_SNAPSHOT) == 1519
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

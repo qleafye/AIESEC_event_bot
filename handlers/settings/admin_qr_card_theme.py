@@ -14,18 +14,22 @@ HEX и коды ключей человеку не показываются. В�
 from __future__ import annotations
 
 import html as html_module
+import io
 import logging
 
 from aiogram import F, types
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
+from config import config
 import shared.web_theme as web_theme
+from database.db import qr_card_layout_delete, qr_card_layout_get, qr_card_layout_put
 from domain.settings.schema import option_label, option_labels
 from handlers.access.admin_caps import ADMIN_CAPS
 from handlers.admin import router
 from handlers.states import QrCardTheme
+from services.forum.qr_card import center_qr_markup, qr_frame
 from services.forum.qr_card_theme import CARD_THEME_KEYS, PALETTE, hex_of, load_card_theme, resolve_values, sample_preview
 from services.settings.audit import delete_setting_by_admin, set_setting_by_admin
 
@@ -75,6 +79,16 @@ _PREVIEW_FAILED = "Не получилось собрать превью — п�
 _BAD_FILE = "Не понял — пришлите картинку фото или файлом PNG/JPEG"
 _TOO_BIG = "Картинка больше 10 МБ — пришлите её поменьше (фото или файлом PNG/JPEG)."
 _LOW_CONTRAST = "⚠️ Текст плохо виден на этом фоне — выберите цвет текста контрастнее."
+_LAYOUT_ASK = (
+    "Пришлите файл PNG или JPEG, или фото. Код на картинке рисовать не нужно."
+)
+_LAYOUT_PDF = "Карточка уходит картинкой. Пришлите PNG или JPEG"
+_LAYOUT_BIG = "Файл больше 10 МБ. Пришлите картинку меньше"
+_LAYOUT_BAD = "Не получилось открыть картинку. Пришлите PNG или JPEG ещё раз"
+_LAYOUT_GONE = (
+    "Убрать макет? Делегаты снова получат карточку, которую бот собирает сам. "
+    "Цвета, картинка фона и лого этого экрана останутся."
+)
 
 
 async def _draft(state: FSMContext) -> dict:
@@ -110,10 +124,13 @@ async def render_qr_card_theme_text(draft: dict) -> str:
     lines = ["🎟 <b>Карточка QR</b>"]
     if draft:
         lines.append("✏️ Есть несохранённые изменения")
+    layout = await qr_card_layout_get()
     lines += [
         "",
         "Картинка с QR-кодом, которую делегат получает для входа. Здесь меняется только "
         "оформление вокруг кода — сам код остаётся прежним.",
+        "",
+        "📄 Свой макет: " + ("есть" if layout and layout.get("file_id") else "нет"),
         "",
         f"🎨 Фон: {_color_label(CARD_THEME_KEYS['bg'], values[CARD_THEME_KEYS['bg']])}",
         "🖼 Картинка фона: " + ("есть (поверх цвета)" if values[CARD_THEME_KEYS["bg_image"]] else "нет"),
@@ -169,6 +186,20 @@ async def build_qr_card_theme_keyboard(draft: dict) -> InlineKeyboardMarkup:
     if draft:
         rows.append([btn(text="✖️ Отменить изменения", callback_data="qrct_discard")])
     rows.append([btn(text="↩️ Как было по умолчанию", callback_data="qrct_reset")])
+    layout = await qr_card_layout_get()
+    if layout and layout.get("file_id"):
+        rows.append([
+            btn(text="📄 Другой макет", callback_data="qrct_layout"),
+            btn(text="🗑 Убрать макет", callback_data="qrct_layout_rm"),
+        ])
+    else:
+        rows.append([btn(text="📄 Загрузить макет", callback_data="qrct_layout")])
+    public = (config.DASHBOARD_PUBLIC_URL or "").strip()
+    if public:
+        rows.append([btn(
+            text="📍 Куда ставить код",
+            web_app=WebAppInfo(url=public.rstrip("/") + "/app/#/qr-card-layout"),
+        )])
     rows.append([btn(text="← К оформлению", callback_data="admin_miniapp_settings")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -196,7 +227,7 @@ async def _send_preview(callback: types.CallbackQuery, state: FSMContext, *, ask
     draft = await _draft(state)
     try:
         theme = await load_card_theme(overrides=draft, bot=callback.bot)
-        png = await sample_preview(theme)
+        png = await sample_preview(theme, bot=callback.bot)
     except Exception as e:
         logger.warning(f"qrct: превью карточки не собралось: {e}")
         await callback.message.answer(_PREVIEW_FAILED)
@@ -396,3 +427,99 @@ async def qrct_document_step(message: types.Message, state: FSMContext):
 @router.message(StateFilter(QrCardTheme.bg_image, QrCardTheme.logo))
 async def qrct_image_step_invalid(message: types.Message):
     await message.answer(_BAD_FILE, reply_markup=_cancel_keyboard())
+
+
+# ── свой макет карточки ────────────────────────────────────────────────────────────────
+
+
+async def _store_layout(message: types.Message, state: FSMContext, file_id: str, raw: bytes) -> None:
+    if raw.startswith(b"%PDF"):
+        await message.answer(_LAYOUT_PDF, reply_markup=_cancel_keyboard())
+        return
+    if len(raw) > _MAX_IMAGE_BYTES:
+        await message.answer(_LAYOUT_BIG, reply_markup=_cancel_keyboard())
+        return
+    try:
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+        width, height = img.size
+        if width < 1 or height < 1:
+            raise ValueError("пустая картинка")
+    except Exception:
+        await message.answer(_LAYOUT_BAD, reply_markup=_cancel_keyboard())
+        return
+    markup = center_qr_markup(width, height)
+    if qr_frame(markup) is None:
+        await message.answer(_LAYOUT_BAD, reply_markup=_cancel_keyboard())
+        return
+    await qr_card_layout_put(file_id, markup)
+    await state.set_state(None)
+    note = "Макет сохранён. Код бот ставит сам."
+    if not (config.DASHBOARD_PUBLIC_URL or "").strip():
+        note += " Рамки — в приложении, режим «Настройки», «Рамки на макете QR»."
+    await message.answer(note)
+    await _show(message, state, edit=False)
+
+
+@router.callback_query(F.data == "qrct_layout")
+async def qrct_layout(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(_LAYOUT_ASK, reply_markup=_cancel_keyboard())
+    await state.set_state(QrCardTheme.layout)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "qrct_layout_rm")
+async def qrct_layout_rm(callback: types.CallbackQuery):
+    await callback.message.edit_text(
+        _LAYOUT_GONE,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Да, убрать макет", callback_data="qrct_layout_rm_go"),
+            InlineKeyboardButton(text="❌ Отмена", callback_data="qrct_open"),
+        ]]),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "qrct_layout_rm_go")
+async def qrct_layout_rm_go(callback: types.CallbackQuery, state: FSMContext):
+    await qr_card_layout_delete()
+    await state.set_state(None)
+    await callback.answer("Макет убран")
+    await _show(callback.message, state)
+
+
+@router.message(StateFilter(QrCardTheme.layout), F.photo)
+async def qrct_layout_photo(message: types.Message, state: FSMContext):
+    photo = message.photo[-1]
+    if (getattr(photo, "file_size", None) or 0) > _MAX_IMAGE_BYTES:
+        await message.answer(_LAYOUT_BIG, reply_markup=_cancel_keyboard())
+        return
+    buf = io.BytesIO()
+    await message.bot.download(photo.file_id, destination=buf)
+    await _store_layout(message, state, photo.file_id, buf.getvalue())
+
+
+@router.message(StateFilter(QrCardTheme.layout), F.document)
+async def qrct_layout_file(message: types.Message, state: FSMContext):
+    doc = message.document
+    mime = doc.mime_type or ""
+    name = getattr(doc, "file_name", "") or ""
+    if mime == "application/pdf" or name.lower().endswith(".pdf"):
+        await message.answer(_LAYOUT_PDF, reply_markup=_cancel_keyboard())
+        return
+    if mime not in _IMAGE_MIMES:
+        await message.answer(_LAYOUT_BAD, reply_markup=_cancel_keyboard())
+        return
+    if (getattr(doc, "file_size", None) or 0) > _MAX_IMAGE_BYTES:
+        await message.answer(_LAYOUT_BIG, reply_markup=_cancel_keyboard())
+        return
+    buf = io.BytesIO()
+    await message.bot.download(doc.file_id, destination=buf)
+    await _store_layout(message, state, doc.file_id, buf.getvalue())
+
+
+@router.message(StateFilter(QrCardTheme.layout))
+async def qrct_layout_other(message: types.Message):
+    await message.answer(_LAYOUT_ASK, reply_markup=_cancel_keyboard())

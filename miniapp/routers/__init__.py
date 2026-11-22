@@ -365,6 +365,7 @@ from miniapp.routers import (
     page,
     profile,
     program,
+    qr_card_layout,
     questions,
     reject_rules,
     reserve,
@@ -381,6 +382,7 @@ from miniapp.routers import (
 ALL_ROUTERS = [
     page.router,
     certificate_markup.router,
+    qr_card_layout.router,
     tasks.router,
     training_move.router,
     profile.router,
