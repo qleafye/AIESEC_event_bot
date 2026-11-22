@@ -37,12 +37,15 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
+from config import config
 from database.db import (
     add_staff,
     add_user,
     count_user_footprint,
     find_user_id_by_username,
     get_or_create_checkin_token,
+    get_setting,
+    get_staff_city,
     get_staff_roles,
     mark_reg_started,
     purge_miniapp_outbox_for_user,
@@ -56,11 +59,14 @@ from database.db import (
     username_needle,
 )
 from domain.cities import (
+    ADMIN_CITY_KEY_PREFIX,
+    ALL_CITIES,
     all_cities,
     cities_module_on,
     city_label,
     default_city_code,
     enabled_cities,
+    get_city,
     normalize_city,
 )
 from handlers.access import admin_caps
@@ -351,7 +357,19 @@ async def _seed_consent(tid: int) -> None:
         await record_user_consent(tid, key, raw_button="UAT-сеялка (приёмка)")
 
 
-async def _seed_event_city() -> str | None:
+async def _header_city(tester_id: int) -> str | None:
+    """Город шапки тестера, если он выбран. «Все города» и пустая шапка сюда не попадают."""
+    if tester_id not in config.ADMIN_IDS:
+        bound = await get_staff_city(tester_id)
+        if get_city(bound):
+            return bound
+    raw = await get_setting(f"{ADMIN_CITY_KEY_PREFIX}{int(tester_id)}")
+    if raw and raw != ALL_CITIES and get_city(raw):
+        return raw
+    return None
+
+
+async def _seed_event_city(tester_id: int | None = None) -> str | None:
     """Квик 260916 (UAT-SEED-05): реальный делегат либо проходит развилку города и ВСЕГДА
     получает валидный `event_city` (модуль включён — `handlers/registration.py`'s city fork
     не пропускает дальше без выбора), либо `event_city` вовсе не участвует в резолве настроек
@@ -360,12 +378,17 @@ async def _seed_event_city() -> str | None:
     всегда оставляла `event_city=NULL` при включённых городах — недостижимое для реальной
     анкеты состояние (стенд 16.09: тестер получил общий `approve_text` вместо городского).
 
-    Модуль включён -> первый ВКЛЮЧЁННЫЙ город (`cities.enabled_cities()`, порядок как в
-    `CITIES`), с фолбэком на `default_city_code()`, если почему-то ни одного включённого нет.
+    Модуль включён и у тестера в шапке конкретный включённый город — этот город.
+    Иначе первый включённый (`cities.enabled_cities()`, порядок как в `CITIES`),
+    с фолбэком на `default_city_code()`, если включённых нет.
     Модуль выключен -> `None`, как у настоящего делегата в этом режиме."""
     if not await cities_module_on():
         return None
     codes = [c["code"] for c in await enabled_cities()]
+    if tester_id is not None:
+        header = await _header_city(tester_id)
+        if header and header in codes:
+            return normalize_city(header)
     return normalize_city(codes[0]) if codes else default_city_code()
 
 
@@ -386,7 +409,9 @@ async def _seed_state(
     await _seed_consent(tid)
     # Форумное состояние несёт ВЫБРАННЫЙ город даже при выключенном модуле городов: форумный
     # код (чек-ин, SOS, программа) сверяет город делегата через `normalize_city(event_city)`.
-    event_city_code = forum_city if state_code in _FORUM_STATE_STATUS else await _seed_event_city()
+    event_city_code = (
+        forum_city if state_code in _FORUM_STATE_STATUS else await _seed_event_city(tid)
+    )
     seed_answers = dict(_SEED_ANSWERS)
     if event_city_code:
         # «Согласованный» city: тот же город, что и event_city, а не оставшаяся от прошлого
