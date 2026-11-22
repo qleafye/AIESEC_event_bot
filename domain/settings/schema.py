@@ -7461,6 +7461,22 @@ SETTINGS_SCHEMA = {
         ),
         "default": "Отклонить",
     },
+    "miniapp_applications_next_button": {
+        "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Дальше»",
+        "prompt": (
+            "Подпись кнопки, которая открывает следующую заявку и ничего по текущей не решает. "
+            "Свайп вправо по-прежнему принимает заявку."
+        ),
+        "default": "Дальше",
+    },
+    "miniapp_applications_restart_button": {
+        "type": "text", "group": "miniapp", "label": "🗂 Кнопка «С начала»",
+        "prompt": (
+            "Подпись кнопки, когда все заявки в очереди пролистаны. "
+            "Возвращает к первой, решения не отменяет."
+        ),
+        "default": "С начала",
+    },
     "miniapp_applications_resume_open": {
         "type": "text", "group": "miniapp", "label": "🗂 Кнопка «Открыть резюме»",
         "prompt": "Подпись кнопки, которая открывает приложенный файл резюме.",

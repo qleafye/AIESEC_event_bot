@@ -1855,6 +1855,17 @@ def test_applications_screen_does_not_touch_review_screen_or_classes():
     assert not re.search(r'from\s+"\.\./screens/review\.js"', text)
 
 
+def test_applications_next_button_skips_without_a_decision():
+    text = _js_without_comments(APPLICATIONS_JS)
+    assert "texts.next_button" in text
+    assert "offset += 1" in text
+    assert "texts.restart_button" in text
+    assert 'if (action === "approve") decide("approve")' in text
+    decide_at = text.index('if (action === "approve") decide("approve")')
+    skip_at = text.index("offset += 1")
+    assert "decide(" not in text[skip_at:skip_at + 80]
+
+
 def test_applications_screen_uses_attach_swipe_exactly_once_via_swipe_js():
     text = _js_without_comments(APPLICATIONS_JS)
     assert re.search(r'import\s*\{[^}]*attachSwipe[^}]*\}\s*from\s*"\.\./swipe\.js"', text)

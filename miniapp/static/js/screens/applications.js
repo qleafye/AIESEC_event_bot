@@ -553,6 +553,15 @@ export async function render(root, params, ctx) {
           onClick: () => decide("waitlist"),
         }, card.waitlist_button)
       : null;
+    const nextBtn = h("button", {
+      class: "btn ghost appl-next", type: "button", text: texts.next_button || "",
+      onClick: () => {
+        if (cardHolder.classList.contains("is-loading")) return;
+        offset += 1;
+        say("");
+        load();
+      },
+    });
 
     // D-04 (фикс «подложка закрывает кнопки», квик 03.09): стопка (тень следующей карточки +
     // сама карточка) — отдельная обёртка `.appl-stack-wrap`, а не прямой ребёнок cardHolder.
@@ -566,7 +575,7 @@ export async function render(root, params, ctx) {
         h("div", { class: "appl-stack", "aria-hidden": "true" }),
         cardEl,
       ),
-      h("div", { class: "appl-decide-row" }, rejectBtn, waitlistBtn, approveBtn),
+      h("div", { class: "appl-decide-row" }, rejectBtn, waitlistBtn, approveBtn, nextBtn),
     );
 
     if (_detachSwipe) { _detachSwipe(); _detachSwipe = null; }
@@ -606,7 +615,13 @@ export async function render(root, params, ctx) {
       updateHeader(card.remaining);
       renderFilters();
       renderRejectTemplates();
-      cardHolder.replaceChildren(emptyState(h, { me, text: card.empty_text || "" }));
+      const restart = card.remaining > 0 && texts.restart_button
+        ? h("button", {
+            class: "btn secondary", type: "button", text: texts.restart_button,
+            onClick: () => { offset = 0; say(""); load(); },
+          })
+        : null;
+      cardHolder.replaceChildren(emptyState(h, { me, text: card.empty_text || "", action: restart }));
       return;
     }
     draw(card);
