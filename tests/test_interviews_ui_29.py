@@ -382,6 +382,40 @@ def test_no_menu_button():
     blob = " ".join(text for _key, text in MENU_BUTTONS)
     assert "iv_open" not in blob
     assert "Интервью" not in blob
+
+
+def _reply_labels(kb):
+    return [b.text for row in kb.keyboard for b in row]
+
+
+def test_menu_pick_when_booking_on(tmp_path):
+    from keyboards.builders import get_main_menu_kb
+    from services.comms.broadcast_interview import PICK_LABEL
+
+    _open(tmp_path)
+    run(_person(10))
+    run(_person(11, case="Нет"))
+    assert PICK_LABEL in _reply_labels(run(get_main_menu_kb(10)))
+    assert PICK_LABEL not in _reply_labels(run(get_main_menu_kb(11)))
+    run(db.set_setting("interview_booking_enabled", "off"))
+    assert PICK_LABEL not in _reply_labels(run(get_main_menu_kb(10)))
+
+
+def test_menu_pick_opens_grid(tmp_path):
+    from services.comms.broadcast_interview import PICK_LABEL
+    import handlers.user_actions as user_actions
+
+    _open(tmp_path)
+    run(_person(10))
+    sid = _slot("msk", "2026-12-28 18:00", cap=2)
+    msg = _Msg(uid=10, text=PICK_LABEL)
+    run(delegate_iv.interview_menu(msg))
+    text, kb = msg.answers[-1]
+    assert "Выбери время" in text
+    assert f"iv_pick:{sid}" in _cbs(kb)
+
+    names = [h.callback.__name__ for h in user_actions.router.message.handlers]
+    assert names.index("interview_menu") < names.index("reg_handoff_idle_fallback")
     broadcasts = (_ROOT / "handlers" / "comms" / "admin_broadcasts.py").read_text(encoding="utf-8")
     assert re.search(r"^def .*interview", broadcasts, re.M) is None
     assert "/interview" not in broadcasts

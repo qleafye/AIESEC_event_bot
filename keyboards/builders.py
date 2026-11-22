@@ -444,6 +444,16 @@ async def get_main_menu_kb(telegram_id: int | None = None) -> ReplyKeyboardMarku
         else:
             kb.button(text=COMING_YES_RU)
             kb.button(text=COMING_NO_RU)
+    # Запись на интервью — не пункт «Кнопок меню»: кнопка есть только у того,
+    # кому services.interviews.eligible уже разрешает записаться.
+    try:
+        if user is not None:
+            from services.interviews import eligible as _interview_eligible
+            if await _interview_eligible(user) is None:
+                from services.comms.broadcast_interview import PICK_LABEL
+                kb.button(text=PICK_LABEL)
+    except Exception as e:
+        logger.error(f"get_main_menu_kb: interview button resolve failed: {e}")
     kb.adjust(2)
     return kb.as_markup(resize_keyboard=True)
 

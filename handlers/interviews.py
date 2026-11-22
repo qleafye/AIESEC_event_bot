@@ -1,5 +1,7 @@
-"""Сетка времени для делегата. Вход — кнопка под рассылкой, не пункт меню.
+"""Сетка времени для делегата.
 
+Вход — кнопка «Выбрать время» в меню, когда запись для этого человека открыта,
+и та же кнопка под рассылкой. Отдельного пункта в списке кнопок меню нет.
 Имена записанных сюда не попадают: делегат видит только «осталось N».
 """
 from __future__ import annotations
@@ -7,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from aiogram import F, types
+from aiogram.filters import StateFilter
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database import interview_db
@@ -14,6 +17,7 @@ from database.db import get_user
 from domain.settings.schema import get_setting_typed
 from handlers.user_actions import router
 from services import interviews
+from services.comms.broadcast_interview import PICK_LABEL
 from services.infra.timeutil import msk_now
 
 _SLOT_FMT = "%Y-%m-%d %H:%M"
@@ -104,6 +108,16 @@ async def _show(callback: types.CallbackQuery, text: str, kb, *, fresh: bool) ->
 
 async def _user(callback: types.CallbackQuery) -> dict | None:
     return await get_user(callback.from_user.id)
+
+
+@router.message(StateFilter(None), F.text == PICK_LABEL)
+async def interview_menu(message: types.Message):
+    user = await get_user(message.from_user.id)
+    if user is None:
+        await message.answer("Сначала подай заявку.")
+        return
+    text, kb = await _grid(user, move=False)
+    await message.answer(text, reply_markup=kb)
 
 
 @router.callback_query(F.data == "iv_open")
