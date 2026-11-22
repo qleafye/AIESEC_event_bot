@@ -242,6 +242,53 @@ def test_delete_row_by_id_no_matching_row_on_existing_tab(monkeypatch):
     assert result == "not_found_row"
 
 
+class _BareWorksheet(_FakeWorksheet):
+    """Столбец 1 как есть, без подставленной шапки. delete_rows — номер строки с 1."""
+
+    def col_values(self, col):
+        idx = col - 1
+        return [r[idx] if idx < len(r) else "" for r in self._rows]
+
+    def delete_rows(self, row_index):
+        self.deleted.append(row_index)
+        del self._rows[row_index - 1]
+
+
+def test_delete_row_by_id_headerless_tab_removes_the_only_row(monkeypatch):
+    """Вкладка без шапки: id в первой строке. Раньше поиск пропускал её как заголовок,
+    перевод считал строку отсутствующей и оставлял её на месте."""
+    _reset_sheets_state()
+    ws = _BareWorksheet("СПб", [[DELEGATE_ID, "Тест"], [999, "Другой"]])
+    _patch_gspread(monkeypatch, {"СПб": ws})
+
+    result = _run(sheets_mod.delete_row_by_id("СПб", DELEGATE_ID))
+
+    assert result == "ok"
+    assert [r[0] for r in ws._rows] == [999]
+
+
+def test_delete_row_by_id_matches_apostrophe_and_grouped_digits(monkeypatch):
+    _reset_sheets_state()
+    ws = _FakeWorksheet("СПб", [["'260925101", "апостроф"]])
+    _patch_gspread(monkeypatch, {"СПб": ws})
+    assert _run(sheets_mod.delete_row_by_id("СПб", DELEGATE_ID)) == "ok"
+    assert ws._rows == []
+
+    _reset_sheets_state()
+    ws = _BareWorksheet("СПб", [["260 925 101", "пробелы"]])
+    _patch_gspread(monkeypatch, {"СПб": ws})
+    assert _run(sheets_mod.delete_row_by_id("СПб", DELEGATE_ID)) == "ok"
+    assert ws._rows == []
+
+
+def test_find_rows_by_id_accepts_numeric_cell(monkeypatch):
+    _reset_sheets_state()
+    ws = _BareWorksheet("СПб", [["ID"], [DELEGATE_ID, "число"]])
+    _patch_gspread(monkeypatch, {"СПб": ws})
+
+    assert _run(sheets_mod.find_rows_by_id("СПб", DELEGATE_ID)) == [2]
+
+
 # ═══════════════════════════════════════════════════════════════════════════════════════════
 # Part B: services/city_move.move_user_city — orchestration (fake sheets_service, real DB)
 # ═══════════════════════════════════════════════════════════════════════════════════════════
@@ -664,6 +711,56 @@ def test_move_appends_new_before_deleting_old(tmp_path, monkeypatch):
     report, old_tab, new_tab = _run(scenario())
     assert report["sheet"]["moved"] is True
     assert order == [("append", new_tab), ("delete", old_tab)]
+
+
+def test_move_deletes_row_left_on_city_tab_not_the_track_tab(tmp_path, monkeypatch):
+    """Короткая анкета ищется на «СПб Акция», а строка лежит на «СПб». Раньше промах по
+    угаданной вкладке считался успехом, новая строка дописывалась, старая оставалась."""
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        city_tab = await _resolve_tabs("spb", None)
+        new_tab = await _resolve_tabs("msk", "short")
+        assert old_tab != city_tab
+        store.seed(city_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        report = await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        return report, city_tab, new_tab
+
+    report, city_tab, new_tab = _run(scenario())
+    assert report["sheet"]["moved"] is True
+    assert report["sheet"]["error"] is None
+    assert store.tabs[city_tab] == []
+    assert any(str(r[0]) == str(DELEGATE_ID) for r in store.tabs[new_tab])
+
+
+def test_move_deletes_old_row_when_new_tab_already_has_the_delegate(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "старая"]])
+        store.seed(new_tab, [[DELEGATE_ID, "уже была"]])
+        report = await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        return report, old_tab, new_tab
+
+    report, old_tab, new_tab = _run(scenario())
+    assert report["sheet"]["moved"] is True
+    assert store.tabs[old_tab] == []
+    assert sum(1 for r in store.tabs[new_tab] if str(r[0]) == str(DELEGATE_ID)) == 2
+    assert "несколько строк" in (report["sheet"]["error"] or "")
 
 
 def test_move_sheet_failure_does_not_block_db_write(tmp_path, monkeypatch):

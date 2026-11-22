@@ -20,6 +20,8 @@ msk «как есть, одобренной»). Единая точка прав
   - Строка Google-таблицы: перенос со вкладки старого города на вкладку нового — СНАЧАЛА
     добавление в новую, ПОТОМ удаление из старой (сбой между шагами оставляет данные ДВАЖДЫ,
     что безопаснее потери — см. `memory/standalone-script-sheet-traps.md` и прецедент 23.09).
+    Копия не на угаданной вкладке, а на соседней вкладке того же города, на главной или на
+    другой делегатской, снимается тем же проходом. Служебные вкладки не трогаем.
     Целевая вкладка = (новый город, СТАРЫЙ трек, `_resolve_sheet_targets`) — вкладка НЕ
     создаётся НИКОГДА (вызов, который сам заводит вкладку, здесь запрещён — пишем через
     `append_to_existing_named_sheet`). Нет такой вкладки среди
@@ -148,6 +150,70 @@ async def _resolve_sheet_targets(new_city: str, participant_type: str | None) ->
         "fallback_tab": fallback_tab, "fallback_exists": fallback_exists,
         "write_tab": write_tab,
     }
+
+
+def _remember_tab(tabs: list, tab, skip: set) -> None:
+    if tab in skip or tab in tabs:
+        return
+    tabs.append(tab)
+
+
+async def _tabs_with_other_copies(old_city: str, skip: set) -> list:
+    """Куда ещё могла лечь строка делегата, кроме вкладки, которую перевод уже обработал.
+
+    Угаданный адрес (`_resolve_update_tab` по текущему треку) часто не тот: короткая анкета
+    смотрит «СПб Акция», а строка осталась на «СПб» или на главной (легаси до разбивки по
+    городам, синхронизация в основную вкладку). Плюс все реальные делегатские вкладки книги —
+    переименованный лист туда тоже попадает. Служебные вкладки не читаем."""
+    from services.registration.reg_finalize import _resolve_update_tab
+
+    tabs: list = []
+    for participant_type in (None, "short", "party_overnight"):
+        _remember_tab(tabs, await _resolve_update_tab(old_city, participant_type), skip)
+    _remember_tab(tabs, None, skip)
+
+    blocked: set[str] | None = None
+    try:
+        from services.sheets.sheet_reconcile import _known_non_delegate_tab_titles
+        blocked = await _known_non_delegate_tab_titles()
+    except Exception as e:
+        logger.warning("city_move: служебные вкладки не прочитаны, чужие листы не сканирую: %s", e)
+    # Без списка служебных вкладок не идём по всей книге: там журналы и гейма с тем же id.
+    if blocked is not None:
+        titles = await sheets_service.list_worksheet_titles()
+        if titles:
+            for title in titles:
+                if title in blocked:
+                    continue
+                _remember_tab(tabs, title, skip)
+    return tabs
+
+
+async def _delete_other_copies(telegram_id: int, old_city: str, skip: set) -> tuple[bool, str | None]:
+    """Снимает единственную строку делегата с каждой вкладки из `_tabs_with_other_copies`.
+    Несколько строк на одной вкладке не угадываем — называем вкладку и оставляем как есть.
+    Возвращает (хоть одну строку сняли, текст проблемы или None)."""
+    removed = False
+    stuck: list[str] = []
+    for tab in await _tabs_with_other_copies(old_city, skip):
+        rows = await sheets_service.find_rows_by_id(tab, telegram_id)
+        if not rows:
+            continue
+        label = "главная" if tab is None else str(tab)
+        if len(rows) != 1:
+            stuck.append(label)
+            continue
+        result = await sheets_service.delete_row_by_id(tab, telegram_id)
+        if result == "ok":
+            removed = True
+        elif result not in ("not_found_row", "not_found_tab"):
+            stuck.append(label)
+    if not stuck:
+        return removed, None
+    names = "», «".join(stuck)
+    return removed, (
+        f"старая строка осталась на вкладке «{names}» — проверьте таблицу вручную"
+    )
 
 
 async def preview_city_move(
@@ -292,6 +358,12 @@ async def move_user_city(
                     old_tab, telegram_id, row,
                 ):
                     report["sheet"]["moved"] = True
+                    _removed, problem = await _delete_other_copies(
+                        telegram_id, old_city, {old_tab},
+                    )
+                    if problem:
+                        report["sheet"]["error"] = problem
+                        report["sheet"]["moved"] = False
                 else:
                     report["sheet"]["error"] = (
                         f"строка делегата на вкладке «{old_tab or 'главная'}» не найдена или их "
@@ -312,23 +384,37 @@ async def move_user_city(
 
             if append_ok:
                 new_rows_after = await sheets_service.find_rows_by_id(write_tab, telegram_id)
-                if new_rows_after is None or len(new_rows_after) != 1:
+                if not new_rows_after:
                     report["sheet"]["error"] = (
-                        "после добавления на новой вкладке не ровно одна строка делегата "
-                        f"({'вкладка не читается' if new_rows_after is None else len(new_rows_after)}) "
+                        "после добавления на новой вкладке строка делегата не читается "
                         "— старая строка НЕ удалена, проверьте таблицу вручную"
                     )
                     logger.error(
-                        "city_move: unexpected row count on write tab %r for telegram_id=%s: %r",
+                        "city_move: row not visible on write tab %r for telegram_id=%s: %r",
                         write_tab, telegram_id, new_rows_after,
                     )
                 else:
+                    # На новой вкладке человек уже есть (ровно одна строка или несколько).
+                    # Старые копии снимаем и тогда, когда их больше одной: человек на новом
+                    # месте не пропадёт, а оставленная старая вкладка — это и есть лишняя строка.
+                    if len(new_rows_after) > 1:
+                        report["sheet"]["error"] = (
+                            "на вкладке нового города несколько строк делегата — "
+                            "старые копии сняты, проверьте дубли вручную"
+                        )
                     delete_result = await sheets_service.delete_row_by_id(old_tab, telegram_id)
-                    if delete_result == "ok":
-                        report["sheet"]["moved"] = True
-                    elif delete_result == "not_found_row":
-                        # Строки на старой вкладке уже не было (повторный запуск/её там не
-                        # было) — перенос фактически уже случился, это не ошибка.
+                    _removed, problem = await _delete_other_copies(
+                        telegram_id, old_city, {old_tab, write_tab},
+                    )
+                    if problem:
+                        report["sheet"]["error"] = problem
+                        report["sheet"]["moved"] = False
+                    elif delete_result in ("ok", "not_found_row") or (
+                        delete_result == "not_found_tab" and _removed
+                    ):
+                        # not_found_row — на угаданной вкладке строки уже не было.
+                        # not_found_tab и снятая копия на соседней вкладке — перенос случился,
+                        # угаданного листа просто нет.
                         report["sheet"]["moved"] = True
                     else:
                         report["sheet"]["error"] = (
@@ -336,6 +422,7 @@ async def move_user_city(
                             f"({_SHEET_RESULT_TEXT.get(delete_result, 'ошибка таблицы')}) "
                             "— проверьте таблицу вручную, дубль безопаснее потери"
                         )
+                        report["sheet"]["moved"] = False
         except Exception as e:
             logger.error("city_move: sheet transfer failed for telegram_id=%s: %s", telegram_id, e)
             report["sheet"]["error"] = f"не удалось перенести строку в таблице: {e}"

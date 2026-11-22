@@ -1713,16 +1713,46 @@ def _all_worksheets_sync() -> list:
         return sh.worksheets()
 
 
+def _id_cell_text(value) -> str:
+    """Текст ячейки столбца id для сравнения с telegram_id. Число из API не роняет `.strip()`,
+    ведущий апостроф старых выгрузок и пробелы разряда («123 456 789», «123.0») не прячут строку."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        text = str(int(value))
+    elif isinstance(value, int):
+        text = str(value)
+    else:
+        text = str(value).strip()
+    if text.startswith("'"):
+        text = text[1:].strip()
+    compact = text.replace(" ", "").replace("\u00a0", "")
+    if compact.endswith(".0") and compact[:-2].lstrip("-").isdigit():
+        compact = compact[:-2]
+    return compact
+
+
+def _matching_row_indexes(col1, telegram_id: int) -> list[int]:
+    """1-based номера строк столбца 1 с этим telegram_id. Первая строка — шапка и пропускается,
+    кроме вкладки без шапки: первая ячейка сама id (инцидент «СПб Акция» без заголовков)."""
+    if not col1:
+        return []
+    first = _id_cell_text(col1[0])
+    headerless = bool(first) and first.lstrip("-").isdigit()
+    cells = col1 if headerless else col1[1:]
+    start = 1 if headerless else 2
+    target = str(telegram_id)
+    return [i for i, v in enumerate(cells, start=start) if _id_cell_text(v) == target]
+
+
 def _find_rows_by_id_sync(tab_name: str | None, telegram_id: int) -> list[int] | None:
-    """1-based row indices (header excluded) on `tab_name` (or the main sheet) matching
-    `telegram_id` in column 1. `None` if a NAMED tab doesn't exist — callers must not conflate
-    that with `[]` (an existing tab with zero matching rows)."""
+    """1-based row indices on `tab_name` (or the main sheet) matching `telegram_id` in column 1.
+    Header row is skipped unless the tab has no header. `None` if a NAMED tab doesn't exist —
+    callers must not conflate that with `[]` (an existing tab with zero matching rows)."""
     sheet = _open_named_or_main_sync(tab_name)
     if sheet is None:
         return None
-    target = str(telegram_id)
-    col1 = sheet.col_values(1)
-    return [i for i, v in enumerate(col1[1:], start=2) if (v or "").strip() == target]
+    return _matching_row_indexes(sheet.col_values(1), telegram_id)
 
 
 async def find_rows_by_id(tab_name: str | None, telegram_id: int) -> list[int] | None:
@@ -1747,9 +1777,7 @@ def _delete_row_by_id_sync(tab_name: str | None, telegram_id: int) -> str:
     sheet = _open_named_or_main_sync(tab_name)
     if sheet is None:
         return "not_found_tab"
-    target = str(telegram_id)
-    col1 = sheet.col_values(1)
-    matches = [i for i, v in enumerate(col1[1:], start=2) if (v or "").strip() == target]
+    matches = _matching_row_indexes(sheet.col_values(1), telegram_id)
     if not matches:
         return "not_found_row"
     if len(matches) > 1:
