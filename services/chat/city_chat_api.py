@@ -15,14 +15,22 @@ class _InviteClient:
     def __init__(self, bot):
         self._bot = bot
 
-    async def edit_invite(self, chat_id, invite_link, name, expire_date, member_limit):
-        return await self._bot.edit_chat_invite_link(
-            chat_id=chat_id,
-            invite_link=invite_link,
-            name=name,
-            expire_date=expire_date,
-            member_limit=member_limit,
-        )
+    async def edit_invite(
+        self, chat_id, invite_link, name, expire_date, member_limit, creates_join_request,
+    ):
+        # editChatInviteLink подставляет умолчание в каждое пропущенное поле.
+        # Без флага заявок ссылка с заявками становится «пускает сразу».
+        kwargs = {
+            "chat_id": chat_id,
+            "invite_link": invite_link,
+            "name": name,
+            "creates_join_request": bool(creates_join_request),
+        }
+        if expire_date is not None:
+            kwargs["expire_date"] = expire_date
+        if member_limit is not None and not creates_join_request:
+            kwargs["member_limit"] = member_limit
+        return await self._bot.edit_chat_invite_link(**kwargs)
 
     async def create_invite(self, chat_id, name, expire_date, member_limit, creates_join_request):
         kwargs = {

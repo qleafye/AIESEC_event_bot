@@ -195,13 +195,15 @@ async def _mint(
 
 
 async def _probe(client, city: str | None, chat_id: int, row: dict) -> LinkResult:
+    join = bool(row.get("creates_join_request"))
     try:
         resp = await client.edit_invite(
             chat_id,
             row.get("invite_link"),
             await _name(city),
             _unix(row.get("expire_date")),
-            row.get("member_limit"),
+            None if join else row.get("member_limit"),
+            join,
         )
     except Exception as exc:
         if _dead_text(exc):

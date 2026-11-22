@@ -52,8 +52,12 @@ class Client:
         self.revoke_exc = None
         self._n = 0
 
-    async def edit_invite(self, chat_id, invite_link, name, expire_date, member_limit):
-        self.edits.append((chat_id, invite_link, name, expire_date, member_limit))
+    async def edit_invite(
+        self, chat_id, invite_link, name, expire_date, member_limit, creates_join_request,
+    ):
+        self.edits.append((
+            chat_id, invite_link, name, expire_date, member_limit, creates_join_request,
+        ))
         if self.edit_exc:
             raise self.edit_exc
         return self.edit_result
@@ -367,6 +371,8 @@ def test_describe_words_and_does_not_mint_without_a_link(tmp_path):
         )
         client.edit_result = Invite("https://t.me/+old", join=True, expire=None)
         joined = await city_chat_link.describe(client, None)
+        assert client.edits[-1][4] is None
+        assert client.edits[-1][5] is True
         assert "пускают по заявке" in joined
         assert "без срока" in joined and "без лимита" in joined
         for banned in ("creates_join_request", "delegate_chat_id", "member_limit"):
@@ -378,6 +384,8 @@ def test_describe_words_and_does_not_mint_without_a_link(tmp_path):
         )
         client.edit_result = Invite("https://t.me/+old", join=False, expire=None, limit=50)
         opened = await city_chat_link.describe(client, None)
+        assert client.edits[-1][4] == 50
+        assert client.edits[-1][5] is False
         assert "пускает сразу" in opened
         assert "на 14 дней" in opened and "не больше 50 человек" in opened
         assert "выгоняет" in opened
