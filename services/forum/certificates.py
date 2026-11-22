@@ -114,20 +114,50 @@ def kind_variants(kind: str, variants: list[str]) -> list[str]:
     return variants
 
 
+def kind_row_variants(row: dict, variants: list[str]) -> list[str]:
+    """Флаг дней у строки своего вида: включён — дни форума, иначе только «все дни»."""
+    if int(row.get("by_day") or 0):
+        return variants
+    return [VARIANT_ALL]
+
+
 # ── кому что положено ──────────────────────────────────────────────────────────────────
 
 async def entitlements(telegram_id: int, username: str | None) -> list[tuple[str, str]]:
-    """`[(вид, вариант дат)]` в порядке выдачи: участник, волонтёр, амбассадор."""
+    """`[(вид, вариант дат)]`: четыре старых вида, затем свои из таблицы по id."""
     out: list[tuple[str, str]] = []
     days = await cdb.entry_days(telegram_id, ENTRY_POINT)
+    tested = False
     if days:
         out.append((KIND_PARTICIPANT, days[0] if len(days) == 1 else VARIANT_ALL))
-        if await competency_percents(telegram_id) is not None:
+        tested = await competency_percents(telegram_id) is not None
+        if tested:
             out.append((KIND_COMPETENCY, VARIANT_ALL))
     listed = await cdb.kinds_for_username(username, telegram_id)
     for kind in (KIND_VOLUNTEER, KIND_AMBASSADOR):
         if kind in listed:
             out.append((kind, VARIANT_ALL))
+    from services.access.role_registry import ROLES
+
+    for row in await cdb.list_kinds():
+        code, audience = row["code"], row["audience"]
+        if audience == "checkin":
+            if not days:
+                continue
+            variant = days[0] if len(days) == 1 else VARIANT_ALL
+            if not row["by_day"]:
+                variant = VARIANT_ALL
+            out.append((code, variant))
+        elif audience == "test":
+            if days and tested:
+                out.append((code, VARIANT_ALL))
+        elif audience == "nicks":
+            if code in listed:
+                out.append((code, VARIANT_ALL))
+        elif audience == "role" and row.get("role_key") in ROLES:
+            # Срок роли тот же, что у прав: expires_at пустой или не раньше сегодня.
+            if await cdb.has_active_role(telegram_id, row["role_key"]):
+                out.append((code, VARIANT_ALL))
     return out
 
 
@@ -622,9 +652,20 @@ async def build_pdf(bot, file_id: str, name: str, kind: str = KIND_PARTICIPANT,
     )
 
 
-def file_name(kind: str, name: str) -> str:
+async def kind_title(kind: str) -> str:
+    """Подпись файла. Четыре старых названия на месте, свой вид берёт название из таблицы."""
+    known = KIND_TITLES.get(kind)
+    if known:
+        return known
+    row = await cdb.get_kind(kind)
+    title = ((row or {}).get("title") or "").strip()
+    return title or "Сертификат"
+
+
+def file_name(kind: str, name: str, title: str | None = None) -> str:
     safe = "".join(ch for ch in name if ch.isalnum() or ch in " -").strip() or "участник"
-    return f"{KIND_TITLES[kind]} — {safe}.pdf"
+    label = title or KIND_TITLES.get(kind) or "Сертификат"
+    return f"{label} — {safe}.pdf"
 
 
 # ── рассылка «сертификат готов» ───────────────────────────────────────────────────────
@@ -632,6 +673,11 @@ def file_name(kind: str, name: str) -> str:
 async def recipients() -> list[int]:
     ids = set(await cdb.checked_in_ids(ENTRY_POINT))
     ids |= set((await cdb.ids_for_people()).values())
+    from services.access.role_registry import ROLES
+
+    for row in await cdb.list_kinds():
+        if row["audience"] == "role" and row.get("role_key") in ROLES:
+            ids.update(await cdb.active_staff_ids(row["role_key"]))
     return sorted(ids)
 
 
@@ -647,65 +693,76 @@ async def announce_text() -> str:
 
 
 async def _send_role_pdf(bot, telegram_id: int, pdf: bytes, kind: str, name: str) -> None:
+    title = await kind_title(kind)
     await bot.send_document(
         telegram_id,
-        BufferedInputFile(pdf, filename=file_name(kind, name)),
-        caption=f"🎓 {KIND_TITLES[kind]}",
+        BufferedInputFile(pdf, filename=file_name(kind, name, title)),
+        caption=f"🎓 {title}",
     )
 
 
-async def deliver_role_pdfs(bot) -> int:
-    """Волонтёр и амбассадор: файл сам, без «Так будет написано имя».
-    Повтор той же роли не шлём. Участника и компетенции здесь нет — им остаётся кнопка."""
-    if bot is None or not await is_open():
-        return 0
+async def _deliver_listed(bot, kind: str, templates) -> int:
+    """PDF людям из списка ников этого кода. Вход, тест и роль сюда не попадают."""
     from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
+    file_id = pick_template(templates, kind, VARIANT_ALL)
+    if not file_id:
+        return 0
+    sent = 0
+    for row in await cdb.list_people_rows(kind):
+        if row["send_blocked"]:
+            continue
+        found = await cdb.resolve_nick(row["username"])
+        if not found:
+            continue
+        telegram_id = found["telegram_id"]
+        if kind in await cdb.sent_kinds(telegram_id):
+            continue
+        if (
+            row["list_name"] and not row["name_ok"]
+            and surnames_conflict(row["list_name"], found.get("full_name"))
+        ):
+            continue
+        name = role_print_name(
+            row["list_name"], await cdb.get_name(telegram_id),
+            found.get("full_name"), found.get("profile_name"),
+        )
+        if not name:
+            continue
+        try:
+            pdf = await build_pdf(bot, file_id, name, kind, telegram_id=telegram_id)
+            try:
+                await _send_role_pdf(bot, telegram_id, pdf, kind, name)
+            except TelegramRetryAfter as e:
+                await asyncio.sleep(e.retry_after)
+                await _send_role_pdf(bot, telegram_id, pdf, kind, name)
+        except (TelegramForbiddenError, TelegramBadRequest) as e:
+            await cdb.mark_send_blocked(kind, row["username"])
+            logger.info(f"certificates.role {telegram_id} {kind}: {type(e).__name__}")
+            continue
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(f"certificates.role {telegram_id} {kind}: {e}")
+            continue
+        await cdb.record_send(telegram_id, kind)
+        sent += 1
+        await asyncio.sleep(0.05)
+    return sent
+
+
+async def deliver_role_pdfs(bot) -> int:
+    """Волонтёр, амбассадор и свои виды со списком ников: файл сам, без подтверждения имени.
+    Повтор того же вида не шлём. Вход, тест и роль остаются на кнопке."""
+    if bot is None or not await is_open():
+        return 0
     templates = await cdb.list_templates()
     sent = 0
     for kind in _AUTO_KINDS:
-        file_id = pick_template(templates, kind, VARIANT_ALL)
-        if not file_id:
-            continue
-        for row in await cdb.list_people_rows(kind):
-            if row["send_blocked"]:
-                continue
-            found = await cdb.resolve_nick(row["username"])
-            if not found:
-                continue
-            telegram_id = found["telegram_id"]
-            if kind in await cdb.sent_kinds(telegram_id):
-                continue
-            if (
-                row["list_name"] and not row["name_ok"]
-                and surnames_conflict(row["list_name"], found.get("full_name"))
-            ):
-                continue
-            name = role_print_name(
-                row["list_name"], await cdb.get_name(telegram_id),
-                found.get("full_name"), found.get("profile_name"),
-            )
-            if not name:
-                continue
-            try:
-                pdf = await build_pdf(bot, file_id, name, kind, telegram_id=telegram_id)
-                try:
-                    await _send_role_pdf(bot, telegram_id, pdf, kind, name)
-                except TelegramRetryAfter as e:
-                    await asyncio.sleep(e.retry_after)
-                    await _send_role_pdf(bot, telegram_id, pdf, kind, name)
-            except (TelegramForbiddenError, TelegramBadRequest) as e:
-                await cdb.mark_send_blocked(kind, row["username"])
-                logger.info(f"certificates.role {telegram_id} {kind}: {type(e).__name__}")
-                continue
-            except asyncio.CancelledError:
-                raise
-            except Exception as e:
-                logger.warning(f"certificates.role {telegram_id} {kind}: {e}")
-                continue
-            await cdb.record_send(telegram_id, kind)
-            sent += 1
-            await asyncio.sleep(0.05)
+        sent += await _deliver_listed(bot, kind, templates)
+    for row in await cdb.list_kinds():
+        if row["audience"] == "nicks":
+            sent += await _deliver_listed(bot, row["code"], templates)
     if sent:
         logger.info(f"certificates.role: отправлено {sent}")
     return sent
