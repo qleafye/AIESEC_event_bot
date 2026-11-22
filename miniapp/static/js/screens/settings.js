@@ -118,6 +118,23 @@ function humanDisplayValue(item, v, fileNames) {
   return String(v);
 }
 
+// Панель «Сохранить N» для письма делегата ждёт, пока на экране уже есть текст
+// с подставленными датой и суммой. Пока штамп черновика не совпал — кнопки нет.
+function delegateStamp(value) {
+  if (value == null) return "\0";
+  if (Array.isArray(value)) return value.join(";");
+  return String(value);
+}
+
+function saveBarState(entries, items, seen) {
+  let waiting = false;
+  for (const entry of entries) {
+    const item = items[entry.key];
+    if (item && item.delegate_preview && seen[entry.key] !== delegateStamp(entry.value)) waiting = true;
+  }
+  return { visible: entries.length > 0 && !waiting, waiting };
+}
+
 // Маркер состояния строки (UI-SPEC §Color/Typography): per-city приоритетнее default/set/
 // not-set (D-03/D-04). `item.key !== item.base_key` — признак композитного ключа выбранного
 // города (per_city_key), сервер отдаёт его только когда шапка города указывает конкретный
@@ -152,10 +169,29 @@ function markerFor(item, texts) {
 // activeScrollHandler/activeDiffCleanup ниже — тот же приём).
 const pending = new Map(); // ключ -> значение с контрола (ещё не строка для сети, D-08)
 const fileNames = new Map(); // key -> имя выбранного файла (для diff-предпросмотра photo/file)
+const delegateShownStamp = new Map(); // key -> delegateStamp значения, чей текст делегата уже на экране
+const delegateShownText = new Map(); // key -> этот текст (после сброса поле показывает его, не пустоту)
+const pendingResetKind = new Map(); // key -> "city" | "default", пока черновик — сброс (value null)
+const delegatePreviewFailed = new Set();
 const originalItems = new Map(); // key -> последний ПОДТВЕРЖДЁННЫЙ сервером item — источник
 // правды для diff «было», base батча и repaint; накапливается по мере посещения разделов, не
 // очищается при уходе с раздела — иначе diff/stale по ключу с ДРУГОГО раздела не нашёл бы item.
 function setOriginal(item) { originalItems.set(item.key, item); }
+
+function markDelegateShown(key, value, text) {
+  delegateShownStamp.set(key, delegateStamp(value));
+  delegateShownText.set(key, text == null ? "" : String(text));
+  delegatePreviewFailed.delete(key);
+}
+
+function clearDelegateShown(key) {
+  delegateShownStamp.delete(key);
+  delegateShownText.delete(key);
+  delegatePreviewFailed.delete(key);
+  pendingResetKind.delete(key);
+}
+
+let stopDelegatePreview = () => {};
 
 // Task 260915-skg (P6): single-flight guard для `GET /admin/settings/all`. Корень настроек
 // реестр не читает. Вызов один — загрузка раздела (renderSection). Повторный вход (onCityPick,
@@ -434,6 +470,11 @@ async function renderSection(root, code, ctx, targetKey) {
   function withPendingOverride(item) {
     if (!pending.has(item.key)) return item;
     const v = pending.get(item.key);
+    if (v == null && pendingResetKind.has(item.key)) {
+      const shown = delegateShownText.has(item.key) ? delegateShownText.get(item.key) : defaultDisplayText(item);
+      const city = pendingResetKind.get(item.key) === "city";
+      return { ...item, value: shown, display: shown, is_default: !city, is_city_override: false };
+    }
     return { ...item, value: v, display: humanDisplayValue(item, v, fileNames), is_default: v == null };
   }
 
@@ -549,35 +590,75 @@ async function renderSection(root, code, ctx, targetKey) {
   }
 
   // ── сброс к умолчанию / «как везде» (D-10) — очередь в общий пакет (value: null,
-  // эквивалент «-» бота), локальный предпросмотр строки без похода на сервер. ───────────────
+  // эквивалент «-» бота). Город и письмо делегата сначала показывают текст, который
+  // делегат прочитает после сброса: ручка preview?after_reset ничего не пишет. ─────────────
   let resetTarget = null;
+  let resetTicket = 0;
   const resetConfirm = confirmBox(h, {
-    onConfirm: () => { if (resetTarget) queueReset(resetTarget.item); },
+    onConfirm: () => {
+      if (!resetTarget) return;
+      if (resetTarget.kind === "city") queueCityReset(resetTarget.item, resetTarget.shown);
+      else queueReset(resetTarget.item, resetTarget.shown);
+    },
   });
   root.append(resetConfirm);
 
-  function openResetDefaultConfirm(item) {
-    resetTarget = { item };
+  async function openResetConfirm(item, kind) {
+    const ticket = ++resetTicket;
+    let shown = defaultDisplayText(item);
+    if (kind === "city" || item.delegate_preview) {
+      try {
+        const resp = await api(`/admin/settings/preview?key=${encodeURIComponent(item.key)}&after_reset=1`);
+        shown = resp.text || "";
+      } catch (err) {
+        if (ticket !== resetTicket || isAuthError(err)) return;
+        showToast(errorText(err, texts.miniapp_settings_error_toast_text || ""), "warn");
+        return;
+      }
+    }
+    if (ticket !== resetTicket) return;
+    resetTarget = { item, kind, shown };
     resetConfirm.querySelector("p").textContent = (texts.miniapp_settings_reset_default_confirm_text || "")
-      .replace("{default}", defaultDisplayText(item));
-    resetConfirm.querySelector(".btn.danger").textContent = texts.miniapp_settings_reset_default_label_text || "";
+      .replace("{default}", shown);
+    resetConfirm.querySelector(".btn.danger").textContent = kind === "city"
+      ? (texts.miniapp_settings_reset_city_label_text || "")
+      : (texts.miniapp_settings_reset_default_label_text || "");
     resetConfirm.querySelector(".btn.ghost").textContent = texts.miniapp_settings_batch_discard_text || "";
     resetConfirm.open();
   }
 
-  function queueReset(item) {
+  function revealPreview(row, text) {
+    if (!row || !row.el || !row.el._previewBody) return;
+    row.el._previewBody.textContent = text || "";
+    if (row.el._previewPanel) row.el._previewPanel.classList.remove("hidden");
+  }
+
+  function queueReset(item, shown) {
     resetConfirm.close();
     pending.set(item.key, null);
     fileNames.delete(item.key);
+    pendingResetKind.set(item.key, "default");
+    const text = shown == null ? defaultDisplayText(item) : String(shown);
+    delegateShownText.set(item.key, text);
+    if (item.delegate_preview) markDelegateShown(item.key, null, text);
+    const row = repaintRow({ ...item, value: null, raw: item.raw, display: text, is_default: true });
+    revealPreview(row, text);
     updateBatchBar();
-    repaintRow({ ...item, value: null, raw: item.raw, display: defaultDisplayText(item), is_default: true });
   }
 
-  function queueCityReset(item) {
+  function queueCityReset(item, shown) {
+    resetConfirm.close();
     pending.set(item.key, null);
     fileNames.delete(item.key);
+    pendingResetKind.set(item.key, "city");
+    const text = shown == null ? "" : String(shown);
+    delegateShownText.set(item.key, text);
+    if (item.delegate_preview) markDelegateShown(item.key, null, text);
+    const row = repaintRow({
+      ...item, value: null, raw: item.raw, is_city_override: false, display: text,
+    });
+    revealPreview(row, text);
     updateBatchBar();
-    repaintRow({ ...item, value: null, raw: item.raw, is_city_override: false, display: "" });
   }
 
   // Ключи с плейсхолдерами в тексте/дефолте — тот же список, что HTML/шаблонные ключи бота
@@ -613,7 +694,7 @@ async function renderSection(root, code, ctx, targetKey) {
         }
       },
     }, icon("eye"), h("span", { text: texts.miniapp_settings_preview_button_text || "" }));
-    return { btn, panel };
+    return { btn, panel, body };
   }
 
   function applyActions(el, item) {
@@ -624,20 +705,22 @@ async function renderSection(root, code, ctx, targetKey) {
     if (!isComposite && item.is_default === false && !locked) {
       buttons.push(h("button", {
         class: "btn ghost", type: "button", "aria-label": item.label,
-        onClick: () => openResetDefaultConfirm(item),
+        onClick: () => openResetConfirm(item, "default"),
       }, icon("rotate-ccw"), h("span", { text: texts.miniapp_settings_reset_default_label_text || "" })));
     }
     if (isComposite && item.is_city_override && !locked) {
       buttons.push(h("button", {
         class: "btn ghost", type: "button", "aria-label": item.label,
-        onClick: () => queueCityReset(item),
+        onClick: () => openResetConfirm(item, "city"),
       }, icon("rotate-ccw"), h("span", { text: texts.miniapp_settings_reset_city_label_text || "" })));
     }
     let previewPanel = null;
-    if (hasPlaceholder(item) && !locked) {
+    if ((hasPlaceholder(item) || item.delegate_preview) && !locked) {
       const preview = buildPreviewButton(item);
       buttons.push(preview.btn);
       previewPanel = preview.panel;
+      el._previewBody = preview.body;
+      el._previewPanel = preview.panel;
     }
     if (buttons.length) {
       el._actions.append(...buttons);
@@ -658,11 +741,22 @@ async function renderSection(root, code, ctx, targetKey) {
   root.append(batchSpacer, batchBar);
 
   function updateBatchBar() {
-    const count = pending.size;
-    batchBtnText.textContent = formatCount(texts.miniapp_settings_batch_bar_text || "", count);
+    const entries = [];
+    const items = {};
+    const seen = {};
+    for (const [key, value] of pending) {
+      entries.push({ key, value });
+      items[key] = originalItems.get(key) || null;
+      if (delegateShownStamp.has(key)) seen[key] = delegateShownStamp.get(key);
+    }
+    const bar = saveBarState(entries, items, seen);
+    const failed = entries.some((entry) => delegatePreviewFailed.has(entry.key));
+    batchBtnText.textContent = formatCount(texts.miniapp_settings_batch_bar_text || "", entries.length);
+    batchBtn.classList.toggle("hidden", !bar.visible);
     batchDiscard.textContent = texts.miniapp_settings_batch_discard_text || "";
-    batchBar.classList.toggle("off", count === 0);
-    batchSpacer.classList.toggle("hidden", count === 0);
+    const show = bar.visible || failed;
+    batchBar.classList.toggle("off", !show);
+    batchSpacer.classList.toggle("hidden", !show);
     repaintMatrixCells();
     scheduleThemePreviewRefresh();
   }
@@ -753,6 +847,7 @@ async function renderSection(root, code, ctx, targetKey) {
     for (const key of pending.keys()) {
       const original = originalItems.get(key);
       if (original) repaintRow(original);
+      clearDelegateShown(key);
     }
     pending.clear();
     fileNames.clear();
@@ -861,8 +956,16 @@ async function renderSection(root, code, ctx, targetKey) {
   }
   activeDiffCleanup = () => document.removeEventListener("keydown", onDiffKeydown);
 
+  function delegatePreviewMissing() {
+    for (const key of pending.keys()) {
+      const item = originalItems.get(key);
+      if (item && item.delegate_preview && !delegatePreview.has(key)) return true;
+    }
+    return false;
+  }
+
   function setDiffBusy(busy) {
-    diffConfirmBtn.disabled = busy;
+    diffConfirmBtn.disabled = busy || delegatePreviewMissing();
     diffCancelBtn.disabled = busy;
     diffList.querySelectorAll("button").forEach((b) => { b.disabled = busy; });
   }
@@ -916,6 +1019,7 @@ async function renderSection(root, code, ctx, targetKey) {
     } else {
       pending.delete(key);
       fileNames.delete(key);
+      clearDelegateShown(key);
       const original = originalItems.get(key) || {};
       const fresh = {
         ...original, raw: info.raw, value: info.value,
@@ -947,6 +1051,7 @@ async function renderSection(root, code, ctx, targetKey) {
       ? (texts.miniapp_settings_diff_confirm_dangerous_cta_text || "")
       : (texts.miniapp_settings_diff_confirm_cta_text || "");
     diffCancelBtn.textContent = texts.miniapp_settings_batch_discard_text || "";
+    if (!busyBatch) setDiffBusy(false);
   }
 
   async function submitDiff() {
@@ -992,6 +1097,7 @@ async function renderSection(root, code, ctx, targetKey) {
         }
         pending.delete(key);
         fileNames.delete(key);
+        clearDelegateShown(key);
       }
       for (const item of resp.items || []) { repaintRow(item); setOriginal(item); }
       updateBatchBar();
@@ -1003,7 +1109,11 @@ async function renderSection(root, code, ctx, targetKey) {
       // 500 partial_save: часть ключей уже записана — они не должны висеть «несохранёнными».
       const savedKeys = (err && err.payload && err.payload.saved) || [];
       if (savedKeys.length) {
-        for (const key of savedKeys) { pending.delete(key); fileNames.delete(key); }
+        for (const key of savedKeys) {
+          pending.delete(key);
+          fileNames.delete(key);
+          clearDelegateShown(key);
+        }
         updateBatchBar();
         renderDiffList();
       }
@@ -1147,13 +1257,64 @@ async function renderSection(root, code, ctx, targetKey) {
   // счётчик «Сохранить N изменений» иначе рос бы и не убывал при обратном клике. Сравнение —
   // строкой с нормализацией null/"" (черновик из контрола и исходное значение реестра бывают
   // разных типов — "" против null, число против строки).
+  const previewTimers = new Map();
+  function clearPreviewTimers() {
+    for (const timer of previewTimers.values()) clearTimeout(timer);
+    previewTimers.clear();
+  }
+  stopDelegatePreview = clearPreviewTimers;
+
+  function scheduleDelegateFieldPreview(key) {
+    const item = originalItems.get(key);
+    if (!item || !item.delegate_preview || !pending.has(key)) return;
+    const value = pending.get(key);
+    const stamp = delegateStamp(value);
+    if (delegateShownStamp.get(key) === stamp) return;
+    const prev = previewTimers.get(key);
+    if (prev) clearTimeout(prev);
+    delegatePreviewFailed.delete(key);
+    previewTimers.set(key, setTimeout(() => { paintDelegateFieldPreview(key, stamp); }, 300));
+  }
+
+  async function paintDelegateFieldPreview(key, stamp) {
+    previewTimers.delete(key);
+    const item = originalItems.get(key);
+    if (!item || !pending.has(key) || delegateStamp(pending.get(key)) !== stamp) return;
+    const value = pending.get(key);
+    try {
+      const resp = await api(delegateWillQuery(item, value));
+      if (!pending.has(key) || delegateStamp(pending.get(key)) !== stamp) return;
+      const text = resp.text || "";
+      revealPreview(itemIndex.get(key), text);
+      markDelegateShown(key, value, text);
+      updateBatchBar();
+    } catch (err) {
+      if (!pending.has(key) || delegateStamp(pending.get(key)) !== stamp) return;
+      delegatePreviewFailed.add(key);
+      updateBatchBar();
+      if (!isAuthError(err)) showToast(errorText(err, texts.miniapp_settings_error_toast_text || ""), "warn");
+    }
+  }
+
   function setPending(key, value) {
     const original = originalItems.get(key);
     const originalValue = original ? original.value : null;
     const norm = (v) => (v == null ? "" : String(v));
-    if (norm(value) === norm(originalValue)) pending.delete(key);
-    else pending.set(key, value);
+    if (pendingResetKind.has(key) && delegateShownText.has(key) && norm(value) === norm(delegateShownText.get(key))) {
+      pending.set(key, null);
+      updateBatchBar();
+      return;
+    }
+    pendingResetKind.delete(key);
+    if (norm(value) === norm(originalValue)) {
+      pending.delete(key);
+      clearDelegateShown(key);
+    } else {
+      pending.set(key, value);
+      if (delegateShownStamp.get(key) !== delegateStamp(value)) clearDelegateShown(key);
+    }
     updateBatchBar();
+    if (pending.has(key) && original && original.delegate_preview) scheduleDelegateFieldPreview(key);
   }
 
   function onFieldChange(item, el, value) {
@@ -1814,6 +1975,7 @@ async function renderSection(root, code, ctx, targetKey) {
 
   // ── загрузка/перезагрузка ────────────────────────────────────────────────────────────
   async function loadAndRender() {
+    clearPreviewTimers();
     itemIndex.clear();
     groupCollapsedState.clear();
     clearState();
@@ -1857,6 +2019,7 @@ async function renderSection(root, code, ctx, targetKey) {
     buildCityBar(data.city_header);
     renderSectionBody();
     updateBatchBar();
+    for (const key of pending.keys()) scheduleDelegateFieldPreview(key);
     if (targetKey) revealTargetKey(targetKey);
     if (searchInput.value) onSearchInput();
   }
@@ -1865,6 +2028,7 @@ async function renderSection(root, code, ctx, targetKey) {
 }
 
 export function unmount() {
+  stopDelegatePreview();
   if (activeScrollHandler) {
     window.removeEventListener("scroll", activeScrollHandler);
     activeScrollHandler = null;

@@ -173,3 +173,60 @@ def test_global_reset_preview_uses_free_text_when_payment_is_off(tmp_path):
     assert shown["text"] == free
     assert paid not in shown["text"] and "ОБРАЗЕЦ" not in shown["text"]
     assert kept == saved
+
+
+def test_save_bar_waits_and_city_reset_names_delegate_text():
+    """«Сохранить N» не раньше превью. «Как везде» подтверждает и оставляет текст делегата."""
+    import json
+    import shutil
+    import subprocess
+
+    js = (Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "settings.js").read_text(encoding="utf-8")
+    actions = js.split("function applyActions", 1)[1].split("function updateBatchBar", 1)[0]
+    assert 'openResetConfirm(item, "city")' in actions
+    assert "queueCityReset(item)" not in actions
+    city = js.split("function queueCityReset", 1)[1].split("function hasPlaceholder", 1)[0]
+    assert 'display: ""' not in city
+    assert "display: text" in city
+    assert "after_reset=1" in js.split("async function openResetConfirm", 1)[1].split("function revealPreview", 1)[0]
+    bar = js.split("function updateBatchBar", 1)[1].split("function matrixCellValue", 1)[0]
+    assert "saveBarState" in bar
+    assert 'batchBtn.classList.toggle("hidden", !bar.visible)' in bar
+    busy = js.split("function setDiffBusy", 1)[1].split("function buildOrdinaryDiffRow", 1)[0]
+    assert "delegatePreviewMissing()" in busy
+
+    start = js.index("function delegateStamp")
+    end = js.index("function markerFor")
+    node = shutil.which("node")
+    assert node, "node нужен, чтобы проверить панель сохранения"
+    script = js[start:end] + """
+const items = {
+  letter: { delegate_preview: true },
+  tab: { delegate_preview: false },
+};
+const hidden = saveBarState([{ key: "letter", value: "pay {amount}" }], items, {});
+const shown = saveBarState(
+  [{ key: "letter", value: "pay {amount}" }],
+  items,
+  { letter: delegateStamp("pay {amount}") },
+);
+const other = saveBarState([{ key: "tab", value: "x" }], items, {});
+const resetHidden = saveBarState([{ key: "letter", value: null }], items, {});
+const resetShown = saveBarState(
+  [{ key: "letter", value: null }],
+  items,
+  { letter: delegateStamp(null) },
+);
+console.log(JSON.stringify({ hidden, shown, other, resetHidden, resetShown }));
+"""
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    got = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert got["hidden"] == {"visible": False, "waiting": True}
+    assert got["shown"] == {"visible": True, "waiting": False}
+    assert got["other"] == {"visible": True, "waiting": False}
+    assert got["resetHidden"]["visible"] is False
+    assert got["resetShown"] == {"visible": True, "waiting": False}
