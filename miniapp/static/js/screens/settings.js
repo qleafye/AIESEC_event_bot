@@ -39,8 +39,8 @@ function isAuthError(err) {
 }
 
 // Phase 30 (30-07, задача 2, A2-08, 30-UI-SPEC.md § «Экран менеджера "Анкета мероприятия"»,
-// артборд 13): блок «Анкета мероприятия» рисуется ТОЛЬКО для раздела «form» — единственная
-// таблица порядка восьми строк-тумблеров (жёсткий порядок макета, не менять даже для
+// артборд 13): блок «Анкета мероприятия» — таблица восьми строк-тумблеров. Её открывает
+// и старый раздел «form», и хаб «Вопросы анкеты» (row-questions). Порядок не менять даже для
 // читаемости кода). `text` — префикс имени в `formV2Text`/`page.py::FORM_V2_TEXT_KEYS`
 // (план 30-07 задача 1), не код настройки — код настройки менеджер нигде не видит.
 const FORM_MANAGER_MASTER_KEY = "reg_form_v2_enabled";
@@ -55,6 +55,18 @@ const FORM_MANAGER_ROWS = [
   { key: "reg_form_haptics", text: "haptics" },
 ];
 const FORM_MANAGER_KEYS = new Set([FORM_MANAGER_MASTER_KEY, ...FORM_MANAGER_ROWS.map((r) => r.key)]);
+
+// Хаб «Вопросы анкеты» — строка row-questions, в неё попадают только тексты.
+// Тумблеры новой анкеты лежат в разделе form и сами в строку не входят.
+function collectFormManagerItems(payload) {
+  const found = new Map();
+  for (const section of payload.sections || []) {
+    for (const item of section.toggles || []) {
+      if (FORM_MANAGER_KEYS.has(item.key)) found.set(item.key, item);
+    }
+  }
+  return found;
+}
 
 // Свёртка групп переживает перезаход (WEB-SET-02, UI-SPEC «Каркас страницы» п.4) — тот же
 // приём try/catch, что HUB_MODE_KEY/ONBOARDING_KEY в screens/hub.js: недоступный localStorage
@@ -1745,16 +1757,23 @@ async function renderSection(root, code, ctx, targetKey) {
   // ── тело раздела: тумблеры раздела (флат-список строк) + карточки групп. ─────────────────
   function renderSectionBody() {
     sectionsWrap.replaceChildren();
-    // 30-07 задача 2: девять ключей «Анкета 2.0» уходят в свой блок выше обычного
-    // флат-списка тумблеров раздела (только для раздела «form») — не показываются дважды.
+    // Девять ключей «Анкета 2.0» — свой блок выше списка. Раздел form отдаёт их
+    // своими тумблерами. Строка хаба row-questions этих ключей не забирает (там тексты),
+    // поэтому блок читает их из всего ответа settings/all и не рисует второй раз.
     let managerToggles = section.toggles;
-    if (code === "form") {
-      const regFormItems = new Map();
-      for (const item of section.toggles) if (FORM_MANAGER_KEYS.has(item.key)) regFormItems.set(item.key, item);
+    if (code === "form" || code === "row-questions") {
+      const regFormItems = code === "row-questions" ? collectFormManagerItems(payload) : new Map();
+      if (code === "form") {
+        for (const item of section.toggles) {
+          if (FORM_MANAGER_KEYS.has(item.key)) regFormItems.set(item.key, item);
+        }
+      }
       const block = buildFormManagerBlock(regFormItems);
       if (block) {
         sectionsWrap.append(block);
-        managerToggles = section.toggles.filter((item) => !FORM_MANAGER_KEYS.has(item.key));
+        if (code === "form") {
+          managerToggles = section.toggles.filter((item) => !FORM_MANAGER_KEYS.has(item.key));
+        }
       }
     }
     if (managerToggles.length) {

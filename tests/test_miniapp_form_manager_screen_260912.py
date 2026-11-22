@@ -55,13 +55,50 @@ def test_all_nine_toggle_keys_referenced_exactly_once():
         assert text.count(f'"{key}"') == 1, f"{key} должен встречаться в settings.js ровно один раз"
 
 
-def test_manager_block_only_for_form_section():
+def test_manager_block_on_questions_row_and_form_section():
+    """Хаб открывает row-questions. Блок тумблеров там тоже, не только в старом разделе form."""
     text = _js_without_comments(SETTINGS_JS)
     fn_start = text.index("function renderSectionBody(")
     fn_end = text.index("\n  async function ", fn_start + 10)
     body = text[fn_start:fn_end]
     assert 'code === "form"' in body
+    assert 'code === "row-questions"' in body
+    assert "collectFormManagerItems(payload)" in body
     assert "buildFormManagerBlock" in body
+
+
+def test_questions_row_collects_form_toggles_from_the_form_section():
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node не найден в PATH")
+    text = SETTINGS_JS.read_text(encoding="utf-8")
+    start = text.index("const FORM_MANAGER_MASTER_KEY")
+    end = text.index("const COLLAPSE_PREFIX")
+    script = text[start:end] + """
+const payload = { sections: [
+  { token: "form", toggles: [
+    { key: "reg_form_v2_enabled" },
+    { key: "reg_form_chips" },
+    { key: "reg_form_lookup_search" },
+    { key: "reg_form_edu_card" },
+    { key: "reg_form_repeatable" },
+    { key: "reg_form_limit_counter" },
+    { key: "reg_form_status_screen" },
+    { key: "reg_form_header_settings" },
+    { key: "reg_form_haptics" },
+    { key: "registration_mode" },
+  ]},
+  { token: "reg", toggles: [], groups: [{ token: "reg_prompts", items: [{ key: "start_text" }] }] },
+]};
+console.log(JSON.stringify([...collectFormManagerItems(payload).keys()]));
+"""
+    proc = subprocess.run(
+        [node, "--input-type=module", "-e", script],
+        capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    got = json.loads(proc.stdout.strip().splitlines()[-1])
+    assert got == ["reg_form_v2_enabled", *EXPECTED_ORDER]
 
 
 def test_segment_has_no_confirm_box_call():
