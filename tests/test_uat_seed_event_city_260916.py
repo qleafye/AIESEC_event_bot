@@ -145,6 +145,48 @@ def test_pending_sets_event_city_to_first_enabled_city_when_module_on(tmp_path):
     assert user["city"] == "Москва"  # согласован с event_city, а не жёстко «Москва»
 
 
+def test_pending_uses_tester_header_city_not_first_enabled(tmp_path):
+    """Шапка тестера — город приёмки. Сеялка берёт его, а не первую строку справочника."""
+    _ready(tmp_path)
+    _open_gate()
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{TESTER_ID}", "test"))
+    restore = _snapshot_cities()
+    try:
+        cities.set_cities_for_test([
+            {"code": "msk", "label": "Москва, 30-31 октября", "tab_base": "", "enabled": 1,
+             "sort_order": 0},
+            {"code": "test", "label": "Тестовый", "tab_base": "", "enabled": 1, "sort_order": 1},
+        ])
+        uat_seed = _import_handlers()
+        _go(uat_seed, "pending", "none")
+        user = asyncio.run(db.get_user(TESTER_ID))
+    finally:
+        restore()
+    assert user["event_city"] == "test"
+    assert user["city"] == "Тестовый"
+
+
+def test_all_cities_header_keeps_first_enabled(tmp_path):
+    _ready(tmp_path)
+    _open_gate()
+    asyncio.run(db.set_setting("event_city_enabled", "on"))
+    asyncio.run(db.set_setting(f"{cities.ADMIN_CITY_KEY_PREFIX}{TESTER_ID}", cities.ALL_CITIES))
+    restore = _snapshot_cities()
+    try:
+        cities.set_cities_for_test([
+            {"code": "msk", "label": "Москва", "tab_base": "", "enabled": 1, "sort_order": 0},
+            {"code": "spb", "label": "Санкт-Петербург", "tab_base": " СПб", "enabled": 1,
+             "sort_order": 1},
+        ])
+        uat_seed = _import_handlers()
+        _go(uat_seed, "pending", "none")
+        user = asyncio.run(db.get_user(TESTER_ID))
+    finally:
+        restore()
+    assert user["event_city"] == "msk"
+
+
 def test_pending_skips_disabled_default_city_for_first_enabled(tmp_path):
     """`default_city_code()` называет город из `config.EVENT_CITY_DEFAULT`/первый в списке —
     но если ИМЕННО он выключен, сеялка обязана взять первый ВКЛЮЧЁННЫЙ, не мёртвый дефолт."""
