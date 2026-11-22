@@ -354,3 +354,111 @@ def render_qr_card(
         out, format="PNG", optimize=True,
     )
     return out.getvalue()
+
+
+_LAYOUT_LONG = 1440
+_QR_QUIET = 4
+
+
+def _frame_box(item) -> dict | None:
+    """Доли рамки целиком на листе. Нет числа или рамка вылезла — её нет."""
+    if not isinstance(item, dict):
+        return None
+    try:
+        x, y, w, h = (float(item[key]) for key in ("x", "y", "w", "h"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if w <= 0 or h <= 0 or x < 0 or y < 0 or x + w > 1.0001 or y + h > 1.0001:
+        return None
+    return {"x": x, "y": y, "w": w, "h": h}
+
+
+def qr_frame(markup) -> dict | None:
+    """Доли обязательной рамки кода. Нет годной рамки — карточка собирается генератором."""
+    if not isinstance(markup, dict):
+        return None
+    return _frame_box(markup.get("qr"))
+
+
+def layout_qr_origin(width: int, height: int, frame: dict, payload: str) -> tuple[int, int, int, int]:
+    """`(left, top, scale, modules)` квадрата кода на холсте. Шаг модуля один и тот же по осям."""
+    qr = segno.make(payload, error="m")
+    modules = qr.symbol_size(scale=1, border=0)[0] + 2 * _QR_QUIET
+    fx = int(round(frame["x"] * width))
+    fy = int(round(frame["y"] * height))
+    fw = int(round(frame["w"] * width))
+    fh = int(round(frame["h"] * height))
+    side = min(fw, fh)
+    scale = max(1, side // modules)
+    qpx = scale * modules
+    left = fx + (fw - qpx) // 2
+    top = fy + (fh - qpx) // 2
+    return left, top, scale, modules
+
+
+def _fit_long_side(img, long: int = _LAYOUT_LONG):
+    from PIL import Image
+
+    img = img.convert("RGB")
+    width, height = img.size
+    if width <= 0 or height <= 0:
+        raise ValueError("пустая картинка макета")
+    if max(width, height) == long:
+        return img
+    if width >= height:
+        size = (long, max(1, round(height * long / width)))
+    else:
+        size = (max(1, round(width * long / height)), long)
+    return img.resize(size, Image.Resampling.LANCZOS)
+
+
+def _draw_frame_text(draw, width: int, height: int, box: dict, text: str, font_name: str, size: int, fill) -> None:
+    words = (text or "").strip()
+    if not words:
+        return
+    x = int(round(box["x"] * width))
+    y = int(round(box["y"] * height))
+    box_w = int(round(box["w"] * width))
+    box_h = int(round(box["h"] * height))
+    if box_w < 8 or box_h < 8:
+        return
+    font = _fit(draw, words, font_name, size, box_w, min_size=14)
+    lines = _wrap(draw, words, font, box_w, max_lines=max(1, box_h // max(font.size, 1)))
+    ty = y
+    for line in lines:
+        if ty + font.size > y + box_h:
+            break
+        draw.text((x + box_w // 2, ty), line, font=font, fill=fill, anchor="ma")
+        ty += font.size + 4
+
+
+def render_qr_on_layout(layout: bytes, markup, payload: str, name: str, city: str, social: str = "") -> bytes:
+    """PNG макета с тем же кодом, что у генератора. Не-картинка бросает. В 16 цветов не жмём."""
+    from PIL import Image, ImageDraw
+
+    frame = qr_frame(markup)
+    if frame is None:
+        raise ValueError("на макете нет рамки кода")
+    img = _fit_long_side(Image.open(io.BytesIO(layout)))
+    width, height = img.size
+    left, top, scale, _modules = layout_qr_origin(width, height, frame, payload)
+    qr = segno.make(payload, error="m")
+    buf = io.BytesIO()
+    qr.save(buf, kind="png", scale=1, border=_QR_QUIET, dark="#1c1c1c", light="white")
+    small = Image.open(buf).convert("RGB")
+    qr_img = small.resize((small.width * scale, small.height * scale), Image.Resampling.NEAREST)
+    img.paste(qr_img, (left, top))
+    draw = ImageDraw.Draw(img)
+    boxes = markup if isinstance(markup, dict) else {}
+    name_box = _frame_box(boxes.get("name"))
+    if name_box and (name or "").strip():
+        _draw_frame_text(draw, width, height, name_box, name, "raleway-800.woff2", 48, _TEXT)
+    city_box = _frame_box(boxes.get("city"))
+    if city_box and (city or "").strip():
+        _draw_frame_text(draw, width, height, city_box, city, "lato-700.woff2", 36, _MUTED)
+    social_box = _frame_box(boxes.get("vk"))
+    if social_box and (social or "").strip():
+        _draw_frame_text(draw, width, height, social_box, social, "lato-700.woff2", 32, _MUTED)
+    out = io.BytesIO()
+    img.save(out, format="PNG")
+    return out.getvalue()

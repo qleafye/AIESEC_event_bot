@@ -399,6 +399,16 @@ async def card_render_inputs(user: dict, payload: str) -> dict:
     city = (await city_label_or_none(user.get("event_city")) or "").strip()
     prefix, rest = split_leading_symbols(city)
     city = rest.strip() if prefix else city
+    from database.db import qr_card_layout_get
+    from services.forum.qr_card import qr_frame
+
+    layout = await qr_card_layout_get()
+    layout_file_id = (layout or {}).get("file_id") or ""
+    layout_markup = (layout or {}).get("markup_json") or ""
+    theme = await resolve_values()
+    if layout_file_id and qr_frame((layout or {}).get("markup")):
+        # Макет рисуется сам: цвета генератора больше не входят в пиксели.
+        theme = "layout"
     return {
         "payload": payload,
         "name": (user.get("full_name") or "").strip() or "—",
@@ -407,7 +417,9 @@ async def card_render_inputs(user: dict, payload: str) -> dict:
         "footer": footer,
         "watermark": watermark,
         "vk": pass_vk_line(user.get("vk_username")),
-        "theme": await resolve_values(),
+        "theme": theme,
+        "layout_file_id": layout_file_id,
+        "layout_markup": layout_markup,
     }
 
 
@@ -482,10 +494,25 @@ async def _render_card(user: dict, payload: str) -> tuple[bytes, bool]:
     но не скачались: такую карточку не запоминаем, следующий показ попробует снова."""
     import asyncio
 
-    from services.forum.qr_card import render_qr_card
+    from services.forum.qr_card import qr_frame, render_qr_card, render_qr_on_layout
     from services.forum.qr_card_theme import load_card_theme, theme_images_missing
 
     face = await card_render_inputs(user, payload)
+    markup = {}
+    if face.get("layout_markup"):
+        try:
+            markup = json.loads(face["layout_markup"])
+        except (TypeError, json.JSONDecodeError):
+            markup = {}
+    if face.get("layout_file_id") and qr_frame(markup):
+        from services.forum.qr_card_theme import _image_bytes
+        from services.scheduler import get_bot
+
+        raw = await _image_bytes(get_bot(), face["layout_file_id"])
+        png = await asyncio.to_thread(
+            render_qr_on_layout, raw, markup, payload, face["name"], face["city"], face["vk"],
+        )
+        return png, True
     theme = await load_card_theme()
     png = await asyncio.to_thread(
         render_qr_card, payload, face["name"], face["city"], face["title"], face["footer"],
