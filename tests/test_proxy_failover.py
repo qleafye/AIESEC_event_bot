@@ -568,6 +568,40 @@ def test_session_timeout_stays_numeric_for_dispatcher_arithmetic():
     assert isinstance(int(session.timeout + 30), int)
 
 
+def test_aiogram_333_nested_client_timeout_does_not_raise_on_compare(monkeypatch):
+    """aiogram 3.32+ does ClientTimeout(total=timeout) and aiohttp then evaluates
+    ``timeout > 0``. Our connect-bounded ClientTimeout must survive that, including
+    the delete_webhook call that passes timeout=None. aiogram==3.31.0 only hides it."""
+    import aiogram.client.session.aiohttp as aio_mod
+
+    monkeypatch.setattr(aio_mod, "ClientTimeout", ClientTimeout, raising=False)
+    proxy_session._install_aiogram_timeout_unwrap()
+    captured = []
+
+    async def parent(self, bot, method, timeout=None):
+        wrapped = aio_mod.ClientTimeout(total=self.timeout if timeout is None else timeout)
+        total = wrapped.total
+        if total is not None and not (total > 0):
+            raise AssertionError(total)
+        captured.append(wrapped)
+        return True
+
+    monkeypatch.setattr(AiohttpSession, "make_request", parent)
+
+    async def go():
+        session = FailoverAiohttpSession([PRIMARY], connect_timeout=5)
+        return await session.make_request(object(), object(), timeout=None)
+
+    assert asyncio.run(go()) is True
+    assert len(captured) == 1
+    assert captured[0].total == FailoverAiohttpSession([PRIMARY]).timeout
+    assert captured[0].connect == 5
+    assert captured[0].sock_connect == 5
+    plain = aio_mod.ClientTimeout(total=30)
+    assert plain.total == 30
+    assert plain.connect is None
+
+
 # ── Test 11: failover cause logging ─────────────────────────────────────────
 
 def test_warning_line_names_the_underlying_network_error(monkeypatch, caplog):

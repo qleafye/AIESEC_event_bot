@@ -45,6 +45,7 @@ from aiohttp import ClientTimeout
 # _connector_init / _setup_proxy_connector via the base class) -- _prepare_connector is
 # the same private helper AiohttpSession.proxy's setter uses internally, reused here to
 # build a throwaway connector for the background primary probe.
+import aiogram.client.session.aiohttp as _aiogram_aiohttp
 from aiogram.client.session.aiohttp import AiohttpSession, _prepare_connector
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.exceptions import TelegramForbiddenError, TelegramNetworkError
@@ -58,6 +59,56 @@ from services.infra.ru_plural import ru_plural
 from services.infra.timeutil import msk_now
 
 logger = logging.getLogger(__name__)
+
+
+def _install_aiogram_timeout_unwrap() -> None:
+    """aiogram 3.32+ builds ``ClientTimeout(total=timeout)`` inside ``make_request``.
+
+    This session already passes a ``ClientTimeout`` so ``connect`` / ``sock_connect``
+    stay bounded. A nested total is not a number: aiohttp then does ``timeout > 0``
+    in ``TimeoutHandle.start`` and ``delete_webhook`` dies with
+    ``TypeError: '>' not supported between instances of 'ClientTimeout' and 'int'``.
+    Unwrap only that constructor. aiogram 3.31 forwards ``timeout`` as-is and does
+    not bind this name, so there is nothing to patch. Pinning ``aiogram==3.31.0``
+    hides the crash and drops the connect bound on newer aiogram — not the fix.
+    """
+    current = getattr(_aiogram_aiohttp, "ClientTimeout", None)
+    if current is None or getattr(current, "_yl_unwraps_total", False):
+        return
+
+    def _client_timeout(
+        *,
+        total=None,
+        connect=None,
+        sock_connect=None,
+        sock_read=None,
+        ceil_threshold=None,
+    ):
+        if isinstance(total, ClientTimeout):
+            if connect is None:
+                connect = total.connect
+            if sock_connect is None:
+                sock_connect = total.sock_connect
+            if sock_read is None:
+                sock_read = total.sock_read
+            if ceil_threshold is None:
+                ceil_threshold = total.ceil_threshold
+            total = total.total
+        if ceil_threshold is None:
+            ceil_threshold = 5
+        return ClientTimeout(
+            total=total,
+            connect=connect,
+            sock_connect=sock_connect,
+            sock_read=sock_read,
+            ceil_threshold=ceil_threshold,
+        )
+
+    _client_timeout._yl_unwraps_total = True
+    _aiogram_aiohttp.ClientTimeout = _client_timeout
+
+
+_install_aiogram_timeout_unwrap()
 
 # Admin-alert hook, one-in-one-out with services/sheets/sheets.py's set_alert_bot pattern (P0 audit
 # T-dw1-02): fail-soft, never raises, warns once if no bot was injected (e.g.
@@ -667,7 +718,8 @@ class FailoverAiohttpSession(AiohttpSession):
         NOTE: never assign the result to self.timeout -- aiogram dispatcher.py:216 does
         `int(bot.session.timeout + polling_timeout)`, which requires self.timeout to stay
         numeric. This helper only ever returns a per-call value passed as make_request's
-        `timeout=` kwarg.
+        `timeout=` kwarg. aiogram 3.32+ wraps that value again; `_install_aiogram_timeout_unwrap`
+        keeps connect/sock_connect instead of raising on the nested ClientTimeout.
         """
         if not self._connect_timeout or self._connect_timeout <= 0:
             return timeout
