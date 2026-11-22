@@ -1742,6 +1742,8 @@ a.flat-row:active, button.flat-row:active { background: var(--surface-alt); }
 .appl-decide.reject { background: var(--surface); border-color: var(--danger); color: var(--danger-text); }
 .appl-decide-row .appl-decide:first-child { margin-left: 0; margin-right: auto; }
 .appl-decide .icon { width: 22px; height: 22px; }
+.appl-decide-row { flex-wrap: wrap; }
+.appl-next { flex: 1 0 100%; }
 
 /* Шторка отказа (D18, квик 260904-7e7): решение фазы 23 (Task 3, D-05/T-23-23) держало этот
    блок ПОД карточкой, не модалкой поверх всего — основание было «модалка конфликтует с

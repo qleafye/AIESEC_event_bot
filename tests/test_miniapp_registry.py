@@ -190,6 +190,8 @@ MINIAPP_KEYS = [
     # плану 23-04 (API отдавал только то, что зависит от карточки, не статичные подписи кнопок).
     "miniapp_applications_approve_button",
     "miniapp_applications_reject_button",
+    "miniapp_applications_next_button",
+    "miniapp_applications_restart_button",
     "miniapp_applications_resume_open",
     # Приёмка 17.09 (п.2): развилка резюме R2b — кнопка «Открыть ссылку» (делегат дал ссылку).
     "miniapp_applications_resume_open_link",
@@ -357,7 +359,8 @@ def test_exactly_170_miniapp_keys_and_no_extra():
     # литералы JS, EN-делегат видел их по-русски (195 -> 197).
     # Приёмка 10.10: +1 счётчик операций с баллами на главной (197 -> 198).
     # Магазин баллов в приложении: +19 текстов экрана «🛍 Магазин» (198 -> 217).
-    assert len(MINIAPP_KEYS) == 217
+    # Кнопки «Дальше» и «С начала» на отборе заявок (217 -> 219).
+    assert len(MINIAPP_KEYS) == 219
     present = sorted(k for k in SETTINGS_SCHEMA if k.startswith("miniapp_"))
     assert present == sorted(MINIAPP_KEYS)
 
@@ -430,7 +433,8 @@ def test_text_keys_have_human_defaults():
     # Квик 27.09 (ревью): +2 текста сбоя загрузки и обложки не-картинкой (162 -> 164).
     # Приёмка 10.10: +1 счётчик операций с баллами на главной (164 -> 165).
     # Магазин баллов в приложении: +19 текстов экрана «🛍 Магазин» (165 -> 184).
-    assert len(text_keys) == 184
+    # Отбор заявок: +2 подписи кнопок «Дальше» и «С начала» (184 -> 186).
+    assert len(text_keys) == 186
     for key in text_keys:
         default = SETTINGS_SCHEMA[key]["default"]
         assert isinstance(default, str) and default.strip(), key
