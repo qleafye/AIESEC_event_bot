@@ -40,6 +40,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 import shared.web_theme as web_theme
 from shared.secret_redact import install_log_redaction, register_secret
 from dashboard import chat_rating
+from dashboard import day_result
 from dashboard import portraits
 from dashboard import queries
 from dashboard import skillup_block
@@ -1461,6 +1462,52 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
             context = build_feedback_context(conn, cfg, scope, viewer, day=day)
 
         return templates.TemplateResponse(request, "feedback.html", context)
+
+    @app.get("/day", response_class=HTMLResponse)
+    def day_page(
+        request: Request,
+        city: Optional[str] = None,
+        season: Optional[str] = None,
+        event: Optional[str] = None,
+        day: Optional[str] = None,
+    ):
+        """Четыре уже посчитанных среза за выбранный день. Периметр — копия `/feedback`."""
+        if multi_mode(cfg.events):
+            return _html_event(
+                request, event, "day.html",
+                lambda conn, scope, viewer, source: day_result.build_day_context(
+                    conn, cfg, scope, viewer, event_code=source.code, day=day,
+                ),
+                city=city, season=season,
+            )
+
+        telegram_id = request.session.get("telegram_id")
+        if telegram_id is None:
+            return RedirectResponse(url="/login", status_code=302)
+
+        with read_conn(cfg.db_path) as conn:
+            if not has_stats(conn, telegram_id, cfg.admin_ids):
+                notify_access_request(
+                    cfg,
+                    telegram_id=telegram_id,
+                    username=request.session.get("username"),
+                    first_name=request.session.get("first_name"),
+                )
+                return templates.TemplateResponse(
+                    request,
+                    "no_access.html",
+                    {"bot_username": cfg.bot_username},
+                    status_code=403,
+                )
+
+            scope = replace(viewer_scope(conn, telegram_id, cfg.admin_ids, city), season=season)
+            viewer = {
+                "telegram_id": telegram_id,
+                "bound_city": staff_city(conn, telegram_id),
+            }
+            context = day_result.build_day_context(conn, cfg, scope, viewer, day=day)
+
+        return templates.TemplateResponse(request, "day.html", context)
 
     @app.get("/feedback.json")
     def feedback_json(

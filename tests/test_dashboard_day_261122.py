@@ -232,6 +232,102 @@ async def _seed_survey_and_session():
         await conn.commit()
 
 
+def test_day_page_shows_one_day_and_keeps_forum_totals(tmp_path, monkeypatch):
+    from tests import test_dashboard_render as tdr
+
+    monkeypatch.setattr("dashboard.main.notify_access_request", lambda *a, **k: None)
+    path = _ready(tmp_path, "dashboard_day_http.db")
+    _run(_seed_cities())
+    _run(_named(11, PERSON))
+    for tid in (12, 13, 14):
+        _run(_named(tid, f"Номер {tid}"))
+    for tid in (11, 12, 13, 14):
+        _run(_seed_entry(tid))
+    _run(_program(OTHER, "Только программа"))
+    _run(db.set_setting("reject_rules_enabled", "on"))
+
+    guest = tdr._client(tdr._cfg(path))
+    denied_guest = guest.get("/day", follow_redirects=False)
+    assert denied_guest.status_code in (302, 307)
+    assert denied_guest.headers["location"] == "/login"
+
+    outsider = tdr._client(tdr._cfg(path))
+    tdr._login_as(outsider, 900500)
+    denied = outsider.get("/day")
+    assert denied.status_code == 403
+    assert "Нет доступа" in denied.text
+
+    client = tdr._stats_manager_client(path)
+    page = client.get("/day", params={"city": "msk", "season": SEASON, "day": DAY})
+    assert page.status_code == 200
+    text = page.text
+    assert "<h1>Итог дня</h1>" in text
+    for title in ("Приход", "Опросы", "Оценки сессий", "Резерв"):
+        assert title in text
+    assert ">4</div>" in text
+    assert "Отметок на входе ещё нет." not in text
+    assert PERSON not in text
+    assert "Номер 12" not in text
+
+    empty = client.get("/day", params={"city": "msk", "season": SEASON, "day": OTHER})
+    assert "Отметок на входе ещё нет." in empty.text
+    assert ">4</div>" not in empty.text
+    assert f"city=msk" in empty.text
+    assert f"season={SEASON}" in empty.text
+    assert f"day={DAY}" in empty.text
+    assert "ФОРУМ: ИТОГИ" in empty.text
+
+    home = client.get("/", params={"city": "msk"})
+    assert "Позвали сегодня" in home.text
+    assert "ФОРУМ: ИТОГИ" in home.text
+    assert 'href="/day?city=msk"' in home.text
+    forum = client.get("/forum", params={"city": "msk"})
+    assert "ФОРУМ: ИТОГИ" in forum.text
+    assert 'href="/day?city=msk"' in forum.text
+    feedback = client.get("/feedback", params={"city": "msk"})
+    assert "<h1>ФОРУМ: ИТОГИ</h1>" in feedback.text
+    assert 'href="/day?city=msk"' in feedback.text
+
+
+def test_day_page_bound_city_ignores_foreign_arrival(tmp_path, monkeypatch):
+    from tests import test_dashboard_render as tdr
+
+    path = _ready(tmp_path, "dashboard_day_bound.db")
+    _run(_seed_cities())
+    for tid in (11, 12, 13, 14):
+        _run(_named(tid, f"Номер {tid}"))
+        _run(_seed_entry(tid))
+
+    client = tdr._stats_manager_client(path, city="spb")
+    page = client.get("/day", params={"city": "msk", "day": DAY})
+    assert page.status_code == 200
+    assert "Отметок на входе ещё нет." in page.text
+    assert ">4</div>" not in page.text
+    assert "Ваш город:" in page.text
+    assert 'aria-label="Город"' not in page.text
+
+
+def test_day_page_hides_reserve_until_rules_on(tmp_path):
+    from tests import test_dashboard_render as tdr
+
+    path = _ready(tmp_path, "dashboard_day_rules_off.db")
+    client = tdr._stats_manager_client(path)
+    text = client.get("/day").text
+    assert "Резерв виден, когда включены правила автоотказа." in text
+    assert "Позвали" not in text
+
+
+async def _program(day, title):
+    async with _connect() as conn:
+        await conn.execute(
+            "INSERT INTO program_sessions "
+            "(city, day, start_time, end_time, title, created_at, updated_at) "
+            "VALUES ('msk', ?, '10:00', '11:00', ?, ?, ?)",
+            (day, title, f"{day} 09:00:00", f"{day} 09:00:00"),
+        )
+        await conn.commit()
+
+
 async def _seed_reserve():
     async with _connect() as conn:
         await conn.execute(
