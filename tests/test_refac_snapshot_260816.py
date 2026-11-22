@@ -1944,6 +1944,7 @@ admin|callback_query|shop_top|shp_top:*
 admin|callback_query|shop_top_csv|shp_topcsv
 admin|callback_query|shop_sales|shp_sales:*
 admin|callback_query|shop_sales_csv|shp_salescsv
+admin|callback_query|shop_sales_sheet|shp_salessheet
 admin|callback_query|shop_toggle_reserve|shp_resv
 admin|callback_query|shop_code_start|shp_code
 admin|callback_query|shop_res_card|shp_rc:*
@@ -2852,7 +2853,8 @@ def test_snapshot_total_handler_count_is_292():
     # Виды сертификата: +4 сообщения и +9 кнопок сразу после экрана сертификатов.
     # Тот же прогон записал уже стоявшее меню интервью и сдвиг его четырёх кнопок (1499 -> 1513).
     # Макет карточки QR: +3 сообщения и +3 кнопки сразу после приёма картинки темы и сброса цветов (1513 -> 1519).
-    assert len(GOLDEN_SNAPSHOT) == 1519
+    # Вкладка магазина: +1 admin.callback_query shop_sales_sheet сразу после shop_sales_csv (1519 -> 1520).
+    assert len(GOLDEN_SNAPSHOT) == 1520
     # 28.10 (магазин баллов): +25 хендлеров, чистая вставка (1343 -> 1368).
     # 28.10 (сертификаты после форума): +18 хендлеров, чистая вставка (1325 -> 1343).
     # 24.10 (анкета из нескольких вопросов): +54 хендлера, чистая вставка (1271 -> 1325).

@@ -593,7 +593,7 @@ async def shop_sales(callback: types.CallbackQuery):
     if len(sales) == 20:
         nav.append(("Старше →", f"shp_sales:{offset + 20}"))
     kb_rows = [nav] if nav else []
-    kb_rows += [[("📥 Все выдачи в CSV", "shp_salescsv")], [("◀️ В магазин", "shp_home")]]
+    kb_rows += [[("📥 Все выдачи в CSV", "shp_salescsv"), ("📄 В таблицу", "shp_salessheet")], [("◀️ В магазин", "shp_home")]]
     await _edit_or_answer(callback, "\n".join(lines), _kb(kb_rows))
     await callback.answer()
 
@@ -611,7 +611,21 @@ async def shop_sales_csv(callback: types.CallbackQuery):
     await callback.answer()
 
 
+@router.callback_query(F.data == "shp_salessheet")
+async def shop_sales_sheet(callback: types.CallbackQuery):
+    from services.sheets.shop_sheet import rebuild_shop_sheet
+
+    n = await rebuild_shop_sheet()
+    if n < 0:
+        await callback.answer("Таблица не подключена. Выдача в боте на месте.", show_alert=True)
+    else:
+        await callback.answer(f"Вкладка обновлена. Строк: {n}", show_alert=True)
+
+
 # Брони делегатов на стойке (тумблер, выдача по коду, отмена) — отдельный шов, импорт хвостом.
 from handlers.game import admin_shop_reserve  # noqa: E402,F401
 # Фото товара (загрузить / заменить / убрать) — отдельный шов, импорт хвостом.
 from handlers.game import admin_shop_photo  # noqa: E402,F401
+from services.sheets.shop_sheet import enable_shop_sheet_sync
+
+enable_shop_sheet_sync()

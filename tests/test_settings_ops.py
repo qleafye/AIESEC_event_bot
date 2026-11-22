@@ -40,7 +40,7 @@ def test_html_settings_is_same_object_as_bot():
     assert admin_settings.HTML_SETTINGS is settings_ops.HTML_SETTINGS
 
 
-# ── SHEET_TAB_WRITE_MODE — ровно восемь ключей с теми же режимами ────────────────────────
+# ── SHEET_TAB_WRITE_MODE — ровно десять ключей с теми же режимами ────────────────────────
 
 def test_sheet_tab_write_mode_has_exactly_nine_keys_with_expected_modes():
     assert settings_ops.SHEET_TAB_WRITE_MODE == {
@@ -49,6 +49,7 @@ def test_sheet_tab_write_mode_has_exactly_nine_keys_with_expected_modes():
         "game_matrix_tab": "rewrite",
         "game_history_tab": "rewrite",
         "game_coins_log_tab": "rewrite",
+        "shop_sheet_tab": "rewrite",
         "enroll_sessions_tab": "rewrite",
         "enroll_people_tab": "rewrite",
         "short_sheet_tab": "append",

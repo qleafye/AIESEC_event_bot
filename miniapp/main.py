@@ -276,6 +276,9 @@ def _build_asgi_app(cfg: DashboardConfig) -> FastAPI:
     for router in ALL_ROUTERS:
         app.include_router(router)
 
+    from services.sheets.shop_sheet import enable_shop_sheet_sync
+
+    enable_shop_sheet_sync()
     return app
 
 

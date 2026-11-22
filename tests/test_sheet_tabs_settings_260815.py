@@ -103,7 +103,7 @@ def test_settings_group_keys_sheets_matches_field_order():
     assert admin_settings._settings_group_keys("sheets") == admin_settings._SHEETS_FIELD_ORDER
     assert admin_settings._SHEETS_FIELD_ORDER == [
         "main_sheet_tab", "short_sheet_tab", "party_sheet_tab", "incomplete_sheet_tab",
-        "game_matrix_tab", "game_history_tab", "game_coins_log_tab", "preselect_tab",
+        "game_matrix_tab", "game_history_tab", "game_coins_log_tab", "shop_sheet_tab", "preselect_tab",
         "city_tab_suffix__short", "city_tab_suffix__party", "city_tab_suffix__incomplete",
         "city_tab_suffix__game", "city_tab_suffix__game_history", "city_tab_suffix__game_coins_log",
         "polls_sheet_tab",

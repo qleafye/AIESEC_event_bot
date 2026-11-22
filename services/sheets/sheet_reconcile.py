@@ -173,8 +173,15 @@ async def _known_non_delegate_tab_titles() -> set[str]:
         for city in await enabled_cities():
             titles.add(await city_incomplete_tab(city["code"]))
 
-    for key in ("polls_sheet_tab", "preselect_tab", "history_sheet_tab", "questions_sheet_tab"):
+    from domain.settings.schema import SETTINGS_SCHEMA
+
+    for key in (
+        "polls_sheet_tab", "preselect_tab", "history_sheet_tab", "questions_sheet_tab",
+        "shop_sheet_tab",
+    ):
         value = (await get_setting_typed(key) or "").strip()
+        if not value and key == "shop_sheet_tab":
+            value = (SETTINGS_SCHEMA[key].get("default") or "").strip()
         if value:
             titles.add(value)
     auto_reject_tab = (await get_setting("auto_reject_sheet_tab") or "").strip()
