@@ -2366,6 +2366,16 @@ async def init_db():
             )
         ''')
 
+        # Один макет карточки QR на событие. Нет строки — карточка собирается генератором.
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS qr_card_layout (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                file_id TEXT NOT NULL,
+                markup TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        ''')
+
         # Форум-ночь п.6 (D-25, идея №14): «Не пришёл» — готовый шаблон рассылки с кнопками
         # ответа делегата («Уже еду»/«Не смогу прийти»/«Я на месте»). Одна строка = один
         # (делегат, день) — `UNIQUE(telegram_id, day)` даёт ДВОЙНУЮ службу без второй таблицы:
@@ -13099,6 +13109,51 @@ async def checkin_qr_card_put(telegram_id: int, fingerprint: str, file_id: str) 
             "fingerprint = excluded.fingerprint, file_id = excluded.file_id",
             (telegram_id, fingerprint, file_id),
         )
+        await db.commit()
+
+
+def _layout_markup_json(markup: dict | str) -> str:
+    if isinstance(markup, str):
+        return markup
+    return json.dumps(markup, ensure_ascii=False, sort_keys=True)
+
+
+async def qr_card_layout_get() -> dict | None:
+    """Строка макета или None. `markup` — словарь, `markup_json` — как в базе."""
+    async with _connect() as db:
+        async with db.execute(
+            "SELECT file_id, markup, updated_at FROM qr_card_layout WHERE id = 1",
+        ) as cursor:
+            row = await cursor.fetchone()
+    if not row or not row[0]:
+        return None
+    raw = row[1] or "{}"
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    return {"file_id": row[0], "markup": parsed, "markup_json": raw, "updated_at": row[2]}
+
+
+async def qr_card_layout_put(file_id: str, markup: dict | str) -> None:
+    """Единственная строка макета. Повтор заменяет файл и рамки."""
+    stamp = msk_now().strftime("%Y-%m-%d %H:%M:%S")
+    async with _connect() as db:
+        await db.execute(
+            "INSERT INTO qr_card_layout (id, file_id, markup, updated_at) VALUES (1, ?, ?, ?) "
+            "ON CONFLICT(id) DO UPDATE SET "
+            "file_id = excluded.file_id, markup = excluded.markup, updated_at = excluded.updated_at",
+            (file_id, _layout_markup_json(markup), stamp),
+        )
+        await db.commit()
+
+
+async def qr_card_layout_delete() -> None:
+    """Убрать макет. Цвета и картинки темы `qr_card_*` не трогает."""
+    async with _connect() as db:
+        await db.execute("DELETE FROM qr_card_layout WHERE id = 1")
         await db.commit()
 
 
