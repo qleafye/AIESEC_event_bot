@@ -16,6 +16,9 @@
 Отдельный модуль, как `chat_coins_db`: `database/db.py` и так больше 12 тысяч строк."""
 from __future__ import annotations
 
+import json
+import sqlite3
+
 import aiosqlite
 from datetime import datetime
 
@@ -81,10 +84,169 @@ async def ensure_schema(db: aiosqlite.Connection) -> None:
     await _db._ensure_column(db, "certificate_people", "name_ok", "INTEGER NOT NULL DEFAULT 0")
     await _db._ensure_column(db, "certificate_people", "send_blocked", "INTEGER NOT NULL DEFAULT 0")
     await _db._ensure_column(db, "certificate_templates", "markup", "TEXT")
+    await db.execute(
+        "CREATE TABLE IF NOT EXISTS certificate_kinds ("
+        "id INTEGER PRIMARY KEY, title TEXT NOT NULL, audience TEXT NOT NULL, "
+        "role_key TEXT, by_day INTEGER NOT NULL DEFAULT 0, fields TEXT NOT NULL, "
+        "created_at TEXT NOT NULL)"
+    )
 
 
 def _stamp() -> str:
     return msk_now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ── свои виды (четыре старых кода живут в KINDS, не в этой таблице) ────────────────────
+
+AUDIENCES = ("checkin", "test", "nicks", "role")
+KIND_FIELDS = ("name", "date", "city", "scales")
+
+
+def kind_code(kind_id: int) -> str:
+    """Код шаблона и выдачи: `k` и номер строки. Человеку его не показывают."""
+    return f"k{int(kind_id)}"
+
+
+def kind_id_from_code(code: str) -> int | None:
+    if not isinstance(code, str) or len(code) < 2 or code[0] != "k" or not code[1:].isdigit():
+        return None
+    if code[1] == "0":
+        return None
+    return int(code[1:])
+
+
+def _fields_list(fields: list[str] | None) -> list[str]:
+    picked: list[str] = []
+    for item in fields or ("name",):
+        if item in KIND_FIELDS and item not in picked:
+            picked.append(item)
+    if "name" not in picked:
+        picked.insert(0, "name")
+    return picked
+
+
+def _kind_row(row) -> dict:
+    try:
+        fields = json.loads(row[5] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        fields = ["name"]
+    if not isinstance(fields, list):
+        fields = ["name"]
+    return {
+        "id": int(row[0]),
+        "code": kind_code(row[0]),
+        "title": row[1],
+        "audience": row[2],
+        "role_key": row[3],
+        "by_day": int(row[4] or 0),
+        "fields": _fields_list([item for item in fields if isinstance(item, str)]),
+        "created_at": row[6],
+    }
+
+
+async def _kind_rows(sql: str, params: tuple = ()) -> list | None:
+    """`None` — таблицы ещё нет (старая база до миграции). Пустой список — видов нет."""
+    try:
+        async with _db._connect() as db:
+            async with db.execute(sql, params) as cur:
+                return await cur.fetchall()
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e).lower():
+            return None
+        raise
+
+
+async def list_kinds() -> list[dict]:
+    rows = await _kind_rows(
+        "SELECT id, title, audience, role_key, by_day, fields, created_at "
+        "FROM certificate_kinds ORDER BY id",
+    )
+    if not rows:
+        return []
+    return [_kind_row(row) for row in rows]
+
+
+async def get_kind(code: str) -> dict | None:
+    kind_id = kind_id_from_code(code)
+    if kind_id is None:
+        return None
+    rows = await _kind_rows(
+        "SELECT id, title, audience, role_key, by_day, fields, created_at "
+        "FROM certificate_kinds WHERE id = ?",
+        (kind_id,),
+    )
+    if not rows:
+        return None
+    return _kind_row(rows[0])
+
+
+async def insert_kind(
+    title: str, audience: str, *, role_key: str | None = None,
+    by_day: bool = False, fields: list[str] | None = None,
+) -> dict | None:
+    """Вставить вид. Роль — только ключ из `ROLES`, иначе строка не пишется."""
+    if audience not in AUDIENCES:
+        return None
+    stored_role = None
+    if audience == "role":
+        from services.access.role_registry import ROLES
+        if role_key not in ROLES:
+            return None
+        stored_role = role_key
+    async with _db._connect() as db:
+        cur = await db.execute(
+            "INSERT INTO certificate_kinds (title, audience, role_key, by_day, fields, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                title, audience, stored_role, 1 if by_day else 0,
+                json.dumps(_fields_list(fields), ensure_ascii=False), _stamp(),
+            ),
+        )
+        await db.commit()
+        new_id = cur.lastrowid
+    return await get_kind(kind_code(new_id))
+
+
+async def delete_kind(code: str) -> bool:
+    """Удалить свой вид, его шаблоны и список ников. Четыре старых кода не принимает."""
+    if code in KINDS or kind_id_from_code(code) is None:
+        return False
+    kind_id = kind_id_from_code(code)
+    async with _db._connect() as db:
+        cur = await db.execute("DELETE FROM certificate_kinds WHERE id = ?", (kind_id,))
+        if not cur.rowcount:
+            await db.commit()
+            return False
+        await db.execute("DELETE FROM certificate_templates WHERE kind = ?", (code,))
+        await db.execute("DELETE FROM certificate_people WHERE kind = ?", (code,))
+        await db.commit()
+    return True
+
+
+async def has_active_role(telegram_id: int, role_key: str) -> bool:
+    """Один SELECT: тот же срок, что `get_staff_roles` — пустой `expires_at` или не раньше сегодня."""
+    today = msk_now().date().isoformat()
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT 1 FROM staff WHERE telegram_id = ? AND role = ? "
+            "AND (expires_at IS NULL OR expires_at >= ?) LIMIT 1",
+            (telegram_id, role_key, today),
+        ) as cur:
+            row = await cur.fetchone()
+    return row is not None
+
+
+async def active_staff_ids(role_key: str) -> list[int]:
+    """Сотрудники с этой ролью на сегодня. Предикат срока тот же, что у `has_active_role`."""
+    today = msk_now().date().isoformat()
+    async with _db._connect() as db:
+        async with db.execute(
+            "SELECT telegram_id FROM staff WHERE role = ? "
+            "AND (expires_at IS NULL OR expires_at >= ?)",
+            (role_key, today),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [int(row[0]) for row in rows]
 
 
 # ── выдача открывается ─────────────────────────────────────────────────────────────────
