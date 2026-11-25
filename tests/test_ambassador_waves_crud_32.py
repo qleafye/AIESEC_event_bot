@@ -414,15 +414,27 @@ def test_card_locked_fields_after_start_sent_shows_explanation(tmp_path, monkeyp
     assert any(c and c.startswith("waveedit:") and c.endswith(":intro_text") for c in calls)
 
 
+def _future_span(start_offset_days: int = 30, length_days: int = 9) -> tuple[str, str]:
+    """Даты волны впереди «сегодня»: фиксированный ноябрь 2026 уже прошёл, и активация
+    честно отказывает волне с концом в прошлом."""
+    from datetime import timedelta
+    from services.infra.timeutil import msk_now
+
+    start = msk_now() + timedelta(days=start_offset_days)
+    end = start + timedelta(days=length_days)
+    return start.strftime("%d.%m.%Y"), end.strftime("%d.%m.%Y")
+
+
 def test_activation_arms_jobs_and_flips_state_once(tmp_path, monkeypatch):
     _ready(tmp_path)
     from handlers.game import admin_game_waves as w
-    wid = _run(db.create_wave(_dt("01.11.2026"), _dt_end("10.11.2026"), created_by=ADMIN_ID))
+    start_day, end_day = _future_span()
+    wid = _run(db.create_wave(_dt(start_day), _dt_end(end_day), created_by=ADMIN_ID))
     # WR-16 (остаток, ревизия 32-FIX-common-2): `wave_activate_go` теперь тоже отказывает
     # волне без заданий — этот тест проверяет саму расстановку джоб, а не запрет пустой волны
     # (тот сюжет покрыт tests/test_wave_activate_guard_wr16_260922.py), поэтому у волны есть
     # задание.
-    _run(db.create_task("Задание", "Light", 10, "text", _dt_end("10.11.2026"), ADMIN_ID, wave_id=wid))
+    _run(db.create_task("Задание", "Light", 10, "text", _dt_end(end_day), ADMIN_ID, wave_id=wid))
     calls = {"start_for_all": 0, "wave_end": [], "reminders": []}
 
     async def fake_start_for_all(wave_id):
@@ -455,6 +467,38 @@ def test_activation_arms_jobs_and_flips_state_once(tmp_path, monkeypatch):
     assert calls["start_for_all"] == 1
     assert len(calls["wave_end"]) == 1
     assert cb2.answers and cb2.answers[-1][1] is True
+
+
+def test_activation_refuses_when_end_already_passed(tmp_path, monkeypatch):
+    """Конец волны в прошлом — джобы не ставятся, состояние остаётся черновиком."""
+    _ready(tmp_path)
+    from datetime import timedelta
+
+    from handlers.game import admin_game_waves as w
+    from services.infra.timeutil import msk_now
+
+    end = msk_now() - timedelta(days=1)
+    start = end - timedelta(days=7)
+    wid = _run(db.create_wave(
+        start.strftime("%Y-%m-%d 00:00:00"),
+        end.strftime("%Y-%m-%d 23:59:59"),
+        created_by=ADMIN_ID,
+    ))
+    _run(db.create_task(
+        "Задание", "Light", 10, "text", end.strftime("%Y-%m-%d 23:59:59"), ADMIN_ID, wave_id=wid,
+    ))
+    calls = {"start_for_all": 0}
+
+    async def fake_start_for_all(wave_id):
+        calls["start_for_all"] += 1
+        return 0
+
+    monkeypatch.setattr(w, "schedule_wave_start_for_all", fake_start_for_all)
+    cb = FakeCallback(f"waveactivate_go:{wid}", user_id=ADMIN_ID)
+    _run(w.wave_activate_go(cb, _new_state(ADMIN_ID)))
+    assert calls["start_for_all"] == 0
+    assert _run(db.get_wave(wid))["state"] == "draft"
+    assert cb.answers and "прошла" in (cb.answers[-1][0] or "").lower()
 
 
 def test_delete_requires_confirm_and_clears_wave_id_and_jobs(tmp_path, monkeypatch):
