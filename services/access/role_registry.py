@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from domain.access.capabilities import ALL_CAPABILITIES
+
 # D-07: roles fixed in code today (admin / reg_manager / game_manager), but the SHAPE is
 # data-driven — a fourth role costs exactly one entry here plus two SETTINGS_SCHEMA keys
 # (role_caps_<role>/role_<role>_enabled), no refactor. D-12: "admin" deliberately has NO
@@ -45,6 +47,13 @@ ROLES = {
     "marketing_manager": {
         "label": "📣 Маркетинг (метки)",
         "default_caps": ["source_links"],
+    },
+    # Второй владелец: все права админки, без записи в ADMIN_IDS. Дефолт — тот же
+    # ALL_CAPABILITIES, не второй список кодов (domain/access/capabilities.py и
+    # dashboard/access.py держат ту же роль).
+    "owner": {
+        "label": "👑 Второй владелец",
+        "default_caps": list(ALL_CAPABILITIES),
     },
 }
 

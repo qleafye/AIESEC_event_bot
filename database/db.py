@@ -11880,6 +11880,9 @@ USER_PURGE_TABLES: tuple[tuple[str, str, str], ...] = (
     # Форум-ночь п.3 (D-03, идея №2): checkin_qr_sends.telegram_id — кому и когда отправлен
     # персональный QR + его подтверждение, тот же личный след, группа общая "checkin".
     ("checkin_qr_sends", "telegram_id", "checkin"),
+    # Кэш картинки «Мой QR»: отпечаток хранит имя и токен прохода, file_id — саму карточку.
+    # Это след делегата, как checkin_qr_sends выше; после удаления человека строка не нужна.
+    ("checkin_qr_cards", "telegram_id", "checkin"),
     # Форум-ночь п.6 (D-25, идея №14): checkin_not_arrived.telegram_id — кому и когда ушёл
     # шаблон «не пришёл» + его ответ, тот же личный след, группа общая "checkin".
     ("checkin_not_arrived", "telegram_id", "checkin"),

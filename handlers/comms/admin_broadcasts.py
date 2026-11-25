@@ -1798,13 +1798,6 @@ async def cmd_refresh_allowlist(message: types.Message):
         await message.answer(f"✅ Allowlist обновлён: {size} username в списке.")
 
 
-# Форум-ночь п.6 (D-25, идея №14): мастер «Были/Не были на сессии …» — свой шов, декорирует
-# тот же `handlers.admin.router` (см. докстринг handlers/comms/admin_broadcast_session_filter.py).
-from handlers.comms import admin_broadcast_session_filter  # noqa: E402,F401
-from handlers.comms import admin_broadcast_ext_form_filter  # noqa: E402,F401
-from handlers.comms import admin_broadcast_season  # noqa: E402,F401  # сезон по умолчанию, «из них прошлого сезона»
-from handlers.comms import admin_broadcast_enroll_filter  # noqa: E402,F401  # фильтры записи на сессии и теста
-from handlers.comms import admin_broadcast_status  # noqa: E402,F401  # разбивка по статусу заявки, «Только одобренные»
-from handlers.comms import admin_broadcast_interview  # noqa: E402,F401  # галочка «Выбрать время»
-from handlers.comms import admin_broadcast_consent  # noqa: E402,F401  # кнопка согласия
-from handlers.comms import admin_broadcast_vk  # noqa: E402,F401  # отдельная рассылка ВК
+# Соседние швы (сессия, внешняя форма, сезон, запись, статус заявки, интервью, согласие, ВК)
+# регистрируют хендлеры на тот же router. Сами модули — в admin_broadcast_seams.py.
+from handlers.comms import admin_broadcast_seams  # noqa: E402,F401

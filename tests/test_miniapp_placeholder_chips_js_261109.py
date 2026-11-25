@@ -39,4 +39,5 @@ def test_chip_click_inserts_braced_token_and_button_shows_label():
     assert "mountPlaceholderChips(el, item);" in row
     assert "field(h, spec, item.value, (v) => onFieldChange(rawItem, el, v));" in row
     assert 'icon("eye")' in text
-    assert "if (hasPlaceholder(item) && !locked)" in text
+    # Глаз и у полей с чипами, и у писем делегату (delegate_preview). Чипы от этого не пропадают.
+    assert "if ((hasPlaceholder(item) || item.delegate_preview) && !locked)" in text

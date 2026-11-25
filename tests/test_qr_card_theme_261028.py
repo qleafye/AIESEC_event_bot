@@ -257,6 +257,7 @@ def test_sample_preview_is_a_card(tmp_path):
 
 import re  # noqa: E402
 
+from config import config  # noqa: E402
 from handlers.access.admin_caps import required_capability  # noqa: E402
 from handlers.settings import admin_miniapp  # noqa: E402
 from handlers.settings import admin_qr_card_theme as screen  # noqa: E402
@@ -315,7 +316,24 @@ def test_keyboard_shows_human_labels_not_codes(tmp_path):
 
 def test_every_screen_callback_is_covered_by_caps(tmp_path):
     _roles_ready(tmp_path)
-    datas = set(_flat_callback_data(asyncio.run(screen.build_qr_card_theme_keyboard({"qr_card_logo": "X", "qr_card_bg_image": "Y"}))))
+    saved_url = config.DASHBOARD_PUBLIC_URL
+    config.DASHBOARD_PUBLIC_URL = "https://yl26.example.test"
+    try:
+        kb = asyncio.run(screen.build_qr_card_theme_keyboard({"qr_card_logo": "X", "qr_card_bg_image": "Y"}))
+    finally:
+        config.DASHBOARD_PUBLIC_URL = saved_url
+    datas = set()
+    webapps = []
+    for row in kb.inline_keyboard:
+        for btn in row:
+            if btn.callback_data is None:
+                # Кнопка Mini App не callback: права проверяет сам экран макета (settings).
+                assert btn.web_app is not None
+                assert btn.web_app.url.rstrip("/").endswith("/app/#/qr-card-layout")
+                webapps.append(btn)
+                continue
+            datas.add(btn.callback_data)
+    assert len(webapps) == 1
     datas |= {"qrct_pick:bg", "qrct_set:bg:red", "qrct_save_go", "qrct_reset_go", "qrct_cancel_edit"}
     for data in datas:
         assert required_capability(callback_data=data) == "settings", data
