@@ -1786,6 +1786,55 @@ def _delete_row_by_id_sync(tab_name: str | None, telegram_id: int) -> str:
     return "ok"
 
 
+def _delete_matching_rows_sync(tab_name: str | None, telegram_id: int, *, keep_last: bool) -> str:
+    """Снимает строки этого id. `keep_last=False` — все. `keep_last=True` — все, кроме
+    последней (её только что дописал перевод). Несколько строк одного id — один человек,
+    угадывать нечего. Индексы снимаются снизу, чтобы удаление не сдвигало ещё не снятые."""
+    sheet = _open_named_or_main_sync(tab_name)
+    if sheet is None:
+        return "not_found_tab"
+    matches = _matching_row_indexes(sheet.col_values(1), telegram_id)
+    if not matches:
+        return "not_found_row"
+    drop = matches[:-1] if keep_last else matches
+    if not drop:
+        return "ok"
+    for row in sorted(drop, reverse=True):
+        sheet.delete_rows(row)
+    return "ok"
+
+
+async def _delete_matching_rows(tab_name: str | None, telegram_id: int, *, keep_last: bool) -> str:
+    if not _sheet_target.sheets_enabled():
+        return "error"
+    try:
+        result = await asyncio.to_thread(
+            _delete_matching_rows_sync, tab_name, telegram_id, keep_last=keep_last,
+        )
+    except Exception as e:
+        logger.error(f"delete matching rows ({tab_name!r}, {telegram_id}) failed: {e}")
+        _note_write(False)
+        return "error"
+    if result == "ok":
+        _note_write(True)
+        if tab_name is None:
+            _reset_sheet_cache()
+        else:
+            _reset_named_sheet_cache(tab_name)
+    return result
+
+
+async def delete_all_rows_by_id(tab_name: str | None, telegram_id: int) -> str:
+    """Все строки этого id на вкладке. Пустая вкладка — «not_found_row».
+    Коды те же, что у `delete_row_by_id`, кроме «duplicate»: несколько строк здесь снимаются."""
+    return await _delete_matching_rows(tab_name, telegram_id, keep_last=False)
+
+
+async def keep_last_row_by_id(tab_name: str | None, telegram_id: int) -> str:
+    """Оставляет одну, самую нижнюю строку этого id. Ровно одна строка — «ok» и без записи."""
+    return await _delete_matching_rows(tab_name, telegram_id, keep_last=True)
+
+
 async def delete_row_by_id(tab_name: str | None, telegram_id: int) -> str:
     """Fail-soft wrapper. "ok"/"not_found_tab"/"not_found_row"/"duplicate" from the sync worker,
     or "error" for unconfigured Sheets / an unexpected exception. Resets the relevant tab cache

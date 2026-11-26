@@ -221,6 +221,29 @@ def test_delete_row_by_id_removes_exactly_one_matching_row(monkeypatch):
     assert [r[0] for r in ws._rows] == [999]
 
 
+def test_delete_all_rows_by_id_removes_every_copy(monkeypatch):
+    _reset_sheets_state()
+    ws = _FakeWorksheet("СПб", [[DELEGATE_ID, "A"], [999, "Другой"], [DELEGATE_ID, "B"]])
+    _patch_gspread(monkeypatch, {"СПб": ws})
+
+    result = _run(sheets_mod.delete_all_rows_by_id("СПб", DELEGATE_ID))
+
+    assert result == "ok"
+    assert [r[0] for r in ws._rows] == [999]
+
+
+def test_keep_last_row_by_id_leaves_the_bottom_copy(monkeypatch):
+    _reset_sheets_state()
+    ws = _FakeWorksheet("Тюмень", [[DELEGATE_ID, "старая"], [DELEGATE_ID, "новая"]])
+    _patch_gspread(monkeypatch, {"Тюмень": ws})
+
+    result = _run(sheets_mod.keep_last_row_by_id("Тюмень", DELEGATE_ID))
+
+    assert result == "ok"
+    assert [r[0] for r in ws._rows] == [DELEGATE_ID]
+    assert ws._rows[0][1] == "новая"
+
+
 def test_delete_row_by_id_duplicate_refuses_to_guess(monkeypatch):
     _reset_sheets_state()
     ws = _FakeWorksheet("СПб Акция", [[DELEGATE_ID, "A"], [DELEGATE_ID, "B"]])
@@ -354,6 +377,33 @@ class _FakeSheetStore:
         self.deletes.append((tab_name, telegram_id))
         return "ok"
 
+    async def delete_all_rows_by_id(self, tab_name, telegram_id):
+        key = self._key(tab_name)
+        if key not in self.tabs:
+            return "not_found_tab"
+        target = str(telegram_id)
+        rows = self.tabs[key]
+        matches = [i for i, r in enumerate(rows) if str(r[0]) == target]
+        if not matches:
+            return "not_found_row"
+        for i in reversed(matches):
+            del rows[i]
+        self.deletes.append((tab_name, telegram_id))
+        return "ok"
+
+    async def keep_last_row_by_id(self, tab_name, telegram_id):
+        key = self._key(tab_name)
+        if key not in self.tabs:
+            return "not_found_tab"
+        target = str(telegram_id)
+        rows = self.tabs[key]
+        matches = [i for i, r in enumerate(rows) if str(r[0]) == target]
+        if not matches:
+            return "not_found_row"
+        for i in reversed(matches[:-1]):
+            del rows[i]
+        return "ok"
+
 
 def _install_fake_sheets(monkeypatch):
     store = _FakeSheetStore()
@@ -361,6 +411,8 @@ def _install_fake_sheets(monkeypatch):
     monkeypatch.setattr(sheets_mod, "append_to_sheet", store.append_to_sheet)
     monkeypatch.setattr(sheets_mod, "append_to_named_sheet", store.append_to_named_sheet)
     monkeypatch.setattr(sheets_mod, "delete_row_by_id", store.delete_row_by_id)
+    monkeypatch.setattr(sheets_mod, "delete_all_rows_by_id", store.delete_all_rows_by_id)
+    monkeypatch.setattr(sheets_mod, "keep_last_row_by_id", store.keep_last_row_by_id)
     monkeypatch.setattr(sheets_mod, "list_worksheet_titles", store.list_worksheet_titles)
     monkeypatch.setattr(sheets_mod, "append_to_existing_named_sheet", store.append_to_existing_named_sheet)
     return store
@@ -685,7 +737,7 @@ def test_move_appends_new_before_deleting_old(tmp_path, monkeypatch):
     store = _install_fake_sheets(monkeypatch)
     order = []
     orig_append = store.append_to_existing_named_sheet
-    orig_delete = store.delete_row_by_id
+    orig_delete = store.delete_all_rows_by_id
 
     async def spy_append(tab_name, data):
         order.append(("append", tab_name))
@@ -696,7 +748,7 @@ def test_move_appends_new_before_deleting_old(tmp_path, monkeypatch):
         return await orig_delete(tab_name, telegram_id)
 
     monkeypatch.setattr(sheets_mod, "append_to_existing_named_sheet", spy_append)
-    monkeypatch.setattr(sheets_mod, "delete_row_by_id", spy_delete)
+    monkeypatch.setattr(sheets_mod, "delete_all_rows_by_id", spy_delete)
 
     async def scenario():
         await _enable_cities_module()
@@ -711,6 +763,97 @@ def test_move_appends_new_before_deleting_old(tmp_path, monkeypatch):
     report, old_tab, new_tab = _run(scenario())
     assert report["sheet"]["moved"] is True
     assert order == [("append", new_tab), ("delete", old_tab)]
+
+
+def test_move_clears_every_old_copy_and_leaves_one_new_row(tmp_path, monkeypatch):
+    """Пять копий на старой вкладке больше не блокируют снятие: на новой остаётся одна строка."""
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, f"копия {i}"] for i in range(5)])
+        store.seed(new_tab, [[DELEGATE_ID, "уже была"], [DELEGATE_ID, "и ещё"]])
+        report = await move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        )
+        return report, old_tab, new_tab
+
+    report, old_tab, new_tab = _run(scenario())
+    assert report["ok"] is True
+    assert report["sheet"]["moved"] is True
+    assert report["sheet"]["error"] is None
+    assert [r[0] for r in store.tabs[store._key(old_tab)]] == []
+    new_rows = [r for r in store.tabs[store._key(new_tab)] if str(r[0]) == str(DELEGATE_ID)]
+    assert len(new_rows) == 1
+    assert new_rows[0][1] != "уже была"
+
+
+def test_second_move_waits_and_does_not_append_again(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+    store = _install_fake_sheets(monkeypatch)
+    started = asyncio.Event()
+    release = asyncio.Event()
+    orig_append = store.append_to_existing_named_sheet
+
+    async def slow_append(tab_name, data):
+        started.set()
+        await release.wait()
+        return await orig_append(tab_name, data)
+
+    monkeypatch.setattr(sheets_mod, "append_to_existing_named_sheet", slow_append)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb", participant_type="short")
+        old_tab = await _resolve_tabs("spb", "short")
+        new_tab = await _resolve_tabs("msk", "short")
+        store.seed(old_tab, [[DELEGATE_ID, "Тест"]])
+        store.seed(new_tab, [])
+        first = asyncio.create_task(move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        ))
+        await started.wait()
+        second = asyncio.create_task(move_user_city(
+            DELEGATE_ID, "msk", status_mode=STATUS_MODE_KEEP, by_admin=SUPERADMIN_ID,
+        ))
+        await asyncio.sleep(0)
+        release.set()
+        return await first, await second, new_tab
+
+    first, second, new_tab = _run(scenario())
+    assert first["ok"] is True
+    assert second["ok"] is False
+    assert second["error"] == "Делегат уже в этом городе"
+    copies = [r for r in store.tabs[store._key(new_tab)] if str(r[0]) == str(DELEGATE_ID)]
+    assert len(copies) == 1
+
+
+def test_citymove_apply_while_busy_does_not_start_another(tmp_path, monkeypatch):
+    _db_ready(tmp_path)
+
+    async def scenario():
+        await _enable_cities_module()
+        await _seed_user(DELEGATE_ID, city="spb")
+        admin_city_move._citymove_busy.add(DELEGATE_ID)
+        cb = _FakeCallback(
+            f"citymv_apply:{DELEGATE_ID}:msk:{STATUS_MODE_KEEP}:{admin_city_move._NOTIFY_ON}",
+            SUPERADMIN_ID,
+        )
+        try:
+            await admin_city_move.citymove_apply(cb)
+        finally:
+            admin_city_move._citymove_busy.discard(DELEGATE_ID)
+        return cb
+
+    cb = _run(scenario())
+    assert cb.answers == [("Этот перевод уже выполняется.", True)]
+    assert cb.message.edits == []
+    user = _run(db.get_user(DELEGATE_ID))
+    assert user["event_city"] == "spb"
 
 
 def test_move_deletes_row_left_on_city_tab_not_the_track_tab(tmp_path, monkeypatch):
@@ -741,6 +884,7 @@ def test_move_deletes_row_left_on_city_tab_not_the_track_tab(tmp_path, monkeypat
 
 
 def test_move_deletes_old_row_when_new_tab_already_has_the_delegate(tmp_path, monkeypatch):
+    """На новой вкладке уже была строка. После перевода остаётся одна — только что дописанная."""
     _db_ready(tmp_path)
     store = _install_fake_sheets(monkeypatch)
 
@@ -758,9 +902,11 @@ def test_move_deletes_old_row_when_new_tab_already_has_the_delegate(tmp_path, mo
 
     report, old_tab, new_tab = _run(scenario())
     assert report["sheet"]["moved"] is True
+    assert report["sheet"]["error"] is None
     assert store.tabs[old_tab] == []
-    assert sum(1 for r in store.tabs[new_tab] if str(r[0]) == str(DELEGATE_ID)) == 2
-    assert "несколько строк" in (report["sheet"]["error"] or "")
+    fresh = [r for r in store.tabs[new_tab] if str(r[0]) == str(DELEGATE_ID)]
+    assert len(fresh) == 1
+    assert fresh[0][1] != "уже была"
 
 
 def test_move_sheet_failure_does_not_block_db_write(tmp_path, monkeypatch):
@@ -1476,7 +1622,7 @@ def test_sheet_error_text_has_no_internal_codes(tmp_path, monkeypatch):
     async def failing_delete(tab_name, telegram_id):
         return "error"
 
-    monkeypatch.setattr(sheets_mod, "delete_row_by_id", failing_delete)
+    monkeypatch.setattr(sheets_mod, "delete_all_rows_by_id", failing_delete)
 
     async def scenario():
         await _enable_cities_module()

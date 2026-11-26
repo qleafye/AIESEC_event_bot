@@ -37,6 +37,7 @@ aiogram-free (тот же разрез, что `services/applications/reject_jou
 — модуль ничего не знает про Bot/aiogram, вызывающий хендлер строит собственные сообщения)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from domain.cities import get_city, get_setting_typed_for_city, normalize_city
@@ -58,6 +59,18 @@ from database.session_enroll_db import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Один перевод человека за раз. Второй тап ждёт и видит уже новый город,
+# а не дописывает ещё одну строку.
+_move_guards: dict[int, asyncio.Lock] = {}
+
+
+def _move_guard(telegram_id: int) -> asyncio.Lock:
+    lock = _move_guards.get(telegram_id)
+    if lock is None:
+        lock = asyncio.Lock()
+        _move_guards[telegram_id] = lock
+    return lock
 
 # Коды результата функций листа (services/sheets/sheets.py) — словами для отчёта менеджеру.
 _SHEET_RESULT_TEXT = {
@@ -190,8 +203,7 @@ async def _tabs_with_other_copies(old_city: str, skip: set) -> list:
 
 
 async def _delete_other_copies(telegram_id: int, old_city: str, skip: set) -> tuple[bool, str | None]:
-    """Снимает единственную строку делегата с каждой вкладки из `_tabs_with_other_copies`.
-    Несколько строк на одной вкладке не угадываем — называем вкладку и оставляем как есть.
+    """Снимает все строки этого id с вкладок из `_tabs_with_other_copies`.
     Возвращает (хоть одну строку сняли, текст проблемы или None)."""
     removed = False
     stuck: list[str] = []
@@ -200,10 +212,7 @@ async def _delete_other_copies(telegram_id: int, old_city: str, skip: set) -> tu
         if not rows:
             continue
         label = "главная" if tab is None else str(tab)
-        if len(rows) != 1:
-            stuck.append(label)
-            continue
-        result = await sheets_service.delete_row_by_id(tab, telegram_id)
+        result = await sheets_service.delete_all_rows_by_id(tab, telegram_id)
         if result == "ok":
             removed = True
         elif result not in ("not_found_row", "not_found_tab"):
@@ -233,6 +242,24 @@ async def preview_city_move(
 
 
 async def move_user_city(
+    telegram_id: int,
+    new_city: str,
+    *,
+    status_mode: str,
+    by_admin: int,
+    dry_run: bool = False,
+    history_source: str = "admin",
+) -> dict:
+    """Один человек — один перевод. Тело в `_move_user_city_body`."""
+    async with _move_guard(telegram_id):
+        return await _move_user_city_body(
+            telegram_id, new_city,
+            status_mode=status_mode, by_admin=by_admin,
+            dry_run=dry_run, history_source=history_source,
+        )
+
+
+async def _move_user_city_body(
     telegram_id: int,
     new_city: str,
     *,
@@ -394,15 +421,16 @@ async def move_user_city(
                         write_tab, telegram_id, new_rows_after,
                     )
                 else:
-                    # На новой вкладке человек уже есть (ровно одна строка или несколько).
-                    # Старые копии снимаем и тогда, когда их больше одной: человек на новом
-                    # месте не пропадёт, а оставленная старая вкладка — это и есть лишняя строка.
+                    # На новой вкладке оставляем одну нижнюю строку — ту, что только что
+                    # дописали. Старые копии на прежней вкладке снимаем все: id один и тот же.
                     if len(new_rows_after) > 1:
-                        report["sheet"]["error"] = (
-                            "на вкладке нового города несколько строк делегата — "
-                            "старые копии сняты, проверьте дубли вручную"
-                        )
-                    delete_result = await sheets_service.delete_row_by_id(old_tab, telegram_id)
+                        kept = await sheets_service.keep_last_row_by_id(write_tab, telegram_id)
+                        if kept != "ok":
+                            report["sheet"]["error"] = (
+                                "на вкладке нового города несколько строк делегата — "
+                                "лишние снять не удалось, проверьте таблицу вручную"
+                            )
+                    delete_result = await sheets_service.delete_all_rows_by_id(old_tab, telegram_id)
                     _removed, problem = await _delete_other_copies(
                         telegram_id, old_city, {old_tab, write_tab},
                     )

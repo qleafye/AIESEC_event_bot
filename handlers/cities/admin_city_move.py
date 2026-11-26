@@ -30,6 +30,9 @@ from domain.settings.schema import get_setting_typed
 
 logger = logging.getLogger(__name__)
 
+# Пока перевод этого человека не закончился, второй тап не стартует ещё один.
+_citymove_busy: set[int] = set()
+
 _CITY_FORBIDDEN_ALERT = "Этот город вне вашей зоны ответственности."
 _CITY_DISABLED_ALERT = "Этот город выключен. Включите его в «🏙 Города» или выберите другой."
 _MODULE_OFF_ALERT = "Модуль городов выключен — переводить некуда."
@@ -280,6 +283,17 @@ async def citymove_apply(callback: types.CallbackQuery):
     if tid is None:
         await callback.answer("Неизвестная кнопка", show_alert=True)
         return
+    if tid in _citymove_busy:
+        await callback.answer("Этот перевод уже выполняется.", show_alert=True)
+        return
+    _citymove_busy.add(tid)
+    try:
+        await _citymove_apply_body(callback, tid, code, mode, notify)
+    finally:
+        _citymove_busy.discard(tid)
+
+
+async def _citymove_apply_body(callback, tid: int, code: str, mode: str, notify: str) -> None:
     user = await get_user(tid)
     if user is None:
         await callback.answer(_NOT_FOUND_ALERT, show_alert=True)
@@ -302,6 +316,11 @@ async def citymove_apply(callback: types.CallbackQuery):
     report = await move_user_city(tid, code, status_mode=mode, by_admin=admin_id, dry_run=False)
 
     if not report.get("ok"):
+        # Второй тап приходит, когда город уже сменён. Экран успеха первого тапа не затираем
+        # и второе письмо не шлём.
+        if report.get("error") == "Делегат уже в этом городе":
+            await callback.answer("Делегат уже в этом городе.", show_alert=True)
+            return
         await callback.message.edit_text(
             f"❌ Перевод не выполнен: {html_module.escape(str(report.get('error') or '-'))}",
         )
