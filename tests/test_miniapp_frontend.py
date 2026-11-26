@@ -1282,13 +1282,16 @@ def _route_body() -> str:
 def test_router_ignores_telegram_webapp_fragment():
     """Telegram Web (K/A) передаёт initData фрагментом URL (#tgWebAppData=…). Роутер обязан
     считать такой hash пустым и уводить на homeHash, а не в showState("missing") — иначе
-    каждый первый вход из Telegram Web упирается в «Раздел пока недоступен» (находка 19-10)."""
-    text = APP_JS.read_text(encoding="utf-8")
-    start = text.index("async function route()")
-    body = text[start:start + 800]
-    assert 'startsWith("#tgWebApp")' in body, (
-        "route() обязан сбрасывать служебный фрагмент #tgWebApp… в пустой hash до маршрутизации"
-    )
+    каждый первый вход из Telegram Web упирается в «Раздел пока недоступен» (находка 19-10).
+
+    Кнопка со своим фрагментом получает хвост через & или ?: #/qr-card-layout&tgWebAppData=…
+    Хвост срезается, свой маршрут остаётся и подменяет адрес, иначе экран «не подключён»."""
+    body = _route_body()
+    assert 'startsWith("#tgWebApp")' in body
+    assert "[?&]tgWebApp" in body
+    assert body.index("[?&]tgWebApp") < body.index('startsWith("#tgWebApp")') < body.index("homeHash()")
+    assert "location.replace(hash)" in body
+    assert body.index("location.replace(hash)") < body.index("homeHash()")
 
 
 def test_open_settings_launch_selects_manager_settings_without_writing_keys():

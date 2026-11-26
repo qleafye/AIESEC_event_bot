@@ -643,9 +643,18 @@ async function route() {
   let hash = location.hash;
   // Telegram Web (K/A) открывает вебвью с фрагментом собственных параметров
   // (#tgWebAppData=…&tgWebAppVersion=…) — это не наш маршрут, а транспорт initData.
-  // Без этой ветки каждый первый вход из Telegram Web попадал в showState("missing")
-  // («Раздел пока недоступен») вместо хаба — находка живой приёмки 19-10.
+  // Кнопка с собственным фрагментом (#/qr-card-layout) получает хвост через & или ?:
+  // #/qr-card-layout&tgWebAppData=… Роутер тогда не узнаёт экран и показывает
+  // «Раздел пока недоступен». Хвост срезаем, свой маршрут оставляем.
+  // Без сброса чистого #tgWebApp… каждый первый вход попадал в showState("missing")
+  // вместо хаба — находка живой приёмки 19-10.
+  const gluedTg = hash.search(/[?&]tgWebApp/);
+  if (gluedTg !== -1) hash = hash.slice(0, gluedTg);
   if (hash.startsWith("#tgWebApp")) hash = "";
+  if (hash && hash !== "#" && hash !== "#/" && hash !== location.hash) {
+    location.replace(hash);
+    return;
+  }
   if ((!hash || hash === "#/" || hash === "#")
       && /(?:^|[?&])open=settings(?:&|$)/.test(String(location.search || ""))) {
     managerSettingsLaunch = true;
