@@ -1669,6 +1669,29 @@ def delegation_daily(conn, scope: Scope, days: int = 14) -> dict | None:
     }
 
 
+def entry_days(conn, scope: Scope) -> list[str]:
+    """Дни, в которые в этом городе и сезоне уже был вход. Статус заявки не важен.
+
+    Кнопки «Итога дня» зовут сюда: резерв остаётся «отклонён», и его вход не
+    попадает в `arrival_block`. Счётчик «Приход» этот список не использует.
+    """
+    if not _table_exists(conn, "checkins"):
+        return []
+    city_frag, city_params = _city_sql(conn, scope.city)
+    season_frag, season_params = _season_sql(conn, scope.season)
+    user_parts = [p for p in (city_frag, season_frag) if p]
+    user_where = " AND ".join(user_parts) if user_parts else "1"
+    rows = conn.execute(
+        "SELECT DISTINCT substr(c.scanned_at, 1, 10) AS day FROM checkins c "
+        "WHERE c.point = ? AND c.telegram_id IN "
+        f"(SELECT telegram_id FROM users WHERE {user_where}) "
+        "AND c.scanned_at IS NOT NULL AND length(c.scanned_at) >= 10 "
+        "ORDER BY day",
+        [arrival_stats.ENTRY_POINT, *city_params, *season_params],
+    ).fetchall()
+    return [row["day"] for row in rows if row["day"]]
+
+
 def arrival_block(conn, scope: Scope) -> dict | None:
     """Блок «Приход» (бэклог чек-ина п.10): одобрено / пришли / не пришли, по дням, по
     сессиям. SQL и сборка отчёта — общий корневой `shared/arrival_stats.py`, те же запросы исполняет

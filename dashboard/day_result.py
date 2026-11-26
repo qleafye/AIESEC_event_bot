@@ -23,6 +23,11 @@ def day_options(conn, scope: queries.Scope) -> list[dict]:
             day = row.get("day")
             if day and day not in labeled:
                 labeled[day] = arrival_stats.day_short(day)
+    # Вход резерва (статус «отклонён») в блок прихода не входит, но день с ним
+    # должен быть кнопкой: иначе &day= этого дня откатывается на программу.
+    for day in queries.entry_days(conn, scope):
+        if day and day not in labeled:
+            labeled[day] = arrival_stats.day_short(day)
     return [{"day": day, "label": labeled[day]} for day in sorted(labeled)]
 
 

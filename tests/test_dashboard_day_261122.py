@@ -177,6 +177,42 @@ def test_day_context_reuses_old_slices_and_hides_people(tmp_path, monkeypatch):
     _walk_people(context)
 
 
+def test_rejected_entry_day_is_a_button_and_query_sticks(tmp_path, monkeypatch):
+    """Вход резерва (status=rejected) даёт кнопку дня. Счётчик прихода его не считает."""
+    from tests import test_dashboard_render as tdr
+
+    reserve_day = "2026-11-26"
+    path = _ready(tmp_path, "dashboard_day_reserve_entry.db")
+    _freeze(monkeypatch)
+    _run(_seed_cities())
+    _run(_program(DAY, "Первый"))
+    _run(_program(OTHER, "Второй"))
+    _run(_named(7, "Резерв Семь", city="msk", status="rejected"))
+    _run(_seed_entry(7, reserve_day))
+
+    conn = _conn()
+    try:
+        scope = queries.Scope(city="msk", season=SEASON)
+        options = [row["day"] for row in build_day_context(
+            conn, None, scope, {"bound_city": None}, day=reserve_day,
+        )["day_options"]]
+        context = build_day_context(
+            conn, None, scope, {"bound_city": None}, day=reserve_day,
+        )
+    finally:
+        conn.close()
+
+    assert reserve_day in options
+    assert context["day"] == reserve_day
+    assert context["arrival"] is None
+
+    client = tdr._stats_manager_client(path)
+    page = client.get("/day", params={"city": "msk", "season": SEASON, "day": reserve_day})
+    assert page.status_code == 200
+    assert "26.11" in page.text
+    assert "Отметок на входе ещё нет." in page.text
+
+
 def test_reserve_off_is_a_mark_not_zeros(tmp_path, monkeypatch):
     _ready(tmp_path, "dashboard_day_reserve_off.db")
     _freeze(monkeypatch)
