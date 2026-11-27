@@ -1,4 +1,8 @@
-"""Ссылка vk.me пишет номер ВК на карточку Telegram и не открывает вторую анкету."""
+"""Ссылка vk.me пишет номер ВК на карточку Telegram и не открывает вторую анкету.
+
+Секрет приходит полем ref. Если диалог уже открыт, то же слово или вставленная
+ссылка тоже связывают. Фраза, где слово стоит внутри текста, анкету не трогает.
+"""
 import asyncio
 import logging
 from datetime import timedelta
@@ -120,7 +124,26 @@ def test_deep_link_duplicate(monkeypatch, tmp_path):
     assert "уже связан" in sent[-1][1]
 
 
-def test_typed_secret_is_not_a_link(monkeypatch, tmp_path):
+def test_typed_secret_links_open_chat(monkeypatch, tmp_path, caplog):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    sent = _capture(monkeypatch)
+
+    async def _go():
+        await _insert(telegram_id=100, full_name="Иван Иванов", status="pending")
+        secret = await db.create_link_secret(100)
+        with caplog.at_level(logging.INFO):
+            await handle_vk_message(7, f"link_{secret}")
+        return await db.get_user(100), secret, await get_vk_fsm_state(7)
+
+    row, secret, state = asyncio.run(_go())
+    assert row["vk_id"] == 7
+    assert state is None
+    assert "связаны" in sent[-1][1]
+    assert secret not in caplog.text
+
+
+def test_pasted_link_url_links_open_chat(monkeypatch, tmp_path):
     _use_tmp_db(tmp_path)
     asyncio.run(db.init_db())
     sent = _capture(monkeypatch)
@@ -128,7 +151,23 @@ def test_typed_secret_is_not_a_link(monkeypatch, tmp_path):
     async def _go():
         await _insert(telegram_id=100, status="pending")
         secret = await db.create_link_secret(100)
-        await handle_vk_message(7, f"link_{secret}")
+        await handle_vk_message(7, f"https://vk.me/club555?ref=link_{secret}")
+        return await db.get_user(100)
+
+    row = asyncio.run(_go())
+    assert row["vk_id"] == 7
+    assert "связаны" in sent[-1][1]
+
+
+def test_secret_inside_a_sentence_is_not_a_link(monkeypatch, tmp_path):
+    _use_tmp_db(tmp_path)
+    asyncio.run(db.init_db())
+    sent = _capture(monkeypatch)
+
+    async def _go():
+        await _insert(telegram_id=100, status="pending")
+        secret = await db.create_link_secret(100)
+        await handle_vk_message(7, f"вот код link_{secret} пришли")
         return await db.get_user(100), await db.consume_link_secret(secret)
 
     row, leftover = asyncio.run(_go())

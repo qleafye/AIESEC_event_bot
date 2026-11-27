@@ -46,6 +46,8 @@ def test_link_vk_command(tmp_path):
     assert len(sent) == 1
     assert "https://vk.me/club555?ref=link_" in sent[0]
     assert "15 минут" in sent[0]
+    assert "Если чат с сообществом уже открыт" in sent[0]
+    assert "отдельным сообщением" in sent[0]
     assert "-555" not in sent[0]
 
 

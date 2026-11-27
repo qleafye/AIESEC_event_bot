@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 
 from vk_api.bot_longpoll import VkBotEventType, VkBotLongPoll
 
@@ -32,12 +33,30 @@ _WRITE_HERE_UNLINKED = (
 )
 
 
+_LINK_URL_REF = re.compile(r"[?&]ref=(link_[A-Za-z0-9_-]+)")
+
+
 def _link_secret(ref: str | None) -> str | None:
     text = (ref or "").strip()
     if not text.startswith(_LINK_PREFIX):
         return None
     secret = text[len(_LINK_PREFIX):].strip()
     return secret or None
+
+
+def _link_secret_from_text(text: str) -> str | None:
+    """Слово из /link_vk или вставленная ссылка. Фраза с этим словом внутри не считается."""
+    body = (text or "").strip()
+    if not body or any(ch.isspace() for ch in body):
+        return None
+    direct = _link_secret(body)
+    if direct:
+        return direct
+    if body.startswith("http://") or body.startswith("https://"):
+        found = _LINK_URL_REF.search(body)
+        if found:
+            return _link_secret(found.group(1))
+    return None
 
 
 async def _handle_link_secret(vk_id: int, secret: str) -> None:
@@ -111,13 +130,13 @@ async def handle_vk_message(
     """Личное входящее. Ссылка склейки важнее анкеты, текст ссылки в лог не пишется."""
     del payload
     logger.info("VK message from %s", vk_id)
-    secret = _link_secret(ref)
+    body = (text or "").strip()
+    secret = _link_secret(ref) or _link_secret_from_text(body)
     if secret:
         await _handle_link_secret(vk_id, secret)
         return
     from handlers.vk.vk_registration import process_vk_registration_step, start_vk_registration
 
-    body = (text or "").strip()
     if body.casefold() == _WRITE_HERE:
         await _switch_feed_to_vk(vk_id)
         return
