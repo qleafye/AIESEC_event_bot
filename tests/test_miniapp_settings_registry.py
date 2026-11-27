@@ -52,6 +52,8 @@ ITEM_FIELDS = {
     "option_labels",
     # Чипы вставки {token}: список есть у каждого поля, пустой — чипов нет.
     "placeholders",
+    # Письмо делегату: диалог «Было / Станет» зовёт preview_text. Поле есть у каждой строки.
+    "delegate_preview",
 }
 
 
@@ -178,8 +180,14 @@ def test_item_shape_and_registry_sourced_fields(tmp_path):
         assert set(item.keys()) == ITEM_FIELDS, item["key"]
         meta = SETTINGS_SCHEMA[item["base_key"]]
         assert item["label"] == meta["label"]
-        hint = settings_placeholders.hint(item["key"], meta.get("prompt"))
-        assert item["help"] == ((meta.get("prompt") or "") + (chr(10) * 2 + hint if hint else "") or None)
+        if meta.get("sensitive"):
+            # Секрет в ответ не попадает: help — «задан / не задан», не текст подсказки.
+            assert item["raw"] is None and item["value"] == ""
+            assert item["display"] in ("Не задан", "Установлен: да")
+            assert item["help"] == f"{item['display']}. Пришлите новый ключ, если нужно заменить."
+        else:
+            hint = settings_placeholders.hint(item["key"], meta.get("prompt"))
+            assert item["help"] == ((meta.get("prompt") or "") + (chr(10) * 2 + hint if hint else "") or None), item["key"]
         assert item["type"] == meta["type"]
         if meta["type"] == "multi":
             # Quick 260906-6xe: закрытый набор `multi` — options в реестре хранит КОДЫ

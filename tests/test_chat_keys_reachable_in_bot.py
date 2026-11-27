@@ -81,9 +81,6 @@ OWN_SCREENS = {
     "miniapp_theme_pattern": "handlers/settings/admin_miniapp_theme.py",
     # Пульт амбассадора пишет ключ через setting_key(), литерал — в карте кнопок.
     "amb_show_link_stats": "handlers/amb/amb_panel.py",
-    # Экран «🗓 Интервью» пишет даты через _FIELDS, не литералом в set_setting.
-    "interview_window_start": "handlers/admin_interviews.py",
-    "interview_window_end": "handlers/admin_interviews.py",
 }
 
 # Читается в чате, но в экран бота не выводится — и почему.
