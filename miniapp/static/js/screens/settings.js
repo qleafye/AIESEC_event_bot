@@ -615,7 +615,7 @@ async function renderSection(root, code, ctx, targetKey) {
   });
   root.append(resetConfirm);
 
-  async function openResetConfirm(item, kind) {
+  async function openResetConfirm(item, kind, anchor) {
     const ticket = ++resetTicket;
     let shown = defaultDisplayText(item);
     if (kind === "city" || item.delegate_preview) {
@@ -636,7 +636,9 @@ async function renderSection(root, code, ctx, targetKey) {
       ? (texts.miniapp_settings_reset_city_label_text || "")
       : (texts.miniapp_settings_reset_default_label_text || "");
     resetConfirm.querySelector(".btn.ghost").textContent = texts.miniapp_settings_batch_discard_text || "";
+    if (anchor) anchor.after(resetConfirm);
     resetConfirm.open();
+    if (resetConfirm.scrollIntoView) resetConfirm.scrollIntoView({ block: "center" });
   }
 
   function revealPreview(row, text) {
@@ -717,13 +719,13 @@ async function renderSection(root, code, ctx, targetKey) {
     if (!isComposite && item.is_default === false && !locked) {
       buttons.push(h("button", {
         class: "btn ghost", type: "button", "aria-label": item.label,
-        onClick: () => openResetConfirm(item, "default"),
+        onClick: () => openResetConfirm(item, "default", el),
       }, icon("rotate-ccw"), h("span", { text: texts.miniapp_settings_reset_default_label_text || "" })));
     }
     if (isComposite && item.is_city_override && !locked) {
       buttons.push(h("button", {
         class: "btn ghost", type: "button", "aria-label": item.label,
-        onClick: () => openResetConfirm(item, "city"),
+        onClick: () => openResetConfirm(item, "city", el),
       }, icon("rotate-ccw"), h("span", { text: texts.miniapp_settings_reset_city_label_text || "" })));
     }
     let previewPanel = null;

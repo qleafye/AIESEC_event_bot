@@ -183,12 +183,16 @@ def test_save_bar_waits_and_city_reset_names_delegate_text():
 
     js = (Path(__file__).resolve().parents[1] / "miniapp" / "static" / "js" / "screens" / "settings.js").read_text(encoding="utf-8")
     actions = js.split("function applyActions", 1)[1].split("function updateBatchBar", 1)[0]
-    assert 'openResetConfirm(item, "city")' in actions
+    assert 'openResetConfirm(item, "city", el)' in actions
+    assert 'openResetConfirm(item, "default", el)' in actions
     assert "queueCityReset(item)" not in actions
     city = js.split("function queueCityReset", 1)[1].split("function hasPlaceholder", 1)[0]
     assert 'display: ""' not in city
     assert "display: text" in city
-    assert "after_reset=1" in js.split("async function openResetConfirm", 1)[1].split("function revealPreview", 1)[0]
+    resetBox = js.split("async function openResetConfirm", 1)[1].split("function revealPreview", 1)[0]
+    assert "after_reset=1" in resetBox
+    assert "anchor.after(resetConfirm)" in resetBox
+    assert 'scrollIntoView({ block: "center" })' in resetBox
     bar = js.split("function updateBatchBar", 1)[1].split("function matrixCellValue", 1)[0]
     assert "saveBarState" in bar
     assert 'batchBtn.classList.toggle("hidden", !bar.visible)' in bar
