@@ -61,7 +61,7 @@ from database.db import (
     reject_user,
     revert_user_to_pending,
 )
-from domain.regform.engine import STEP_TO_COLUMN, label_for
+from domain.regform.engine import STEP_TO_COLUMN, _is_party_track, label_for
 from services.registration.consent import consent_card_line
 from services.infra.timeutil import utc_naive_to_msk
 from domain.settings.schema import SETTINGS_SCHEMA, get_setting_typed
@@ -658,20 +658,36 @@ def _plain_notice(raw: str) -> str:
     )
 
 
+async def _vk_decision_source(vk_id: int, status: str) -> str:
+    """Одобрение и отказ во ВК читают текст города. Вечеринка берёт свой общий текст.
+    Лист ожидания городским не бывает."""
+    user = await get_vk_user(int(vk_id))
+    city = None if user is None else user.get("event_city")
+    if status == "approved":
+        if user is not None and _is_party_track(user.get("participant_type")):
+            party = await get_setting("approve_text__party")
+            if party:
+                return party
+        value = await get_setting_typed_for_city("approve_text", city)
+        return "" if value is None else str(value)
+    if status == "rejected":
+        value = await get_setting_typed_for_city("reject_text", city)
+        return "" if value is None else str(value)
+    if status == "waitlist":
+        value = await get_setting_typed("waitlist_delegate_text")
+        return "" if value is None else str(value)
+    return ""
+
+
 async def notify_vk_decision(vk_id: int, status: str, reason: str | None) -> None:
     """Письмо о решении на карточку только из ВК. Сбой отправки решение не откатывает."""
     from services.vk.vk_api_client import send_vk_message
 
-    if status == "approved":
-        raw = await get_setting_typed("approve_text") or ""
-    elif status == "rejected":
-        raw = await get_setting_typed("reject_text") or ""
-        if reason:
-            raw = f"{raw}\n\n{reason}" if raw else reason
-    elif status == "waitlist":
-        raw = await get_setting_typed("waitlist_delegate_text") or ""
-    else:
+    raw = await _vk_decision_source(vk_id, status)
+    if status not in ("approved", "rejected", "waitlist"):
         return
+    if status == "rejected" and reason:
+        raw = f"{raw}\n\n{reason}" if raw else reason
     text = _plain_notice(raw)
     if not text:
         return
