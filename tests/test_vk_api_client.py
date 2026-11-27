@@ -67,9 +67,47 @@ def test_send_message_success(monkeypatch):
 def test_send_message_with_keyboard(monkeypatch):
     messages = _Messages()
     _patch(monkeypatch, messages)
-    keyboard = '{"one_time": false, "buttons": []}'
+    keyboard = '{"one_time": false, "buttons": [[{"action": {"type": "text", "label": "Меню"}}]]}'
     asyncio.run(send_vk_message(7, "Меню", keyboard))
     assert messages.calls[0]["keyboard"] == keyboard
+
+
+def test_empty_keyboard_is_not_sent(monkeypatch):
+    messages = _Messages()
+    _patch(monkeypatch, messages)
+    asyncio.run(send_vk_message(7, "Анкета отправлена.", '{"one_time": false, "buttons": []}'))
+    assert len(messages.calls) == 1
+    assert messages.calls[0]["message"] == "Анкета отправлена."
+    assert "keyboard" not in messages.calls[0]
+
+
+def test_keyboard_rejected_by_vk_retries_without_it(monkeypatch, caplog):
+    class _RejectKeyboard:
+        def __init__(self):
+            self.calls = []
+
+        def send(self, **kwargs):
+            self.calls.append(kwargs)
+            if "keyboard" in kwargs:
+                raise vk_api.exceptions.ApiError(
+                    None, "messages.send", {"access_token": SECRET}, {},
+                    {"error_code": 912, "error_msg": "keyboard"},
+                )
+            return 1
+
+    messages = _RejectKeyboard()
+    _patch(monkeypatch, messages)
+    keyboard = '{"one_time": false, "buttons": [[{"action": {"type": "text", "label": "Меню"}}]]}'
+    with caplog.at_level(logging.ERROR):
+        sent = asyncio.run(send_vk_message(7, "Анкета отправлена.", keyboard))
+    assert sent is True
+    assert len(messages.calls) == 2
+    assert messages.calls[0]["keyboard"] == keyboard
+    assert "keyboard" not in messages.calls[1]
+    assert messages.calls[1]["message"] == "Анкета отправлена."
+    assert SECRET not in caplog.text
+    assert "Анкета отправлена." not in caplog.text
+    assert "912" in caplog.text
 
 
 def test_send_message_api_error(monkeypatch, caplog):

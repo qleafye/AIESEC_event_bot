@@ -29,7 +29,7 @@ from domain.regform.engine import (
 from domain.settings.schema import get_setting_typed
 from keyboards.vk_builders import vk_main_menu_keyboard
 from services.infra.timeutil import msk_now
-from services.vk.vk_api_client import send_vk_message
+from services.vk.vk_api_client import keyboard_for_send, send_vk_message
 from services.vk.vk_fsm import (
     clear_vk_fsm_state,
     get_vk_fsm_data,
@@ -222,7 +222,7 @@ async def _finalize(vk_id: int, answers: dict) -> None:
         answers["season"] = str(season)
     await _save(vk_id, answers)
     await clear_vk_fsm_state(vk_id)
-    keyboard = await vk_main_menu_keyboard(vk_id)
+    keyboard = keyboard_for_send(await vk_main_menu_keyboard(vk_id))
     await send_vk_message(vk_id, _DONE, keyboard)
     logger.info("VK registration submitted for %s", vk_id)
 

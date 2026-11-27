@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import secrets
 
@@ -60,6 +61,25 @@ def vk_session(token: str) -> vk_api.VkApi:
     return vk_api.VkApi(token=token, config=MemoryConfig)
 
 
+def keyboard_for_send(keyboard_json: str | None) -> str | None:
+    """Пустая клавиатура в API не уходит: ВК всё равно считает её клавиатурой."""
+    if keyboard_json is None:
+        return None
+    text = str(keyboard_json).strip()
+    if not text:
+        return None
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return text
+    if not isinstance(data, dict):
+        return text
+    buttons = data.get("buttons")
+    if isinstance(buttons, list) and not any(buttons):
+        return None
+    return text
+
+
 def _send_vk_message_sync(
     token: str, vk_id: int, text: str, keyboard_json: str | None,
 ) -> None:
@@ -76,16 +96,31 @@ def _send_vk_message_sync(
 
 async def send_vk_message(vk_id: int, text: str, keyboard_json: str | None = None) -> bool:
     """Письмо делегату во ВК. Ключ читается сейчас: смена ключа не оставляет старую сессию.
-    True — сообщение ушло. Сбой VK не поднимается наверх. В журнал не попадают ни ключ, ни текст."""
+    True — сообщение ушло. Сбой VK не поднимается наверх. В журнал не попадают ни ключ, ни текст.
+    Ошибка 912 (у сообщества выключены возможности ботов) повторяет то же письмо без клавиатуры."""
     from domain.settings.schema import get_setting_typed
 
     token = str(await get_setting_typed("vk_community_token") or "").strip()
     if not token:
         logger.error("VK send skipped for %s: community key is not set", vk_id)
         return False
+    keyboard_json = keyboard_for_send(keyboard_json)
     try:
         await asyncio.to_thread(_send_vk_message_sync, token, vk_id, text, keyboard_json)
     except vk_api.exceptions.ApiError as exc:
+        if getattr(exc, "code", None) == 912 and keyboard_json is not None:
+            logger.error("VK send failed to %s: [912]", vk_id)
+            try:
+                await asyncio.to_thread(_send_vk_message_sync, token, vk_id, text, None)
+            except vk_api.exceptions.ApiError as retry_exc:
+                logger.error("VK send failed to %s: [%s]", vk_id, retry_exc.code)
+                return False
+            except Exception as retry_exc:
+                logger.error(
+                    "VK send unexpected error to %s: %s", vk_id, type(retry_exc).__name__,
+                )
+                return False
+            return True
         logger.error("VK send failed to %s: [%s]", vk_id, exc.code)
         return False
     except Exception as exc:

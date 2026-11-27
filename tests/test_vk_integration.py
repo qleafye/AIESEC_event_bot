@@ -1,7 +1,6 @@
 """Сквозные швы ВК: анкета, меню без приложения, склейка, аудитория рассылки.
 
 Лишние вопросы анкеты выключены: менеджер сам решает набор, пустой набор — сданная анкета.
-Секрет склейки приходит полем ref ссылки, не текстом сообщения.
 """
 import asyncio
 import json
@@ -56,14 +55,8 @@ def test_vk_user_completes_registration(monkeypatch, tmp_path):
     assert user["active_messenger"] == "vk"
     assert user["status"] == "pending"
     assert user["full_name"] == "Иван Иванов"
-    keyboard = json.loads(sent[-1][2])
-    assert keyboard["buttons"] == []
-    labels = [
-        button["action"]["label"]
-        for row in keyboard["buttons"]
-        for button in row
-    ]
-    assert "📱 Приложение" not in labels
+    assert "Анкета отправлена" in sent[-1][1]
+    assert sent[-1][2] is None
 
 
 def test_vk_menu_hides_unanswered_and_the_app(monkeypatch, tmp_path):
