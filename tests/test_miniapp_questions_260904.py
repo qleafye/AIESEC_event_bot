@@ -197,6 +197,59 @@ def test_questions_list_city_scope_hides_other_city(client, bot_api):
 
 # ── POST /app/api/questions/{qid}/answer ─────────────────────────────────────────────────
 
+def test_answer_other_city_is_403_and_does_not_send(client, bot_api):
+    _set("event_city_enabled", "on")
+    _set_user_city(OTHER_CITY_DELEGATE_ID, "tyumen")
+    qid = _seed_question(OTHER_CITY_DELEGATE_ID, "Вопрос из Тюмени")
+
+    resp = client.post(
+        f"/app/api/questions/{qid}/answer",
+        json={"text": "Ответ не должен уйти"},
+        headers=_hdr(BOUND_REG_MANAGER_ID),
+    )
+
+    assert resp.status_code == 403
+    body = resp.json()
+    assert body["reason"] == "out_of_scope"
+    assert "другого города" in body["text"]
+    assert bot_api.messages == []
+    row = _get_question(qid)
+    assert row["answered_by"] is None
+    assert row["answer_text"] is None
+    assert row["delivered_at"] is None
+
+
+def test_answer_own_city_still_delivers(client, bot_api):
+    _set("event_city_enabled", "on")
+    _set_user_city(DELEGATE_ID, "spb")
+    qid = _seed_question(DELEGATE_ID, "Вопрос из Питера")
+
+    resp = client.post(
+        f"/app/api/questions/{qid}/answer", json={"text": "Да, в Питере"},
+        headers=_hdr(BOUND_REG_MANAGER_ID),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+    assert bot_api.messages[0]["chat_id"] == DELEGATE_ID
+    assert "Да, в Питере" in bot_api.messages[0]["text"]
+
+
+def test_answer_unbound_manager_reaches_any_city(client, bot_api):
+    _set("event_city_enabled", "on")
+    _set_user_city(OTHER_CITY_DELEGATE_ID, "tyumen")
+    qid = _seed_question(OTHER_CITY_DELEGATE_ID, "Вопрос из Тюмени")
+
+    resp = client.post(
+        f"/app/api/questions/{qid}/answer", json={"text": "Ответ без привязки"},
+        headers=_hdr(REG_MANAGER_ID),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+    assert bot_api.messages[0]["chat_id"] == OTHER_CITY_DELEGATE_ID
+
+
 def test_answer_success_marks_answered_and_delivers(client, bot_api):
     qid = _seed_question(DELEGATE_ID, "Когда дедлайн?")
     resp = client.post(

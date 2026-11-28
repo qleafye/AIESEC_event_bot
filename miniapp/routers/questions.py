@@ -7,6 +7,7 @@ aiogram), правило статуса и постраничная выборк
 
     text пуст/длиннее ANSWER_MAX -> 400, без обращения к Bot API
     get_question -> 404 not_found
+    город автора не совпал с городом менеджера -> 403, без захвата и без отправки
     уже delivered -> {ok: false, reason: "already", by, item: _status_patch(row)}
     claim_question(...) -> проиграл и захватил НЕ ты -> тот же "already" (+ item)
         (проиграл, но захват твой же, доставка не прошла в прошлый раз — тот же приём, что
@@ -69,6 +70,7 @@ LIMIT_MAX = 50
 ANSWER_MAX = 4000
 
 EMPTY_TEXT_TEXT = "Ответ не может быть пустым — напишите текст ответа."
+OUT_OF_SCOPE_TEXT = "Этот вопрос из другого города. Ответить может тот, кто ведёт этот город."
 TOO_LONG_TEXT = f"Ответ длиннее {ANSWER_MAX} символов — сократите текст."
 DELIVERY_FAILED_TEXT = (
     "Не удалось доставить ответ — делегат мог заблокировать бота или произошла временная "
@@ -222,6 +224,8 @@ async def questions_answer(
     row = await get_question(qid)
     if row is None:
         raise HTTPException(404, {"reason": "not_found"})
+    if await applications.out_of_scope(p.city, row["user_id"]):
+        raise HTTPException(403, {"reason": "out_of_scope", "text": OUT_OF_SCOPE_TEXT})
     if row.get("delivered_at"):
         # Quick 260904-kk6 (Q2): патч из уже прочитанной строки — второго запроса в БД не
         # делаем, `row` уже несёт актуальный статус.
