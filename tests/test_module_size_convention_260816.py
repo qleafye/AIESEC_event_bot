@@ -1235,7 +1235,8 @@ KNOWN_OVERAGES: dict[str, tuple[int, str]] = {
         "(_morning_repeat_passed_today); 969 -> 984.",
     ),
     "admin_moderation.py": (
-        970,
+        1046,
+        "28.11: старая карточка чека несёт короткий токен файла; 970 -> 1046. "
         "План 32-05 (D-20/D-22): +10 строк — appr_all_yes переведён на claim_approve_all_"
         "with_credits (общий шов с веб-обёрткой claim_approve_all, вместо прямого вызова "
         "database.db.approve_all_pending), плюс строка сводки начислений в тексте "
