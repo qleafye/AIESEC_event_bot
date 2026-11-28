@@ -197,8 +197,9 @@ async def coins_journal(
 ) -> dict:
     off = _parse_int(offset, 0, 0, 10_000_000)
     lim = _parse_int(limit, JOURNAL_LIMIT_DEFAULT, 1, JOURNAL_LIMIT_MAX)
-    total = await count_manual_coin_entries()
-    rows = await list_manual_coin_entries(limit=lim, offset=off)
+    scope = await manager_scope(p)
+    total = await count_manual_coin_entries(city_scope=scope)
+    rows = await list_manual_coin_entries(limit=lim, offset=off, city_scope=scope)
 
     changers: dict[int, str] = {}
     items = []

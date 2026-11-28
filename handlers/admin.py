@@ -446,6 +446,11 @@ async def cmd_coins(message: types.Message, bot: Bot):
         await message.answer(hint)
         return
 
+    if await _card_out_of_scope(message.from_user.id, user["telegram_id"]):
+        from services.applications.personal_letter import OTHER_CITY
+        await message.answer(OTHER_CITY)
+        return
+
     reason = args[3]
     await add_coins(user["telegram_id"], amount, reason=reason, changed_by=message.from_user.id, source="manual")
     _request_game_resync()  # Phase 09.1 (D, GAME-07): a coin edit is one of the 3 debounced triggers

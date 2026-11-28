@@ -4094,26 +4094,42 @@ _COIN_JOURNAL_SELECT = (
 _JOURNAL_SOURCES = "c.source IN ('manual', 'chat', 'transfer')"
 
 
-async def list_manual_coin_entries(limit: int = 10, offset: int = 0) -> list[dict]:
+def _journal_where(city_scope) -> tuple[str, list]:
+    """Тот же фильтр источников. `city_scope=None` — без города, запрос как раньше."""
+    frag, params = _city_clause(city_scope, "u.event_city")
+    if not frag:
+        return _JOURNAL_SOURCES, []
+    return f"{_JOURNAL_SOURCES} AND {frag}", params
+
+
+async def list_manual_coin_entries(limit: int = 10, offset: int = 0, *, city_scope=None) -> list[dict]:
     """Paginated «📜 Журнал монет» screen feed -- same LIMIT/OFFSET + LEFT JOIN shape as
     `get_pending_submissions` (CLAUDE.md: 1000+ rows must never render in one message).
     ONLY `source = 'manual'` rows -- task-award credits and pre-Phase-14 legacy rows are
-    deliberately excluded from the screen (they still show up in the CSV export below)."""
+    deliberately excluded from the screen (they still show up in the CSV export below).
+    `city_scope` режет список городом делегата; None оставляет все города."""
+    where, params = _journal_where(city_scope)
     async with _connect() as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            f"{_COIN_JOURNAL_SELECT} WHERE {_JOURNAL_SOURCES} ORDER BY c.id DESC LIMIT ? OFFSET ?",
-            (limit, offset),
+            f"{_COIN_JOURNAL_SELECT} WHERE {where} ORDER BY c.id DESC LIMIT ? OFFSET ?",
+            (*params, limit, offset),
         ) as cursor:
             return [dict(row) for row in await cursor.fetchall()]
 
 
-async def count_manual_coin_entries() -> int:
+async def count_manual_coin_entries(*, city_scope=None) -> int:
     """Same WHERE as `list_manual_coin_entries` -- drives the «Страница K из N» label."""
+    where, params = _journal_where(city_scope)
+    if city_scope is None:
+        sql = f"SELECT COUNT(*) FROM coins c WHERE {where}"
+    else:
+        sql = (
+            "SELECT COUNT(*) FROM coins c LEFT JOIN users u ON u.telegram_id = c.user_id "
+            f"WHERE {where}"
+        )
     async with _connect() as db:
-        async with db.execute(
-            f"SELECT COUNT(*) FROM coins c WHERE {_JOURNAL_SOURCES}"
-        ) as cursor:
+        async with db.execute(sql, params) as cursor:
             row = await cursor.fetchone()
             return int(row[0]) if row and row[0] is not None else 0
 
