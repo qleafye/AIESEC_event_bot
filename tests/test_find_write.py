@@ -239,6 +239,37 @@ def test_receive_copies_text_and_records_action(tmp_path):
     assert actions[0]["actor_id"] == ADMIN_ID
 
 
+def test_receive_text_goes_to_vk_when_delegate_chose_it(tmp_path, monkeypatch):
+    from handlers.applications import admin_find_write as h
+
+    sent = []
+
+    async def _vk(vk_id, text, keyboard_json=None):
+        sent.append((vk_id, text, keyboard_json))
+        return True
+
+    monkeypatch.setattr("services.messenger_router.send_vk_message", _vk)
+    _db_ready(tmp_path)
+    storage = MemoryStorage()
+
+    async def scenario():
+        await _seed()
+        await db.link_vk_account(DELEGATE_ID, 555)
+        assert await db.set_active_messenger(DELEGATE_ID, "vk")
+        state = _fsm(storage, ADMIN_ID)
+        await state.set_state(FindWrite.waiting)
+        await state.update_data(findw_tid=DELEGATE_ID)
+        msg = _Incoming(ADMIN_ID, text="Подойдите к стойке 3")
+        await h.findw_receive(msg, state)
+        return msg, await state.get_state()
+
+    msg, after_state = _run(scenario())
+    assert msg.copies == []
+    assert sent == [(555, "Подойдите к стойке 3", None)]
+    assert "Отправлено: Иван Иванов" in msg.answers[0]
+    assert after_state is None
+
+
 def test_receive_blocked_explains_and_does_not_copy(tmp_path):
     from handlers.applications import admin_find_write as h
 
