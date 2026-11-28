@@ -51,6 +51,7 @@ class _FakeCallback:
 def _ready(tmp_path):
     config.DB_PATH = str(tmp_path / "test_forum.db")
     fast_init_db()
+    config.ADMIN_IDS = [900813]
 
 
 def _labels(markup):

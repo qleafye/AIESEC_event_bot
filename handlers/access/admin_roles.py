@@ -574,6 +574,7 @@ ROLES_COMMON_DENIED_TEXT = (
     "Роли и их права — общие на все города. Менять их может суперадмин или менеджер без "
     "привязки к городу: напишите им, что поменять."
 )
+ROLES_CAPS_OWNER_ONLY_TEXT = "Права ролей меняет только владелец бота."
 
 
 ROLES_ALL_CITIES_TARGET_TEXT = (
@@ -754,6 +755,9 @@ async def toggle_role_cap(callback: types.CallbackQuery, bot: Bot | None = None)
         await callback.answer("Неизвестное право", show_alert=True)
         return
     if await _roles_common_denied(callback):
+        return
+    if callback.from_user.id not in config.ADMIN_IDS:
+        await callback.answer(ROLES_CAPS_OWNER_ONLY_TEXT, show_alert=True)
         return
 
     caps = _known_caps(await get_setting_typed(role_caps_key(role)))
