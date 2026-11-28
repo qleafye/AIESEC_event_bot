@@ -331,6 +331,14 @@ async def process_payment_option(callback: types.CallbackQuery, state: FSMContex
     if tracks is not None and current_track not in tracks:
         await callback.answer(reg_i18n.tr_text(await ui_text("payment_option_wrong_track_text"), lang, tr_map), show_alert=True)
         return
+    # Старая кнопка тарифа живёт в чате. Повторное нажатие не должно вернуть оплатившего
+    # или человека с чеком на проверке в «не оплачено» и заново попросить чек.
+    # Фильтр FSM сюда не вешаем: этот шаг состояния не ставит, фильтр проглотит нажатие.
+    status = (user or {}).get("payment_status")
+    if status in ("paid", "receipt_sent"):
+        phrase = "Оплата уже подтверждена." if status == "paid" else "Чек уже на проверке."
+        await callback.answer(reg_i18n.tr_text(phrase, lang, tr_map), show_alert=True)
+        return
     # WR-01: fail-soft like start_payment_step, and guarantee callback.answer() via finally so
     # a mid-flow error never leaves the tapped button spinning.
     try:
