@@ -149,18 +149,17 @@ async def show_admin_broadcast(callback: types.CallbackQuery, state: FSMContext)
 
 @router.message(Command("export"))
 async def cmd_export(message: types.Message):
-    headers, rows = await export_users_csv()
-
+    from handlers.settings.admin_core import _admin_city_view
+    scope, label = await _admin_city_view(message.from_user.id)
+    headers, rows = await export_users_csv(city_scope=scope)
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
     writer.writerow(headers)
     writer.writerows(rows)
-
-    output.seek(0)
     file_bytes = output.getvalue().encode('utf-8-sig')
-    document = BufferedInputFile(file_bytes, filename="users.csv")
-
-    await message.answer_document(document, caption="База данных пользователей")
+    filename = "users.csv" if scope is None else f"users_{scope[0]}.csv"
+    caption = "База данных пользователей" if label is None else f"База данных пользователей — {html_module.escape(str(label))}"
+    await message.answer_document(BufferedInputFile(file_bytes, filename=filename), caption=caption)
 
 @router.message(Command("broadcast"))
 async def cmd_broadcast(message: types.Message, state: FSMContext):
