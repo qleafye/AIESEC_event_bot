@@ -5,9 +5,6 @@ set -euo pipefail
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 cd "${CLAUDE_PROJECT_DIR:-.}"
 
-# Локальный commit-msg вырезает строку Claude-Session (репозиторий публичный).
-git config core.hooksPath .githooks
-
 # Зависимости — в .venv проекта: системный Python Ubuntu 24.04 не даёт pip ставить пакеты глобально.
 if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv

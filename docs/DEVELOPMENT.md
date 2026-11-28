@@ -42,13 +42,7 @@ pip install -r requirements.txt -r requirements-dev.txt
 
 3. В `.env` заполнить `BOT_TOKEN` и `ADMIN_IDS`. Остальное для первого запуска не обязательно: пустые `GOOGLE_SHEET_ID` и ключи Nextcloud оставляют бота на SQLite. Образец значений — `.env.example`, не этот файл. `.env` и `google_credentials.json` в git не входят (`.gitignore`).
 
-4. Один раз на клон подключить хук сообщений коммита:
-
-```bash
-git config core.hooksPath .githooks
-```
-
-5. Запуск бота:
+4. Запуск бота:
 
 ```bash
 python main.py
@@ -76,7 +70,7 @@ uvicorn dashboard.main:app --host 127.0.0.1 --port 8000
 - Google не обязателен. Ключ сервисного аккаунта нужен только если заполнен `GOOGLE_SHEET_ID`. Файл по умолчанию — `google_credentials.json` рядом с `main.py`.
 - Полный `pytest` в один поток долгий. Параллельный запуск и правило «один полный прогон на машину» — в [CONVENTIONS.md](CONVENTIONS.md). Два `-n auto` одновременно упираются в память и диск.
 - Отдельный тест внутри файла иногда рассчитан на базу, которую открыл соседний тест того же файла. `conftest` подставляет пустую схему в свой временный каталог, чтобы не читать чужой `data/forum.db`, но такой тест надёжнее гонять файлом целиком.
-- Хук не включён, пока не выполнен `git config core.hooksPath .githooks`. Без него в сообщение коммита попадают подписи агентов. Локальный `.githooks/commit-msg` вырезает и строку `Claude-Session:`, и трейлер `Co-authored-by` от Cursor, Claude или Anthropic. Шаг `commit-trailers` отклоняет только строки `^Claude-Session:` и `Co-authored-by` не проверяет.
+- Локального хука сообщений коммита нет. Шаг `commit-trailers` отклоняет новые коммиты со строкой `Claude-Session:`. Трейлер `Co-authored-by` этот шаг не проверяет: такую строку в сообщение не пишут вручную.
 
 ## Команды
 
@@ -171,9 +165,7 @@ fix(cities): перевод города оставляет одну строк�
 
 Тело — только если из темы не ясно, почему так. Не пересказывать дифф.
 
-В сообщение не входят номер плана, фазы или внутренний id ревью. Не входят строка `Claude-Session:` и трейлер `Co-authored-by` от Cursor, Claude или Anthropic: репозиторий публичный.
-
-Хук `.githooks/commit-msg` вырезает эти строки при коммите. Подключение — `git config core.hooksPath .githooks` (один раз на клон). Если хук не стоит, шаг `commit-trailers` в `.github/workflows/tests.yml` не пропускает новые коммиты, в сообщении которых есть строка `Claude-Session:`. При cherry-pick чужого коммита сообщение проверить руками: хук правит только тот коммит, который создаётся локально.
+В сообщение не входят номер плана, фазы или внутренний id ревью. Не входят строка `Claude-Session:` и трейлер `Co-authored-by` от Cursor, Claude или Anthropic: репозиторий публичный. Локального хука, который вырезал бы их сам, нет. Шаг `commit-trailers` в `.github/workflows/tests.yml` не пропускает новые коммиты со строкой `Claude-Session:`. При cherry-pick чужого коммита сообщение проверить руками.
 
 ## Ветки
 

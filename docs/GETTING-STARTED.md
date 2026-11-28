@@ -29,20 +29,14 @@ git clone https://github.com/qleafye/AIESEC_event_bot.git
 cd AIESEC_event_bot
 ```
 
-2. Один раз на клон, если будете коммитить. Хук вырезает строку `Claude-Session:` и трейлер `Co-authored-by` от Cursor, Claude или Anthropic. Без хука job `commit-trailers` в `.github/workflows/tests.yml` не пропускает только коммиты со строкой `Claude-Session:`; `Co-authored-by` этот шаг не отклоняет. Хук описан в [`.githooks/commit-msg`](../.githooks/commit-msg):
-
-```powershell
-git config core.hooksPath .githooks
-```
-
-3. Окружение и зависимости бота. Список пакетов — [`requirements.txt`](../requirements.txt) (aiogram 3, aiosqlite, gspread, APScheduler 3.11.2 и остальные рантайм-зависимости, включая Mini App в том же файле). Отдельный `dashboard/requirements.txt` в это окружение вложенным `-r` не подключают: комментарий в `requirements-dev.txt` фиксирует кодировочный баг pip на Windows.
+2. Окружение и зависимости бота. Список пакетов — [`requirements.txt`](../requirements.txt) (aiogram 3, aiosqlite, gspread, APScheduler 3.11.2 и остальные рантайм-зависимости, включая Mini App в том же файле). Отдельный `dashboard/requirements.txt` в это окружение вложенным `-r` не подключают: комментарий в `requirements-dev.txt` фиксирует кодировочный баг pip на Windows.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-4. Файл окружения. Если `.env` уже заполнен, не копируйте поверх — затрёте токен.
+3. Файл окружения. Если `.env` уже заполнен, не копируйте поверх — затрёте токен.
 
 ```powershell
 Copy-Item -Path .env.example -Destination .env
@@ -50,7 +44,7 @@ Copy-Item -Path .env.example -Destination .env
 
 Файл должен остаться в корне, рядом с `main.py`, в кодировке UTF-8: `Settings` в `config.py` читает `.env` именно так.
 
-5. В `.env` заполнить два поля, без которых процесс не стартует:
+4. В `.env` заполнить два поля, без которых процесс не стартует:
 
 - `BOT_TOKEN` — токен от BotFather.
 - `ADMIN_IDS` — JSON-список целых чисел в квадратных скобках, как в шаблоне `.env.example`. Не одно голое число.
