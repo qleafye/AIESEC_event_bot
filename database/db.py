@@ -10437,6 +10437,29 @@ async def enqueue_miniapp_outbox_once(kind: str, payload: dict, created_at: str)
         return cursor.lastrowid if cursor.rowcount == 1 else None
 
 
+def _outbox_payload(raw):
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError):
+        return {}
+
+
+async def get_miniapp_outbox_row(row_id: int) -> dict | None:
+    """Одна строка outbox по id. `payload` уже разобран. Нет строки — None."""
+    async with _connect() as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM miniapp_outbox WHERE id = ?",
+            (int(row_id),),
+        ) as cursor:
+            row = await cursor.fetchone()
+    if row is None:
+        return None
+    item = dict(row)
+    item["payload"] = _outbox_payload(item.get("payload"))
+    return item
+
+
 async def list_unprocessed_miniapp_outbox(limit: int = 50) -> list[dict]:
     """Необработанные события в порядке `id`; `payload` уже разобран из JSON."""
     async with _connect() as db:
@@ -10447,10 +10470,7 @@ async def list_unprocessed_miniapp_outbox(limit: int = 50) -> list[dict]:
         ) as cursor:
             rows = [dict(row) for row in await cursor.fetchall()]
     for row in rows:
-        try:
-            row["payload"] = json.loads(row["payload"])
-        except (TypeError, ValueError):
-            row["payload"] = {}
+        row["payload"] = _outbox_payload(row.get("payload"))
     return rows
 
 

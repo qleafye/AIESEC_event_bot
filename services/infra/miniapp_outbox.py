@@ -67,10 +67,12 @@ Telegram или пересобирать таблицу самому — еди�
   Повтор безопасен: сообщение уходит в том вызове, где пауза правила только что появилась.
 
 At-least-once, с ретраями (T-19-56): исключение -> `mark_miniapp_outbox_failed` (`attempts+1`,
-текст ошибки), после `MAX_ATTEMPTS` попыток строка выводится из очереди (помечена обработанной)
-с логом уровня error, чтобы одна битая строка не стопорила проход навсегда. Оба обработчика
-идемпотентны: повторное уведомление менеджерам допустимо (то же самое уже происходит при
-дайджест-режиме бота), повторная пересборка таблицы безвредна.
+текст ошибки). Успех помечает строку сразу, до следующей в пачке: рестарт посреди пачки не
+отправляет уже ушедшее ещё раз. Перед отправкой строка перечитывается — уже обработанную не
+шлём. После `MAX_ATTEMPTS` строка сразу выходит из очереди, в лог пишется error, и владельцам
+бота уходит то же предупреждение, что после исчерпанных ретраев листа (`_send_admin_alert`).
+Одна битая строка проход не стопорит. Повтор обработчика безвреден (дайджест и ребилд листа
+это уже переживают), но на него пачка больше не опирается.
 
 Монет в очереди нет и быть не может (начисление делает `miniapp` напрямую через `add_coins`,
 план 19-05) — `drain` не вызывает `add_coins` ни при каком `kind`.
@@ -82,6 +84,7 @@ import logging
 from shared.secret_redact import redact_secrets
 
 from database.db import (
+    get_miniapp_outbox_row,
     list_unprocessed_miniapp_outbox,
     mark_miniapp_outbox_failed,
     mark_miniapp_outbox_processed,
@@ -366,32 +369,63 @@ def register_approval_notifier(fn) -> None:
     _approval_notifier = fn
 
 
+def _processed_stamp() -> str:
+    return msk_now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _outbox_giveup_text(row_id: int, kind) -> str:
+    """Тот же тон, что у `_alert_admins_sheet_failure`: что случилось и что сделать.
+    Payload в текст не входит — там могут быть имя и контакты."""
+    label = kind if isinstance(kind, str) and kind else "неизвестный"
+    return (
+        f"⚠️ Очередь приложения: не удалось выполнить действие после {MAX_ATTEMPTS} попыток "
+        f"(строка {row_id}, {label}). Письмо или запись могли не дойти. "
+        "Повторите действие в приложении."
+    )
+
+
+async def _notify_outbox_gave_up(row_id: int, kind) -> None:
+    """Держатели — те же, что у пути таблицы: `config.ADMIN_IDS` через `_send_admin_alert`.
+    Сбой письма не возвращает строку в очередь."""
+    try:
+        from services.sheets.sheets import _send_admin_alert
+
+        await _send_admin_alert(_outbox_giveup_text(row_id, kind))
+    except Exception as e:
+        logger.error(f"miniapp_outbox: give-up alert for row {row_id} failed: {e}")
+
+
 async def drain(bot) -> int:
     """Разбирает до `DRAIN_LIMIT` необработанных строк `miniapp_outbox`. Возвращает число
-    строк, покинувших очередь (успешно обработанные + сдавшиеся после `MAX_ATTEMPTS`
-    попыток). Пустая очередь -> 0, без единого вызова обработчиков."""
+    строк, покинувших очередь в этом вызове (успех + сдача после `MAX_ATTEMPTS`).
+    Пустая очередь -> 0, без единого вызова обработчиков. Уже обработанную строку,
+    попавшую в снимок, не шлём и в счётчик не кладём."""
     rows = await list_unprocessed_miniapp_outbox(limit=DRAIN_LIMIT)
-    done_ids: list[int] = []
+    done = 0
 
     for row in rows:
         row_id = row["id"]
-        kind = row.get("kind")
+        fresh = await get_miniapp_outbox_row(row_id)
+        if fresh is None or fresh.get("processed_at"):
+            continue
+        kind = fresh.get("kind")
         try:
-            await _handle_row(bot, kind, row.get("payload") or {})
+            await _handle_row(bot, kind, fresh.get("payload") or {})
         except Exception as e:
             # T-19-57: только id и kind в логе, никогда payload (может нести ПД).
             logger.error(f"miniapp_outbox: row {row_id} (kind={kind}) failed: {e}")
             await mark_miniapp_outbox_failed(row_id, redact_secrets(e))
-            attempts_now = (row.get("attempts") or 0) + 1
+            attempts_now = (fresh.get("attempts") or 0) + 1
             if attempts_now >= MAX_ATTEMPTS:
                 logger.error(
                     f"miniapp_outbox: row {row_id} (kind={kind}) exceeded {MAX_ATTEMPTS} "
                     "attempts — giving up, removing it from the queue"
                 )
-                done_ids.append(row_id)
+                await mark_miniapp_outbox_processed([row_id], _processed_stamp())
+                await _notify_outbox_gave_up(row_id, kind)
+                done += 1
             continue
-        done_ids.append(row_id)
+        await mark_miniapp_outbox_processed([row_id], _processed_stamp())
+        done += 1
 
-    if done_ids:
-        await mark_miniapp_outbox_processed(done_ids, msk_now().strftime("%Y-%m-%d %H:%M:%S"))
-    return len(done_ids)
+    return done
