@@ -85,6 +85,7 @@ from services.forum.checkin_not_arrived import (
     summary_text as checkin_not_arrived_summary_text,
 )
 from services.forum.program import checkin_session_points, scanned_outside_session_window
+from services.applications.personal_letter import OTHER_CITY as _OTHER_CITY, gate as _person_gate
 from services.applications.reject_rules import forum_date_for
 from services.infra.timeutil import city_offset_hours, msk_now, shift_hours
 from services.forum import checkin_arrival
@@ -642,15 +643,12 @@ async def _checkin_point_import(callback, state: FSMContext, records: list[dict]
     )
 
 
-# ── Форум-ночь B1 (идея №10): перевыпуск QR ─────────────────────────────────────────────────
-# Кнопка — на карточке `/find` (handlers/admin.py::cmd_find_user), сама операция и подтверждение
-# живут здесь: тот же шов, что остальной чек-ин-функционал. Право то же, что у карточки-
-# источника («moderate_reg» — управление делегатским аккаунтом, не рутинное сканирование на
-# входе, поэтому не капа «checkin»).
-
 @router.callback_query(F.data.startswith("checkin_reissue:"))
 async def checkin_reissue_confirm(callback: types.CallbackQuery):
     tid = int(callback.data.split(":", 1)[1])
+    if (await _person_gate(callback.from_user.id, tid))[1] == _OTHER_CITY:
+        await callback.answer(_OTHER_CITY, show_alert=True)
+        return
     kb = InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="🔄 Да, перевыпустить", callback_data=f"checkin_reissue_yes:{tid}"),
         InlineKeyboardButton(text="Отмена", callback_data="checkin_reissue_no"),
@@ -666,6 +664,10 @@ async def checkin_reissue_confirm(callback: types.CallbackQuery):
 @router.callback_query(F.data.startswith("checkin_reissue_yes:"))
 async def checkin_reissue_go(callback: types.CallbackQuery):
     tid = int(callback.data.split(":", 1)[1])
+    if (await _person_gate(callback.from_user.id, tid))[1] == _OTHER_CITY:
+        await callback.message.edit_text(_OTHER_CITY)
+        await callback.answer()
+        return
     new_token = await reissue_checkin_token(tid)
     if new_token is None:
         await callback.message.edit_text("Не нашёл делегата — возможно, уже удалён.")
@@ -706,12 +708,8 @@ async def checkin_reissue_cancel(callback: types.CallbackQuery):
     await callback.answer()
 
 
-# ── Форум-ночь B4 (идея №8): пробная выгрузка приложения-сканера ────────────────────────────
-# Волонтёр проверяет СВОЁ приложение-сканер заранее (не в последнюю ночь перед форумом): сканит
-# любой настоящий QR ЭТОГО события (свой «🎟 Мой QR», делегата, или фиктивный «🧪 Показать
-# тестовый QR» ниже — если сам не делегат) и присылает выгрузку сюда. Бот НИЧЕГО не отмечает
-# (никакого record_checkin) — только парсит той же логикой (find_checkin_records), что реальная
-# загрузка, и отвечает, читается ли формат и время скана.
+# Пробная выгрузка сканера: волонтёр присылает файл заранее. Бот ничего не отмечает,
+# только проверяет, что в файле есть QR этого форума и читается время скана.
 
 _TEST_UPLOAD_PROMPT = (
     "🧪 Отсканируйте любой настоящий QR ЭТОГО форума вашим приложением-сканером — свой «🎟 Мой "

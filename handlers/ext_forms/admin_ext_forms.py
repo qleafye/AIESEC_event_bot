@@ -401,6 +401,10 @@ async def extf_view(callback: types.CallbackQuery):
     except (IndexError, ValueError):
         await callback.answer("Не понял, чьи ответы показать.", show_alert=True)
         return
+    from services.applications.personal_letter import OTHER_CITY, gate
+    if (await gate(callback.from_user.id, tid))[1] == OTHER_CITY:
+        await callback.answer(OTHER_CITY, show_alert=True)
+        return
     items = await xdb.answers_for_user(tid)
     if not items:
         await callback.answer("У делегата нет ответов во внешних формах", show_alert=True)
