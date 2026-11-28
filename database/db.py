@@ -7608,7 +7608,12 @@ async def get_receipt_pending_count(*, city_scope=None) -> int:
 
 
 async def update_payment_status(
-    telegram_id: int, status: str, *, require_status: str | None = None, **kwargs
+    telegram_id: int,
+    status: str,
+    *,
+    require_status: str | None = None,
+    require_receipt_file_id: str | None = None,
+    **kwargs,
 ) -> int:
     """Transition one user's payment_status; returns cursor.rowcount.
 
@@ -7620,6 +7625,10 @@ async def update_payment_status(
     WHERE to a not_paid transition — so a stale/already-confirmed card tapped ❌ Отклонить
     cannot flip a 'paid' row back to 'not_paid' (rowcount=0 signals no-op to the handler).
     Callers that legitimately reset unconditionally (payment-option pick) omit it.
+
+    File guard: require_receipt_file_id adds `AND receipt_file_id = ?`. A card minted for
+    an older file then matches 0 rows after the delegate uploads a new one. Omit it for
+    callers that do not know the file.
 
     Additive UPDATE only — never INSERT OR REPLACE."""
     sets = ["payment_status = ?"]
@@ -7638,6 +7647,9 @@ async def update_payment_status(
     if guard is not None:
         where += " AND payment_status = ?"
         params.append(guard)
+    if require_receipt_file_id is not None:
+        where += " AND receipt_file_id = ?"
+        params.append(require_receipt_file_id)
     async with _connect() as db:
         cursor = await db.execute(
             f"UPDATE users SET {', '.join(sets)} WHERE {where}", params

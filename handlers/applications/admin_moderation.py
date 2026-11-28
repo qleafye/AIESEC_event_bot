@@ -20,6 +20,7 @@ sync, formerly `_welcome_flipped`) moved to `services/applications/applications.
 can call without pulling the bot in. Module-level aliases under the old private names keep this
 file's handler bodies and order untouched (same technique as `domain/settings/ops.py`, Phase 22).
 """
+import hashlib
 import html as html_module
 import logging
 
@@ -640,15 +641,61 @@ async def appr_all_yes(callback: types.CallbackQuery, state: FSMContext):
 
 # ── Phase 4: receipt verification queue ("Чеки", tinder UI, D-12) ─────────────
 
+# Callback Telegram — 64 байта, полный file_id туда не кладётся. 12 hex хватает,
+# чтобы старая карточка не совпала с новым чеком.
+_STALE_RECEIPT_ALERT = "Это старая карточка: чек уже другой. Откройте очередь «Чеки» заново."
+
+
+def _receipt_token(file_id) -> str:
+    """Первые 12 hex sha256 от receipt_file_id. Пустой файл — пустой токен, он оплату не меняет."""
+    if file_id is None:
+        return ""
+    text = str(file_id)
+    if not text:
+        return ""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
 def _parse_rcpt(data: str) -> tuple[str, int | None]:
-    """'rcpt_confirm:123' -> ('rcpt_confirm', 123)."""
+    """'rcpt_confirm:123:ab12cd34ef56' -> ('rcpt_confirm', 123). Токен после второго двоеточия не часть id."""
     if ":" in data:
-        prefix, uid = data.split(":", 1)
+        prefix, rest = data.split(":", 1)
+        uid_text = rest.split(":", 1)[0]
         try:
-            return prefix, int(uid)
+            return prefix, int(uid_text)
         except ValueError:
             return prefix, None
     return data, None
+
+
+def _parse_rcpt_token(data: str) -> str:
+    """Старая кнопка `rcpt_confirm:123` токена не несёт — это пустая строка, не хеш."""
+    parts = (data or "").split(":")
+    if len(parts) < 3:
+        return ""
+    return parts[2]
+
+
+async def _receipt_bind(uid: int | None, token: str) -> tuple[str, str | None]:
+    """'ok' — токен от текущего файла и статус ещё receipt_sent.
+    'done' — файл тот же, но чек уже не в очереди. 'stale' — токен пустой или чужой."""
+    if uid is None or not token:
+        return "stale", None
+    user = await get_user(uid)
+    file_id = (user or {}).get("receipt_file_id")
+    if not file_id or token != _receipt_token(file_id):
+        return "stale", None
+    if user.get("payment_status") != "receipt_sent":
+        return "done", str(file_id)
+    return "ok", str(file_id)
+
+
+async def _answer_receipt_miss(callback: types.CallbackQuery, state: FSMContext, bind: str) -> None:
+    if bind == "done":
+        await callback.answer("Чек уже обработан.")
+        await _show_current_receipt_card(callback.message, state)
+        return
+    await callback.answer(_STALE_RECEIPT_ALERT, show_alert=True)
 
 
 def _render_receipt_card(user: dict, position: int, total: int, city_label_text: str | None = None) -> str:
@@ -665,13 +712,14 @@ def _render_receipt_card(user: dict, position: int, total: int, city_label_text:
     return "\n".join(lines)
 
 
-def _rcpt_card_kb(uid: int, has_receipt: bool, total: int) -> InlineKeyboardMarkup:
+def _rcpt_card_kb(uid: int, receipt_file_id, total: int) -> InlineKeyboardMarkup:
+    token = _receipt_token(receipt_file_id)
     rows = [[
-        InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"rcpt_confirm:{uid}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rcpt_reject:{uid}"),
+        InlineKeyboardButton(text="✅ Подтвердить", callback_data=f"rcpt_confirm:{uid}:{token}"),
+        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rcpt_reject:{uid}:{token}"),
     ]]
     third = []
-    if has_receipt:
+    if receipt_file_id:
         third.append(InlineKeyboardButton(text="🧾 Чек", callback_data=f"rcpt_view:{uid}"))
     third.append(InlineKeyboardButton(text="⏭ Следующий", callback_data=f"rcpt_skip:{uid}"))
     rows.append(third)
@@ -718,7 +766,7 @@ async def _show_current_receipt_card(target: types.Message, state: FSMContext):
     await target.answer(
         _render_receipt_card(current, position, total, city_label_text=card_label),
         parse_mode="HTML",
-        reply_markup=_rcpt_card_kb(current["telegram_id"], bool(current.get("receipt_file_id")), total),
+        reply_markup=_rcpt_card_kb(current["telegram_id"], current.get("receipt_file_id"), total),
     )
 
 
@@ -736,11 +784,18 @@ async def rcpt_confirm(callback: types.CallbackQuery, state: FSMContext):
     if await _card_out_of_scope(callback.from_user.id, uid):
         await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
-    rows = await update_payment_status(uid, "paid") if uid is not None else 0
+    token = _parse_rcpt_token(callback.data)
+    bind, file_id = await _receipt_bind(uid, token)
+    if bind != "ok" or not file_id:
+        await _answer_receipt_miss(callback, state, bind)
+        return
+    rows = await update_payment_status(
+        uid, "paid", require_status="receipt_sent", require_receipt_file_id=file_id,
+    )
     if rows == 0:
-        # Atomic guard (T-04-05-02): another manager already confirmed.
-        await callback.answer("Чек уже обработан.")
-        await _show_current_receipt_card(callback.message, state)
+        # Гонка: между сверкой и UPDATE чек заменили или уже подтвердили.
+        bind_now, _ = await _receipt_bind(uid, token)
+        await _answer_receipt_miss(callback, state, "stale" if bind_now == "stale" else "done")
         return
     # H-01: disable this card's buttons now that it's confirmed, so scrolling back and
     # tapping ❌ Отклонить on it can't fire a stale reject (the db guard also blocks it).
@@ -798,7 +853,12 @@ async def rcpt_reject_start(callback: types.CallbackQuery, state: FSMContext):
     if await _card_out_of_scope(callback.from_user.id, uid):
         await callback.answer(_OUT_OF_SCOPE_ALERT, show_alert=True)
         return
-    await state.update_data(rcpt_reject_uid=uid)
+    token = _parse_rcpt_token(callback.data)
+    bind, _file_id = await _receipt_bind(uid, token)
+    if bind != "ok":
+        await _answer_receipt_miss(callback, state, bind)
+        return
+    await state.update_data(rcpt_reject_uid=uid, rcpt_reject_token=token)
     await state.set_state(ReceiptReview.reject_reason)
     await callback.message.answer("Укажи причину отклонения (или «-» без объяснений):", reply_markup=get_cancel_kb())
     await callback.answer()
@@ -815,16 +875,34 @@ async def rcpt_reject_cancel(message: types.Message, state: FSMContext):
 async def rcpt_reject_reason(message: types.Message, state: FSMContext):
     data = await state.get_data()
     uid = data.get("rcpt_reject_uid")
+    token = data.get("rcpt_reject_token") or ""
     if uid is not None:
         # H-01: guard the reset — a stale/already-confirmed card tapped ❌ must NOT flip a
-        # 'paid' user back to 'not_paid'. Only a row still in 'receipt_sent' is rejectable.
-        rows = await update_payment_status(uid, "not_paid", require_status="receipt_sent")
+        # 'paid' user back to 'not_paid'. Only the file this card was minted for, still in
+        # 'receipt_sent', is rejectable.
+        bind, file_id = await _receipt_bind(uid, token)
+        if bind != "ok" or not file_id:
+            await state.set_state(None)
+            text = (
+                "Чек уже обработан (оплата подтверждена или чек не в очереди) — отклонение пропущено."
+                if bind == "done"
+                else _STALE_RECEIPT_ALERT
+            )
+            await message.answer(text, reply_markup=ReplyKeyboardRemove())
+            await _show_current_receipt_card(message, state)
+            return
+        rows = await update_payment_status(
+            uid, "not_paid", require_status="receipt_sent", require_receipt_file_id=file_id,
+        )
         if rows == 0:
             await state.set_state(None)
-            await message.answer(
-                "Чек уже обработан (оплата подтверждена или чек не в очереди) — отклонение пропущено.",
-                reply_markup=ReplyKeyboardRemove(),
+            bind_now, _ = await _receipt_bind(uid, token)
+            text = (
+                _STALE_RECEIPT_ALERT
+                if bind_now == "stale"
+                else "Чек уже обработан (оплата подтверждена или чек не в очереди) — отклонение пропущено."
             )
+            await message.answer(text, reply_markup=ReplyKeyboardRemove())
             await _show_current_receipt_card(message, state)
             return
         reason_text = (message.text or "").strip()

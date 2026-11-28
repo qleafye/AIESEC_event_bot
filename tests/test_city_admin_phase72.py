@@ -502,6 +502,7 @@ def test_rcpt_confirm_refuses_a_card_from_another_city(tmp_path):
     state = _new_state(ADMIN_ID)
     asyncio.run(admin_moderation.rcpt_confirm(cb, state))
     assert cb.answers[-1][1] is True
+    assert "другого города" in cb.answers[-1][0]
     assert asyncio.run(db.get_user(2))["payment_status"] == "receipt_sent"
 
 
@@ -514,6 +515,7 @@ def test_rcpt_reject_start_refuses_a_card_from_another_city(tmp_path):
     state = _new_state(ADMIN_ID)
     asyncio.run(admin_moderation.rcpt_reject_start(cb, state))
     assert cb.answers[-1][1] is True
+    assert "другого города" in cb.answers[-1][0]
     assert cb.message.answers_sent == []
     assert asyncio.run(state.get_data()).get("rcpt_reject_uid") is None
 

@@ -563,9 +563,11 @@ def test_filter_menu_kb_has_track_button():
 def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypatch):
     _admin_ready(tmp_path)
     uid = 800001
+    file_id = "receipt-party-800001"
     asyncio.run(db.add_user({
         "telegram_id": uid, "full_name": "Party Payer", "registration_date": "2026-07-01",
         "participant_type": "party_overnight", "payment_status": "receipt_sent",
+        "receipt_file_id": file_id,
     }))
 
     import services.scheduler as scheduler_mod
@@ -590,7 +592,7 @@ def test_rcpt_confirm_resolves_party_track_before_completion(tmp_path, monkeypat
             pass
 
     class FakeCallback:
-        data = f"rcpt_confirm:{uid}"
+        data = f"rcpt_confirm:{uid}:{admin_moderation._receipt_token(file_id)}"
         from_user = FakeUser(ADMIN_ID)
         bot = FakeBot()
         message = FakeMessage()
@@ -701,9 +703,11 @@ def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, m
     resolved from the DB row, matching approve_user's pattern exactly."""
     _admin_ready(tmp_path)
     uid = 800002
+    file_id = "receipt-full-800002"
     asyncio.run(db.add_user({
         "telegram_id": uid, "full_name": "Full Payer", "registration_date": "2026-07-01",
         "participant_type": "full", "payment_status": "receipt_sent",
+        "receipt_file_id": file_id,
     }))
 
     import services.scheduler as scheduler_mod
@@ -726,7 +730,7 @@ def test_rcpt_confirm_full_track_delegate_gets_none_participant_type(tmp_path, m
             pass
 
     class FakeCallback:
-        data = f"rcpt_confirm:{uid}"
+        data = f"rcpt_confirm:{uid}:{admin_moderation._receipt_token(file_id)}"
         from_user = FakeUser(ADMIN_ID)
         bot = FakeBot()
         message = FakeMessage()

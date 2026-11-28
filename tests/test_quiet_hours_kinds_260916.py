@@ -394,10 +394,14 @@ def _receipt_ready(tmp_path, name, monkeypatch):
     return admin_moderation
 
 
+_RECEIPT_FILE = "qh-receipt-file"
+
+
 async def _seed_payer():
     await db.add_user({
         "telegram_id": DELEGATE, "full_name": "Делегат", "registration_date": "2026-09-16",
         "participant_type": "full", "payment_status": "receipt_sent",
+        "receipt_file_id": _RECEIPT_FILE,
     })
 
 
@@ -414,7 +418,8 @@ def test_rcpt_confirm_in_quiet_hours_queues_text_menu_and_bonus(tmp_path, monkey
         await db.set_setting("reg_bonus_doc_file_id", "BONUS-DOC")
         await db.set_setting("quiet_hours_manager_notice_text", "Делегат увидит в {time}.")
 
-        callback = _FakeCallback(f"rcpt_confirm:{DELEGATE}", bot)
+        token = admin_moderation._receipt_token(_RECEIPT_FILE)
+        callback = _FakeCallback(f"rcpt_confirm:{DELEGATE}:{token}", bot)
         await admin_moderation.rcpt_confirm(callback, _FakeState())
 
         assert bot.sent == [] and bot.documents == [] and bot.photos == []
@@ -440,7 +445,8 @@ def test_rcpt_confirm_outside_quiet_hours_sends_immediately(tmp_path, monkeypatc
         await db.set_setting("reg_bonus_enabled", "on")
         await db.set_setting("reg_bonus_doc_file_id", "BONUS-DOC")
 
-        callback = _FakeCallback(f"rcpt_confirm:{DELEGATE}", bot)
+        token = admin_moderation._receipt_token(_RECEIPT_FILE)
+        callback = _FakeCallback(f"rcpt_confirm:{DELEGATE}:{token}", bot)
         await admin_moderation.rcpt_confirm(callback, _FakeState())
 
         assert [c[0] for c in bot.sent] == [DELEGATE, DELEGATE]  # «оплата подтверждена» + approve_text
@@ -462,7 +468,10 @@ def test_rcpt_reject_in_quiet_hours_queues_and_tells_manager(tmp_path, monkeypat
         await db.set_setting("quiet_hours_manager_notice_text", "Делегат увидит в {time}.")
 
         state = _FakeState()
-        await state.update_data(rcpt_reject_uid=DELEGATE)
+        await state.update_data(
+            rcpt_reject_uid=DELEGATE,
+            rcpt_reject_token=admin_moderation._receipt_token(_RECEIPT_FILE),
+        )
         message = _FakeMessage(text="чек нечитаемый", bot=bot)
         await admin_moderation.rcpt_reject_reason(message, state)
 
@@ -482,7 +491,10 @@ def test_rcpt_reject_outside_quiet_hours_sends_immediately(tmp_path, monkeypatch
     async def scenario():
         await _seed_payer()
         state = _FakeState()
-        await state.update_data(rcpt_reject_uid=DELEGATE)
+        await state.update_data(
+            rcpt_reject_uid=DELEGATE,
+            rcpt_reject_token=admin_moderation._receipt_token(_RECEIPT_FILE),
+        )
         message = _FakeMessage(text="чек нечитаемый", bot=bot)
         await admin_moderation.rcpt_reject_reason(message, state)
 
